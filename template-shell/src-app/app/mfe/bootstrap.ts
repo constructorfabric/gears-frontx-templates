@@ -39,11 +39,13 @@ import type {
   ActionPayload,
   MountStrategy,
 } from '@gears-frontx/react';
+import { entryAddressesSchema, type DomainRouting } from '@gears-frontx/frontx-template-shell';
 import {
   CHROME_ACTION_SCHEMAS,
   CHROME_SET_MENU_COLLAPSED,
   CHROME_SET_THEME,
 } from './chrome-actions';
+import { createShellRouting, shellNavigation, type ShellNavigation, type ShellRouting } from './shell-routing';
 
 const MFE_MANIFESTS_URL = '/generated-mfe-manifests.json';
 
@@ -130,12 +132,18 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     registry: MfeRegistry,
     domainId: string,
     app: FrontXApp,
+    private readonly routing: DomainRouting,
   ) {
     super();
     this.strategy = new ExclusiveMountStrategy(ctx.mounter, hooks, registry, domainId);
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
-      ActionHandler.fromFunction((_t, p) => this.strategy.mount(p as ActionPayload)),
+      ActionHandler.fromFunction(async (_t, p) => {
+        const payload = p as ActionPayload;
+        await this.strategy.mount(payload);
+        // Before this handler settles, so a chained `next` sees the entry in the URL (D3).
+        this.routing.afterMount(payload.subject);
+      }),
     );
     // The host chrome a mounted screen may drive. The one thing neither the
     // action schema nor the domain declaration can decide is whether THIS host
@@ -175,16 +183,30 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
 class OptionalDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: OptionalMountStrategy;
 
-  constructor(ctx: DomainContext, hooks: ContainerHooks, registry: MfeRegistry, domainId: string) {
+  constructor(
+    ctx: DomainContext,
+    hooks: ContainerHooks,
+    registry: MfeRegistry,
+    domainId: string,
+    private readonly routing: DomainRouting,
+  ) {
     super();
     this.strategy = new OptionalMountStrategy(ctx.mounter, hooks, registry, domainId);
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
-      ActionHandler.fromFunction((_t, p) => this.strategy.mount(p as ActionPayload)),
+      ActionHandler.fromFunction(async (_t, p) => {
+        const payload = p as ActionPayload;
+        await this.strategy.mount(payload);
+        this.routing.afterMount(payload.subject);
+      }),
     );
     ctx.registerHandler(
       FRONTX_ACTION_UNMOUNT_EXT,
-      ActionHandler.fromFunction((_t, p) => this.strategy.unmount!(p as ActionPayload)),
+      ActionHandler.fromFunction(async (_t, p) => {
+        const payload = p as ActionPayload;
+        await this.strategy.unmount!(payload);
+        this.routing.afterUnmount(payload.subject);
+      }),
     );
   }
 
@@ -197,6 +219,7 @@ class ScreenDomainFactory extends ExtensionDomainImplementationFactory {
   constructor(
     private readonly registry: MfeRegistry,
     private readonly app: FrontXApp,
+    private readonly routing: DomainRouting,
   ) { super(); }
   build(ctx: DomainContext): ScreenDomainImpl {
     return new ScreenDomainImpl(
@@ -205,6 +228,7 @@ class ScreenDomainFactory extends ExtensionDomainImplementationFactory {
       this.registry,
       screenDomain.id,
       this.app,
+      this.routing,
     );
   }
 }
@@ -213,9 +237,10 @@ class OptionalDomainFactory extends ExtensionDomainImplementationFactory {
   constructor(
     private readonly registry: MfeRegistry,
     private readonly domainId: string,
+    private readonly routing: DomainRouting,
   ) { super(); }
   build(ctx: DomainContext): OptionalDomainImpl {
-    return new OptionalDomainImpl(ctx, new HostContainerHooks(), this.registry, this.domainId);
+    return new OptionalDomainImpl(ctx, new HostContainerHooks(), this.registry, this.domainId, this.routing);
   }
 }
 
@@ -320,6 +345,7 @@ function hostOwnsDomain(registry: MfeRegistry, domainId: string): boolean {
 async function registerMfePackage(
   registry: MfeRegistry,
   config: MfeManifestConfig,
+  routing: ShellRouting,
 ): Promise<void> {
   if (config.schemas) {
     registerScopedSchemas(registry, config.schemas, collectDeclaredActionIds(config.entries));
@@ -368,6 +394,11 @@ async function registerMfePackage(
       continue;
     }
     await registry.registerExtension(extension);
+    // The extension's entry address must reach the entry-addresses shared
+    // property before anything (Menu, a deep link) can ask this host to
+    // mount it — re-broadcasting after every registration, rather than once
+    // at the end, is what keeps that ordering (D1/D2).
+    routing.broadcastAddresses();
   }
 }
 
@@ -382,9 +413,16 @@ async function registerMfePackage(
  * Mount/unmount lifecycle is delegated to ExtensionDomainSlot in
  * MfeScreenContainer (and any other host-rendered slots).
  *
+ * Returns the `ShellRouting` this call created: the caller starts its four
+ * observers once discovery has settled (bootstrap resolved and the screen
+ * slot's root attached, D4) and passes it to `<ExtensionDomainSlot>`.
+ *
  * @param app - FrontX application instance
+ * @param nav - the shell's navigation history and route signal; defaults to
+ *   the process-wide singleton (`shellNavigation()`) so callers other than
+ *   tests never need to pass this.
  */
-export async function bootstrapMFE(app: FrontXApp): Promise<void> {
+export async function bootstrapMFE(app: FrontXApp, nav: ShellNavigation = shellNavigation()): Promise<ShellRouting> {
   const registry = app.mfeRegistry;
   if (!registry) {
     throw new Error('[MFE Bootstrap] mfeRegistry is not available on app instance');
@@ -392,10 +430,19 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
 
   // The chrome action schemas must be on the type system before any action
   // carrying one of these types can be dispatched, and `registerDomain` is the
-  // first thing a mounted screen can act against.
+  // first thing a mounted screen can act against. `entryAddressesSchema` joins
+  // them here for the same reason: the four base domains' declarations
+  // reference it by `x-gts-ref` in `sharedProperties`, so it must be
+  // registered before the first `registerDomain` call below — registration is
+  // idempotent, so this holds regardless of which entry point runs it first
+  // (`main.tsx` also registers it, directly, for `lifecycle-widgets-host.tsx`'s
+  // own `register(screenDomain)`).
   for (const schema of CHROME_ACTION_SCHEMAS) {
     registry.typeSystem.registerSchema(schema);
   }
+  registry.typeSystem.registerSchema(entryAddressesSchema);
+
+  const routing = createShellRouting(registry, nav);
 
   // The shipped `screenDomain` is spread rather than edited: the framework
   // declaration stays the default every template gets, and this shell opts
@@ -404,11 +451,14 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
   // there would make them mandatory for every screen extension in the repo.
   registry.registerDomain(
     { ...screenDomain, actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED] },
-    new ScreenDomainFactory(registry, app),
+    new ScreenDomainFactory(registry, app, routing.screen),
   );
-  registry.registerDomain(sidebarDomain, new OptionalDomainFactory(registry, sidebarDomain.id));
-  registry.registerDomain(popupDomain, new OptionalDomainFactory(registry, popupDomain.id));
-  registry.registerDomain(overlayDomain, new OptionalDomainFactory(registry, overlayDomain.id));
+  registry.registerDomain(sidebarDomain, new OptionalDomainFactory(registry, sidebarDomain.id, routing.sidebar));
+  registry.registerDomain(popupDomain, new OptionalDomainFactory(registry, popupDomain.id, routing.popup));
+  registry.registerDomain(overlayDomain, new OptionalDomainFactory(registry, overlayDomain.id, routing.overlay));
+  // The four domains are registered (empty of extensions so far) — safe to
+  // broadcast now, before anything can mount.
+  routing.broadcastAddresses();
 
   const currentThemeId = app.themeRegistry?.getCurrent()?.id ?? 'default';
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, currentThemeId);
@@ -428,13 +478,14 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
     console.warn(
       '[MFE Bootstrap] No MFE manifests found. Run `npm run generate:mfe-manifests` to generate them.',
     );
-    return;
+    return routing;
   }
   // First pass: register every package's non-action schemas (derived
   // ExtensionDomain / Extension type schemas) so leaf-MFE extension validation
   // in the second pass can chain through them regardless of manifest order.
   registerAllNonActionSchemas(registry, manifests);
   for (const config of manifests) {
-    await registerMfePackage(registry, config);
+    await registerMfePackage(registry, config, routing);
   }
+  return routing;
 }
