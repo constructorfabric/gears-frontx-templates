@@ -277,7 +277,7 @@ describe('nested domain opening window (deferred opening write)', () => {
   });
 
   it('a stop/start cycle during a pending window still lets a later window collect into one replace (M1)', async () => {
-    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA, WIDGET], nested);
     let releaseStale: () => void = () => {};
     const pendingStale = new Promise<void>((resolve) => {
       releaseStale = resolve;
@@ -295,6 +295,25 @@ describe('nested domain opening window (deferred opening write)', () => {
     releaseStale();
     await stale; // the stale call's own finally must neither decrement the new epoch's depth nor flush again
     expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' }]);
+    // The assertion above only shows `stale`'s settlement produced no write
+    // of its own — it would still pass if `stale`'s `finally` had silently
+    // decremented `openingDepth` (or the epoch it captured was never bumped
+    // in the first place, making the guard above a no-op) without a flush,
+    // since that corruption is invisible until something opens next. Prove
+    // it did not: a genuinely fresh window opened now must still collect
+    // cleanly into exactly one further replace, not a second, unbatched
+    // write forced out immediately because `this.opening` was left `undefined`
+    // while `openingDepth` sat below zero.
+    await routing.withOpening(() => {
+      routing.afterMount('ext.widget');
+    });
+    expect(history.writes).toEqual([
+      { kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' },
+      {
+        kind: 'replace',
+        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget',
+      },
+    ]);
   });
 
   it('ignores a late afterMount/afterUnmount after stop, without opening a new subscription (C2)', () => {

@@ -276,12 +276,12 @@ export class DomainRouting {
     // URL owner swap (that arrives as `resolutionChanged`, never `added`).
     // The two halves only have a jointly observable scenario — a token
     // rediscovered as `added` after a stop/start cycle while some other
-    // owner of it is still (independently) mounted — which is what the
-    // "does not unmount a still-mounted extension when the same token is
-    // rediscovered as added ... (N3)" test below exercises; neither half has
-    // a scenario that isolates it from the other without reaching into
-    // private state, so this comment stands in for a test that would only
-    // duplicate that one.
+    // owner of it is still (independently) mounted — which is what
+    // `__tests__/domain-routing.test.ts`'s "does not unmount a still-mounted
+    // extension when the same token is rediscovered as added ... (N3)" test
+    // exercises; neither half has a scenario that isolates it from the other
+    // without reaching into private state, so this comment stands in for a
+    // test that would only duplicate that one.
     this.lastOwnerByToken.clear();
     this.status = { entries: 0, unresolved: 0 };
     this.notifyStatusListeners();
@@ -403,12 +403,13 @@ export class DomainRouting {
       // the prior owner, if still mounted, must be told to unmount here.
       // Restricted to an actual `resolutionChanged` (never `added` — a token
       // rediscovered fresh, e.g. after a stop/start cycle, is not a swap,
-      // N3) and to a 'multiple'-cardinality domain: a 'single'-cardinality
-      // domain (the screen domain) is mounted through `ExclusiveMountStrategy`
-      // (`packages/mfes/src/runtime/mount-strategies.ts:67`), whose own
-      // `mount()` already evicts the prior occupant before mounting the new
-      // one — `afterMount`'s `replaced` write only updates the URL, it does
-      // not itself unmount anything — so dispatching an unmount here too
+      // N3) and to a 'multiple'-cardinality domain: all four shell domains
+      // (screen, sidebar, popup, overlay) are 'single'-cardinality, and a
+      // 'single'-cardinality domain is mounted through either
+      // `ExclusiveMountStrategy.mount` or `OptionalMountStrategy.mount` —
+      // both already evict the prior occupant before mounting the new one,
+      // so `afterMount`'s `replaced` write only updates the URL, it does
+      // not itself unmount anything — dispatching an unmount here too
       // would double-unmount it (N1, contradicts the `single && mounting`
       // suppression below).
       if (

@@ -420,13 +420,27 @@ async function registerMfePackage(
 /**
  * Bootstrap MFE system for the host application.
  *
- * Synchronously registers the four well-known domains (screen, sidebar,
- * popup, overlay) with their per-domain implementation factories, then
- * broadcasts initial shared properties (theme, language) and asynchronously
- * registers extensions declared in `generated-mfe-manifests.json`.
+ * Registers the chrome action schemas and `entryAddressesSchema` on the
+ * registry's type system first (the four base domains' declarations
+ * reference the latter by `x-gts-ref`), then synchronously registers the
+ * four well-known domains (screen, sidebar, popup, overlay) with their
+ * per-domain implementation factories and broadcasts entry addresses once
+ * they are all in — safe this early since nothing can mount yet. It then
+ * broadcasts the initial shared properties (theme, language) and
+ * asynchronously registers the extensions declared in
+ * `generated-mfe-manifests.json`, broadcasting entry addresses again after
+ * every extension registers (so a caller asking to mount one, e.g. Menu or a
+ * deep link, sees it as soon as it lands rather than only once every package
+ * has registered) and once more after the whole loop — that final broadcast
+ * is the clean, authoritative one even if an intermediate round above was
+ * caught and logged rather than propagated.
  *
- * Mount/unmount lifecycle is delegated to ExtensionDomainSlot in
- * MfeScreenContainer (and any other host-rendered slots).
+ * Mount/unmount lifecycle is not driven here: the `ShellRouting` this call
+ * returns is only started/stopped through its consumer's `onAttached`/
+ * `onDetached` (MfeScreenContainer's `<ExtensionDomainSlot>` calls
+ * `routing.screen.start()`/`.stop()` there, and any other host-rendered slot
+ * would do the same for its own domain) — this function itself never calls
+ * `start()` or `stop()` on the routing it builds.
  *
  * Returns the `ShellRouting` this call created: the caller starts its four
  * observers once discovery has settled (bootstrap resolved and the screen

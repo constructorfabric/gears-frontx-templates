@@ -40,6 +40,19 @@ const noSubscribe = () => () => {};
  * and extension a second time on the same `mfeRegistry`. Reusing this
  * module-scoped promise means a second mount observes the same bootstrap
  * outcome instead of triggering a second one.
+ *
+ * Deliberately never cleared on rejection: a `bootstrapMFE` failure can
+ * leave some domains/extensions registered and others not (it is not
+ * transactional), so retrying from that partial state would not be a safe
+ * repeat of the first attempt — there is no isolated "nothing happened yet"
+ * state to roll back to. The effect below still logs the rejection every
+ * time it re-runs against this same promise, but it never re-invokes
+ * `bootstrapMFE`.
+ *
+ * Also never keyed on `app`: the effect below only checks whether this
+ * promise already exists, not which `app` it was created for, so a change
+ * of `app` across a re-render (as opposed to a real remount) still
+ * resolves against whatever registry the first call bootstrapped.
  */
 let bootstrapPromise: ReturnType<typeof bootstrapMFE> | undefined;
 
