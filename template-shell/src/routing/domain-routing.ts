@@ -88,9 +88,21 @@ export class DomainRouting {
   private status: DomainRouteStatus = { entries: 0, unresolved: 0 };
   private readonly statusListeners = new Set<{ readonly callback: () => void }>();
   private opening: ExtensionToken[] | undefined;
+  /** How many `withOpening` calls are currently nested — only the outermost one owns opening/closing `this.opening` (N2). */
+  private openingDepth = 0;
   private pendingOpen: ExtensionToken[] | undefined;
   private releasePending: (() => void) | undefined;
-  /** The routeOwner this instance itself last dispatched a mount for, per token — kept so a later `resolutionChanged` for the same token (an owner swap under a URL entry that never left the URL) can tell who the *prior* owner was; the transition report itself carries only the new one. */
+  /**
+   * The last resolved owner seen for each token — updated for every
+   * resolved `added` or `resolutionChanged` entry, not only the ones this
+   * instance itself dispatched a mount for. Kept so a later
+   * `resolutionChanged` for the same token (an owner swap under a URL
+   * entry that never left the URL) can tell who the *prior* owner was; the
+   * transition report itself carries only the new one. Cleared in
+   * `stop()` — otherwise a token rediscovered as `added` after a
+   * stop/start cycle would be compared against a stale owner from before
+   * the domain stopped rather than against nothing (N3).
+   */
   private readonly lastOwnerByToken = new Map<ExtensionToken, string>();
   /**
    * Set by `stop()`, cleared by `start()`. Guards `afterMount`/`afterUnmount`
@@ -194,15 +206,27 @@ export class DomainRouting {
    * domain silently stuck "opening" forever. Replaces a `beginOpening`/
    * `endOpening` pair a caller could otherwise unbalance by throwing between
    * them.
+   *
+   * Nest-safe (N2): a call made while another is already in progress (an
+   * inner window opened from inside an outer one's `fn`) shares the same
+   * `this.opening` collection rather than starting a fresh one, and only the
+   * outermost call's own settlement flushes it — an inner call's early
+   * settlement must not flush (and thereby lose) tokens the still-running
+   * outer call has not finished collecting.
    */
   async withOpening<T>(fn: () => T | Promise<T>): Promise<T> {
-    this.opening = [];
+    const isOutermost = this.openingDepth === 0;
+    this.openingDepth += 1;
+    if (isOutermost) this.opening = [];
     try {
       return await fn();
     } finally {
-      const collected = this.opening ?? [];
-      this.opening = undefined;
-      if (!this.stopped && collected.length > 0) this.deferAsOpening(collected);
+      this.openingDepth -= 1;
+      if (isOutermost) {
+        const collected = this.opening ?? [];
+        this.opening = undefined;
+        if (!this.stopped && collected.length > 0) this.deferAsOpening(collected);
+      }
     }
   }
 
@@ -221,6 +245,10 @@ export class DomainRouting {
     this.pendingOpen = undefined;
     this.releasePending?.();
     this.releasePending = undefined;
+    // A token rediscovered after a restart arrives as fresh `added`, not
+    // `resolutionChanged` — clearing here is what keeps it compared against
+    // nothing rather than the owner this instance saw before it stopped (N3).
+    this.lastOwnerByToken.clear();
     this.status = { entries: 0, unresolved: 0 };
     this.notifyStatusListeners();
   }
@@ -327,6 +355,7 @@ export class DomainRouting {
   private onTransition(transition: Transition<string>): void {
     const mounted = new Set(this.options.registry.getMountedExtensions(this.options.domainId));
     const unmountType = this.options.unmountActionType;
+    const resolutionChanged = new Set(transition.diff.resolutionChanged);
     let mounting = false;
     for (const token of [...transition.diff.added, ...transition.diff.resolutionChanged]) {
       const entry = transition.entries.find((e) => e.extension === token);
@@ -338,7 +367,21 @@ export class DomainRouting {
       // A `resolutionChanged` swap: the token's URL entry never left, so it
       // never appears in `diff.removed` and the loop below never sees it —
       // the prior owner, if still mounted, must be told to unmount here.
-      if (priorOwner !== undefined && priorOwner !== owner && unmountType !== undefined && mounted.has(priorOwner)) {
+      // Restricted to an actual `resolutionChanged` (never `added` — a token
+      // rediscovered fresh, e.g. after a stop/start cycle, is not a swap,
+      // N3) and to a 'multiple'-cardinality domain: a 'single'-cardinality
+      // domain's own switch-to-new-occupant path (`afterMount`'s `replaced`
+      // write) already retires the old occupant, so dispatching an unmount
+      // here too would double-unmount it (N1, contradicts the `single &&
+      // mounting` suppression below).
+      if (
+        this.options.cardinality === 'multiple' &&
+        resolutionChanged.has(token) &&
+        priorOwner !== undefined &&
+        priorOwner !== owner &&
+        unmountType !== undefined &&
+        mounted.has(priorOwner)
+      ) {
         dispatchChain(
           this.options.registry,
           { action: { type: unmountType, target: this.options.domainId, payload: { subject: priorOwner } } },
