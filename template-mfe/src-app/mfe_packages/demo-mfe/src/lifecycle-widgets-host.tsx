@@ -110,8 +110,13 @@ class WidgetsContainerHooks implements ContainerHooks {
   }
 }
 
-/** Per-mount routing and this implementation, read at call time: the nested registry may outlive one mount. */
-interface WidgetsRoutingHolder {
+/**
+ * Per-mount routing and this implementation, read at call time: the nested
+ * registry may outlive one mount. Exported only so `bootstrapWidgetsRuntime`
+ * (also exported test-only, below) is callable from a test without a full
+ * `mount()` cycle — see `lifecycle-widgets-host.gts-order.test.ts`.
+ */
+export interface WidgetsRoutingHolder {
   routing: DomainRouting | undefined;
   impl: WidgetsDomainImpl | undefined;
 }
@@ -278,7 +283,11 @@ function createWidgetsHostAppShell(): ReturnType<ReturnType<typeof createFrontX>
  * Returns the located widgets domain declaration so the caller can read its
  * `route` and `defaultActionTimeout` without a second manifest walk.
  */
-async function bootstrapWidgetsRuntime(
+/**
+ * Exported test-only (see `WidgetsRoutingHolder`'s doc comment): production
+ * code only ever reaches this through `DemoMfeWidgetsHostLifecycle.mount()`.
+ */
+export async function bootstrapWidgetsRuntime(
   app: ReturnType<typeof createWidgetsHostApp>,
   holder: WidgetsRoutingHolder,
 ): Promise<ExtensionDomain> {
@@ -306,6 +315,29 @@ async function bootstrapWidgetsRuntime(
     }
   }
 
+  // This nested type system's GtsStore is wholly independent of the shell's
+  // (each GtsPlugin instance owns its own store — see plugin.ts), and this
+  // runtime never ran the shell-only `main.tsx` registration that puts these
+  // four application-layer derived schemas (theme, language, extension_screen,
+  // entry_addresses) onto the shell's own `gtsPlugin` singleton (see
+  // `loader.ts`'s comment: "application-specific derived schemas ...
+  // registered at the application layer"). They MUST be registered here
+  // before ANY domain that references them by `x-gts-ref` in its own
+  // `sharedProperties` — not only the well-known `screenDomain` registered
+  // below, but also the manifest-declared widgets domain in the loop that
+  // follows: `demo-mfe/mfe.json`'s own `domains[0]` declares
+  // `sharedProperties: [entry_addresses]` (RM-LIVE1 — real GTS validation of
+  // that domain instance was throwing `entry_addresses ... not found in
+  // registry` here, before this bootstrap ever reached
+  // `registerDomain(widgetsDomain)`, leaving Widgets Host blank on every cold
+  // load). Registering these four ahead of the manifest-driven domain loop
+  // covers both cases with one ordering rule, mirroring `bootstrapMFE`'s
+  // ordering in the shell's own `bootstrap.ts`.
+  registry.typeSystem.registerSchema(themeSchema);
+  registry.typeSystem.registerSchema(languageSchema);
+  registry.typeSystem.registerSchema(extensionScreenSchema);
+  registry.typeSystem.registerSchema(entryAddressesSchema);
+
   let widgetsDomain: ExtensionDomain | undefined;
   for (const config of manifests) {
     registry.typeSystem.register(config.manifest);
@@ -326,37 +358,15 @@ async function bootstrapWidgetsRuntime(
     );
   }
 
-  // This nested type system's GtsStore is wholly independent of the shell's
-  // (each GtsPlugin instance owns its own store — see plugin.ts). Actions
-  // dispatched into this registry may reference entities the shell owns
-  // (e.g. widget-a's "mount Hello World in the shell's screen domain"
-  // escalates through here on its way up), and `x-gts-ref` admission
-  // validation checks referenced entities against THIS store, before the
-  // action ever reaches cross-hop routing. `screenDomain` is a well-known
-  // framework declaration (not authored in any package's mfe.json), so it
-  // is registered directly here rather than sourced from the fetched
-  // manifest — this registry never takes ownership of it (no
-  // `registerDomain` call), it only needs the declaration present for
-  // `x-gts-ref` resolution.
-  //
-  // `screenDomain` itself references four application-layer derived schemas
-  // (theme, language, extension_screen, entry_addresses) that the shell's
-  // own `main.tsx` registers once, directly onto its own `gtsPlugin`
-  // singleton, before any app bootstraps — outside the manifest-driven
-  // registration loop entirely (see `loader.ts`'s comment: "application-
-  // specific derived schemas ... registered at the application layer").
-  // This nested runtime is a separate module-federation-loaded copy of the
-  // framework with its own `gtsPlugin` singleton, which never ran that
-  // shell-only `main.tsx` registration, so `screenDomain`'s own admission
-  // would otherwise fail the same way. `entryAddressesSchema` MUST be
-  // registered before `register(screenDomain)` below: `screenDomain`
-  // declares the entry-addresses shared property in its own
-  // `sharedProperties`, referenced there by `x-gts-ref` (mirrors
-  // `bootstrapMFE`'s ordering in the shell's own `bootstrap.ts`).
-  registry.typeSystem.registerSchema(themeSchema);
-  registry.typeSystem.registerSchema(languageSchema);
-  registry.typeSystem.registerSchema(extensionScreenSchema);
-  registry.typeSystem.registerSchema(entryAddressesSchema);
+  // `screenDomain` is a well-known framework declaration (not authored in any
+  // package's mfe.json), so it is registered directly here rather than
+  // sourced from the fetched manifest — this registry never takes ownership
+  // of it (no `registerDomain` call), it only needs the declaration present
+  // for `x-gts-ref` resolution (e.g. widget-a's "mount Hello World in the
+  // shell's screen domain" escalates through here on its way up, and
+  // admission validation for that action checks referenced entities against
+  // THIS store before the action ever reaches cross-hop routing). Its own
+  // four referenced schemas were already registered above.
   registry.typeSystem.register(screenDomain);
 
   // Guarded against a cached registry (HMR, a remount on the same nested
