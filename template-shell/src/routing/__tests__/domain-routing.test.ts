@@ -242,6 +242,61 @@ describe('nested domain opening window (deferred opening write)', () => {
     ]);
   });
 
+  it('flushes overlapping non-nested windows together when the later one settles, not the earlier one (M1)', async () => {
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
+    let releaseA: () => void = () => {};
+    let releaseB: () => void = () => {};
+    const pendingA = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const pendingB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    // A and B are not nested — B starts (and B's `afterMount` runs) while A's
+    // own `fn` is still pending, but neither call is made from inside the
+    // other's `fn`.
+    const a = routing.withOpening(async () => {
+      routing.afterMount('ext.alpha');
+      await pendingA;
+    });
+    const b = routing.withOpening(async () => {
+      routing.afterMount('ext.beta');
+      await pendingB;
+    });
+    releaseA();
+    await a; // A settles first — its own exit must not flush; B is still open
+    expect(history.writes).toEqual([]);
+    releaseB();
+    await b; // B's exit brings the depth back to zero — everything goes out together
+    expect(history.writes).toEqual([
+      {
+        kind: 'replace',
+        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta',
+      },
+    ]);
+  });
+
+  it('a stop/start cycle during a pending window still lets a later window collect into one replace (M1)', async () => {
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
+    let releaseStale: () => void = () => {};
+    const pendingStale = new Promise<void>((resolve) => {
+      releaseStale = resolve;
+    });
+    const stale = routing.withOpening(async () => {
+      routing.afterMount('ext.alpha');
+      await pendingStale;
+    });
+    routing.stop(); // bumps the epoch and resets depth/collection out from under `stale`
+    routing.start();
+    await routing.withOpening(() => {
+      routing.afterMount('ext.beta'); // a fresh, later window under the new epoch
+    });
+    expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' }]);
+    releaseStale();
+    await stale; // the stale call's own finally must neither decrement the new epoch's depth nor flush again
+    expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-beta' }]);
+  });
+
   it('ignores a late afterMount/afterUnmount after stop, without opening a new subscription (C2)', () => {
     const { history, routing } = setup('/?screen=hello-world', [ALPHA], nested);
     routing.stop(); // stop already ran (e.g. Widgets Host itself unmounted)

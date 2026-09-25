@@ -88,8 +88,18 @@ export class DomainRouting {
   private status: DomainRouteStatus = { entries: 0, unresolved: 0 };
   private readonly statusListeners = new Set<{ readonly callback: () => void }>();
   private opening: ExtensionToken[] | undefined;
-  /** How many `withOpening` calls are currently nested — only the outermost one owns opening/closing `this.opening` (N2). */
+  /** How many `withOpening` calls are currently in flight — the one whose own exit brings this back to zero is the one that flushes (N2, M1); it need not be the first one entered, since two windows can overlap without nesting. */
   private openingDepth = 0;
+  /**
+   * Bumped by `stop()`. A `withOpening` call captures the epoch it entered
+   * under; if `stop()` runs while it is still pending, its own `finally`
+   * sees a stale epoch and skips both the depth decrement and the flush —
+   * `stop()` has already reset `openingDepth`/`opening` itself, so a late
+   * decrement would corrupt the count for whatever window opens next, and a
+   * late flush would write from a collection that is no longer this call's
+   * to flush (M1).
+   */
+  private openingEpoch = 0;
   private pendingOpen: ExtensionToken[] | undefined;
   private releasePending: (() => void) | undefined;
   /**
@@ -207,25 +217,30 @@ export class DomainRouting {
    * `endOpening` pair a caller could otherwise unbalance by throwing between
    * them.
    *
-   * Nest-safe (N2): a call made while another is already in progress (an
-   * inner window opened from inside an outer one's `fn`) shares the same
-   * `this.opening` collection rather than starting a fresh one, and only the
-   * outermost call's own settlement flushes it — an inner call's early
-   * settlement must not flush (and thereby lose) tokens the still-running
-   * outer call has not finished collecting.
+   * Nest-safe (N2) and overlap-safe (M1): a call made while another is
+   * already in progress — nested inside its `fn`, or merely overlapping it
+   * in time without nesting — shares the same `this.opening` collection
+   * rather than starting a fresh one. Only the call whose own settlement
+   * brings the depth back to zero flushes it: an early-settling call, nested
+   * or not, must not flush (and thereby lose) tokens a still-running call
+   * has not finished collecting; that is the last one out, not the first one
+   * in, so the flush is decided at exit against the post-decrement depth
+   * rather than at entry.
    */
   async withOpening<T>(fn: () => T | Promise<T>): Promise<T> {
-    const isOutermost = this.openingDepth === 0;
+    const epoch = this.openingEpoch;
+    if (this.openingDepth === 0) this.opening = [];
     this.openingDepth += 1;
-    if (isOutermost) this.opening = [];
     try {
       return await fn();
     } finally {
-      this.openingDepth -= 1;
-      if (isOutermost) {
-        const collected = this.opening ?? [];
-        this.opening = undefined;
-        if (!this.stopped && collected.length > 0) this.deferAsOpening(collected);
+      if (epoch === this.openingEpoch) {
+        this.openingDepth -= 1;
+        if (this.openingDepth === 0) {
+          const collected = this.opening ?? [];
+          this.opening = undefined;
+          if (!this.stopped && collected.length > 0) this.deferAsOpening(collected);
+        }
       }
     }
   }
@@ -241,6 +256,12 @@ export class DomainRouting {
     this.stopped = true;
     this.release?.();
     this.release = undefined;
+    // Bumping the epoch is what makes a `withOpening` call already in flight
+    // recognize, in its own `finally`, that the window it entered no longer
+    // exists (M1) — depth and the collection are reset right here rather than
+    // left for that call to unwind on its own schedule.
+    this.openingEpoch += 1;
+    this.openingDepth = 0;
     this.opening = undefined;
     this.pendingOpen = undefined;
     this.releasePending?.();
@@ -248,6 +269,19 @@ export class DomainRouting {
     // A token rediscovered after a restart arrives as fresh `added`, not
     // `resolutionChanged` — clearing here is what keeps it compared against
     // nothing rather than the owner this instance saw before it stopped (N3).
+    // Defence-in-depth with the `resolutionChanged`-only gate below in
+    // `onTransition`: that gate alone would still be safe against a stale
+    // map entry surviving a restart (an `added` token is never matched by
+    // it), and this clear alone would still be safe against a genuine same-
+    // URL owner swap (that arrives as `resolutionChanged`, never `added`).
+    // The two halves only have a jointly observable scenario — a token
+    // rediscovered as `added` after a stop/start cycle while some other
+    // owner of it is still (independently) mounted — which is what the
+    // "does not unmount a still-mounted extension when the same token is
+    // rediscovered as added ... (N3)" test below exercises; neither half has
+    // a scenario that isolates it from the other without reaching into
+    // private state, so this comment stands in for a test that would only
+    // duplicate that one.
     this.lastOwnerByToken.clear();
     this.status = { entries: 0, unresolved: 0 };
     this.notifyStatusListeners();
@@ -370,10 +404,13 @@ export class DomainRouting {
       // Restricted to an actual `resolutionChanged` (never `added` — a token
       // rediscovered fresh, e.g. after a stop/start cycle, is not a swap,
       // N3) and to a 'multiple'-cardinality domain: a 'single'-cardinality
-      // domain's own switch-to-new-occupant path (`afterMount`'s `replaced`
-      // write) already retires the old occupant, so dispatching an unmount
-      // here too would double-unmount it (N1, contradicts the `single &&
-      // mounting` suppression below).
+      // domain (the screen domain) is mounted through `ExclusiveMountStrategy`
+      // (`packages/mfes/src/runtime/mount-strategies.ts:67`), whose own
+      // `mount()` already evicts the prior occupant before mounting the new
+      // one — `afterMount`'s `replaced` write only updates the URL, it does
+      // not itself unmount anything — so dispatching an unmount here too
+      // would double-unmount it (N1, contradicts the `single && mounting`
+      // suppression below).
       if (
         this.options.cardinality === 'multiple' &&
         resolutionChanged.has(token) &&

@@ -87,7 +87,21 @@ describe('entry-addresses shared property schema', () => {
     expect(() => gtsPlugin.register({ id: instanceId, value })).toThrow(/GTS validation failed/);
   });
 
-  it.each([
+  // Both `domainKey`'s per-segment pattern and `extension`'s pattern are
+  // `^[a-z][a-z0-9-]*$` — the same alphabet `validateName` enforces for a
+  // `name` token (ADR 0003, "Tokens"). Rather than asserting that against
+  // two independently-picked literal lists (which proves nothing about
+  // drift), this runs each literal through both `validateName` and the
+  // schema, once as `domainKey` and once as `extension`, so a grammar change
+  // on either field's own pattern fails this test.
+  //
+  // Each check pairs the literal under test with a known-valid value in the
+  // *other* field, rather than setting both fields to the same literal: a
+  // shared-literal pairing would let a regex drift on one field hide behind
+  // the other field still rejecting the same string (e.g. loosening only
+  // `extension`'s pattern would go unnoticed for an invalid literal that
+  // `domainKey` still rejects on its own).
+  const NAME_LITERALS: ReadonlyArray<readonly [string, boolean]> = [
     ['screen', true],
     ['widgets-host', true],
     ['widgets', true],
@@ -95,27 +109,31 @@ describe('entry-addresses shared property schema', () => {
     ['', false],
     ['1screen', false],
     ['-screen', false],
-  ])(
-    // Both `domainKey`'s per-segment pattern and `extension`'s pattern are
-    // `^[a-z][a-z0-9-]*$` — the same alphabet `validateName` enforces for a
-    // `name` token (ADR 0003, "Tokens"). Rather than asserting that against
-    // two independently-picked literal lists (which proves nothing about
-    // drift), this runs each literal through both `validateName` and the
-    // schema — as a single-segment domainKey and as the extension token —
-    // and requires the same verdict, so a grammar change on either side that
-    // stops matching the other fails this test.
-    'schema and validateName agree on whether "%s" is a valid name',
-    (literal, expectedValid) => {
-      expect(validateName(literal)).toBe(expectedValid);
+  ];
 
-      const value = { [HELLO_WORLD_EXTENSION_ID]: { domainKey: literal, extension: literal } };
-      const attempt = () => gtsPlugin.register({ id: instanceId, value });
+  it.each(NAME_LITERALS)('schema and validateName agree on whether "%s" is a valid domainKey', (literal, expectedValid) => {
+    expect(validateName(literal)).toBe(expectedValid);
 
-      if (expectedValid) {
-        expect(attempt).not.toThrow();
-      } else {
-        expect(attempt).toThrow(/GTS validation failed/);
-      }
-    },
-  );
+    const value = { [HELLO_WORLD_EXTENSION_ID]: { domainKey: literal, extension: 'hello-world' } };
+    const attempt = () => gtsPlugin.register({ id: instanceId, value });
+
+    if (expectedValid) {
+      expect(attempt).not.toThrow();
+    } else {
+      expect(attempt).toThrow(/GTS validation failed/);
+    }
+  });
+
+  it.each(NAME_LITERALS)('schema and validateName agree on whether "%s" is a valid extension token', (literal, expectedValid) => {
+    expect(validateName(literal)).toBe(expectedValid);
+
+    const value = { [HELLO_WORLD_EXTENSION_ID]: { domainKey: 'screen', extension: literal } };
+    const attempt = () => gtsPlugin.register({ id: instanceId, value });
+
+    if (expectedValid) {
+      expect(attempt).not.toThrow();
+    } else {
+      expect(attempt).toThrow(/GTS validation failed/);
+    }
+  });
 });
