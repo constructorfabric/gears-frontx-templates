@@ -171,15 +171,22 @@ class PingHandler extends ActionHandler {
     const session = sessions.get(this.instanceId);
     if (!session) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
     const lastPing = new Date().toISOString();
-    console.log(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
+    console.info(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
     // A write made before the provider attached its history may not take effect: queue it until it has.
     await session.providerMounted;
-    // The whole parameter list is replaced, not merged, so carry the other search params forward.
-    await session.router.navigate({
-      to: '.',
-      search: (previous: Record<string, unknown>) => ({ ...previous, [LAST_PING_PARAM]: lastPing }),
-      replace: true,
-    });
+    try {
+      // The whole parameter list is replaced, not merged, so carry the other search params forward.
+      await session.router.navigate({
+        to: '.',
+        search: (previous: Record<string, unknown>) => ({ ...previous, [LAST_PING_PARAM]: lastPing }),
+        replace: true,
+      });
+    } catch (err) {
+      // A silent failure here would leave the host believing the ping landed
+      // (it already resolved past the `providerMounted` queue): surface it.
+      console.error(`[widget-a ${this.instanceId}] ping navigate() failed:`, err);
+      throw err;
+    }
   }
 }
 
@@ -232,7 +239,7 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
   >();
 
   mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {
-    console.log(`[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`);
+    console.info(`[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`);
     const session = createSession(bridge);
     sessions.set(bridge.extensionId, session);
     const tree = new WidgetAMount();
@@ -255,6 +262,27 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
     // A late unmount of an older container must not drop the session a newer mount of the same extension owns.
     if (sessions.get(mounted.extensionId) === mounted.session) sessions.delete(mounted.extensionId);
   }
+
+  /**
+   * HMR dispose hook (Q4), mirroring `lifecycle-widgets-host.tsx`'s and
+   * `shell-routing.ts`'s own HMR teardown: unmounts every container this OLD
+   * module instance still holds. Each `unmount()` above already runs the
+   * React tree's own cleanup (detaching its adapted history) and evicts the
+   * extension's entry from `sessions`, so the replacement module HMR swaps
+   * in starts with an empty map instead of orphaned subscriptions this old
+   * instance would otherwise leave nothing to release.
+   */
+  disposeAll(): void {
+    for (const container of [...this.mounts.keys()]) this.unmount(container);
+  }
 }
 
-export default new WidgetsFixtureALifecycle();
+const lifecycle = new WidgetsFixtureALifecycle();
+export default lifecycle;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    lifecycle.disposeAll();
+    sessions.clear();
+  });
+}

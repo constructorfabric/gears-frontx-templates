@@ -27,9 +27,9 @@ class WidgetsFixtureBLifecycle extends ThemeAwareReactLifecycle {
     super(fixtureApp);
   }
 
-  // One mount log line, matching widget-a's own — the live run and any
-  // manual trace through the console tell the two fixtures' mounts apart
-  // the same way (H2).
+  // One mount log line, at the same console.info level as widget-a's own
+  // mount and ping logs — the live run and any manual trace through the
+  // console tell the two fixtures' mounts apart the same way (H2, Q1).
   override mount(container: Element | ShadowRoot, bridge: ChildMfeBridge, mountContext?: MfeMountContext): void {
     console.info(`[widget-b ${bridge.extensionId}] mount`);
     super.mount(container, bridge, mountContext);

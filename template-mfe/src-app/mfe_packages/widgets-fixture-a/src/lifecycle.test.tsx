@@ -35,6 +35,29 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   return { ...real, ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle };
 });
 
+/**
+ * Q3: `PingHandler` gets its router from `createProviderRouter`, and the only
+ * way to make ONE call's `navigate()` reject (real TanStack routing succeeds
+ * in this suite otherwise) is to intercept it at the source. `navigateOverride`
+ * lets a single test replace the real `navigate` for its one call; every other
+ * test leaves it `null` and gets the real, unmocked routing behaviour.
+ */
+let navigateOverride: (() => Promise<never>) | null = null;
+
+vi.mock('@gears-frontx/routing-tanstack', async (importOriginal) => {
+  const real = await importOriginal<Record<string, unknown>>();
+  const realCreateProviderRouter = real.createProviderRouter as (...args: unknown[]) => { navigate: (opts: unknown) => Promise<void> };
+  return {
+    ...real,
+    createProviderRouter: (...args: unknown[]) => {
+      const router = realCreateProviderRouter(...args);
+      const realNavigate = router.navigate.bind(router);
+      router.navigate = (opts: unknown) => (navigateOverride ? navigateOverride() : realNavigate(opts));
+      return router;
+    },
+  };
+});
+
 const { default: lifecycle } = await import('./lifecycle');
 
 const ALPHA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
@@ -82,6 +105,7 @@ function shadowContainer(): ShadowRoot {
 
 afterEach(() => {
   for (const host of mountedHosts.splice(0)) host.remove();
+  navigateOverride = null;
 });
 
 describe('widget-a last-ping', () => {
@@ -164,6 +188,52 @@ describe('widget-a last-ping', () => {
     await act(async () => { lifecycle.mount(root, bridge); });
     expect(deepQuery(root, 'widget-a-not-found')).toHaveLength(1);
     expect(deepQuery(root, 'widget-a-instance')).toHaveLength(1);
+    lifecycle.unmount(root);
+  });
+
+  it('rejects a ping once its own container has unmounted', async () => {
+    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
+    const { bridge, handlers } = fakeBridge();
+    const root = shadowContainer();
+    await act(async () => { lifecycle.mount(root, bridge); });
+    lifecycle.unmount(root);
+    // The container is gone, but the handler reference the host captured while
+    // it was mounted is not: a ping the host dispatches just after tearing the
+    // widget down must still reject, not silently navigate a router nobody owns.
+    await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('ping while not mounted');
+  });
+
+  it('rejects a ping for an id with no live session, even while a different extension is mounted', async () => {
+    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta');
+    const GAMMA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_gamma.v1';
+    addresses[GAMMA] = { domainKey: 'screen.widgets-host.widgets', extension: 'widget-beta' };
+    const orphan = fakeBridge();
+    const other = fakeBridge();
+    Object.assign(other.bridge as object, { extensionId: GAMMA });
+    const orphanRoot = shadowContainer();
+    const otherRoot = shadowContainer();
+    await act(async () => { lifecycle.mount(orphanRoot, orphan.bridge); });
+    lifecycle.unmount(orphanRoot);
+    await act(async () => { lifecycle.mount(otherRoot, other.bridge); });
+    // A foreign session (GAMMA) is live at the time of this ping; the lookup
+    // must stay keyed to the orphan's own id and not fall through to it.
+    await expect(orphan.handlers.get(PING)!.handleAction(PING)).rejects.toThrow('ping while not mounted');
+    lifecycle.unmount(otherRoot);
+    delete addresses[GAMMA];
+  });
+
+  it('logs and rethrows when the router navigate() call rejects', async () => {
+    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
+    const { bridge, handlers } = fakeBridge();
+    const root = shadowContainer();
+    await act(async () => { lifecycle.mount(root, bridge); });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    navigateOverride = () => Promise.reject(new Error('navigate boom'));
+    await act(async () => {
+      await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('navigate boom');
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toContain('widget-a');
     lifecycle.unmount(root);
   });
 });
