@@ -33,7 +33,10 @@
   "domains": [
     {
       "id": "gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1",
-      "sharedProperties": [],
+      "route": "widgets",
+      "sharedProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~"
+      ],
       "actions": [
         "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~",
         "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",

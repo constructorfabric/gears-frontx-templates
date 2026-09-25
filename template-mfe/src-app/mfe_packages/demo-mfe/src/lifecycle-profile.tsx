@@ -6,6 +6,7 @@ import { mfeApp } from './init';
 import { ProfileScreen } from './screens/profile/ProfileScreen';
 import { fetchUser } from './actions/profileActions';
 import { DEMO_ACTION_REFRESH_PROFILE } from './shared/extension-ids';
+import { routedScreen } from './shared/routedScreen';
 
 class ProfileRefreshHandler extends ActionHandler {
   handleAction(
@@ -23,7 +24,7 @@ class ProfileLifecycle extends KitThemedLifecycle {
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    return <ProfileScreen bridge={bridge} />;
+    return routedScreen(<ProfileScreen bridge={bridge} />, bridge);
   }
 
   override mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {

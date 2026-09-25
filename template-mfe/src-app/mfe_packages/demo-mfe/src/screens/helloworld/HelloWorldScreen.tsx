@@ -212,7 +212,11 @@ export const HelloWorldScreen: React.FC<HelloWorldScreenProps> = ({ bridge }) =>
             <Button onClick={handleOpenProfileAndRefresh} variant="outline">
               {t('open_profile_refresh')}
             </Button>
-            <Button onClick={handlePingWidgetA} variant="outline">
+            <Button
+              onClick={handlePingWidgetA}
+              variant="outline"
+              data-testid="hello-world-ping-widget-a"
+            >
               {t('mount_widgets_host_and_ping')}
             </Button>
           </div>
