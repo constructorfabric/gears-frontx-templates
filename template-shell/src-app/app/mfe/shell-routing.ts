@@ -54,26 +54,51 @@ export interface ShellRouting {
  * domain, is a different host's `ShellRouting`-shaped wiring, built in T7).
  * The screen domain declares no unmount action (`ScreenDomainImpl` never
  * registers one), so its `DomainRouting` gets no `unmountActionType`.
+ *
+ * `nav` is required, not defaulted to `shellNavigation()`: `bootstrapMFE` is
+ * the only production caller, and it already resolves its own `nav` default
+ * before calling this — defaulting it again here would just be a second,
+ * unreachable copy of the same fallback.
  */
-export function createShellRouting(registry: MfeRegistry, nav: ShellNavigation = shellNavigation()): ShellRouting {
+export function createShellRouting(registry: MfeRegistry, nav: ShellNavigation): ShellRouting {
   const keyOf = (domain: ExtensionDomain): DomainKey => {
     const key = rootDomainKeyOf(domain);
     if (!key) throw new Error(`[Shell routing] domain ${domain.id} declares no valid route`);
     return key;
   };
-  const make = (domain: ExtensionDomain, unmountable: boolean) =>
-    new DomainRouting({
-      history: nav.history,
-      signal: nav.signal,
-      registry,
+  const make = (domain: ExtensionDomain, unmountable: boolean) => {
+    const domainKey = keyOf(domain);
+    return {
       domainId: domain.id,
-      domainKey: keyOf(domain),
-      mountActionType: FRONTX_ACTION_MOUNT_EXT,
-      unmountActionType: unmountable ? FRONTX_ACTION_UNMOUNT_EXT : undefined,
-      cardinality: 'single',
-    });
-  const byName = { screen: make(screenDomain, false), sidebar: make(sidebarDomain, true), popup: make(popupDomain, true), overlay: make(overlayDomain, true) };
-  const domains = [screenDomain, sidebarDomain, popupDomain, overlayDomain].map((d) => ({ domainId: d.id, domainKey: keyOf(d) }));
+      domainKey,
+      routing: new DomainRouting({
+        history: nav.history,
+        signal: nav.signal,
+        registry,
+        domainId: domain.id,
+        domainKey,
+        mountActionType: FRONTX_ACTION_MOUNT_EXT,
+        unmountActionType: unmountable ? FRONTX_ACTION_UNMOUNT_EXT : undefined,
+        cardinality: 'single',
+      }),
+    };
+  };
+  // Each domain's `keyOf` runs exactly once here — `domains` below is built
+  // FROM these same entries rather than by walking the four domain
+  // declarations a second time (C7).
+  const entries = {
+    screen: make(screenDomain, false),
+    sidebar: make(sidebarDomain, true),
+    popup: make(popupDomain, true),
+    overlay: make(overlayDomain, true),
+  };
+  const byName = {
+    screen: entries.screen.routing,
+    sidebar: entries.sidebar.routing,
+    popup: entries.popup.routing,
+    overlay: entries.overlay.routing,
+  };
+  const domains = Object.values(entries).map(({ domainId, domainKey }) => ({ domainId, domainKey }));
   const routing: ShellRouting = {
     ...byName,
     domains,

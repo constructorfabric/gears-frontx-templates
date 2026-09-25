@@ -67,7 +67,7 @@ function fakeRouting(status: { entries: number; unresolved: number } = { entries
   return {
     screen: {
       getStatus: () => status,
-      subscribeStatus: () => () => {},
+      subscribeStatus: vi.fn(() => () => {}),
     },
     start: vi.fn(),
     stop: vi.fn(),
@@ -180,6 +180,28 @@ describe('MfeScreenContainer', () => {
     });
 
     expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resubscribe to the screen status on a re-render (C4)', async () => {
+    const routing = fakeRouting();
+    mockBootstrapMFE.mockResolvedValue(routing);
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+
+    const { rerender } = render(<MfeScreenContainer />);
+    await waitFor(() => {
+      expect(routing.screen.subscribeStatus).toHaveBeenCalledTimes(1);
+    });
+
+    // An inline `(callback) => routing.subscribeStatus(callback)` recreated
+    // every render would give `useSyncExternalStore` a new function identity
+    // each time, tearing down and rebuilding the subscription on every
+    // re-render for no reason — `useCallback` keyed on `routing` keeps it
+    // stable across renders that do not change which `DomainRouting` this is
+    // watching.
+    rerender(<MfeScreenContainer />);
+    rerender(<MfeScreenContainer />);
+
+    expect(routing.screen.subscribeStatus).toHaveBeenCalledTimes(1);
   });
 
   it('logs an error and renders nothing when bootstrap rejects', async () => {

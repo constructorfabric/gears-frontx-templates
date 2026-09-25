@@ -15,7 +15,7 @@
  * `registry.executeActionsChain`.
  */
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import {
   useFrontX,
   useMountedExtensions,
@@ -47,10 +47,15 @@ let bootstrapPromise: ReturnType<typeof bootstrapMFE> | undefined;
  * than local state — `DomainRouting` is the source of truth and updates on
  * its own observer's schedule, not React's. */
 function useRouteStatus(routing: DomainRouting | undefined) {
-  return useSyncExternalStore(
-    routing ? (callback) => routing.subscribeStatus(callback) : noSubscribe,
-    () => routing?.getStatus() ?? NO_STATUS,
+  // Memoized on `routing` alone: `useSyncExternalStore` resubscribes
+  // whenever the function identity it's passed changes, so an inline
+  // arrow recreated on every render would tear down and rebuild the
+  // subscription every render for no reason (C4).
+  const subscribe = useCallback(
+    (callback: () => void) => (routing ? routing.subscribeStatus(callback) : noSubscribe()),
+    [routing],
   );
+  return useSyncExternalStore(subscribe, () => routing?.getStatus() ?? NO_STATUS);
 }
 
 export function MfeScreenContainer() {
