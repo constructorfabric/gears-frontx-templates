@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 
 const mockBootstrapMFE = vi.fn();
@@ -23,18 +23,34 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
     domainId,
     className,
     onAttached,
+    onDetached,
   }: {
     registry: { mfeRegistry: Record<string, never> } | null;
     domainId: string;
     className?: string;
     onAttached?: (root: Element) => void;
+    onDetached?: () => void;
   }) => {
-    // Simulates discovery settling (D4): the mounter's root attaches once the
-    // slot mounts, which is what tells `ShellRouting` it may start its
-    // observers.
+    // The real `ExtensionDomainSlot` attaches/detaches its root once per
+    // mount, not on every parent re-render. `MfeScreenContainer` passes a
+    // fresh inline arrow for `onAttached`/`onDetached` on every render, so an
+    // effect keyed on those props by identity (`[onAttached]`) would fire
+    // again on every re-render — reading the LATEST callback through a ref
+    // instead, with an empty dependency array, is what makes this fake behave
+    // like the real thing (F7).
+    const onAttachedRef = useRef(onAttached);
+    onAttachedRef.current = onAttached;
+    const onDetachedRef = useRef(onDetached);
+    onDetachedRef.current = onDetached;
     useEffect(() => {
-      onAttached?.(document.createElement('div'));
-    }, [onAttached]);
+      // Simulates discovery settling (D4): the mounter's root attaches once
+      // the slot mounts, which is what tells `ShellRouting` it may start its
+      // observers.
+      onAttachedRef.current?.(document.createElement('div'));
+      return () => {
+        onDetachedRef.current?.();
+      };
+    }, []);
     return (
       <div
         data-testid="extension-domain-slot"
@@ -54,6 +70,7 @@ function fakeRouting(status: { entries: number; unresolved: number } = { entries
       subscribeStatus: () => () => {},
     },
     start: vi.fn(),
+    stop: vi.fn(),
   };
 }
 
@@ -61,6 +78,12 @@ describe('MfeScreenContainer', () => {
   let app: { mfeRegistry: Record<string, never> };
 
   beforeEach(() => {
+    // The bootstrap promise this component reuses across a real remount
+    // (C8) is hoisted to the SUT module's own scope — resetting the module
+    // registry before each test is what gives every test a fresh one,
+    // instead of leaking the previous test's (already-settled) promise into
+    // this one via the dynamic `import('./MfeScreenContainer')` below.
+    vi.resetModules();
     app = { mfeRegistry: {} };
     mockUseFrontX.mockReturnValue(app);
     mockBootstrapMFE.mockReset();
@@ -119,6 +142,44 @@ describe('MfeScreenContainer', () => {
     await waitFor(() => {
       expect(routing.start).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('stops routing once the screen slot detaches (C1)', async () => {
+    const routing = fakeRouting();
+    mockBootstrapMFE.mockResolvedValue(routing);
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+
+    const { unmount } = render(<MfeScreenContainer />);
+    await waitFor(() => {
+      expect(routing.start).toHaveBeenCalledTimes(1);
+    });
+    expect(routing.stop).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(routing.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the settled bootstrap across a real remount rather than re-invoking it (C8)', async () => {
+    const routing = fakeRouting();
+    mockBootstrapMFE.mockResolvedValue(routing);
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+
+    // A real remount — unmount, then a LATER, distinct `render()` — not
+    // `rerender`, which reuses the same component instance and would pass
+    // even with the old per-instance `useRef` guard this test targets.
+    const first = render(<MfeScreenContainer />);
+    await waitFor(() => {
+      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
+    });
+    first.unmount();
+
+    render(<MfeScreenContainer />);
+    await waitFor(() => {
+      expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
+    });
+
+    expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
   });
 
   it('logs an error and renders nothing when bootstrap rejects', async () => {
