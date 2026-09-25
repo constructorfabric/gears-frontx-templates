@@ -6,6 +6,7 @@
   "properties": {
     "value": {
       "type": "object",
+      "propertyNames": { "minLength": 1 },
       "additionalProperties": {
         "type": "object",
         "required": ["domainKey", "extension"],

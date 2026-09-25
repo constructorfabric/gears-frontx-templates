@@ -48,7 +48,11 @@ export const FRONTX_SHARED_PROPERTY_LANGUAGE = 'gts.frontx.mfes.comm.shared_prop
  * private `@gears-frontx/frontx-template-shell` lib's `src/gts` (glue and MFE
  * code read it from there); the published framework must not import that
  * private package (#601), so the constant is kept in both places and a test
- * pins the two copies equal.
+ * pins the two copies equal. Unlike `FRONTX_SHARED_PROPERTY_THEME` and
+ * `FRONTX_SHARED_PROPERTY_LANGUAGE`, which `@gears-frontx/react` re-exports
+ * from this module, this one is not re-exported: `packages/react` stays
+ * untouched by this change, and nothing there needs the entry-addresses
+ * constant.
  */
 export const FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES =
   'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';

@@ -27,7 +27,11 @@ export const entryAddressesSchema = entryAddressesSchemaJson as JSONSchema;
  * The same value `@gears-frontx/framework` declares in `src/mfe/constants.ts`
  * (`FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES`). Kept in both because the
  * published framework must not import this private package (#601); a
- * framework test pins the two copies equal.
+ * framework test pins the two copies equal. Unlike `THEME`/`LANGUAGE`, which
+ * the framework's constants module has re-exported through
+ * `@gears-frontx/react`, this constant is not re-exported anywhere: this
+ * private lib is the only place glue and MFE code import it from, and
+ * `packages/react` is untouched by this change.
  */
 export const FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES =
   'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';

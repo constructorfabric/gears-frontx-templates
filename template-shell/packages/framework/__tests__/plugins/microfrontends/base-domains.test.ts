@@ -150,11 +150,11 @@ describe('Base Extension Domain Constants - routing', () => {
   });
 
   it.each([
-    [screenDomain, 'screen'],
-    [sidebarDomain, 'sidebar'],
-    [popupDomain, 'popup'],
-    [overlayDomain, 'overlay'],
-  ])('%o declares route %s and the entry-addresses property', (domain, route) => {
+    ['screen', screenDomain],
+    ['sidebar', sidebarDomain],
+    ['popup', popupDomain],
+    ['overlay', overlayDomain],
+  ])('%s declares its own route and the entry-addresses property', (route, domain) => {
     expect(domain.route).toBe(route);
     expect(isValidRouteName(domain.route!)).toBe(true);
     expect(domain.sharedProperties).toContain(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES);
