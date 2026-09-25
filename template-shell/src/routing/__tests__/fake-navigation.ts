@@ -21,7 +21,18 @@ import type { HistoryNotification, HistorySubscriber, Location, NavigationHistor
  *   in progress — capped at the same round count the substrate itself
  *   bounds a runaway feedback loop to (`REENTRANT_ROUND_LIMIT`, not
  *   re-exported by the package's public surface, so mirrored here as a
- *   literal).
+ *   literal);
+ * - subscribers are keyed by a per-registration token, not by the callback
+ *   reference itself (N6) — otherwise two `subscribe` calls with the
+ *   identical callback would collapse into one `Set` entry, and releasing
+ *   either one would silently unsubscribe both, unlike the real
+ *   `FanOutDispatcher.subscribe`;
+ * - a subscriber that throws is isolated to its own invocation and reported,
+ *   never rethrown and never left to stop delivery to the rest of the
+ *   round's snapshot (N6) — mirrors `FanOutDispatcher.runRound`
+ *   (`packages/routing/src/history/fanout-dispatch.ts`), which catches per
+ *   subscriber and calls `reportRoutingDefect` (`console.error`, prefixed,
+ *   never rethrown) rather than letting the round unwind.
  */
 export interface FakeNavigation extends NavigationHistory {
   readonly writes: Array<{ kind: 'push' | 'replace'; path: string }>;
@@ -36,10 +47,15 @@ export interface FakeNavigation extends NavigationHistory {
 // surface (`packages/routing/src/index.ts`).
 const ROUND_LIMIT = 100;
 
+/** One `subscribe` registration, keyed by its own identity rather than the callback (N6, mirrors `FanOutDispatcher`'s `SubscriberToken`). */
+interface SubscriberToken {
+  readonly callback: HistorySubscriber;
+}
+
 export function fakeNavigation(initial = '/'): FakeNavigation {
   let path = initial;
   let position = 0;
-  const live = new Set<HistorySubscriber>();
+  const live = new Set<SubscriberToken>();
   const writes: Array<{ kind: 'push' | 'replace'; path: string }> = [];
 
   const location = (): Location => {
@@ -49,9 +65,14 @@ export function fakeNavigation(initial = '/'): FakeNavigation {
 
   function runRound(notification: HistoryNotification): void {
     const snapshot = [...live];
-    for (const subscriber of snapshot) {
-      if (!live.has(subscriber)) continue; // released after the snapshot, before this turn
-      subscriber(notification);
+    for (const token of snapshot) {
+      if (!live.has(token)) continue; // released after the snapshot, before this turn
+      try {
+        token.callback(notification);
+      } catch (error) {
+        // Isolate and report, never rethrow — see the file doc comment (N6).
+        console.error('[fakeNavigation] a subscriber threw during a fan-out round', error);
+      }
     }
   }
 
@@ -86,8 +107,9 @@ export function fakeNavigation(initial = '/'): FakeNavigation {
     },
     writes,
     subscribe(subscriber) {
-      live.add(subscriber);
-      return () => live.delete(subscriber);
+      const token: SubscriberToken = { callback: subscriber };
+      live.add(token);
+      return () => live.delete(token);
     },
     subscriberCount: () => live.size,
     push(p) {

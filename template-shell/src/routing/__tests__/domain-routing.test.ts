@@ -83,6 +83,13 @@ describe('single-occupant back-projection', () => {
     expect(b.history.writes).toEqual([]);
   });
 
+  it('ignores an afterUnmount call after stop, even when the URL still carries the token (C2, afterUnmount)', () => {
+    const { history, routing } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
+    routing.stop();
+    routing.afterUnmount('ext.hello');
+    expect(history.writes).toEqual([]);
+  });
+
   it('never projects an extension without a single-segment route', () => {
     const { history, routing } = setup('/', [ext('ext.deep', '/a/b'), ext('ext.none')]);
     routing.afterMount('ext.deep');
@@ -205,6 +212,36 @@ describe('nested domain opening window (deferred opening write)', () => {
     expect(history.subscriberCount()).toBe(0); // the now-empty pending write dropped its subscription too
   });
 
+  it('flushes collected writes and rethrows when fn throws inside the opening window (C3)', async () => {
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA], nested);
+    await expect(
+      routing.withOpening(() => {
+        routing.afterMount('ext.alpha');
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(history.writes).toEqual([{ kind: 'replace', path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha' }]);
+  });
+
+  it('nests safely: an inner withOpening call shares the outer collection and only the outermost close flushes it, into one replace (N2)', async () => {
+    const { history, routing } = setup('/?screen=widgets-host', [ALPHA, BETA], nested);
+    await routing.withOpening(async () => {
+      routing.afterMount('ext.alpha');
+      await routing.withOpening(() => {
+        routing.afterMount('ext.beta');
+      });
+      // The inner call already settled here — its own flush must not have
+      // fired yet, and 'alpha' (collected by the still-open outer call)
+      // must not have been dropped.
+    });
+    expect(history.writes).toEqual([
+      {
+        kind: 'replace',
+        path: '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta',
+      },
+    ]);
+  });
+
   it('ignores a late afterMount/afterUnmount after stop, without opening a new subscription (C2)', () => {
     const { history, routing } = setup('/?screen=hello-world', [ALPHA], nested);
     routing.stop(); // stop already ran (e.g. Widgets Host itself unmounted)
@@ -269,9 +306,14 @@ describe('observation', () => {
     errors.mockRestore();
   });
 
-  it('re-dispatches a mount and unmounts the prior owner on a resolutionChanged swap under the same URL entry (C7)', () => {
+  it('re-dispatches a mount and unmounts the prior owner on a resolutionChanged swap under the same URL entry, for a multiple-cardinality domain (C7, N1)', () => {
     const extensions = [ext('ext.hello', '/hello-world')];
-    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', extensions, { unmountActionType: UNMOUNT }, ['ext.hello']);
+    const { history, routing, executeActionsChain } = setup(
+      '/?screen=hello-world',
+      extensions,
+      { unmountActionType: UNMOUNT, cardinality: 'multiple' },
+      ['ext.hello'],
+    );
     routing.start();
     executeActionsChain.mockClear();
     extensions.length = 0;
@@ -279,6 +321,22 @@ describe('observation', () => {
     history.set('/?screen=hello-world'); // same URL entry, different registered owner
     expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
     expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2' } } });
+  });
+
+  it('re-dispatches a mount but does NOT unmount the prior owner on a resolutionChanged swap in a single-occupant domain (N1)', () => {
+    // A 'single'-cardinality domain's own switch-to-new-occupant write already
+    // retires the old occupant (`afterMount`'s `replaced` branch); dispatching
+    // an unmount here too would double-unmount it — the prior-owner unmount is
+    // therefore restricted to 'multiple'-cardinality domains only.
+    const extensions = [ext('ext.hello', '/hello-world')];
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', extensions, { unmountActionType: UNMOUNT }, ['ext.hello']);
+    routing.start();
+    executeActionsChain.mockClear();
+    extensions.length = 0;
+    extensions.push(ext('ext.hello2', '/hello-world'));
+    history.set('/?screen=hello-world'); // same URL entry, different registered owner
+    expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello2' } } });
+    expect(executeActionsChain).not.toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
   });
 
   it('dispatches no unmount while the enclosing entry is absent (the enclosing occupant is being removed)', () => {
@@ -294,6 +352,26 @@ describe('observation', () => {
     history.set('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
     history.set('/?screen=widgets-host');
     expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.alpha' } } });
+  });
+
+  it('does not unmount a still-mounted extension when the same token is rediscovered as added under a new owner after a stop/start cycle (N3)', () => {
+    const extensions = [ext('ext.hello', '/hello-world')];
+    // `mounted` is fixed at ['ext.hello'] for the lifetime of this registry —
+    // standing in for a prior owner that (for whatever reason) is still
+    // mounted when routing restarts under a new registered owner.
+    const { routing, executeActionsChain } = setup(
+      '/?screen=hello-world',
+      extensions,
+      { unmountActionType: UNMOUNT, cardinality: 'multiple' },
+      ['ext.hello'],
+    );
+    routing.start();
+    routing.stop();
+    executeActionsChain.mockClear();
+    extensions.length = 0;
+    extensions.push(ext('ext.hello2', '/hello-world'));
+    routing.start(); // a fresh observer: the entry is rediscovered as `added`, not `resolutionChanged`
+    expect(executeActionsChain).not.toHaveBeenCalledWith({ action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
   });
 
   it('stop releases the observer', () => {
