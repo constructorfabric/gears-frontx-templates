@@ -397,8 +397,23 @@ async function registerMfePackage(
     // The extension's entry address must reach the entry-addresses shared
     // property before anything (Menu, a deep link) can ask this host to
     // mount it — re-broadcasting after every registration, rather than once
-    // at the end, is what keeps that ordering (D1/D2).
-    routing.broadcastAddresses();
+    // at the end, is what keeps that ordering (D1/D2). This makes
+    // `buildEntryAddresses` (which walks every routable extension of every
+    // domain) run once per registered extension across the whole bootstrap —
+    // O(n²) in the total extension count. Acceptable at template scale (a
+    // handful of MFEs); a host with a large, dynamic extension set would want
+    // a debounced or dirty-flagged broadcast instead.
+    //
+    // A broadcast failure here must not fail the whole registration pass —
+    // `registerExtension` above is what stays all-or-nothing (a malformed
+    // manifest should still abort startup loudly); the property is a
+    // courtesy re-announcement, and `bootstrapMFE`'s final broadcast after
+    // this loop recovers the correct value even if one round here was lost.
+    try {
+      routing.broadcastAddresses();
+    } catch (error) {
+      console.error(`[MFE Bootstrap] broadcastAddresses failed after registering ${extension.id}`, error);
+    }
   }
 }
 
@@ -433,10 +448,13 @@ export async function bootstrapMFE(app: FrontXApp, nav: ShellNavigation = shellN
   // first thing a mounted screen can act against. `entryAddressesSchema` joins
   // them here for the same reason: the four base domains' declarations
   // reference it by `x-gts-ref` in `sharedProperties`, so it must be
-  // registered before the first `registerDomain` call below — registration is
-  // idempotent, so this holds regardless of which entry point runs it first
-  // (`main.tsx` also registers it, directly, for `lifecycle-widgets-host.tsx`'s
-  // own `register(screenDomain)`).
+  // registered before the first `registerDomain` call below. Registration is
+  // idempotent, so calling it here is safe no matter how many times this
+  // function runs against the same registry — but it says nothing about any
+  // OTHER registry: each `GtsPlugin` instance owns an independent GtsStore, so
+  // a nested runtime that also registers `screenDomain` directly (e.g.
+  // demo-mfe's `lifecycle-widgets-host.tsx`) needs its own copy of this
+  // registration against its own store, not this one.
   for (const schema of CHROME_ACTION_SCHEMAS) {
     registry.typeSystem.registerSchema(schema);
   }
@@ -486,6 +504,16 @@ export async function bootstrapMFE(app: FrontXApp, nav: ShellNavigation = shellN
   registerAllNonActionSchemas(registry, manifests);
   for (const config of manifests) {
     await registerMfePackage(registry, config, routing);
+  }
+  // Guarantees the entry-addresses property reflects every successfully
+  // registered extension even if an intermediate re-announcement inside
+  // `registerMfePackage` above was caught and logged rather than propagated
+  // (C2) — the last word on this property is always a clean broadcast of
+  // the registry's actual current state.
+  try {
+    routing.broadcastAddresses();
+  } catch (error) {
+    console.error('[MFE Bootstrap] final broadcastAddresses failed', error);
   }
   return routing;
 }

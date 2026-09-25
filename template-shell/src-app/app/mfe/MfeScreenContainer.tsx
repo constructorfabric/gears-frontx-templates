@@ -1,5 +1,4 @@
 // @cpt-flow:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2
-// @cpt-FEATURE:route-ownership-signal:p1
 
 /**
  * MFE Screen Container Component
@@ -8,11 +7,15 @@
  * per-domain `<ExtensionDomainSlot>` for the screen domain. The slot's
  * `onAttached` is discovery settling for the screen domain (D4): the root the
  * mounter needs is now attached, so this is where the four shell observers
- * start (`routing.start()`). Mount/unmount actions are dispatched by other
- * components (e.g., the menu) through `registry.executeActionsChain`.
+ * start (`routing.start()`). `onDetached` is the pair of that: the slot's own
+ * root has gone away (this container itself unmounting, not one mounted
+ * screen), so the four observers are released (`routing.stop()`) rather than
+ * left subscribed to history with nothing left to mount into. Mount/unmount
+ * actions are dispatched by other components (e.g., the menu) through
+ * `registry.executeActionsChain`.
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   useFrontX,
   useMountedExtensions,
@@ -27,6 +30,19 @@ import type { ShellRouting } from './shell-routing';
 const NO_STATUS = { entries: 0, unresolved: 0 };
 const noSubscribe = () => () => {};
 
+/**
+ * The in-flight/settled `bootstrapMFE` call, hoisted to module scope rather
+ * than component-instance state (a ref or `useState`). A REAL remount — this
+ * component unmounting and a later, distinct instance mounting, as opposed to
+ * a re-render, which reuses the same instance — starts with fresh instance
+ * state every time, so a guard living there would not see that bootstrap
+ * already ran and would re-invoke `bootstrapMFE`, re-registering every domain
+ * and extension a second time on the same `mfeRegistry`. Reusing this
+ * module-scoped promise means a second mount observes the same bootstrap
+ * outcome instead of triggering a second one.
+ */
+let bootstrapPromise: ReturnType<typeof bootstrapMFE> | undefined;
+
 /** Screen-domain URL status, kept in sync via `useSyncExternalStore` rather
  * than local state — `DomainRouting` is the source of truth and updates on
  * its own observer's schedule, not React's. */
@@ -39,17 +55,25 @@ function useRouteStatus(routing: DomainRouting | undefined) {
 
 export function MfeScreenContainer() {
   const app = useFrontX();
-  const bootstrappedRef = useRef(false);
   const [routing, setRouting] = useState<ShellRouting | undefined>(undefined);
   const mountedScreens = useMountedExtensions(FRONTX_SCREEN_DOMAIN);
   const status = useRouteStatus(routing?.screen);
 
   useEffect(() => {
-    if (bootstrappedRef.current) return;
-    bootstrappedRef.current = true;
-    bootstrapMFE(app).then(setRouting).catch((error) => {
-      console.error('[MFE Bootstrap] Failed to bootstrap MFE:', error);
-    });
+    if (!bootstrapPromise) {
+      bootstrapPromise = bootstrapMFE(app);
+    }
+    let cancelled = false;
+    bootstrapPromise
+      .then((result) => {
+        if (!cancelled) setRouting(result);
+      })
+      .catch((error) => {
+        if (!cancelled) console.error('[MFE Bootstrap] Failed to bootstrap MFE:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [app]);
 
   // Every URL entry for this domain failed to resolve to a mounted screen —
@@ -65,6 +89,7 @@ export function MfeScreenContainer() {
           domainId={screenDomain.id}
           className="h-full"
           onAttached={() => routing.start()}
+          onDetached={() => routing.stop()}
         />
       ) : null}
       {unresolvedOnly ? (

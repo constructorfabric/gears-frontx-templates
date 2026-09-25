@@ -75,16 +75,22 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 `bootstrapMFE()` proceeds in a fixed order:
 
-1. Register the four well-known domains — `screen` (with
+1. Register the chrome action schemas and `entryAddressesSchema` — the four
+   base domain declarations reference the latter by `x-gts-ref` in
+   `sharedProperties`, so it must exist before any of them registers.
+2. Register the four well-known domains — `screen` (with
    `ExclusiveMountStrategy`: one mounted screen at a time), `sidebar`, `popup`,
-   `overlay`.
-2. Broadcast initial shared properties (`theme`, `language`).
-3. Fetch the manifest aggregate.
-4. First pass over **all** packages: register every non-action schema (derived
+   `overlay` — then broadcast the `entry_addresses` shared property once
+   (empty: nothing has registered yet).
+3. Broadcast initial shared properties (`theme`, `language`).
+4. Fetch the manifest aggregate.
+5. First pass over **all** packages: register every non-action schema (derived
    extension/domain types), so later validation can chain through them
    regardless of package order in the aggregate.
-5. Per package: scoped action schemas → `manifest` → `domains` → `entries` →
-   `extensions`.
+6. Per package: scoped action schemas → `manifest` → `domains` → `entries` →
+   `extensions`, re-broadcasting `entry_addresses` after each registered
+   extension so its route reaches the property before anything (the menu, a
+   deep link) can ask the host to mount it.
 
 Two outcomes at the `extensions` step are deliberately different:
 

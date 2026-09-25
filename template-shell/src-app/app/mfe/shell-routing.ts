@@ -1,5 +1,3 @@
-// @cpt-FEATURE:route-ownership-signal:p1
-
 import { createRouteSignal, resolveNavigationHistory, type DomainKey, type NavigationHistory, type RouteSignal } from '@gears-frontx/routing';
 import { DomainRouting, buildEntryAddresses, rootDomainKeyOf, FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
 import {
@@ -19,6 +17,7 @@ export interface ShellNavigation {
 }
 
 let navigation: ShellNavigation | undefined;
+let currentRouting: ShellRouting | undefined;
 
 /** The shell calls `resolveNavigationHistory()` and `createRouteSignal(history)` once each — the only call sites in this app. */
 export function shellNavigation(): ShellNavigation {
@@ -39,6 +38,13 @@ export interface ShellRouting {
   broadcastAddresses(): void;
   /** Create the four observers once discovery has settled: bootstrap resolved and the screen slot attached. */
   start(): void;
+  /**
+   * Release all four domains' observers (`DomainRouting.stop()`). Paired
+   * with `start()` — the screen slot's `onDetached` calls this so a
+   * teardown of the container (not just of one mounted screen) does not
+   * leave four stale history subscriptions behind it.
+   */
+  stop(): void;
 }
 
 /**
@@ -68,14 +74,35 @@ export function createShellRouting(registry: MfeRegistry, nav: ShellNavigation =
     });
   const byName = { screen: make(screenDomain, false), sidebar: make(sidebarDomain, true), popup: make(popupDomain, true), overlay: make(overlayDomain, true) };
   const domains = [screenDomain, sidebarDomain, popupDomain, overlayDomain].map((d) => ({ domainId: d.id, domainKey: keyOf(d) }));
-  return {
+  const routing: ShellRouting = {
     ...byName,
     domains,
     broadcastAddresses() {
       registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES, buildEntryAddresses(registry, domains));
     },
     start() {
-      for (const routing of Object.values(byName)) routing.start();
+      for (const domainRouting of Object.values(byName)) domainRouting.start();
+    },
+    stop() {
+      for (const domainRouting of Object.values(byName)) domainRouting.stop();
     },
   };
+  // HMR replaces this module's exports with a fresh copy, whose own
+  // `navigation` module var starts `undefined` again — the NEXT
+  // `shellNavigation()` call would then build a second history/signal pair
+  // sharing the same DOM/browser history object, while this OLD module
+  // instance's `DomainRouting`s stay subscribed to the first pair forever
+  // (nothing else ever calls their `stop()`). Releasing them here, and
+  // clearing the singleton, is what lets the replacement module start clean
+  // instead of doubling up dispatches from two live observer sets.
+  currentRouting = routing;
+  return routing;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    currentRouting?.stop();
+    currentRouting = undefined;
+    navigation = undefined;
+  });
 }
