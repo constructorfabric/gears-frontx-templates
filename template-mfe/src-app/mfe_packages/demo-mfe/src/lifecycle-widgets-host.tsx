@@ -514,6 +514,16 @@ function WidgetsHostScreen({
   // assertion mirrors that render-gating rather than asserting past it.
   const handleAttached = (): void => {
     const domain = widgetsDomain!;
+    if (holder.routing) {
+      // Re-entry guard (Q2): `ExtensionDomainSlot`'s own `onAttached` can fire more
+      // than once for the same domain mount without an intervening `unmount` (a
+      // double-invoked effect in dev, or a slot re-attach) — this component's
+      // `handleAttached` is re-created every render, so a second call would
+      // otherwise construct a second `DomainRouting` while the first stays
+      // subscribed, leaving two live observers racing writes to the same URL.
+      // Stopping the previous one first keeps at most one subscription live.
+      holder.routing.stop();
+    }
     // Held locally: a remount may replace holder.routing while this pass awaits.
     let routing: DomainRouting | undefined;
     if (address && domain.route) {
@@ -538,9 +548,21 @@ function WidgetsHostScreen({
     const ids = registry.getExtensionsForDomain(WIDGETS_DOMAIN_ID).map((e) => e.id);
     const autoMount = (): Promise<void> =>
       Promise.allSettled(ids.map((id) => holder.impl!.mountThroughChain(id, domain.defaultActionTimeout))).then(() => undefined);
-    void (routing ? routing.withOpening(autoMount) : autoMount()).then(() => {
-      onDomainAttached(); // mount() resolves only now — after the opening write is made or deferred
-    });
+    void (routing ? routing.withOpening(autoMount) : autoMount())
+      .then(() => {
+        onDomainAttached(); // mount() resolves only now — after the opening write is made or deferred
+      })
+      .catch((err: unknown) => {
+        // Q4: without this catch, a rejection here (e.g. `withOpening` itself
+        // throwing) would leave `onDomainAttached` uncalled forever — `mount()`
+        // awaits the promise `onDomainAttached` resolves (`domainAttachedPromise`)
+        // alongside `bootstrapPromise`, so a silently-hung gating pass would hang
+        // the whole extension mount. Resolving anyway is the same "best effort,
+        // do not block mounting" stance `bootstrapWidgetsRuntime`'s per-extension
+        // registration loop already takes.
+        console.error('[demo-mfe widgets-host] opening/auto-mount pass failed:', err);
+        onDomainAttached();
+      });
   };
 
   if (error) {
@@ -781,3 +803,23 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
 }
 
 export default new DemoMfeWidgetsHostLifecycle();
+
+// Q1: mirrors the shell's own `shellNavigation()` HMR teardown
+// (`template-shell/src-app/app/mfe/shell-routing.ts`). HMR replaces this
+// module's exports with a fresh copy, whose own `navigation` module var
+// starts `undefined` again — the next `widgetsNavigation()` call would then
+// build a second history/signal pair sharing the same DOM/browser history
+// object, while this OLD module instance's `DomainRouting` (held in
+// `widgetsHolder`, which itself is NOT replaced by HMR — see its own doc
+// comment) stays subscribed to the first pair forever, since nothing else
+// ever calls its `stop()`. Only `routing` is reset (not `holder.impl`, which
+// belongs to the domain implementation instance rather than to this
+// navigation cache and outlives any one mount, exactly as a plain remount
+// leaves it alone).
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    widgetsHolder.routing?.stop();
+    widgetsHolder.routing = undefined;
+    navigation = undefined;
+  });
+}

@@ -37,6 +37,16 @@ type Chain = { action: { type: string; target: string; payload?: { subject?: str
  * Constraints — `mfes` is not under test here). Each widget's dispatch can
  * be overridden per test to simulate the actions-chain edge cases
  * `mountThroughChain` itself defends against (refusal, no promise, timeout).
+ *
+ * `overrides` is keyed by (subject, actionType), not by subject alone (Q3):
+ * a real registry could see both a mount and an unmount chain for the same
+ * subject in flight, and collapsing them onto one key would let an unmount
+ * override answer a mount dispatch (or vice versa). This fake still has no
+ * per-subject serialization of its own beyond that — two concurrent
+ * dispatches for the same (subject, actionType) race exactly as they would
+ * against `executeActionsChain` itself, and it is `WidgetsDomainImpl`'s own
+ * `inFlight` map (the thing the "coalesce" test below exercises), not this
+ * fake, that is responsible for not asking the mounter twice.
  */
 class FakeRegistry {
   readonly extensions = new Map<string, FakeExtension>();
@@ -47,12 +57,18 @@ class FakeRegistry {
   readonly overrides = new Map<string, (payload: { subject: string }) => Promise<void> | undefined>();
   readonly executeActionsChain = vi.fn((chain: Chain): Promise<void> | undefined => {
     const subject = chain.action.payload?.subject;
-    const override = subject !== undefined ? this.overrides.get(subject) : undefined;
+    const key = subject !== undefined ? `${subject}:${chain.action.type}` : undefined;
+    const override = key !== undefined ? this.overrides.get(key) : undefined;
     if (override) return override({ subject: subject! });
     const handler = this.handlers.get(chain.action.type);
     if (!handler) return Promise.resolve();
     return handler.handleAction(chain.action.type, chain.action.payload);
   });
+
+  /** Registers an override for one (subject, actionType) pair — see the class doc comment (Q3). */
+  setOverride(subject: string, actionType: string, fn: (payload: { subject: string }) => Promise<void> | undefined): void {
+    this.overrides.set(`${subject}:${actionType}`, fn);
+  }
 
   getExtension(id: string): FakeExtension | undefined {
     return this.extensions.get(id);
@@ -138,8 +154,28 @@ function fakeManifestResponse() {
 let fakeRegistry: FakeRegistry | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
+/**
+ * Every subject actually reaching the mounter, in call order — distinct from
+ * `fakeRegistry.executeActionsChain.mock.calls`, which records one entry per
+ * top-level *dispatch* (there can be more than one for the same subject when
+ * a URL-restore observer and the auto-mount pass both ask for it in the same
+ * tick). `WidgetsDomainImpl`'s own `inFlight` map is what collapses those
+ * dispatches into at most one real call here — the "coalesce" test below
+ * asserts against this array specifically so removing that dedup fails it.
+ */
+let mountStrategyCalls: string[] = [];
+
 class FakeConcurrentMountStrategy {
   async mount(payload: { subject: string }): Promise<void> {
+    mountStrategyCalls.push(payload.subject);
+    // A real microtask gap between the call and marking the subject mounted:
+    // without it, `getMountedExtensions(...).includes(subject)` would already
+    // be true by the time a second, racing dispatch for the same subject
+    // reaches `WidgetsDomainImpl`'s own private `mount()` (this fake's own
+    // body never actually `await`s anything otherwise), which would hide
+    // whether `inFlight` — not this coincidence — is what stops a real race
+    // from reaching the mounter twice (the "coalesce" test below).
+    await Promise.resolve();
     fakeRegistry!.mounted.add(payload.subject);
   }
   async unmount(payload: { subject: string }): Promise<void> {
@@ -180,6 +216,19 @@ class FakeThemeAwareReactLifecycle {
  * this file hand every call the SAME `FakeRegistry` instance without
  * reaching into `mfes`'s real builder/plugin chain at all.
  */
+/**
+ * Every `onAttached` callback `ExtensionDomainSlot`'s mock below has ever
+ * fired, in order — declared through `vi.hoisted` so it exists before the
+ * hoisted `vi.mock` factory closes over it. The "re-entry attach" test (Q2)
+ * replays the LATEST one a second time to simulate `onAttached` firing twice
+ * for the same domain mount without an intervening `unmount` (a
+ * double-invoked effect, or a slot re-attach) — something this fake's own
+ * effect deliberately allows (it re-fires on every new `onAttached`
+ * identity), unlike production `ExtensionDomainSlot`, which this test file
+ * cannot exercise directly (Global Constraints — `mfes` is not under test).
+ */
+const { attachedCallbacks } = vi.hoisted(() => ({ attachedCallbacks: [] as Array<() => void> }));
+
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const real = await importOriginal<Record<string, unknown>>();
   const builder = {
@@ -198,7 +247,10 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
     ExtensionDomainSlot: ({ onAttached }: { onAttached?: (root: Element) => void }) => {
       const ref = React.useRef<HTMLDivElement | null>(null);
       React.useEffect(() => {
-        if (ref.current) onAttached?.(ref.current);
+        if (ref.current) {
+          attachedCallbacks.push(() => onAttached?.(ref.current!));
+          onAttached?.(ref.current);
+        }
       }, [onAttached]);
       return <div ref={ref} data-testid="widgets-domain-slot" />;
     },
@@ -229,11 +281,28 @@ function bridgeWithAddress(address: { domainKey: string; extension: string } | u
  */
 async function mount(
   bridge: ChildMfeBridge,
-  { keepModule = false }: { keepModule?: boolean } = {},
-): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement }> {
+  {
+    keepModule = false,
+    beforeMount,
+  }: {
+    keepModule?: boolean;
+    /**
+     * Runs right after `@gears-frontx/frontx-template-shell` is (re-)imported
+     * for this mount, before the SUT module import that constructs anything
+     * from it. `resetModules()` gives that package a fresh copy every mount
+     * (it is NOT mocked, unlike `@gears-frontx/react`), so a `DomainRouting`
+     * class captured by a static top-of-file import would not be the same
+     * class the freshly-imported SUT actually calls — a prototype spy needs
+     * this SAME freshly-imported handle to intercept anything (F3, Q2).
+     */
+    beforeMount?: (templateShell: typeof import('@gears-frontx/frontx-template-shell')) => void;
+  } = {},
+): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement; templateShell: typeof import('@gears-frontx/frontx-template-shell') }> {
   if (!keepModule) vi.resetModules();
   fetchMock = vi.fn().mockResolvedValue(fakeManifestResponse());
   vi.stubGlobal('fetch', fetchMock);
+  const templateShell = await import('@gears-frontx/frontx-template-shell');
+  beforeMount?.(templateShell);
   const module = await import('./lifecycle-widgets-host');
   const lifecycle = module.default as unknown as { mount: (c: Element, b: ChildMfeBridge) => Promise<void>; unmount: (c: Element) => unknown };
   const container = document.createElement('div');
@@ -246,7 +315,7 @@ async function mount(
   // and the callback cannot settle before that flush.
   await lifecycle.mount(container, bridge);
   mountedInstances.push({ lifecycle, container });
-  return { lifecycle, container };
+  return { lifecycle, container, templateShell };
 }
 
 /**
@@ -264,6 +333,8 @@ let mountedInstances: Array<{ lifecycle: { unmount: (c: Element) => unknown }; c
 
 beforeEach(() => {
   fakeRegistry = new FakeRegistry();
+  mountStrategyCalls = [];
+  attachedCallbacks.length = 0;
   window.history.replaceState(null, '', '/');
 });
 
@@ -303,11 +374,12 @@ describe('demo-mfe widgets-host lifecycle', () => {
 
     await waitFor(() => expect(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID)).toContain(ALPHA_ID));
     // Exactly one real mount reached the mounter for alpha, however many
-    // dispatches asked for it.
-    const mountCalls = fakeRegistry!.executeActionsChain.mock.calls.filter(
-      ([chain]: [Chain]) => chain.action.type === MOUNT && chain.action.payload?.subject === ALPHA_ID,
-    );
-    expect(mountCalls.length).toBeGreaterThanOrEqual(1);
+    // dispatches asked for it — `fakeRegistry.executeActionsChain`'s own call
+    // count is not a stand-in for this: both the URL-restore observer and the
+    // auto-mount pass make a top-level dispatch for alpha, and only
+    // `WidgetsDomainImpl`'s own `inFlight` map (not this fake) collapses the
+    // second one before it ever reaches the mounter.
+    expect(mountStrategyCalls.filter((subject) => subject === ALPHA_ID)).toHaveLength(1);
     expect(container).toBeDefined();
   });
 
@@ -332,9 +404,22 @@ describe('demo-mfe widgets-host lifecycle', () => {
 
   it('has every widget entry in the URL once mount() itself resolves when the opening write is not deferred (ping chain order)', async () => {
     window.history.replaceState(null, '', '/?screen=widgets-host');
+    const pushSpy = vi.spyOn(window.history, 'pushState');
+    const replaceSpy = vi.spyOn(window.history, 'replaceState');
+    pushSpy.mockClear();
+    replaceSpy.mockClear();
+
     await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
 
     for (const id of WIDGET_IDS) expect(window.location.search).toContain(ROUTE_OF[id]);
+    // Coalesced into exactly one history write carrying all three tokens —
+    // `withOpening` collects every widget's `afterMount` before flushing.
+    // Without that wrap, each `afterMount` would write on its own as soon as
+    // its own mount settles (F1).
+    const writes = [...pushSpy.mock.calls, ...replaceSpy.mock.calls];
+    expect(writes).toHaveLength(1);
+    const url = writes[0]![2] as string;
+    for (const id of WIDGET_IDS) expect(url).toContain(ROUTE_OF[id]);
   });
 
   it('stops dispatching further mounts once unmounted, and its own unmount makes no history write (release on unmount)', async () => {
@@ -372,7 +457,7 @@ describe('demo-mfe widgets-host lifecycle', () => {
   it('resolves mount() after every widget settles even when executeActionsChain returns no promise (#648)', async () => {
     fakeRegistry = new FakeRegistry();
     for (const id of WIDGET_IDS) {
-      fakeRegistry.overrides.set(id, () => undefined);
+      fakeRegistry.setOverride(id, MOUNT, () => undefined);
     }
     window.history.replaceState(null, '', '/?screen=widgets-host');
 
@@ -381,7 +466,7 @@ describe('demo-mfe widgets-host lifecycle', () => {
 
   it('resolves without waiting for the timeout when the chain refuses before reaching the handler (refused before the handler)', async () => {
     fakeRegistry = new FakeRegistry();
-    fakeRegistry.overrides.set(ALPHA_ID, () => Promise.resolve());
+    fakeRegistry.setOverride(ALPHA_ID, MOUNT, () => Promise.resolve());
     window.history.replaceState(null, '', '/?screen=widgets-host');
 
     const start = Date.now();
@@ -396,7 +481,7 @@ describe('demo-mfe widgets-host lifecycle', () => {
     // those too would freeze `handleAttached` before it ever starts.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fakeRegistry = new FakeRegistry();
-    fakeRegistry.overrides.set(ALPHA_ID, () => new Promise(() => {})); // never settles
+    fakeRegistry.setOverride(ALPHA_ID, MOUNT, () => new Promise(() => {})); // never settles
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     window.history.replaceState(null, '', '/?screen=widgets-host');
 
@@ -434,4 +519,69 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(pushSpy).not.toHaveBeenCalled();
     expect(replaceSpy).not.toHaveBeenCalled();
   });
+
+  it('broadcasts the entry addresses before starting the routing observer and before the first widget mount dispatch (broadcast order)', async () => {
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const broadcastSpy = vi.spyOn(fakeRegistry!, 'updateSharedProperty');
+    let startSpy!: ReturnType<typeof vi.spyOn>;
+
+    await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
+      beforeMount: (templateShell) => {
+        startSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'start');
+      },
+    });
+
+    const firstMountDispatchIndex = fakeRegistry!.executeActionsChain.mock.calls.findIndex(
+      ([chain]: [Chain]) => chain.action.type === MOUNT,
+    );
+    expect(firstMountDispatchIndex).toBeGreaterThanOrEqual(0);
+    const firstMountDispatchOrder = fakeRegistry!.executeActionsChain.mock.invocationCallOrder[firstMountDispatchIndex]!;
+
+    expect(broadcastSpy).toHaveBeenCalled();
+    expect(startSpy).toHaveBeenCalled();
+    expect(broadcastSpy.mock.invocationCallOrder[0]!).toBeLessThan(startSpy.mock.invocationCallOrder[0]!);
+    expect(startSpy.mock.invocationCallOrder[0]!).toBeLessThan(firstMountDispatchOrder);
+  });
+
+  it('stops the previous routing before replacing it when onAttached fires again for the same mount (re-entry attach)', async () => {
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    let stopSpy!: ReturnType<typeof vi.spyOn>;
+
+    await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
+      beforeMount: (templateShell) => {
+        stopSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'stop');
+      },
+    });
+
+    expect(attachedCallbacks.length).toBeGreaterThan(0);
+    const reattach = attachedCallbacks[attachedCallbacks.length - 1]!;
+    stopSpy.mockClear();
+
+    await act(async () => {
+      reattach();
+    });
+
+    // The first routing was stopped before a second one replaced it — not
+    // left subscribed alongside it.
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('still resolves mount() when the opening/auto-mount pass rejects, logging the error instead of hanging (gating rejection)', async () => {
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let withOpeningSpy!: ReturnType<typeof vi.spyOn>;
+
+    await expect(
+      mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
+        beforeMount: (templateShell) => {
+          withOpeningSpy = vi
+            .spyOn(templateShell.DomainRouting.prototype, 'withOpening')
+            .mockRejectedValueOnce(new Error('boom'));
+        },
+      }),
+    ).resolves.toBeDefined();
+
+    expect(withOpeningSpy).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('opening/auto-mount'), expect.any(Error));
+  }, 10000);
 });
