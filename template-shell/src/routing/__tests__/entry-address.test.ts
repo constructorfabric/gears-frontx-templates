@@ -24,6 +24,18 @@ describe('readEntryAddress', () => {
     },
   );
   it('returns undefined without a bridge', () => expect(readEntryAddress(undefined)).toBeUndefined());
+
+  it('rejects an address whose domainKey or extension is not a valid name (C11)', () => {
+    expect(readEntryAddress(bridge({ 'ext.a': { domainKey: 'not valid!', extension: 'hello-world' } }))).toBeUndefined();
+    expect(readEntryAddress(bridge({ 'ext.a': { domainKey: 'screen', extension: 'Not-Valid' } }))).toBeUndefined();
+  });
+
+  it('accepts a nested domain\'s own composed domain key (C11)', () => {
+    expect(readEntryAddress(bridge({ 'ext.a': { domainKey: 'screen.widgets-host.widgets', extension: 'widget-alpha' } }))).toEqual({
+      domainKey: 'screen.widgets-host.widgets',
+      extension: 'widget-alpha',
+    });
+  });
 });
 
 describe('buildEntryAddresses', () => {
