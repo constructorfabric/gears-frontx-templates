@@ -1,7 +1,7 @@
 {
   "name": "@gears-frontx/widgets-fixture-b",
   "private": true,
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "type": "module",
   "description": "Leaf widget MFE. Targets the widgets domain (owned by demo-mfe's child FrontX app at runtime) via its Extension instance. Mounts concurrently alongside widgets-fixture-a under ConcurrentMountStrategy.",
   "scripts": {

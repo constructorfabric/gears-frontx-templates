@@ -13,6 +13,7 @@ import {
   mock,
   ThemeAwareReactLifecycle,
   type ChildMfeBridge,
+  type MfeMountContext,
 } from '@gears-frontx/react';
 
 const fixtureApp = createFrontX()
@@ -24,6 +25,14 @@ const fixtureApp = createFrontX()
 class WidgetsFixtureBLifecycle extends ThemeAwareReactLifecycle {
   constructor() {
     super(fixtureApp);
+  }
+
+  // One mount log line, matching widget-a's own — the live run and any
+  // manual trace through the console tell the two fixtures' mounts apart
+  // the same way (H2).
+  override mount(container: Element | ShadowRoot, bridge: ChildMfeBridge, mountContext?: MfeMountContext): void {
+    console.info(`[widget-b ${bridge.extensionId}] mount`);
+    super.mount(container, bridge, mountContext);
   }
 
   protected renderContent(_bridge: ChildMfeBridge): React.ReactNode {

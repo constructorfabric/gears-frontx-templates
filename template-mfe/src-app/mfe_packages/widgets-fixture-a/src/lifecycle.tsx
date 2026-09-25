@@ -7,10 +7,13 @@
  * loads the bundle twice and evaluates this module twice — module-level state
  * (the random hex generated below) is therefore per-mount.
  *
- * The mount routine generates a per-mount random hex value, renders it visibly
- * under `data-testid="widget-a-instance"`, logs it to the console, and
- * registers a `ping` action handler on the bridge so the mediator routes
- * per-instance pings back to the correct handler.
+ * Each mounted instance runs its own tiny router (`route: "/widget-alpha"` /
+ * `"/widget-beta"` on the two extensions in `mfe.json`), scoped to the entry
+ * address the widgets-host shell broadcast for it. The `last-ping` value the
+ * widget shows is not module or React state at all — it lives only in that
+ * router's own URL search param (`useSearch`), so a page reload restores it
+ * without this module ever "sending" a ping, and two widgets never share or
+ * clobber each other's value the way a single shared map would.
  */
 import React from 'react';
 import {
@@ -23,11 +26,25 @@ import {
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type ChildMfeBridge,
-  type JsonObject,
+  type MfeEntryLifecycle,
 } from '@gears-frontx/react';
+import { resolveNavigationHistory } from '@gears-frontx/routing';
+import {
+  adaptProviderHistory,
+  createProviderRouter,
+  createRootRoute,
+  createRoute,
+  EngineProvider,
+  Outlet,
+  useSearch,
+  type AnyRouter,
+} from '@gears-frontx/routing-tanstack';
+import { readEntryAddress } from '@gears-frontx/frontx-template-shell';
 
 const PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
+
+const LAST_PING_PARAM = 'last-ping';
 
 // Hello World's extension ID (demo-mfe), targeted via the shell's screen
 // domain — mounting it from here exercises the upward-escalation tier: this
@@ -53,83 +70,46 @@ function generateRandomHex(): string {
 // instances backed by the same entry path get distinct module evaluations.
 const randomHex = generateRandomHex();
 
-// Last-ping value and subscriber, keyed by `bridge.extensionId` rather than a
-// single module-scoped value. The handler always writes here, independent of
-// whether a subscriber is wired yet, so registering the handler synchronously
-// in `mount()` (required so a chained `next` step can reach it as soon as
-// `mount()` resolves) can never race the DOM's observation of a ping: a ping
-// that lands before `WidgetA` subscribes is still visible the moment it does,
-// via the initial-state read below, instead of depending on ordering.
-//
-// Keying by the extension's own (stable, per-extension) id, rather than one
-// shared module-level value, matters for two reasons: a remount of an
-// extension `DefaultMountManager` has already loaded once reuses the SAME
-// module evaluation (`loadState === 'loaded'` skips re-loading) -- so a
-// single shared value would leak a DIFFERENT extension's last ping into this
-// one's first render, and one extension's cleanup could clear a still-live
-// sibling's subscriber. Since `bridge.extensionId` is now the SAME value
-// across every mount of a given extension (the bridge pair is minted once and
-// reactivated, not recreated, per mount), the last-ping value keyed on it
-// actually SURVIVES an unmount/remount cycle of this widget, unless the
-// widget's own `unmount()` clears its map entry.
-const lastPingValues = new Map<string, string>();
-const lastPingSubscribers = new Map<string, () => void>();
-
-class PingHandler extends ActionHandler {
-  constructor(private readonly instanceId: string) {
-    super();
-  }
-
-  handleAction(
-    actionTypeId: string,
-    _payload: JsonObject | undefined,
-  ): Promise<void> {
-    console.log(
-      `[widget-a ${this.instanceId}] ping ${actionTypeId} randomHex=${randomHex}`,
-    );
-    lastPingValues.set(this.instanceId, randomHex);
-    lastPingSubscribers.get(this.instanceId)?.();
-    return Promise.resolve();
-  }
+/** One mount of one extension: its router, and a latch the provider opens once it has attached its history. */
+interface MountSession {
+  readonly router: AnyRouter;
+  readonly providerMounted: Promise<void>;
+  readonly markProviderMounted: () => void;
 }
 
-interface WidgetAProps {
-  readonly bridge: ChildMfeBridge;
+// Keyed by `bridge.extensionId` (stable across a remount of the same
+// extension — the bridge pair is minted once and reactivated, not recreated,
+// per mount): a ping dispatched right after a remount must reach the NEW
+// session, not a leftover one an older container's late unmount could
+// otherwise clear out from under it (see `unmount()` below).
+const sessions = new Map<string, MountSession>();
+
+const SessionContext = React.createContext<{ session: MountSession; bridge: ChildMfeBridge } | null>(null);
+
+function useWidget(): { session: MountSession; bridge: ChildMfeBridge } {
+  const value = React.useContext(SessionContext);
+  if (!value) throw new Error('widget-a: rendered outside its mount session');
+  return value;
 }
 
-function WidgetA({ bridge }: Readonly<WidgetAProps>): React.ReactElement {
-  const instanceId = bridge.extensionId;
-
-  const subscribeToLastPing = React.useCallback(
-    (onStoreChange: () => void) => {
-      lastPingSubscribers.set(instanceId, onStoreChange);
-      return () => {
-        // Only remove this instance's own subscriber and snapshot -- guard
-        // against a stale closure clearing a different, still-live mount's
-        // subscriber (and its already-current snapshot) for the same
-        // instanceId (e.g. React re-invoking effects in development, or a
-        // new subscriber having already replaced this one before this
-        // cleanup runs).
-        if (lastPingSubscribers.get(instanceId) === onStoreChange) {
-          lastPingSubscribers.delete(instanceId);
-          lastPingValues.delete(instanceId);
-        }
-      };
-    },
-    [instanceId],
+function WidgetARoot(): React.ReactElement {
+  const { bridge } = useWidget();
+  return (
+    <div
+      data-testid="widget-a-instance"
+      data-instance-id={bridge.extensionId}
+      data-instance-text={randomHex}
+      className="m-2 rounded-lg border-2 border-blue-400 bg-blue-50 p-4 text-blue-900"
+    >
+      <Outlet />
+    </div>
   );
+}
 
-  // `useSyncExternalStore` reads the snapshot both at first render and again
-  // when it subscribes, so a ping that already landed -- e.g. one dispatched
-  // by a chain step immediately after `mount()` resolved, before this
-  // component subscribed -- is reflected instead of silently missed. The
-  // handler itself is registered synchronously in `mount()` (below),
-  // independent of this subscription, so it is never what races here -- only
-  // the view's observation of a value that was already delivered correctly.
-  const lastPing = React.useSyncExternalStore(
-    subscribeToLastPing,
-    () => lastPingValues.get(instanceId) ?? null,
-  );
+function WidgetAHome(): React.ReactElement {
+  const { bridge } = useWidget();
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
+  const lastPing = typeof search[LAST_PING_PARAM] === 'string' ? (search[LAST_PING_PARAM] as string) : null;
 
   const handleMountHelloWorld = React.useCallback(async () => {
     await bridge.executeActionsChain({
@@ -142,15 +122,10 @@ function WidgetA({ bridge }: Readonly<WidgetAProps>): React.ReactElement {
   }, [bridge]);
 
   return (
-    <div
-      data-testid="widget-a-instance"
-      data-instance-id={instanceId}
-      data-instance-text={randomHex}
-      className="m-2 rounded-lg border-2 border-blue-400 bg-blue-50 p-4 text-blue-900"
-    >
+    <>
       <strong>Widget A instance:</strong>{' '}
       <span data-testid="widget-a-random">{randomHex}</span>
-      <p className="mt-1 text-xs opacity-75">instance-id: {instanceId}</p>
+      <p className="mt-1 text-xs opacity-75">instance-id: {bridge.extensionId}</p>
       <p
         className="mt-1 text-xs"
         data-testid="widget-a-last-ping"
@@ -166,35 +141,119 @@ function WidgetA({ bridge }: Readonly<WidgetAProps>): React.ReactElement {
       >
         Mount Hello World (shell, 2 hops up)
       </button>
-    </div>
+    </>
   );
 }
 
-class WidgetsFixtureALifecycle extends ThemeAwareReactLifecycle {
+function WidgetANotFound(): React.ReactElement {
+  return <p data-testid="widget-a-not-found">widget-a has no such page</p>;
+}
+
+function createSession(bridge: ChildMfeBridge): MountSession {
+  let markProviderMounted!: () => void;
+  const providerMounted = new Promise<void>((resolve) => {
+    markProviderMounted = resolve;
+  });
+  const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
+  const routeTree = rootRoute.addChildren([
+    createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
+  ]);
+  const history = adaptProviderHistory(resolveNavigationHistory(), readEntryAddress(bridge));
+  return { router: createProviderRouter(routeTree, history), providerMounted, markProviderMounted };
+}
+
+class PingHandler extends ActionHandler {
+  constructor(private readonly instanceId: string) {
+    super();
+  }
+
+  async handleAction(actionTypeId: string): Promise<void> {
+    const session = sessions.get(this.instanceId);
+    if (!session) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
+    const lastPing = new Date().toISOString();
+    console.log(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
+    // A write made before the provider attached its history may not take effect: queue it until it has.
+    await session.providerMounted;
+    // The whole parameter list is replaced, not merged, so carry the other search params forward.
+    await session.router.navigate({
+      to: '.',
+      search: (previous: Record<string, unknown>) => ({ ...previous, [LAST_PING_PARAM]: lastPing }),
+      replace: true,
+    });
+  }
+}
+
+/**
+ * Opens the session's latch from its own effect. A parent's effect runs after
+ * its children's, so this runs after `EngineProvider`'s own effect has
+ * attached the adapted history; an effect placed inside the routed tree
+ * itself would run before that attach.
+ */
+function ProviderMountedMark({
+  session,
+  children,
+}: {
+  session: MountSession;
+  children: React.ReactNode;
+}): React.ReactElement {
+  React.useEffect(() => session.markProviderMounted(), [session]);
+  return <>{children}</>;
+}
+
+/** One mount's React tree: its own `ThemeAwareReactLifecycle` instance, so its own Root (H3). */
+class WidgetAMount extends ThemeAwareReactLifecycle {
   constructor() {
     super(fixtureApp);
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    return <WidgetA bridge={bridge} />;
-  }
-
-  override mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {
-    console.log(
-      `[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`,
+    const session = sessions.get(bridge.extensionId)!;
+    return (
+      <SessionContext.Provider value={{ session, bridge }}>
+        <ProviderMountedMark session={session}>
+          <EngineProvider router={session.router} />
+        </ProviderMountedMark>
+      </SessionContext.Provider>
     );
-    super.mount(container, bridge);
-    // Register synchronously, before `mount()` returns: `DefaultMountManager`
+  }
+}
+
+/**
+ * `ThemeAwareReactLifecycle` keeps one Root per instance, but widget_alpha and
+ * widget_beta share this module's default export: a second mount on a shared
+ * instance would overwrite the first Root and one unmount would tear down the
+ * other's tree. Each container therefore gets its own `WidgetAMount` instance
+ * (H3; the general shared-root defect is tracked separately, U2).
+ */
+class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
+  private readonly mounts = new Map<
+    Element | ShadowRoot,
+    { readonly tree: WidgetAMount; readonly extensionId: string; readonly session: MountSession }
+  >();
+
+  mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {
+    console.log(`[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`);
+    const session = createSession(bridge);
+    sessions.set(bridge.extensionId, session);
+    const tree = new WidgetAMount();
+    this.mounts.set(container, { tree, extensionId: bridge.extensionId, session });
+    tree.mount(container, bridge);
+    // Registered synchronously, before `mount()` returns: `DefaultMountManager`
     // treats a lifecycle's `mount()` completion as the signal that the
     // extension is reachable, and lets a chain's `next` continuation dispatch
     // as soon as it does. A React `useEffect` runs strictly after that point
-    // (`createRoot().render()` only schedules work), so registering there,
-    // as this fixture previously did, is reachable-too-late for a chained
-    // ping step. See `lifecycle-profile.tsx` for the same pattern.
-    bridge.registerActionHandler(
-      PING_ACTION_TYPE,
-      new PingHandler(bridge.extensionId),
-    );
+    // (`createRoot().render()` only schedules work), so registering there
+    // would be reachable-too-late for a chained ping step.
+    bridge.registerActionHandler(PING_ACTION_TYPE, new PingHandler(bridge.extensionId));
+  }
+
+  unmount(container: Element | ShadowRoot): void {
+    const mounted = this.mounts.get(container);
+    if (!mounted) return;
+    this.mounts.delete(container);
+    mounted.tree.unmount(container);
+    // A late unmount of an older container must not drop the session a newer mount of the same extension owns.
+    if (sessions.get(mounted.extensionId) === mounted.session) sessions.delete(mounted.extensionId);
   }
 }
 
