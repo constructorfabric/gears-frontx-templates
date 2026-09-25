@@ -1,0 +1,20 @@
+{
+  "$id": "gts://gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The entry address each routable occupant of this registry's domains is mounted at, keyed by extension id. The host that owns the domains broadcasts it before any of them mounts; an occupant reads value[bridge.extensionId]. Template convention between host and child, not a runtime contract.",
+  "allOf": [{ "$ref": "gts://gts.frontx.mfes.comm.shared_property.v1~" }],
+  "properties": {
+    "value": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["domainKey", "extension"],
+        "additionalProperties": false,
+        "properties": {
+          "domainKey": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*)*$" },
+          "extension": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+        }
+      }
+    }
+  }
+}

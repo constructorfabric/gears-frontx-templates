@@ -38,3 +38,17 @@ export const FRONTX_SHARED_PROPERTY_THEME = 'gts.frontx.mfes.comm.shared_propert
  * Built-in shared property type for language/locale information (en/es/etc).
  */
 export const FRONTX_SHARED_PROPERTY_LANGUAGE = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~';
+
+/**
+ * Entry-addresses shared property type ID (GTS schema ID).
+ * Carries the map of `{ [extensionId]: { domainKey, extension } }` the host
+ * broadcasts to every domain in its registry before anything mounts, so a
+ * mounted occupant can read its own entry address back
+ * (`value[bridge.extensionId]`). The same value is declared again in the
+ * private `@gears-frontx/frontx-template-shell` lib's `src/gts` (glue and MFE
+ * code read it from there); the published framework must not import that
+ * private package (#601), so the constant is kept in both places and a test
+ * pins the two copies equal.
+ */
+export const FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES =
+  'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';

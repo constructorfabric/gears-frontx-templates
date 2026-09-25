@@ -1,8 +1,10 @@
 {
   "id": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.overlay.v1",
+  "route": "overlay",
   "sharedProperties": [
     "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
-    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~",
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~"
   ],
   "actions": [
     "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~",

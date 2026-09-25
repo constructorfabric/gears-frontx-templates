@@ -19,6 +19,7 @@ import {
 // react resolve for a consumer outside this workspace (#601). `main.tsx` reaches
 // for them the same way.
 import {
+  entryAddressesSchema,
   extensionScreenSchema,
   languageSchema,
   themeSchema,
@@ -72,6 +73,7 @@ beforeAll(() => {
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageSchema);
   gtsPlugin.registerSchema(extensionScreenSchema);
+  gtsPlugin.registerSchema(entryAddressesSchema);
   for (const schema of CHROME_ACTION_SCHEMAS) {
     gtsPlugin.registerSchema(schema);
   }

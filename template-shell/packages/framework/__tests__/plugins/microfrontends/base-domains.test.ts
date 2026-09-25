@@ -6,6 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { isValidRouteName } from '@gears-frontx/mfes';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES as LIB_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
 import {
   screenDomain,
   sidebarDomain,
@@ -15,8 +17,10 @@ import {
 import {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   FRONTX_SCREEN_EXTENSION_TYPE,
 } from '../../../src/mfe/constants';
+import { loadLayoutDomains } from '../../../src/plugins/microfrontends/gts/loader';
 import {
   FRONTX_ACTION_LOAD_EXT,
   FRONTX_ACTION_MOUNT_EXT,
@@ -137,5 +141,30 @@ describe('Base Extension Domain Constants - Shared Properties', () => {
     it('overlayDomain does NOT have extensionsTypeId', () => {
       expect(overlayDomain.extensionsTypeId).toBeUndefined();
     });
+  });
+});
+
+describe('Base Extension Domain Constants - routing', () => {
+  it('the framework and the template lib name the same entry-addresses property', () => {
+    expect(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES).toBe(LIB_ENTRY_ADDRESSES);
+  });
+
+  it.each([
+    [screenDomain, 'screen'],
+    [sidebarDomain, 'sidebar'],
+    [popupDomain, 'popup'],
+    [overlayDomain, 'overlay'],
+  ])('%o declares route %s and the entry-addresses property', (domain, route) => {
+    expect(domain.route).toBe(route);
+    expect(isValidRouteName(domain.route!)).toBe(true);
+    expect(domain.sharedProperties).toContain(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES);
+  });
+
+  it('the JSON copies agree with the declarations on route and shared properties', () => {
+    const byId = new Map(loadLayoutDomains().map((d) => [d.id, d]));
+    for (const domain of [screenDomain, sidebarDomain, popupDomain, overlayDomain]) {
+      expect(byId.get(domain.id)?.route).toBe(domain.route);
+      expect(byId.get(domain.id)?.sharedProperties).toEqual(domain.sharedProperties);
+    }
   });
 });

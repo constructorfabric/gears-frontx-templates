@@ -14,7 +14,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createFrontX } from '../../../createFrontX';
 import { microfrontends, addExtensionMounted } from '../index';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
-import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import {
+  themeSchema,
+  languageSchema,
+  extensionScreenSchema,
+  entryAddressesSchema,
+} from '@gears-frontx/frontx-template-shell';
 import { loadLayoutDomains } from '../gts/loader';
 import type { FrontXApp } from '../../../types';
 import {
@@ -140,6 +145,7 @@ function buildApp(): FrontXApp {
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageSchema);
   gtsPlugin.registerSchema(extensionScreenSchema);
+  gtsPlugin.registerSchema(entryAddressesSchema);
 
   return createFrontX()
         .use(microfrontends({ typeSystem: gtsPlugin }))

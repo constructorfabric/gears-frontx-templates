@@ -20,7 +20,12 @@ import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import { createFrontX } from '../../src/createFrontX';
 import { microfrontends } from '../../src/plugins/microfrontends';
 import { loadLayoutDomains } from '../../src/plugins/microfrontends/gts/loader';
-import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import {
+  themeSchema,
+  languageSchema,
+  extensionScreenSchema,
+  entryAddressesSchema,
+} from '@gears-frontx/frontx-template-shell';
 import type { MfeRegistry } from '@gears-frontx/framework';
 import { TestContainerProvider } from '../../src/testing/TestContainerProvider';
 import { resetSharedQueryClient } from '../../src/testing';
@@ -53,6 +58,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
     typeSystem.registerSchema(themeSchema);
     typeSystem.registerSchema(languageSchema);
     typeSystem.registerSchema(extensionScreenSchema);
+    typeSystem.registerSchema(entryAddressesSchema);
   });
 
   afterEach(() => {
@@ -315,6 +321,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
+          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -336,6 +343,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
+          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -357,6 +365,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
+          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -378,6 +387,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
+          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
