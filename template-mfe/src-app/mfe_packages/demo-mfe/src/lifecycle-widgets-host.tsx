@@ -168,6 +168,49 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
     this.waiters.delete(subject);
   }
 
+  /**
+   * Unmount every extension this domain currently believes is mounted,
+   * through the SAME `strategy.unmount()` call `FRONTX_ACTION_UNMOUNT_EXT`'s
+   * own handler above uses — the one path in this class that actually clears
+   * `registry.getMountedExtensions()` (`ConcurrentMountStrategy.unmount()` →
+   * `DefaultExtensionMounter.unmount()`'s own `removeMountedExtension`
+   * callback).
+   *
+   * Called by `DemoMfeWidgetsHostLifecycle.unmount()`, strictly before
+   * `super.unmount(container)` triggers `ExtensionDomainSlot`'s own cleanup
+   * effect — a fire-and-forget `void mounter.detach()` that mass-unmounts
+   * through `DefaultExtensionMounter.detach()` instead. That method
+   * unmounts each occupant's DOM (`mountManager.unmountExtension` +
+   * `hooks.destroy`) but never calls `removeMountedExtension` (see its own
+   * source) — so on this file's module-singleton nested registry, which
+   * outlives any one mount of Widgets Host, `getMountedExtensions()` kept
+   * listing every widget as mounted forever after a screen switch or Back.
+   * The next entry's auto-mount pass then hit `mount()`'s "already mounted"
+   * early-return above for every widget and never called `strategy.mount()`
+   * again — no DOM, no mount log, permanently (D2).
+   *
+   * Awaiting this to completion before `super.unmount(container)` runs is
+   * what avoids a race between the two mass-unmount paths for the same
+   * extension ids: by the time `ExtensionDomainSlot`'s detach reads
+   * `getMountedExtensions()`, this method has already emptied it, so
+   * `detach()`'s own loop finds nothing left to unmount.
+   *
+   * Bypasses the actions chain deliberately (unlike `mountThroughChain`):
+   * this is the lifecycle's own teardown, not a URL-driven transition, so it
+   * needs neither chain dispatch nor a `next` continuation — only the one
+   * mfes call that both tears down the DOM and clears the registry's
+   * mounted-set. `holder.routing` is already stopped and cleared by the
+   * caller before this runs, so the same `afterUnmount` call the registered
+   * handler makes would no-op here regardless (`DomainRouting.stop()`'s own
+   * guard) — omitted for that reason, not skipped by oversight.
+   */
+  async releaseAll(): Promise<void> {
+    const mounted = Array.from(this.registry.getMountedExtensions(WIDGETS_DOMAIN_ID));
+    for (const subject of mounted) {
+      await this.strategy.unmount!({ subject });
+    }
+  }
+
   /** ConcurrentMountStrategy is not idempotent: a URL restore, the auto-mount pass and a chain may ask at once. */
   private mount(payload: ActionPayload): Promise<void> {
     const subject = payload.subject;
@@ -773,15 +816,29 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
     await Promise.all([this.bootstrapPromise, this.domainAttachedPromise]);
   }
 
-  unmount(container: Element | ShadowRoot): void | Promise<void> {
-    // Before `super.unmount()`: the slot's own detach unmounts this domain's
-    // occupants past the action-chain handlers (O7), so this instance's
-    // observer must already be released — otherwise it would see those
-    // removals as ordinary transitions and try to dispatch unmounts for
-    // extensions the mounter is already tearing down (O4).
+  async unmount(container: Element | ShadowRoot): Promise<void> {
+    // Before releasing occupants below: the slot's own detach unmounts this
+    // domain's occupants past the action-chain handlers (O7), so this
+    // instance's observer must already be released — otherwise it would see
+    // those removals as ordinary transitions and try to dispatch unmounts
+    // for extensions the mounter is already tearing down (O4). Stopped
+    // first, so `afterUnmount` inside `releaseAll`'s own unmount path
+    // no-ops rather than writing a URL entry for a screen that is itself
+    // leaving.
     widgetsHolder.routing?.stop();
     widgetsHolder.routing = undefined;
-    return super.unmount(container);
+    // D2: release every occupant through the registry's own bookkeeping
+    // (see `WidgetsDomainImpl.releaseAll`'s doc comment) BEFORE
+    // `super.unmount(container)` triggers `ExtensionDomainSlot`'s cleanup
+    // effect. That effect's own `mounter.detach()` mass-unmounts the DOM but
+    // never clears `getMountedExtensions()` — and this domain's registry is
+    // a module-singleton that outlives one mount of Widgets Host. Without
+    // this, the NEXT mount's auto-mount pass would find every widget
+    // already "mounted" and never call `strategy.mount()` again, leaving
+    // Widgets Host permanently blank on re-entry (back/forward, or a fresh
+    // Back after leaving).
+    await widgetsHolder.impl?.releaseAll();
+    await super.unmount(container);
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
