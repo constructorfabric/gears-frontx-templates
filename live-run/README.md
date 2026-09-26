@@ -113,6 +113,7 @@ Both are expected and were confirmed across runs — do not treat either as a re
 
 - **Step 1 (cold deep link into Widgets Host) logs a cosmetic console error**, `[MfeRegistry] Actions chain failed | mount_ext`. It comes from React StrictMode's double-invoke of the shell's `DomainRouting` dispatch racing the widgets domain's own registration in development; it does not affect the resulting DOM state or the recorder log.
 - **Step 9 (unknown widget route) can log two `replaceState` calls instead of one.** One normalizes the invalid route inside the widget fixture, the other adds the remaining widgets from `DomainRouting`'s coalesced write; which one lands first varies between runs. The end state (`notFound === true`, `fallback === false`, no `pushState`) is unaffected.
+- **Pressing Back while a newly selected screen is still mounting can drop the forward history entry it was leaving.** The new screen's own `afterMount` runs once its mount settles — asynchronously, on whatever tick that finishes — and if Back is pressed before it does, that late `afterMount` still pushes its entry on top of wherever Back landed, ahead of the entry Back moved away from. This is accepted as a known limitation for #638, not fixed here.
 
 ## Related
 

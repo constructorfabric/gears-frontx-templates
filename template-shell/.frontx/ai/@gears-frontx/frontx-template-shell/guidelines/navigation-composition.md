@@ -13,6 +13,12 @@ Authoritative files:
 
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
 - `src-app/app/mfe/bootstrap.ts` — domain registration and manifest ingestion
+- `src-app/app/mfe/shell-routing.ts` — one `DomainRouting` per shell domain
+  (screen, sidebar, popup, overlay), wired to the shell's navigation history
+- `src-app/app/mfe/MfeScreenContainer.tsx` — starts/stops the four observers
+  and renders the unresolved-route fallback
+- `src/routing/domain-routing.ts`, `src/routing/entry-address.ts` — the
+  back-projection and entry-address mechanism the domains above share
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
   the four well-known domain instances
@@ -40,10 +46,34 @@ mfeRegistry.executeActionsChain({
 });
 ```
 
-`presentation.route` is declared and schema-required, but the shell does not
-consume it: switching screens is a mount action against a domain, not a route
-transition. Deep links, browser history, and bookmarking are therefore not
-provided by this shell today.
+Switching screens is still a mount action against a domain, not a direct route
+transition — but the shell now closes the loop between that action and the
+address bar. Each of the four base domains (`screen`, `sidebar`, `popup`,
+`overlay`) has its own `DomainRouting` instance (`shell-routing.ts`,
+`src/routing/domain-routing.ts`), created alongside the domain and started
+once the screen slot attaches (`MfeScreenContainer`'s `onAttached` calls
+`routing.start()`; `onDetached` calls `routing.stop()`). After a domain's mount
+handler settles, it calls that domain's `afterMount(extensionId)`, which
+back-projects the extension's token into the URL for that domain's key — so a
+menu click now leaves a real entry in the address bar, and browser
+back/forward and bookmarking work against it. The same `DomainRouting` also
+runs the other direction: on every history transition it resolves each
+entry's token to a registered extension and dispatches the corresponding
+mount (or, for a resolution swap on a `multiple`-cardinality domain, an
+unmount of the prior owner) — so a URL typed, bookmarked, or reached via
+Back/Forward mounts the extension it names, which is what makes a deep link
+work. An entry whose token resolves to nothing registered is left in the URL
+rather than dropped; the screen domain's own fallback (`MfeScreenContainer`)
+renders "No screen matches this address." whenever every entry in the screen
+domain is unresolved and nothing is mounted.
+
+Every occupant that mounts under a routed domain also learns its own address:
+the shell broadcasts the `entry_addresses` shared property (`src/routing/entry-address.ts`'s
+`buildEntryAddresses`), a map from extension id to `{ domainKey, extension }`,
+re-broadcast after each registration during bootstrap and after every
+mount/unmount thereafter. A mounted extension reads its own entry back via
+`readEntryAddress` rather than through the action-chain payload — the payload
+never carries it.
 
 ## From `mfe.json` to the browser
 
@@ -115,7 +145,7 @@ makes a screen extension menu-renderable — it requires `presentation`:
 | Field | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text (raw display string — no i18n key today) |
-| `route` | yes | route path; declared but not consumed by the shell yet |
+| `route` | yes | route path; back-projected into the URL after mount and resolved from it on every transition (see above) |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
 
@@ -139,6 +169,10 @@ host and MFEs.
   pipeline at all is the `mfe-package-contract` guideline in this bundle.
 - The ID taxonomy used in every declaration is the `gts-id-conventions`
   guideline in the `template-mfe` AI bundle.
-- Known limitations (no menu i18n, no audience targeting, unused `route`, flat
-  `order`) are properties of the current schemas, tracked upstream in the
-  platform's navigation-service planning — not bugs in this shell.
+- Known limitations (no menu i18n, no audience targeting, flat `order`) are
+  properties of the current schemas, tracked upstream in the platform's
+  navigation-service planning — not bugs in this shell. Routing itself has its
+  own known limitations, tracked against issue #638 rather than this schema
+  set — e.g. pressing Back while a newly selected screen is still mounting can
+  let that screen's late `afterMount` push on top of the Back navigation (see
+  the `live-run/README.md` "Known observations").
