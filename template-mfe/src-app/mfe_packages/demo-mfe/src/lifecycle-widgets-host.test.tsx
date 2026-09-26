@@ -437,6 +437,48 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(window.location.search).not.toBe(searchBeforeUnmount);
   });
 
+  it('unmounts through routing.stop() -> releaseAll() -> super.unmount(), in that order (unmount order, RM-WBR W2)', async () => {
+    // RM-WBR W2 (issue constructorfabric/gears-frontx#638 ledger): the RM-LIVE2
+    // regression test (`lifecycle-widgets-host.remount.test.tsx`) drives
+    // `releaseAll()` directly against a real registry, so it never notices if
+    // `DemoMfeWidgetsHostLifecycle.unmount()` itself stopped calling
+    // `releaseAll()`, or called it out of order against `routing.stop()`/
+    // `super.unmount()`. This test exercises the real override instead,
+    // against this file's own faked `ExtensionDomainSlot`/
+    // `ConcurrentMountStrategy`/`ThemeAwareReactLifecycle` — a full render
+    // under the real `microfrontends()` + `EngineProvider` combination hangs
+    // in jsdom (see the remount test file's own doc comment) — asserting
+    // call order via `invocationCallOrder`, the same technique the "broadcast
+    // order" test above uses.
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const strategyUnmountSpy = vi.spyOn(FakeConcurrentMountStrategy.prototype, 'unmount');
+    const superUnmountSpy = vi.spyOn(FakeThemeAwareReactLifecycle.prototype, 'unmount');
+    let stopSpy!: ReturnType<typeof vi.spyOn>;
+
+    const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
+      beforeMount: (templateShell) => {
+        stopSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'stop');
+      },
+    });
+    stopSpy.mockClear();
+    strategyUnmountSpy.mockClear();
+    superUnmountSpy.mockClear();
+
+    await lifecycle.unmount(container);
+
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    expect(strategyUnmountSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(superUnmountSpy).toHaveBeenCalledTimes(1);
+
+    const stopOrder = stopSpy.mock.invocationCallOrder[0]!;
+    const lastReleaseOrder =
+      strategyUnmountSpy.mock.invocationCallOrder[strategyUnmountSpy.mock.invocationCallOrder.length - 1]!;
+    const superOrder = superUnmountSpy.mock.invocationCallOrder[0]!;
+
+    expect(stopOrder).toBeLessThan(lastReleaseOrder);
+    expect(lastReleaseOrder).toBeLessThan(superOrder);
+  });
+
   it('remounts on the same cached registry with a new address without registerDomain throwing (remount)', async () => {
     window.history.replaceState(null, '', '/?screen=widgets-host');
     await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
