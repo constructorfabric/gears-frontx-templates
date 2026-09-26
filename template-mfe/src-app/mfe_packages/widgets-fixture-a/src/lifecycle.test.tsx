@@ -117,16 +117,14 @@ describe('widget-a last-ping', () => {
     const root = shadowContainer();
     // `mount()` and the ping both run OUTSIDE `act()`, back to back, with no
     // `await` between them: the handler is registered synchronously inside
-    // `mount()`, so `handleAction` starts — and hits its own
-    // `await session.providerMounted` — before React has committed the
-    // first render or run any effect at all. This is the actual race the
-    // `providerMounted` queue exists to close. Wrapping the two calls
-    // together in one `act()` deadlocks instead: `act()` only flushes
-    // pending effects after its own async callback settles, but that
-    // callback here cannot settle until `providerMounted` resolves, which
-    // itself depends on the very effect flush `act()` is withholding.
-    // The empty `act()` below is what performs that flush once both calls
-    // are already in flight, unblocking the queued ping's own await.
+    // `mount()`, so `handleAction` runs its `router.navigate()` before React
+    // has committed the first render or run any effect at all — before
+    // `EngineProvider`'s own mount effect has attached this session's router
+    // to the shared history. That write still lands: the composed source's
+    // `write` calls `backProjectEntries` against the shared
+    // `NavigationHistory` directly, with no dependency on attach state. The
+    // empty `act()` below just flushes React's pending render/effects so the
+    // component reads back what the ping already wrote.
     lifecycle.mount(root, bridge);
     const pingSettled = handlers.get(PING)!.handleAction(PING);
     await act(async () => {});

@@ -70,11 +70,9 @@ function generateRandomHex(): string {
 // instances backed by the same entry path get distinct module evaluations.
 const randomHex = generateRandomHex();
 
-/** One mount of one extension: its router, and a latch the provider opens once it has attached its history. */
+/** One mount of one extension: just its router. */
 interface MountSession {
   readonly router: AnyRouter;
-  readonly providerMounted: Promise<void>;
-  readonly markProviderMounted: () => void;
 }
 
 // Keyed by `bridge.extensionId` (stable across a remount of the same
@@ -150,16 +148,12 @@ function WidgetANotFound(): React.ReactElement {
 }
 
 function createSession(bridge: ChildMfeBridge): MountSession {
-  let markProviderMounted!: () => void;
-  const providerMounted = new Promise<void>((resolve) => {
-    markProviderMounted = resolve;
-  });
   const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
   const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
   ]);
   const history = adaptProviderHistory(resolveNavigationHistory(), readEntryAddress(bridge));
-  return { router: createProviderRouter(routeTree, history), providerMounted, markProviderMounted };
+  return { router: createProviderRouter(routeTree, history) };
 }
 
 class PingHandler extends ActionHandler {
@@ -172,8 +166,15 @@ class PingHandler extends ActionHandler {
     if (!session) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
     const lastPing = new Date().toISOString();
     console.info(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
-    // A write made before the provider attached its history may not take effect: queue it until it has.
-    await session.providerMounted;
+    // Safe to write immediately, before `EngineProvider`'s own mount effect
+    // has attached this session's router to the shared history: the
+    // composed source's `write` (`composed-history-source.ts`) calls
+    // `backProjectEntries` against the shared `NavigationHistory` directly —
+    // it never checks or waits on the adapter's attach state. Once
+    // `attachAdaptedHistory` does run, `attachToNavigationHistory`
+    // (`history-adaptation.ts`) re-reads `source.readParams()` before
+    // subscribing, so it resyncs to whatever this write already landed
+    // rather than missing it.
     try {
       // The whole parameter list is replaced, not merged, so carry the other search params forward.
       await session.router.navigate({
@@ -182,29 +183,11 @@ class PingHandler extends ActionHandler {
         replace: true,
       });
     } catch (err) {
-      // A silent failure here would leave the host believing the ping landed
-      // (it already resolved past the `providerMounted` queue): surface it.
+      // A silent failure here would leave the host believing the ping landed: surface it.
       console.error(`[widget-a ${this.instanceId}] ping navigate() failed:`, err);
       throw err;
     }
   }
-}
-
-/**
- * Opens the session's latch from its own effect. A parent's effect runs after
- * its children's, so this runs after `EngineProvider`'s own effect has
- * attached the adapted history; an effect placed inside the routed tree
- * itself would run before that attach.
- */
-function ProviderMountedMark({
-  session,
-  children,
-}: {
-  session: MountSession;
-  children: React.ReactNode;
-}): React.ReactElement {
-  React.useEffect(() => session.markProviderMounted(), [session]);
-  return <>{children}</>;
 }
 
 /** One mount's React tree: its own `ThemeAwareReactLifecycle` instance, so its own Root (H3). */
@@ -217,9 +200,7 @@ class WidgetAMount extends ThemeAwareReactLifecycle {
     const session = sessions.get(bridge.extensionId)!;
     return (
       <SessionContext.Provider value={{ session, bridge }}>
-        <ProviderMountedMark session={session}>
-          <EngineProvider router={session.router} />
-        </ProviderMountedMark>
+        <EngineProvider router={session.router} />
       </SessionContext.Provider>
     );
   }
