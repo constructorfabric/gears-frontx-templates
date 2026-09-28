@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@gears-frontx/frontx-template-shell": "0.1.0-alpha.4",
-    "@gears-frontx/react": "0.2.0-alpha.8",
+    "@gears-frontx/react": "0.2.0-alpha.9",
     "@gears-frontx/routing": "0.3.0-alpha.0",
     "@gears-frontx/routing-tanstack": "0.3.0-alpha.1",
     "@gears-frontx/ui-kit": "0.4.0-alpha.3",
