@@ -14,6 +14,7 @@ import { effects } from '../../../src/plugins/effects';
 import {
   microfrontends,
   loadExtension,
+  mountExtension,
   unmountExtension,
   MfeEvents,
   selectExtensionState,
@@ -25,7 +26,7 @@ import {
   type Extension,
   type MfeRegistry,
 } from '@gears-frontx/mfes';
-import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
 import { mfeRegistryFactory } from '../../../src/mfe/registry';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
 import type { FrontXApp } from '../../../src/types';
@@ -183,6 +184,180 @@ describe('microfrontends plugin - Phase 13', () => {
       expect(eventSpy).toHaveBeenCalledWith({ extension: testExtension });
 
       unsub.unsubscribe();
+    });
+  });
+
+  describe('13.8.2b - lifecycle actions survive a non-promise executeActionsChain', () => {
+    // After #648, executeActionsChain may throw synchronously, return
+    // undefined, or return a rejecting promise, instead of always returning a
+    // promise. loadExtension/mountExtension/unmountExtension called
+    // `.catch()` unconditionally on the result, which throws into the caller
+    // for the first two cases. Mirrors the guard added to useHostAction.
+    function buildApp(): FrontXApp {
+      const app = createFrontX()
+        .use(effects())
+        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .build();
+      apps.push(app);
+      return app;
+    }
+
+    it('loadExtension does not throw when executeActionsChain returns undefined', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => undefined as unknown as Promise<void>);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        loadExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('loadExtension logs through console.error when executeActionsChain throws synchronously', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+      const syncError = new Error('sync failure from executeActionsChain');
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => {
+        throw syncError;
+      });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        loadExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledWith(
+        `[MFE] Load failed for ${testExtensionId}:`,
+        syncError
+      );
+    });
+
+    it('mountExtension does not throw when executeActionsChain returns undefined', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => undefined as unknown as Promise<void>);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        mountExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('mountExtension logs through console.error when executeActionsChain throws synchronously', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+      const syncError = new Error('sync failure from executeActionsChain');
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => {
+        throw syncError;
+      });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        mountExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledWith(
+        `[MFE] Mount failed for ${testExtensionId}:`,
+        syncError
+      );
+    });
+
+    it('unmountExtension does not throw when executeActionsChain returns undefined', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'getDomain').mockReturnValue({
+        id: testDomainId,
+        actions: [FRONTX_ACTION_UNMOUNT_EXT],
+      } as ReturnType<MfeRegistry['getDomain']>);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => undefined as unknown as Promise<void>);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        unmountExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('unmountExtension logs through console.error when executeActionsChain throws synchronously', () => {
+      const app = buildApp();
+      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
+      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testExtension: Extension = {
+        id: testExtensionId,
+        domain: testDomainId,
+        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+      };
+      const syncError = new Error('sync failure from executeActionsChain');
+
+      const registry = app.mfeRegistry;
+      if (!registry) throw new Error('expected mfeRegistry');
+      vi.spyOn(registry, 'getExtension').mockReturnValue(testExtension);
+      vi.spyOn(registry, 'getDomain').mockReturnValue({
+        id: testDomainId,
+        actions: [FRONTX_ACTION_UNMOUNT_EXT],
+      } as ReturnType<MfeRegistry['getDomain']>);
+      vi.spyOn(registry, 'executeActionsChain').mockImplementation(() => {
+        throw syncError;
+      });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => {
+        unmountExtension(testExtensionId);
+      }).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledWith(
+        `[MFE] Unmount failed for ${testExtensionId}:`,
+        syncError
+      );
     });
   });
 
