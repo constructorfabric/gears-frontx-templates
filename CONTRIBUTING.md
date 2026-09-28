@@ -90,14 +90,18 @@ cd template-shell && npm ci && npm run build && npm run type-check && npm run li
 
 ### Architecture documents
 
-`main.yml`'s `studio-validate` and `studio-validate-kits` jobs run Constructor Studio over `architecture/`, registered in `.cf-studio/config/artifacts.toml` (documents only, no code paths). Documents cite `cpt-` ids defined in gears-frontx, so validation reads a gears-frontx `develop` checkout at `.cf-studio/.workspace/gears-frontx` (gitignored, declared in `core.toml` under `[workspace.sources.gears-frontx]`). The same check locally:
+`main.yml`'s `studio-validate` job runs Constructor Studio over `architecture/`, registered in `.cf-studio/config/artifacts.toml` (documents only, no code paths). It installs the CLI at the pinned release, bootstraps the runtime and the sdlc kit (pinned to `v1.2.1` in `core.toml`) with `cfs update`, which also validates the installed kit, then runs `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate`. Documents cite `cpt-` ids defined in gears-frontx, so validation reads a gears-frontx `develop` checkout at `.cf-studio/.workspace/gears-frontx` (gitignored, declared in `core.toml` under `[workspace.sources.gears-frontx]`). The same check locally:
 
 ```bash
 pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
 git clone --depth 1 --branch develop https://github.com/constructorfabric/gears-frontx.git .cf-studio/.workspace/gears-frontx
+# or reuse the ../gears-frontx sibling clone from above:
+# ln -s ../../../gears-frontx .cf-studio/.workspace/gears-frontx
 cfs update -y --no-interactive --with-kits yes --version v1.6.2
 cfs validate
 ```
+
+Pull that checkout before validating so it keeps following `develop`, as CI does. Without it, every reference to a gears-frontx id fails as `ref-no-definition`, with hints about copy-paste and typos that do not apply, and `cfs workspace-info` shows the `gears-frontx` source as `UNREACHABLE`.
 
 Pass `--version v1.6.2` to every `cfs update`: without it the CLI resolves its latest release, which may differ from the version CI pins.
 
