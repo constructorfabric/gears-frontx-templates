@@ -88,6 +88,19 @@ cd template-shell && npm ci && npm run build && npm run type-check && npm run li
 
 `template-mfe` cannot be validated in place - its packages' `file:` links resolve into `template-mfe/../template-shell`, and its own root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes it onto `template-shell` (the way `frontx add` does) and validates the result; there is no equivalent single local command today.
 
+### Architecture documents
+
+`main.yml`'s `studio-validate` and `studio-validate-kits` jobs run Constructor Studio over `architecture/`, registered in `.cf-studio/config/artifacts.toml` (documents only, no code paths). Documents cite `cpt-` ids defined in gears-frontx, so validation reads a gears-frontx `develop` checkout at `.cf-studio/.workspace/gears-frontx` (gitignored, declared in `core.toml` under `[workspace.sources.gears-frontx]`). The same check locally:
+
+```bash
+pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
+git clone --depth 1 --branch develop https://github.com/constructorfabric/gears-frontx.git .cf-studio/.workspace/gears-frontx
+cfs update -y --no-interactive --with-kits yes --version v1.6.2
+cfs validate
+```
+
+Pass `--version v1.6.2` to every `cfs update`: without it the CLI resolves its latest release, which may differ from the version CI pins.
+
 ## Known follow-ups
 
 Flagged in review and deliberately left alone for now, rather than folded into an unrelated fix:
