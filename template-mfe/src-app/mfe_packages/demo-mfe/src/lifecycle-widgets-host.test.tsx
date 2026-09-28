@@ -641,13 +641,25 @@ describe('demo-mfe widgets-host lifecycle', () => {
     fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
     vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => undefined);
     window.history.replaceState(null, '', '/?screen=widgets-host');
+    // `not.toThrow()` alone doesn't prove the click handler stayed clean: React 19
+    // can catch a thrown error from an event handler and report it through
+    // console.error itself, which would pass `not.toThrow()` while still
+    // signaling the exact `undefined.catch` regression this test guards against.
+    // Asserting the spy saw nothing is the unambiguous check.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
     const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
     expect(button).toBeTruthy();
 
-    expect(() => fireEvent.click(button!)).not.toThrow();
+    act(() => {
+      fireEvent.click(button!);
+    });
 
+    // Unrelated `act(...)` warnings from `mount()`'s own render are expected noise in
+    // this suite (see the sibling "synchronous refusal" test above) — what matters is
+    // that the ping dispatch itself never logs a failure.
+    expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.anything());
     expect(fakeRegistry.executeActionsChain).toHaveBeenCalledWith(
       expect.objectContaining({
         action: expect.objectContaining({ type: WIDGET_PING_ACTION_TYPE, target: ALPHA_ID }),
