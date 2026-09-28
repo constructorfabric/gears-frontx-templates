@@ -143,8 +143,13 @@ jobs:
       run: pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
 
     # .cf-studio/.core is gitignored (Constructor-Studio-owned, regenerated
-    # on demand) - materialize it before invoking studio.py directly.
+    # on demand) - materialize it before invoking studio.py directly. cfs
+    # resolves the pinned tag and downloads it through api.github.com; it
+    # sends GITHUB_TOKEN when set, so the call is not held to the anonymous
+    # per-IP rate limit that shared runners exhaust.
     - name: Bootstrap Constructor Studio runtime
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: cfs update -y --no-interactive --with-kits yes --version v1.6.2
 
     - name: Validate artifacts and traceability
@@ -168,6 +173,8 @@ jobs:
       run: pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
 
     - name: Bootstrap Constructor Studio runtime
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: cfs update -y --no-interactive --with-kits yes --version v1.6.2
 
     - name: Validate installed kits
