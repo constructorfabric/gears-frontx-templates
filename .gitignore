@@ -49,14 +49,18 @@ __pycache__/
 # Studio execution plans
 .cf-studio/.plans/
 
-# Studio sdlc kit content - tool-managed, regenerated via `cfs update --with-kits yes`.
-# Studio explore cache. Both placed outside the BEGIN/END Constructor Studio
-# block below because that block is fully rewritten on every `cfs update` /
-# `cfs generate-agents` run and does not preserve manual additions.
-.cf-studio/config/kits/sdlc/*
+# Studio explore cache. Placed outside the BEGIN/END Constructor Studio block
+# below because that block is fully rewritten on every `cfs update` /
+# `cfs generate-agents` run and does not preserve manual additions. The sdlc
+# kit content is ignored inside that block: core.toml marks the kit
+# `tracking = "ignored"`, so cfs writes the entry itself and
+# `cfs update --with-kits yes` rebuilds the kit from the pinned release.
 .cf-studio/.cache/
 # Release notes the CLI caches on every `cfs update`; tool output, not config.
 .cf-studio/whatsnew.toml
+
+# PR review data (.cf-studio/config/pr-review.toml sets data_dir = ".prs").
+/.prs/
 
 # gears-frontx develop checkout that `cfs validate` reads as the workspace
 # source for cross-repo `cpt-` references (core.toml [workspace.sources]);
@@ -541,4 +545,5 @@ __pycache__/
 .windsurf/workflows/cf-write-docs.md
 .windsurf/workflows/cf-write-skills.md
 .windsurf/workflows/cf.md
+.cf-studio/config/kits/sdlc/
 # END Constructor Studio

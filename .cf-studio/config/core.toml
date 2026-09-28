@@ -7,16 +7,16 @@ project_root = ".."
 version_source = "project_config"
 runtime_tracking = "ignored"
 agent_tracking = "ignored"
-kit_tracking = "tracked"
+kit_tracking = "ignored"
 
 [kits]
 [kits.sdlc]
 format = "CFS"
 path = "config/kits/sdlc"
-source = "github:constructorfabric/studio-kit-sdlc"
+source = "github:constructorfabric/studio-kit-sdlc@v1.2.1"
 install_mode = "copy"
 version = "v1.2.1"
-tracking = "tracked"
+tracking = "ignored"
 tool_risk_fingerprint = "3bdcd30d3029ad80e74c76eb0b57d80ad617a51191eb9d9307b2921c65f5dc16"
 
 [kits.sdlc.local_metadata]
@@ -316,9 +316,9 @@ user_modifiable = false
 
 [kits.sdlc.source_provenance]
 source_type = "github"
-resolver_mode = "latest_release"
-resolution_basis = "github_release"
-requested_ref = "latest"
+resolver_mode = "explicit"
+resolution_basis = "github_ref"
+requested_ref = "v1.2.1"
 resolved_ref = "v1.2.1"
 commit_sha = "4318126"
 canonical_source = "github:constructorfabric/studio-kit-sdlc"
