@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { act, waitFor } from '@testing-library/react';
+import { act, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveNavigationHistory } from '@gears-frontx/routing';
 import type { ChildMfeBridge } from '@gears-frontx/react';
@@ -10,6 +10,7 @@ const ENTRY_ADDRESSES =
   'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';
 const MOUNT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
 const UNMOUNT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~';
+const WIDGET_PING_ACTION_TYPE = 'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
 
 const ALPHA_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
 const BETA_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_beta.v1';
@@ -121,7 +122,10 @@ class FakeRegistry {
   typeSystem = {
     register: vi.fn(),
     registerSchema: vi.fn(),
-    getSchema: vi.fn(() => undefined),
+    // Widened beyond `undefined` (rather than left inferred) so the ping
+    // tests below can give it a per-test implementation that returns a
+    // schema shape without fighting `Mock<() => undefined>`'s narrow type.
+    getSchema: vi.fn((): { actions?: readonly string[] } | undefined => undefined),
   };
 }
 
@@ -626,4 +630,80 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(withOpeningSpy).toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('opening/auto-mount'), expect.any(Error));
   }, 10000);
+
+  it('does not throw when a ping dispatch returns no promise, and the action still counts as dispatched (ping, #648)', async () => {
+    fakeRegistry = new FakeRegistry();
+    // After #648 `executeActionsChain` can refuse synchronously and return
+    // nothing at all — not just for the mount dispatches `mountThroughChain`
+    // already covers, but for every dispatch this registry makes, ping
+    // included. Schema lookups return a fixed shape regardless of which
+    // widget's entry is asked about — this fixture only has one entry type.
+    fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
+    vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => undefined);
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+
+    const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
+    expect(button).toBeTruthy();
+
+    expect(() => fireEvent.click(button!)).not.toThrow();
+
+    expect(fakeRegistry.executeActionsChain).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: expect.objectContaining({ type: WIDGET_PING_ACTION_TYPE, target: ALPHA_ID }),
+      }),
+    );
+  });
+
+  it('does not throw when a ping dispatch refuses synchronously (ping, synchronous refusal)', async () => {
+    fakeRegistry = new FakeRegistry();
+    fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
+    vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => {
+      throw new Error('ping refused synchronously');
+    });
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
+    expect(button).toBeTruthy();
+
+    expect(() => fireEvent.click(button!)).not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.any(Error));
+  });
+
+  it('rebinds impl to the already-registered domain after an HMR reload, when the nested registry is cached (HMR + cached registry)', async () => {
+    // Same key `lifecycle-widgets-host.tsx`'s own `widgetsHolder` singleton
+    // reads/writes (see its doc comment) — read here without any SUT export,
+    // the same way this file already reaches into a module's internals for
+    // things production intentionally keeps unexported.
+    const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
+
+    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const registry = new FakeRegistry();
+    fakeRegistry = registry;
+
+    // First mount: nothing registered on `registry` yet, so `registerDomain`
+    // runs for real and constructs `WidgetsDomainImpl` (`holder.impl = this`).
+    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
+
+    // Simulate an HMR update of THIS module without touching `registry`:
+    // `vi.resetModules()` (inside `mount()`, `keepModule` defaults to false)
+    // clears vitest's module cache, so the next `import('./lifecycle-widgets-host')`
+    // re-runs the module's own top-level code — exactly what a real HMR
+    // reload does to its bindings. `fakeRegistry` is deliberately left
+    // pointing at the SAME instance (unlike every other test's `beforeEach`):
+    // the nested `MfeRegistry` singleton is what HMR does NOT reset in
+    // production, and reproducing that half of the bug is the point.
+    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+
+    const holder = (globalThis as Record<symbol, { impl?: unknown } | undefined>)[WIDGETS_HOLDER_KEY];
+    expect(holder?.impl).toBeDefined();
+    // Auto-mount ran to completion on the post-"HMR" module instance without
+    // throwing (`holder.impl!.mountThroughChain` reading a real `impl`, not
+    // `undefined`), and the widgets are still mounted — not silently gone.
+    expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
+  });
 });

@@ -464,8 +464,43 @@ function widgetsNavigation(): { history: NavigationHistory; signal: RouteSignal 
  * only resetting its `routing` field (never `impl`, which belongs to the
  * domain implementation instance and outlives any one mount), is what lets a
  * remount still reach the original `WidgetsDomainImpl`.
+ *
+ * This same reasoning is why an HMR update of THIS module must not hand the
+ * next `bootstrapWidgetsRuntime()` call a fresh holder either: HMR replaces
+ * this module's own top-level bindings (a plain `const` here would start
+ * `{ impl: undefined }` again on every edit), but it does NOT replace the
+ * cached nested `MfeRegistry` (that singleton lives in `@gears-frontx/framework`'s
+ * own module, untouched by this file's reload — see `createWidgetsHostApp`'s
+ * doc comment) or the `WidgetsDomainImpl` instance already registered on it.
+ * `bootstrapWidgetsRuntime`'s `!registry.getDomain(...)` guard then skips
+ * `registerDomain` on the post-HMR pass (the domain is still there), so the
+ * factory that performs `holder.impl = this` never runs again for the new
+ * holder — reproducing the exact "fresh holder, cached registry" gap the
+ * paragraph above already fixed for a plain remount, this time via HMR
+ * instead of an unmount/remount cycle.
+ *
+ * Recovering the PREVIOUS module instance's holder is done through a
+ * `globalThis`-keyed slot, the SAME mechanism `@gears-frontx/routing`'s own
+ * `resolveNavigationHistory()` already uses to survive this exact class of
+ * module-identity break (`src/history/singleton.ts`'s `NAVIGATION_HISTORY_KEY`)
+ * — not `import.meta.hot.data`: that field is only ever populated by a real
+ * Vite dev server walking its module graph on an actual file-save HMR event,
+ * so it stays `undefined` in every other realm this module can load in
+ * (a production build, a test runner's module loader, SSR) and would leave
+ * this bug fixed only in the one environment hardest to write a regression
+ * test against. A `globalThis` slot survives any module-identity reset for
+ * the same reason `resolveNavigationHistory()`'s does — the realm object
+ * itself is never torn down — which is what lets the test below reproduce
+ * the fresh-module/cached-registry gap with a plain `vi.resetModules()`,
+ * no real dev server required. This is symmetric with the existing
+ * `import.meta.hot.dispose` below, which already reasons about `widgetsHolder`
+ * surviving its own module's reload: it stops the OLD `routing` there and
+ * leaves `impl` alone for the same reason this recovers it here.
  */
-const widgetsHolder: WidgetsRoutingHolder = { routing: undefined, impl: undefined };
+const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
+const realm = globalThis as Record<symbol, WidgetsRoutingHolder | undefined>;
+const widgetsHolder: WidgetsRoutingHolder = realm[WIDGETS_HOLDER_KEY] ?? { routing: undefined, impl: undefined };
+realm[WIDGETS_HOLDER_KEY] = widgetsHolder;
 
 interface WidgetsHostScreenProps {
   /**
@@ -646,21 +681,17 @@ function WidgetsHostScreen({
       return entry?.actions?.includes(WIDGET_PING_ACTION_TYPE) ?? false;
     });
 
+  // #648: `executeActionsChain` is no longer guaranteed to return a promise (it can refuse
+  // synchronously and return nothing), so an unconditional `.catch()` on its result would
+  // throw `undefined.catch` even though the chain ran. `dispatchChain` already normalizes all
+  // three shapes (sync throw, `undefined`, a promise) — same helper `mountThroughChain` above
+  // uses, rather than a second bespoke adapter for the same problem.
   const handlePing = (extensionId: string): void => {
-    registry
-      .executeActionsChain({
-        action: {
-          type: WIDGET_PING_ACTION_TYPE,
-          target: extensionId,
-          payload: {},
-        },
-      })
-      .catch((err) => {
-        console.error(
-          `[demo-mfe widgets-host] ping ${extensionId} failed:`,
-          err,
-        );
-      });
+    dispatchChain(
+      registry,
+      { action: { type: WIDGET_PING_ACTION_TYPE, target: extensionId, payload: {} } },
+      `ping ${extensionId}`,
+    );
   };
 
   return (
