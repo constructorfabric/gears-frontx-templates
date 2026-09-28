@@ -1,0 +1,93 @@
+# Studio artifacts registry
+#
+# Documents only. No [[systems.codebase]] or [[systems.children.codebase]]
+# entry is registered anywhere in this file, on purpose. gears-frontx
+# ADR-0033 (cpt-frontx-adr-template-territory-traceability) rules that the
+# `@cpt-` markers present in template territory "are **residue of the
+# archived pre-redesign generation and bind nothing**", and that "a `@cpt-`
+# marker found in template payload binds nothing". This repository still
+# carries such residue markers in template-shell, template-mfe and scripts.
+# Registering those paths for traceability scanning would read every residue
+# marker as a claim on a live instruction and fail it as `code-orphan-ref`.
+# A code path is registered here only once an artifact in this repository
+# gives it numbered instructions to point at.
+
+[[ignore]]
+reason = "Installed dependencies, not repository source"
+patterns = ["*/node_modules/*"]
+
+[[ignore]]
+reason = "Build output, regenerated from source"
+patterns = ["*/dist/*"]
+
+# Root system. Every kind is optional so a tree without documents (main
+# today) passes; a document that does land is validated in full.
+[[systems]]
+name = "FrontX Templates"
+slug = "frontx"
+kit = "sdlc"
+artifacts_dir = "architecture"
+
+[[systems.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "architecture"
+
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "FULL"
+required = false
+
+[systems.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "FULL"
+required = false
+
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "FULL"
+required = false
+
+[systems.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "FULL"
+required = false
+
+[systems.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "FULL"
+required = false
+
+# The workspace template family: the PRD and DESIGN under
+# architecture/workspace-templates, with ids cpt-frontx-workspace-templates-*.
+[[systems.children]]
+name = "Workspace Templates"
+slug = "workspace-templates"
+kit = "sdlc"
+artifacts_dir = "architecture/workspace-templates"
+
+[[systems.children.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "architecture/workspace-templates"
+
+[systems.children.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "FULL"
+required = false
+
+[systems.children.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "FULL"
+required = false
+
+[systems.children.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "FULL"
+required = false
+
+[systems.children.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "FULL"
+required = false
