@@ -2,26 +2,23 @@
 #
 # Documents only. No [[systems.codebase]] or [[systems.children.codebase]]
 # entry is registered anywhere in this file, on purpose. gears-frontx
-# ADR-0033 (cpt-frontx-adr-template-territory-traceability) rules that the
-# `@cpt-` markers present in template territory "are **residue of the
-# archived pre-redesign generation and bind nothing**", and that "a `@cpt-`
-# marker found in template payload binds nothing". This repository still
-# carries such residue markers in template-shell, template-mfe and scripts.
-# Registering those paths for traceability scanning would read every residue
-# marker as a claim on a live instruction and fail it as `code-orphan-ref`.
-# A code path is registered here only once an artifact in this repository
-# gives it numbered instructions to point at.
+# ADR-0033 (cpt-frontx-adr-template-territory-traceability) rules that
+# templates are not specified by the ecosystem artifact tree, that the `@cpt-`
+# markers present in template territory "are **residue of the archived
+# pre-redesign generation and bind nothing**", and that "a `@cpt-` marker
+# found in template payload binds nothing". This repository still carries such
+# residue markers in template-shell, template-mfe and scripts, so it registers
+# no code paths. A code path is registered here only once an artifact in this
+# repository gives it numbered instructions to point at.
 
-[[ignore]]
-reason = "Installed dependencies, not repository source"
-patterns = ["*/node_modules/*"]
+# Every kind below is `required = false`. In cfs v1.6.2 the flag is not
+# enforced while core.toml declares a [workspace]: with `required = true` on
+# every kind, an absent or empty architecture/ and a PRD without its DESIGN
+# both pass `cfs validate`. Without a [workspace], the same setting fails an
+# empty tree as `Required autodetect artifact missing` for every kind. `false`
+# keeps main (no documents) green either way, so a missing document is caught
+# in review, not here. A document that does land is validated in full.
 
-[[ignore]]
-reason = "Build output, regenerated from source"
-patterns = ["*/dist/*"]
-
-# Root system. Every kind is optional so a tree without documents (main
-# today) passes; a document that does land is validated in full.
 [[systems]]
 name = "FrontX Templates"
 slug = "frontx"
@@ -59,8 +56,9 @@ pattern = "features/*/FEATURE.md"
 traceability = "FULL"
 required = false
 
-# The workspace template family: the PRD and DESIGN under
-# architecture/workspace-templates, with ids cpt-frontx-workspace-templates-*.
+# The workspace template family under architecture/workspace-templates, with
+# ids cpt-frontx-workspace-templates-*: its PRD and DESIGN, and the ADRs and
+# FEATUREs it adds later.
 [[systems.children]]
 name = "Workspace Templates"
 slug = "workspace-templates"
