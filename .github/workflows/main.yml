@@ -113,6 +113,10 @@ jobs:
   studio-validate:
     name: Studio Validate Artifacts
     runs-on: ubuntu-latest
+    # The Constructor Studio release, pinned once here for both the CLI install
+    # and the runtime it materializes.
+    env:
+      CFS_VERSION: v1.6.2
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
@@ -122,9 +126,10 @@ jobs:
     # Documents here cite `cpt-` ids that gears-frontx defines; without its
     # tree on disk every such reference fails as ref-no-definition. core.toml
     # [workspace.sources.gears-frontx] points at this path, which is
-    # gitignored. Same checkout of develop as template-drift.yml, nested
-    # under .cf-studio/ instead of a sibling path because the source path is
-    # resolved from this repository's root.
+    # gitignored. Same checkout of develop as template-drift.yml, which puts it
+    # at `gears-frontx` in the workspace root; here it is nested under
+    # .cf-studio/ because the source path is resolved from this repository's
+    # root.
     - name: Checkout gears-frontx develop
       uses: actions/checkout@v5
       with:
@@ -140,7 +145,7 @@ jobs:
         python-version: '3.12'
 
     - name: Install Constructor Studio CLI
-      run: pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
+      run: pipx install "git+https://github.com/constructorfabric/studio.git@${{ env.CFS_VERSION }}"
 
     # .cf-studio/.core is gitignored (Constructor-Studio-owned, regenerated
     # on demand) - materialize it before invoking studio.py directly. cfs
@@ -150,35 +155,13 @@ jobs:
     - name: Bootstrap Constructor Studio runtime
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: cfs update -y --no-interactive --with-kits yes --version v1.6.2
+      run: cfs update -y --no-interactive --with-kits yes --version ${{ env.CFS_VERSION }}
 
+    # The bootstrap above also validates the installed sdlc kit (its output
+    # prints `Validate kits: PASS`), and this repository registers no kit of
+    # its own, so no separate kit job runs.
     - name: Validate artifacts and traceability
       run: python3 .cf-studio/.core/skills/studio/scripts/studio.py validate
-
-  studio-validate-kits:
-    name: Studio Validate Kits
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-      with:
-        persist-credentials: false
-
-    - name: Setup Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.12'
-
-    - name: Install Constructor Studio CLI
-      run: pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
-
-    - name: Bootstrap Constructor Studio runtime
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: cfs update -y --no-interactive --with-kits yes --version v1.6.2
-
-    - name: Validate installed kits
-      run: python3 .cf-studio/.core/skills/studio/scripts/studio.py validate-kits
 
   # template-shell and template-mfe carry their own arch:deps / lint /
   # test:unit scripts, and nothing else in this workflow enters them - so
