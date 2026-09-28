@@ -65,14 +65,33 @@ export function useHostAction<TPayload extends Record<string, unknown> = Record<
       },
     };
 
-    // @cpt-begin:cpt-frontx-flow-react-bindings-use-host-action:p1:inst-log-action-error
-    // Send the chain to the host
-    bridge.executeActionsChain(chain).catch((error: Error) => {
+    const logFailure = (error: unknown): void => {
       console.error(
         `[useHostAction] Failed to send action '${actionTypeId}':`,
         error
       );
-    });
+    };
+
+    // @cpt-begin:cpt-frontx-flow-react-bindings-use-host-action:p1:inst-log-action-error
+    // Send the chain to the host. `executeActionsChain` is typed as
+    // Promise<void>, but this package cannot import the template lib's
+    // `dispatchChain` (packages/react sits below src-app in the
+    // state/i18n -> framework -> react layer chain, template-shell/.dependency-cruiser.cjs),
+    // so it mirrors dispatchChain's semantics locally: after #648 the bridge
+    // may throw synchronously, resolve to a non-promise, or return a promise
+    // that rejects. All three are logged the same way, none escapes into React.
+    try {
+      const result: unknown = bridge.executeActionsChain(chain);
+      const isThenable =
+        typeof result === 'object' &&
+        result !== null &&
+        typeof (result as { then?: unknown }).then === 'function';
+      if (isThenable) {
+        Promise.resolve(result as PromiseLike<void>).catch(logFailure);
+      }
+    } catch (error) {
+      logFailure(error);
+    }
     // @cpt-end:cpt-frontx-flow-react-bindings-use-host-action:p1:inst-log-action-error
   }, [actionTypeId, bridge]);
   // @cpt-end:cpt-frontx-flow-react-bindings-use-host-action:p1:inst-return-action-callback
