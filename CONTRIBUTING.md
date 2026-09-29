@@ -90,20 +90,17 @@ cd template-shell && npm ci && npm run build && npm run type-check && npm run li
 
 ### Architecture documents
 
-`main.yml`'s `studio-validate` job runs Constructor Studio over `architecture/`, registered in `.cf-studio/config/artifacts.toml` (documents only, no code paths). It installs the CLI at the pinned release, bootstraps the runtime and the sdlc kit (pinned to `v1.2.1` in `core.toml`) with `cfs update`, which also validates the installed kit, then runs `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate`. Documents cite `cpt-` ids defined in gears-frontx, so validation reads a gears-frontx `develop` checkout at `.cf-studio/.workspace/gears-frontx` (gitignored, declared in `core.toml` under `[workspace.sources.gears-frontx]`). The same check locally:
+`main.yml`'s `studio-validate` job runs Constructor Studio over the documents registered in `.cf-studio/config/artifacts.toml`: the catalogue's own under `architecture/` and each template's under `<template>/architecture`, documents only, no code paths. It installs the CLI at the pinned release, bootstraps the runtime and the sdlc kit (pinned to `v1.2.1` in `core.toml`) with `cfs update`, which also validates the installed kit, then runs `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate`. The bootstrap step carries `GITHUB_TOKEN` because cfs resolves and downloads the pinned core and kit through the GitHub API. The same check locally:
 
 ```bash
 pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
-git clone --depth 1 --branch develop https://github.com/constructorfabric/gears-frontx.git .cf-studio/.workspace/gears-frontx
-# or reuse the ../gears-frontx sibling clone from above:
-# ln -s ../../../gears-frontx .cf-studio/.workspace/gears-frontx
 cfs update -y --no-interactive --with-kits yes --version v1.6.2
 cfs validate
 ```
 
-Pull that checkout before validating so it keeps following `develop`, as CI does. Without it, every reference to a gears-frontx id fails as `ref-no-definition`, with hints about copy-paste and typos that do not apply, and `cfs workspace-info` shows the `gears-frontx` source as `UNREACHABLE`.
-
 Pass `--version v1.6.2` to every `cfs update`: without it the CLI resolves its latest release, which may differ from the version CI pins.
+
+The catalogue root system describes this repository as a collection of templates. Each template, a top-level directory with a `frontx-template.json` manifest, registers its own system in `.cf-studio/config/artifacts.toml` over `<template>/architecture`, and its ids carry the template's own prefix `cpt-template-<name>-`. The validator accepts any registered prefix in any document, so review is where a template's use of its own prefix is checked. This repository shares no ids with gears-frontx: gears-frontx ids are internal to it and may change, so a gears-frontx decision is cited as a link to its file and never as a backticked `cpt-frontx-*` id. Every registered kind is `required = false` while its directory holds no documents; the PR that adds a template's PRD and DESIGN sets those two kinds of its system to `required = true`.
 
 ## Known follow-ups
 
