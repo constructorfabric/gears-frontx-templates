@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageDayKey, messageDayLabel, messageTimeOfDay } from './format';
+import { labelOf, messageDayKey, messageDayLabel, messageTimeOfDay } from './format';
 
 describe('messageDayKey', () => {
   it('reads the calendar-date prefix off a transcript timestamp', () => {
@@ -28,5 +28,23 @@ describe('messageTimeOfDay', () => {
 
   it('returns the input unchanged if it has no " - " separator', () => {
     expect(messageTimeOfDay('8:21 AM')).toBe('8:21 AM');
+  });
+});
+
+describe('messageDayLabel parsing', () => {
+  it('reads every month abbreviation without relying on non-ISO Date parsing', () => {
+    expect(messageDayLabel('Jan 3, 2027 - 9:00 AM')).toBe('Jan 3');
+    expect(messageDayLabel('Dec 31, 2026 - 11:59 PM')).toBe('Dec 31');
+  });
+
+  it('shows a key it cannot read as it is, rather than an invalid date', () => {
+    expect(messageDayLabel('yesterday - 8:21 AM')).toBe('yesterday');
+  });
+});
+
+describe('labelOf', () => {
+  it('labels a value that does not capitalise into its label', () => {
+    expect(labelOf('none')).toBe('No priority');
+    expect(labelOf('online')).toBe('Online');
   });
 });

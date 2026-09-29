@@ -9,7 +9,7 @@ import {
   dataTableColumnHelper,
   Input,
 } from '@gears-frontx/ui-kit';
-import type { ActivityItem, ActivityKind, ActivityStatus } from '../../api/dashboardTypes';
+import type { ActivityItem, ActivityKind, ActivityStatus, TopAgent } from '../../api/dashboardTypes';
 import type { Contact } from '../../api/types';
 import type { Translate } from '../../app/i18n';
 import { identityToneOf, initialsOf, labelOf, longRelativeTime, orDash } from '../../shared/format';
@@ -19,10 +19,12 @@ import styles from '../../styles/dashboard.module.css';
 export type ActivityTableProps = {
   activity: ActivityItem[];
   contacts: Contact[];
+  /** The roster `ActivityItem.ownerAgentId` points into. */
+  agents: TopAgent[];
   t: Translate;
 };
 
-type ActivityRow = ActivityItem & { contact: Contact };
+type ActivityRow = ActivityItem & { contact: Contact; ownerName: string };
 
 const KIND_TONE: Record<ActivityKind, 'info' | 'accent' | 'secondary'> = {
   chat: 'info',
@@ -53,18 +55,20 @@ const STATUS_TONE: Record<ActivityStatus, 'info' | 'warning' | 'success' | 'dang
  * nothing (the same convention the rail's profile menu and
  * `ConversationThread`'s create-ticket button already follow).
  */
-export function ActivityTable({ activity, contacts, t }: ActivityTableProps) {
+export function ActivityTable({ activity, contacts, agents, t }: ActivityTableProps) {
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
+  const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent.name])), [agents]);
 
+  // A row whose contact or owner the client does not hold is left out rather
+  // than rendered half-empty.
   const rows = useMemo<ActivityRow[]>(
     () =>
-      activity
-        .map((item) => {
-          const contact = contactById.get(item.contactId);
-          return contact ? { ...item, contact } : null;
-        })
-        .filter((row): row is ActivityRow => row !== null),
-    [activity, contactById]
+      activity.flatMap((item) => {
+        const contact = contactById.get(item.contactId);
+        const ownerName = agentNameById.get(item.ownerAgentId);
+        return contact && ownerName !== undefined ? [{ ...item, contact, ownerName }] : [];
+      }),
+    [activity, contactById, agentNameById]
   );
 
   const columns = useMemo(() => {
@@ -112,7 +116,7 @@ export function ActivityTable({ activity, contacts, t }: ActivityTableProps) {
         ),
         cell: ({ getValue }) => <Badge variant={STATUS_TONE[getValue()]}>{labelOf(getValue())}</Badge>,
       }),
-      column.accessor('ownerAgentName', {
+      column.accessor('ownerName', {
         header: ({ column: instance }) => (
           <DataTableSortButton column={instance}>
             <span className={styles.tableHeaderLabel}>

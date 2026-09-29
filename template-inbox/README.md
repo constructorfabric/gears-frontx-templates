@@ -74,7 +74,9 @@ The dev server prints the local address. To serve a production build from a sub-
 
 ## Data and mocks
 
-Every conversation, message, mail, mailbox, contact, dashboard metric and identity comes from the seed datasets in `src/api/`, served by the app's own `@gears-frontx/api` services (`InboxApiService`, `MailApiService`, `DashboardApiService`) through the app's `RestMockPlugin`. Each service registers the plugin, and `src/api/registry.ts` switches it on by calling each service's `useMocks(true)` at boot; passing `false` there sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged. All seed email addresses use reserved example domains.
+Every conversation, message, mail, mailbox, contact, dashboard metric and identity comes from the seed datasets in `src/api/`, served by the app's own `@gears-frontx/api` services (`InboxApiService`, `MailApiService`, `DashboardApiService`) through the app's `RestMockPlugin`. Each service registers the plugin without switching it on; `setMockMode(true)` in `src/api/registry.ts` switches every service's mock plugin on at boot. Passing `false` there, or dropping the call, sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
+
+While mocks are on, a route the mock map does not know answers 404 instead of reaching the network, and `POST /api/inbox/messages` answers 400 to a body without a conversation or text. A posted reply or note is kept in the mock store, so it is still in the thread after the screen remounts, until the page reloads. All seed email addresses use reserved example domains, and all seed phone numbers use the fictional `555 01xx` range.
 
 ## Theming
 

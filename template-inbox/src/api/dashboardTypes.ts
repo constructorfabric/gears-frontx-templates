@@ -89,7 +89,7 @@ export type ContactStageSegment = {
   count: number;
 };
 
-/** One stage of the new row's "Stage funnel" card, oldest (widest) first.
+/** One stage of the "Stage funnel" card, oldest (widest) first.
  * Each stage's share of the funnel is computed relative to the first
  * stage's own count at render (see `funnelStagePercent`), never stored. */
 export type FunnelStage = {
@@ -98,7 +98,7 @@ export type FunnelStage = {
   count: number;
 };
 
-/** One row of the new row's "Conversion by source" horizontal stacked bar:
+/** One row of the "Conversion by source" horizontal stacked bar:
  * a lead source and how many of its leads were won versus lost. The card's
  * headline percent is `won / (won + lost)` across every source, computed at
  * render (see `conversionWonPercent`), never stored. */
@@ -129,7 +129,8 @@ export type ActivityItem = {
   contactId: string;
   kind: ActivityKind;
   status: ActivityStatus;
-  ownerAgentName: string;
+  /** The `TopAgent.id` of the agent who owns the row. */
+  ownerAgentId: string;
   /** ISO instant, resolved from the same load-time-anchor convention every
    * other dataset in this app uses. */
   occurredAt: string;
@@ -148,9 +149,9 @@ export type GetDashboardResponse = {
   /** Row 1's "Contacts by stage" donut - five contact lifecycle stages. */
   contactsByStage: ContactStageSegment[];
   workload: WorkloadMetric[];
-  /** The new row's "Stage funnel" card, oldest (widest) stage first. */
+  /** The "Stage funnel" card, oldest (widest) stage first. */
   stageFunnel: FunnelStage[];
-  /** The new row's "Conversion by source" card. */
+  /** The "Conversion by source" card. */
   conversionBySource: ConversionSource[];
   topAgents: TopAgent[];
   activity: ActivityItem[];

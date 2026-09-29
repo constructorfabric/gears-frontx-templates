@@ -7,7 +7,7 @@
  * contact, and a stored timeline would be the same facts written twice.
  */
 
-import type { Contact } from '../../api/types';
+import type { Contact, Conversation } from '../../api/types';
 
 export type ActivityKind = 'ticket' | 'conversation' | 'signed-up' | 'added';
 
@@ -18,7 +18,12 @@ export type ActivityEntry = {
   at: string;
 };
 
-export function buildActivity(contact: Contact): ActivityEntry[] {
+/**
+ * `conversations` are the contact's own threads, already joined from
+ * `contact.conversations` - a ref the client holds no conversation for has no
+ * date to place on the timeline, so it is simply not there.
+ */
+export function buildActivity(contact: Contact, conversations: Conversation[]): ActivityEntry[] {
   const entries: ActivityEntry[] = [
     ...contact.tickets.map((ticket) => ({
       id: `ticket-${ticket.id}`,
@@ -26,11 +31,11 @@ export function buildActivity(contact: Contact): ActivityEntry[] {
       label: `Opened ticket ${ticket.number}`,
       at: ticket.openedAt,
     })),
-    ...contact.conversations.map((conversation) => ({
+    ...conversations.map((conversation) => ({
       id: `conversation-${conversation.id}`,
       kind: 'conversation' as const,
       label: 'Started a conversation',
-      at: conversation.at,
+      at: conversation.lastActivityAt,
     })),
     { id: 'added', kind: 'added', label: 'Added as contact', at: contact.addedAt },
   ];

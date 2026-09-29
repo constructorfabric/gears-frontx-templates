@@ -7,11 +7,10 @@
  * service would deliver these as parsed JSON.
  *
  * The collection responses are deliberately whole-collection rather than
- * per-id: a mock factory is handed the request body and nothing else
- * (`MockResponseFactory` in `@gears-frontx/api`), so it cannot tell which `:id`
- * a path pattern matched. Selection is therefore a client-side concern in
- * every screen: list search filters live and counters recompute without a
- * round trip.
+ * per-id: a mock factory is handed the request body and nothing else, so it
+ * cannot tell which id a path named. Selection is therefore a client-side
+ * concern in every screen: list search filters live and counters recompute
+ * without a round trip.
  */
 
 /** Presence is an identity-independent live state; it drives the avatar badge. */
@@ -42,7 +41,7 @@ export type AgentIdentity = {
 export type Channel = {
   id: string;
   label: string;
-  /** Iconify-free: a lucide component name the channel sidebar maps to an icon. */
+  /** An icon name the channel sidebar maps to a lucide component. */
   icon: 'hash';
   itemCount: number;
   openCount: number;
@@ -128,12 +127,18 @@ export type Message = {
   /** The image to render; only meaningful for `kind: 'image'`. */
   imageUrl: string | null;
   /**
-   * Rendered exactly as stored in the seed data. Unlike the list's
-   * relative times these are calendar text in the transcript, so they are
-   * stored as the string that is displayed rather than as an instant.
+   * Calendar text in the transcript's format ("Aug 21, 2026 - 8:21 AM"),
+   * rendered as it arrives. Unlike the list's relative times the transcript
+   * shows calendar text, so the server states the text it wants displayed;
+   * the seed data derives it from its anchor (`seedClock.ts`), and the date
+   * half is what the thread groups its day dividers by.
    */
   timestamp: string;
-  /** Read receipt, outbound only; inbound messages never carry one. */
+  /**
+   * Read receipt: `true` read, `false` delivered and not yet read, `null` no
+   * receipt at all - every inbound message, every internal note, and an
+   * outbound reply nothing has been delivered for yet.
+   */
   seen: boolean | null;
   /**
    * An internal note, written on the composer's Note tab and never delivered
@@ -163,13 +168,15 @@ export type ContactTicket = {
   status: TicketStatus;
 };
 
+/**
+ * A conversation the contact took part in, by id only. The subject, the
+ * channel and the time come from the conversation itself, joined on the
+ * client, so a contact page can never show a thread that disagrees with the
+ * inbox - and a ref whose conversation the client does not hold is skipped
+ * rather than rendered from stale copies.
+ */
 export type ContactConversationRef = {
   id: string;
-  subject: string;
-  snippet: string;
-  channel: ConversationChannel;
-  /** ISO instant, resolved from the same load-time anchor. */
-  at: string;
 };
 
 export type Contact = {

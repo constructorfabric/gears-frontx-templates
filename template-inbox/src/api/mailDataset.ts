@@ -2,7 +2,7 @@
  * Mail domain - the seeded content, and the only module that holds any.
  *
  * Same discipline as `dataset.ts`: imported by `mailMocks.ts` alone, instants
- * resolved once at module load as offsets from `ANCHOR_MS` so the list keeps
+ * are offsets back from the shared anchor in `seedClock.ts` so the list keeps
  * reading "1h" and "2d" on any run day, and every mailbox count downstream is
  * computed from `mails` rather than stored on a row - see `mailSelectors.ts`.
  *
@@ -13,36 +13,18 @@
  * messages in `mailMessages` behind the reading pane's toggle.
  */
 
-import type { Mail, MailMessage, Mailbox, MailboxId } from './mailTypes';
+import {
+  MAILBOX_ARCHIVE,
+  MAILBOX_DRAFTS,
+  MAILBOX_INBOX,
+  MAILBOX_SENT,
+  MAILBOX_TRASH,
+} from './constants';
+import type { Mail, MailMessage, Mailbox } from './mailTypes';
+import { calendarText, daysAgo, hoursAgo } from './seedClock';
 
-const ANCHOR_MS = Date.now();
-
-const hoursAgo = (hours: number): string => new Date(ANCHOR_MS - hours * 3_600_000).toISOString();
-
-const daysAgo = (days: number): string => hoursAgo(days * 24);
-
-const dateFormat = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
-
-const timeFormat = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-});
-
-/** Calendar text for a history card's date line, matching the transcript's
- * own format in `mocks.ts`. */
-const calendarText = (iso: string): string =>
-  `${dateFormat.format(new Date(iso))} - ${timeFormat.format(new Date(iso))}`;
-
-export const MAILBOX_INBOX: MailboxId = 'inbox';
-export const MAILBOX_DRAFTS: MailboxId = 'drafts';
-export const MAILBOX_SENT: MailboxId = 'sent';
-export const MAILBOX_ARCHIVE: MailboxId = 'archive';
-export const MAILBOX_TRASH: MailboxId = 'trash';
+/** Calendar text for a history card's date line, in the transcript's format. */
+const historyDate = (iso: string): string => calendarText(new Date(iso));
 
 /** Static navigation metadata, fetched the same way `channels` is - a real
  * backend would answer the label set even though every count downstream is
@@ -253,7 +235,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-2',
     correspondentName: 'Alex Rivera',
     correspondentEmail: 'alex@brightlabs.example',
-    date: calendarText(hoursAgo(26)),
+    date: historyDate(hoursAgo(26)),
     body: 'Could we get staging access set up for the new build? Devon on your side mentioned you handle provisioning.',
   },
   {
@@ -261,7 +243,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-2',
     correspondentName: 'Devon Ashworth',
     correspondentEmail: 'devon@brightlabs.example',
-    date: calendarText(hoursAgo(24)),
+    date: historyDate(hoursAgo(24)),
     body: 'Sure, I will have it ready by tomorrow - sending the credentials in a separate email for security.',
   },
   {
@@ -269,7 +251,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-11',
     correspondentName: 'Alex Rivera',
     correspondentEmail: 'alex@northstar.example',
-    date: calendarText(daysAgo(24)),
+    date: historyDate(daysAgo(24)),
     body: 'Starting on the year-end filing - I count two receipts missing from the folder you shared, can you send those over?',
   },
   {
@@ -277,7 +259,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-11',
     correspondentName: 'Mateus Rocha',
     correspondentEmail: 'mateus@marea.example',
-    date: calendarText(daysAgo(22)),
+    date: historyDate(daysAgo(22)),
     body: 'Found them - both attached now. Apologies, they were filed under the wrong quarter.',
   },
 ];

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen as domScreen } from '@testing-library/dom';
 import { endpointTags, mutationResult, queryResultFor } from '../../__test-utils__/apiMocks';
 import { renderScreen } from '../../__test-utils__/renderScreen';
+import { messages } from '../../api/dataset';
+import { messageDayLabel, messageTimeOfDay } from '../../shared/format';
 
 vi.mock('../../api/registry', () => ({ getInboxApi: () => endpointTags }));
 vi.mock('../../api/queries', () => ({
@@ -199,7 +201,7 @@ describe('InboxScreen', () => {
     screen.unmount();
   });
 
-  it('groups a transcript into day dividers and drops the old under-bubble meta line', () => {
+  it('groups a transcript into one divider per calendar day, and puts the time inside the bubble', () => {
     const screen = renderScreen(<InboxScreen t={t} />);
     act(() => {
       screen.getByText('Support').click();
@@ -208,14 +210,18 @@ describe('InboxScreen', () => {
       screen.getAllByText('Dark mode toggle not persisting')[0].click();
     });
 
-    // Every seeded message in this thread falls on "Aug 21, 2026", so exactly
-    // one divider opens the transcript - not one per message.
-    expect(screen.getAllByText('Aug 21').length).toBe(1);
+    // Read off the seed rather than written down: the thread's timestamps are
+    // offsets from the load-time anchor, so which days it spans depends on
+    // the hour the suite runs at.
+    const thread = messages.filter((message) => message.conversationId === 'c-9');
+    const dayLabels = [...new Set(thread.map((message) => messageDayLabel(message.timestamp)))];
+    for (const label of dayLabels) {
+      expect(screen.getAllByText(label)).toHaveLength(1);
+    }
 
-    // The in-bubble timestamp replaces the old footer text entirely: no more
-    // "8:31 AM - Seen" / "8:31 AM - Not seen" line under the bubble.
+    // The time of day sits in the bubble; there is no meta line under it.
     expect(screen.queryByText(/ - (Seen|Not seen)$/)).toBeNull();
-    expect(screen.getByText('8:31 AM')).toBeTruthy();
+    expect(screen.getAllByText(messageTimeOfDay(thread[1].timestamp)).length).toBeGreaterThan(0);
 
     screen.unmount();
   });

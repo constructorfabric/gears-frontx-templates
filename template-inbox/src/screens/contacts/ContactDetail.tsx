@@ -22,7 +22,7 @@ import {
   ItemTitle,
   Textarea,
 } from '@gears-frontx/ui-kit';
-import type { Contact, TicketPriority } from '../../api/types';
+import type { Contact, Conversation, TicketPriority } from '../../api/types';
 import { absoluteDate, labelOf, longRelativeTime, orDash } from '../../shared/format';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { buildActivity, type ActivityKind } from './contactActivity';
@@ -73,12 +73,18 @@ function FieldRow({ label, value }: FieldRowProps) {
 
 export type ContactDetailProps = {
   contact: Contact;
+  /**
+   * The contact's conversations, joined from `contact.conversations` against
+   * the inbox's own collection; a ref with no conversation behind it is left
+   * out rather than rendered.
+   */
+  conversations: Conversation[];
   onBack: () => void;
   t: (key: string) => string;
 };
 
-export function ContactDetail({ contact, onBack, t }: ContactDetailProps) {
-  const activity = buildActivity(contact);
+export function ContactDetail({ contact, conversations, onBack, t }: ContactDetailProps) {
+  const activity = buildActivity(contact, conversations);
 
   return (
     <div className={styles.contactsMain}>
@@ -235,15 +241,15 @@ export function ContactDetail({ contact, onBack, t }: ContactDetailProps) {
             <Card size="sm">
               <CardHeader>
                 <CardTitle>
-                  {`${t('conversations')} (${contact.conversations.length})`}
+                  {`${t('conversations')} (${conversations.length})`}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {contact.conversations.length === 0 ? (
+                {conversations.length === 0 ? (
                   <span className={styles.identityMeta}>{t('no_conversations')}</span>
                 ) : (
                   <ItemGroup>
-                    {contact.conversations.map((conversation) => (
+                    {conversations.map((conversation) => (
                       <Item key={conversation.id} size="sm">
                         <ItemContent>
                           <div className={styles.rowLine}>
@@ -251,7 +257,7 @@ export function ContactDetail({ contact, onBack, t }: ContactDetailProps) {
                               {conversation.subject}
                             </ItemTitle>
                             <span className={styles.rowTime}>
-                              {`${labelOf(conversation.channel)} - ${longRelativeTime(conversation.at)}`}
+                              {`${labelOf(conversation.channel)} - ${longRelativeTime(conversation.lastActivityAt)}`}
                             </span>
                           </div>
                           <ItemDescription className={styles.rowText}>

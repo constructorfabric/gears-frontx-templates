@@ -24,6 +24,11 @@ export function renderScreen(element: ReactNode) {
   return {
     container,
     ...within(container),
+    rerender: (next: ReactNode) => {
+      act(() => {
+        root.render(next);
+      });
+    },
     unmount: () => {
       act(() => {
         root.unmount();

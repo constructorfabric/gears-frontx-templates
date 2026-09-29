@@ -26,6 +26,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
   const service = getInboxApi();
 
   const contactsQuery = useApiQuery(service.getContacts);
+  const conversationsQuery = useApiQuery(service.getConversations);
 
   const [filter, setFilter] = useState<ContactFilter>('all');
   const [search, setSearch] = useState('');
@@ -43,7 +44,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     []
   );
 
-  if (contactsQuery.isLoading) {
+  if (contactsQuery.isLoading || conversationsQuery.isLoading) {
     return (
       <div className={styles.emptyPane} role="status" aria-busy="true">
         <Skeleton style={{ height: '2rem', width: '16rem' }} />
@@ -52,6 +53,13 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
   }
 
   const openContact = contacts.find((contact) => contact.id === openContactId) ?? null;
+  const conversationsById = new Map(
+    (conversationsQuery.data?.conversations ?? []).map((conversation) => [conversation.id, conversation])
+  );
+  const openContactConversations = (openContact?.conversations ?? []).flatMap((ref) => {
+    const conversation = conversationsById.get(ref.id);
+    return conversation ? [conversation] : [];
+  });
 
   return (
     <>
@@ -72,7 +80,12 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
       )}
 
       {openContact ? (
-        <ContactDetail contact={openContact} onBack={() => navigate(CONTACTS_ROUTE)} t={t} />
+        <ContactDetail
+          contact={openContact}
+          conversations={openContactConversations}
+          onBack={() => navigate(CONTACTS_ROUTE)}
+          t={t}
+        />
       ) : (
         <div className={styles.contactsMain}>
           <div className={styles.paneHeader}>

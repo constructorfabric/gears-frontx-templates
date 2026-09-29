@@ -1,19 +1,19 @@
 /**
  * Dashboard domain - the seeded content, and the only module that holds any.
  *
- * Same discipline as `dataset.ts` and `mailDataset.ts`: instants resolved
- * once at module load as offsets from `ANCHOR_MS`, so the activity table
- * keeps reading "2h ago" on any run day. The activity rows reuse the inbox
- * dataset's `contacts` for identity (`contactId`) rather than inventing a
- * second set of people - the same continuity `Conversation.contactId`
- * already relies on.
+ * Same discipline as `dataset.ts` and `mailDataset.ts`: imported by
+ * `dashboardMocks.ts` alone, and every instant is an offset back from the
+ * shared anchor in `seedClock.ts`, so the activity table keeps reading
+ * "2h ago" on any run day. The activity rows point at the inbox dataset's
+ * contacts (`contactId`) rather than inventing a second set of people; the
+ * mock map hands those ids to `createActivity`, so this module imports no
+ * other dataset.
  *
  * Every number a card displays is either read straight from a field here or
  * computed from one (a sum, an average, a delta) in the screen that renders
  * it - nothing is hardcoded in a component.
  */
 
-import { contacts } from './dataset';
 import type {
   ActivityItem,
   ActivityKind,
@@ -28,12 +28,8 @@ import type {
   TopAgent,
   WorkloadMetric,
 } from './dashboardTypes';
+import { ANCHOR_MS, daysAgo, hoursAgo } from './seedClock';
 
-const ANCHOR_MS = Date.now();
-
-const hoursAgo = (hours: number): string => new Date(ANCHOR_MS - hours * 3_600_000).toISOString();
-
-const daysAgo = (days: number): string => hoursAgo(days * 24);
 
 const weekdayFormat = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
 
@@ -42,14 +38,6 @@ const weekdayFormat = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
 export const LAST_7_DAYS: string[] = Array.from({ length: 7 }, (_, index) =>
   weekdayFormat.format(new Date(ANCHOR_MS - (6 - index) * 24 * 3_600_000))
 );
-
-/**
- * The agent roster this screen's "owner" columns draw from. Alex Rivera is
- * the same agent identity `dataset.ts` seeds as the signed-in user in Chat
- * and Mail - the dashboard is that agent's own team's view, so their name
- * belongs in the roster rather than only in the rail's profile menu.
- */
-export const dashboardAgents = ['Alex Rivera', 'Nina Petrov', 'Sam Okafor', 'Jordan Blake', 'Yusuf Demir'];
 
 /**
  * The daily breakdown behind both row 2's "Resolved per day" stacked bar
@@ -161,11 +149,15 @@ export const summaryTrend: number[] = [30, 34, 31, 38, 36, 41, 44];
 /** The last 12 calendar months, oldest first - "Records created"'s own x-axis,
  * independent of `LAST_7_DAYS` since this card plots a full year rather than
  * a week. */
-const MONTHS_12: string[] = Array.from({ length: 12 }, (_, index) =>
-  new Intl.DateTimeFormat('en-US', { month: 'short' }).format(
-    new Date(ANCHOR_MS - (11 - index) * 30 * 24 * 3_600_000)
-  )
-);
+const MONTHS_12: string[] = (() => {
+  const anchor = new Date(ANCHOR_MS);
+  const monthFormat = new Intl.DateTimeFormat('en-US', { month: 'short' });
+  // Calendar months, not 30-day steps: day 1 of each month, so eleven steps
+  // back can neither skip a short month nor name a long one twice.
+  return Array.from({ length: 12 }, (_, index) =>
+    monthFormat.format(new Date(anchor.getFullYear(), anchor.getMonth() - (11 - index), 1))
+  );
+})();
 
 /**
  * "Records created" - row 3's line chart. Three record types with distinct
@@ -183,7 +175,7 @@ export const recordsCreated: RecordsCreatedPoint[] = MONTHS_12.map((month, index
 }));
 
 /**
- * The new row's "Stage funnel" card - a widening-to-narrowing pipeline of
+ * The "Stage funnel" card - a widening-to-narrowing pipeline of
  * CRM-neutral stages, oldest (widest) first. Every later stage's percentage
  * is computed relative to `New`'s own count at render (see
  * `funnelStagePercent`), never stored as its own field.
@@ -197,7 +189,7 @@ export const stageFunnel: FunnelStage[] = [
 ];
 
 /**
- * The new row's "Conversion by source" card - five lead sources, each with
+ * The "Conversion by source" card - five lead sources, each with
  * a won/lost split. The card's headline percent is `won / (won + lost)`
  * across every source, computed at render (see `conversionWonPercent`),
  * never stored as its own field.
@@ -217,6 +209,12 @@ export const workload: WorkloadMetric[] = [
   { id: 'qa-reviews', label: 'QA reviews', value: 12, max: 20 },
 ];
 
+/**
+ * The agent roster: the "Top agents" ranking and the owner of every activity
+ * row (`ActivityItem.ownerAgentId`). Alex Rivera is the agent `dataset.ts`
+ * seeds as the signed-in user in Chat and Mail - the dashboard is that
+ * agent's own team's view.
+ */
 export const topAgents: TopAgent[] = [
   { id: 'agent-alex-rivera', name: 'Alex Rivera', resolvedCount: 42 },
   { id: 'agent-nina-petrov', name: 'Nina Petrov', resolvedCount: 38 },
@@ -228,25 +226,26 @@ export const topAgents: TopAgent[] = [
 /**
  * "Recent activity", row 4's table. Generated from a small cycle of kinds,
  * statuses and agents rather than handwritten row by row - the table needs
- * enough rows for pagination to mean something (26, two full pages at the
+ * enough rows for pagination to mean something (26, three pages at the
  * kit's default page size of 10), and a hand-typed list that long would
  * carry no more information than this deterministic cycle does. Every
- * `contactId` still points at a real seeded contact, and every timestamp is
- * still anchor-relative like the rest of this file.
+ * `contactId` is one of the ids the caller passes (the seeded contacts),
+ * every `ownerAgentId` is a `topAgents` id, and every timestamp is
+ * anchor-relative like the rest of this file.
  */
 const ACTIVITY_KINDS: ActivityKind[] = ['chat', 'mail', 'task'];
 const ACTIVITY_STATUSES: ActivityStatus[] = ['open', 'pending', 'resolved', 'escalated', 'resolved'];
 const ACTIVITY_ROW_COUNT = 26;
 
-export const activity: ActivityItem[] = Array.from({ length: ACTIVITY_ROW_COUNT }, (_, index) => {
-  const contact = contacts[index % contacts.length];
-  return {
-    id: `act-${index + 1}`,
-    contactId: contact.id,
-    kind: ACTIVITY_KINDS[index % ACTIVITY_KINDS.length],
-    status: ACTIVITY_STATUSES[index % ACTIVITY_STATUSES.length],
-    ownerAgentName: dashboardAgents[index % dashboardAgents.length],
-    occurredAt:
-      index % 5 === 0 ? daysAgo(1 + (index % 6)) : hoursAgo(1 + ((index * 3) % 30)),
-  };
-});
+export const createActivity = (contactIds: readonly string[]): ActivityItem[] =>
+  contactIds.length === 0
+    ? []
+    : Array.from({ length: ACTIVITY_ROW_COUNT }, (_, index) => ({
+        id: `act-${index + 1}`,
+        contactId: contactIds[index % contactIds.length],
+        kind: ACTIVITY_KINDS[index % ACTIVITY_KINDS.length],
+        status: ACTIVITY_STATUSES[index % ACTIVITY_STATUSES.length],
+        ownerAgentId: topAgents[index % topAgents.length].id,
+        occurredAt:
+          index % 5 === 0 ? daysAgo(1 + (index % 6)) : hoursAgo(1 + ((index * 3) % 30)),
+      }));

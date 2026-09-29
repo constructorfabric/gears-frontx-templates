@@ -1,18 +1,6 @@
 import { vi } from 'vitest';
 import { agent, channels, contacts, conversations, messages } from '../api/dataset';
-import {
-  activity,
-  contactsByStage,
-  conversionBySource,
-  kpiCards,
-  newContacts,
-  recordsCreated,
-  resolvedPerDay,
-  stageFunnel,
-  summaryTrend,
-  topAgents,
-  workload,
-} from '../api/dashboardDataset';
+import { createDashboardOverview } from '../api/dashboardMocks';
 import { mailboxes, mailMessages, mails } from '../api/mailDataset';
 
 /**
@@ -48,19 +36,7 @@ const RESPONSES: Record<string, unknown> = {
   mailboxes: { mailboxes },
   mails: { mails },
   mailMessages: { mailMessages },
-  dashboard: {
-    kpis: kpiCards,
-    resolvedPerDay,
-    newContacts,
-    summaryTrend,
-    recordsCreated,
-    contactsByStage,
-    workload,
-    stageFunnel,
-    conversionBySource,
-    topAgents,
-    activity,
-  },
+  dashboard: createDashboardOverview(),
 };
 
 const tagOf = (endpoint: unknown): string => {

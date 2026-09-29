@@ -78,7 +78,7 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
           <ConversionBySourceCard sources={data.conversionBySource} t={t} />
         </div>
 
-        <ActivityTable activity={data.activity} contacts={contacts} t={t} />
+        <ActivityTable activity={data.activity} contacts={contacts} agents={data.topAgents} t={t} />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { MailIcon } from 'lucide-react';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton } from '@gears-frontx/ui-kit';
-import { MAILBOX_SENT } from '../../api/mailDataset';
+import { MAILBOX_SENT } from '../../api/constants';
 import type { Mail, MailboxId } from '../../api/mailTypes';
 import { useApiQuery } from '../../api/queries';
 import { getMailApi } from '../../api/registry';

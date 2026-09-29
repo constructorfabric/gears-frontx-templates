@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNEL_GENERAL, CHANNEL_SALES, CHANNEL_SUPPORT, contacts, conversations } from '../../api/dataset';
+import { CHANNEL_GENERAL, CHANNEL_SALES, CHANNEL_SUPPORT } from '../../api/constants';
+import { contacts, conversations } from '../../api/dataset';
 import type { Contact } from '../../api/types';
 import { countOpen, selectConversations } from './conversationOrdering';
 

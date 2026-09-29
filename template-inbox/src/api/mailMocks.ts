@@ -3,15 +3,16 @@
  *
  * Same shape as `mocks.ts`: keys are the full `METHOD /path`, every read
  * hands back a whole collection, and selection stays a client-side concern
- * (see `mailSelectors.ts`).
+ * (see `mailSelectors.ts`). Nothing here is written to, so every factory
+ * answers with a fresh copy of the seed and there is no state to reset.
  */
 
-import type { MockMap } from '@gears-frontx/api';
 import { mailboxes, mailMessages, mails } from './mailDataset';
+import type { RestMockMap } from './RestMockPlugin';
 import type { GetMailboxesResponse, GetMailMessagesResponse, GetMailsResponse } from './mailTypes';
 
-export const mailMockMap: MockMap = {
-  'GET /api/mail/mailboxes': (): GetMailboxesResponse => ({ mailboxes }),
-  'GET /api/mail/mails': (): GetMailsResponse => ({ mails }),
-  'GET /api/mail/messages': (): GetMailMessagesResponse => ({ mailMessages }),
+export const mailMockMap: RestMockMap = {
+  'GET /api/mail/mailboxes': (): GetMailboxesResponse => structuredClone({ mailboxes }),
+  'GET /api/mail/mails': (): GetMailsResponse => structuredClone({ mails }),
+  'GET /api/mail/messages': (): GetMailMessagesResponse => structuredClone({ mailMessages }),
 };

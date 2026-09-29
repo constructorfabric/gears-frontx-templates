@@ -1,19 +1,21 @@
 /**
  * Inbox domain - the seeded content, and the only module that holds any.
  *
- * Imported by `mocks.ts` alone. Nothing here is a fixture file: the whole
- * dataset is application code registered with the service's own mock plugin,
- * which is what lets mock mode stay a runtime toggle rather than a build-time
- * one.
+ * Imported by the mock maps alone (`mocks.ts` serves it, `dashboardMocks.ts`
+ * reads the contact ids its activity rows point at); screens and services
+ * never import it, so replacing the mocks with a real backend leaves nothing
+ * here reachable. Nothing is a fixture file: the dataset is application code
+ * behind the service's own mock plugin, which is what lets mock mode stay a
+ * runtime switch rather than a build-time one.
  *
- * Instants are resolved once, at module load, as offsets from `ANCHOR_MS`.
- * That is what keeps the conversation list reading "1h" and "4d" on any run
- * day instead of drifting further from the day the content was written. The
- * transcript's own timestamps are the exception: those are calendar text the
- * transcript renders verbatim, so they are stored as the strings they display
- * (see `Message.timestamp`).
+ * Every instant, the transcript's calendar text included, is an offset back
+ * from the shared anchor in `seedClock.ts`, so the list reads "1h" and the
+ * thread's newest message reads an hour ago on any run day. Each thread's
+ * newest message sits exactly at its conversation's `lastActivityAt`.
  */
 
+import { BRAND, CHANNEL_GENERAL, CHANNEL_SALES, CHANNEL_SUPPORT, NO_TEAM_INBOX } from './constants';
+import { calendarTextMinutesAgo, daysAgo, hoursAgo } from './seedClock';
 import type {
   AgentIdentity,
   Channel,
@@ -22,17 +24,8 @@ import type {
   Message,
 } from './types';
 
-/** Resolved once per page load; every offset below is measured back from it. */
-const ANCHOR_MS = Date.now();
-
-const hoursAgo = (hours: number): string =>
-  new Date(ANCHOR_MS - hours * 3_600_000).toISOString();
-
-const daysAgo = (days: number): string => hoursAgo(days * 24);
-
-export const CHANNEL_GENERAL = 'general';
-export const CHANNEL_SUPPORT = 'support';
-export const CHANNEL_SALES = 'sales';
+/** The chat images live in `public/`, served under the build's base path. */
+const messageAsset = (file: string): string => `${import.meta.env.BASE_URL}message-assets/${file}`;
 
 export const agent: AgentIdentity = {
   id: 'agent-1',
@@ -71,9 +64,6 @@ export const channels: Channel[] = [
     openCount: 2,
   },
 ];
-
-export const BRAND = 'Acme';
-export const NO_TEAM_INBOX = 'No team inbox';
 
 export const conversations: Conversation[] = [
   {
@@ -306,7 +296,7 @@ export const messages: Message[] = [
     body: 'The theme toggle resets to light mode after I refresh the page. Any idea why?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:21 AM',
+    timestamp: calendarTextMinutesAgo(173),
     seen: null,
     internal: false,
     attachments: [],
@@ -319,7 +309,7 @@ export const messages: Message[] = [
     body: 'Hi Noah! Thanks for flagging this. Which browser and version are you on?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:31 AM',
+    timestamp: calendarTextMinutesAgo(163),
     seen: true,
     internal: false,
     attachments: [],
@@ -332,7 +322,7 @@ export const messages: Message[] = [
     body: 'Chrome 121 on Windows 11.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:41 AM',
+    timestamp: calendarTextMinutesAgo(153),
     seen: null,
     internal: false,
     attachments: [],
@@ -345,7 +335,7 @@ export const messages: Message[] = [
     body: 'Got it. Does the theme stick if you toggle dark mode and then navigate, without a hard refresh?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:49 AM',
+    timestamp: calendarTextMinutesAgo(145),
     seen: true,
     internal: false,
     attachments: [],
@@ -358,7 +348,7 @@ export const messages: Message[] = [
     body: 'Navigating keeps it, but a full refresh (Ctrl+Shift+R) resets it back to light.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 9:11 AM',
+    timestamp: calendarTextMinutesAgo(123),
     seen: null,
     internal: false,
     attachments: [],
@@ -371,7 +361,7 @@ export const messages: Message[] = [
     body: 'That points to localStorage being cleared on hard refresh. Are you running a privacy extension that clears site data?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 9:26 AM',
+    timestamp: calendarTextMinutesAgo(108),
     seen: true,
     internal: false,
     attachments: [],
@@ -384,7 +374,7 @@ export const messages: Message[] = [
     body: 'Oh... I do have a privacy cleaner. Let me whitelist your domain and test.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 9:41 AM',
+    timestamp: calendarTextMinutesAgo(93),
     seen: null,
     internal: false,
     attachments: [],
@@ -397,7 +387,7 @@ export const messages: Message[] = [
     body: 'Perfect - whitelisting should fix it since we persist the theme in localStorage. Let me know how it goes!',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 10:01 AM',
+    timestamp: calendarTextMinutesAgo(73),
     seen: true,
     internal: false,
     attachments: [],
@@ -410,7 +400,7 @@ export const messages: Message[] = [
     body: 'One more thing - the whitelist steps for most privacy cleaners are on our help page, in case it is not obvious in the extension UI.',
     links: [{ text: 'our help page', href: '#' }],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 10:14 AM',
+    timestamp: calendarTextMinutesAgo(60),
     seen: false,
     internal: false,
     attachments: [],
@@ -433,7 +423,7 @@ export const messages: Message[] = [
     body: 'Loving the new dashboard! I will send over the current mockup and spec doc shortly.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 20, 2026 - 9:02 AM',
+    timestamp: calendarTextMinutesAgo(1534),
     seen: null,
     internal: false,
     attachments: [],
@@ -446,7 +436,7 @@ export const messages: Message[] = [
     body: 'Sounds great, looking forward to it. Any particular screens you want us to focus on?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 20, 2026 - 9:15 AM',
+    timestamp: calendarTextMinutesAgo(1521),
     seen: true,
     internal: false,
     attachments: [],
@@ -459,7 +449,7 @@ export const messages: Message[] = [
     body: '',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 20, 2026 - 9:40 AM',
+    timestamp: calendarTextMinutesAgo(1496),
     seen: null,
     internal: false,
     attachments: [
@@ -475,7 +465,7 @@ export const messages: Message[] = [
     body: 'Thanks! Both look good - the spec lines up with what is already on our roadmap.',
     links: [{ text: 'our roadmap', href: '#' }],
     imageUrl: null,
-    timestamp: 'Aug 20, 2026 - 10:05 AM',
+    timestamp: calendarTextMinutesAgo(1471),
     seen: true,
     internal: false,
     attachments: [],
@@ -487,8 +477,8 @@ export const messages: Message[] = [
     kind: 'image',
     body: 'Here is how the KPI section renders on our side, for reference.',
     links: [],
-    imageUrl: '/message-assets/preview-chart.svg',
-    timestamp: 'Aug 21, 2026 - 8:10 AM',
+    imageUrl: messageAsset('preview-chart.svg'),
+    timestamp: calendarTextMinutesAgo(146),
     seen: null,
     internal: false,
     attachments: [],
@@ -501,7 +491,7 @@ export const messages: Message[] = [
     body: 'That looks right. Quick question - should the sidebar stay collapsible on mobile?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:46 AM',
+    timestamp: calendarTextMinutesAgo(110),
     seen: true,
     internal: false,
     attachments: [],
@@ -514,7 +504,7 @@ export const messages: Message[] = [
     body: 'Yes, collapsible on mobile is a must for us.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 8:59 AM',
+    timestamp: calendarTextMinutesAgo(97),
     seen: null,
     internal: false,
     attachments: [],
@@ -527,7 +517,7 @@ export const messages: Message[] = [
     body: 'Noted. I will get these tweaks scoped and back to you shortly.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 9:36 AM',
+    timestamp: calendarTextMinutesAgo(60),
     seen: false,
     internal: false,
     attachments: [],
@@ -542,7 +532,7 @@ export const messages: Message[] = [
     body: 'We are picking the theme up for a client build. Which license do we need?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 6:02 AM',
+    timestamp: calendarTextMinutesAgo(262),
     seen: null,
     internal: false,
     attachments: [],
@@ -555,7 +545,7 @@ export const messages: Message[] = [
     body: 'For client work you would want the Extended license - it covers a single end product that end users can be charged for.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 6:18 AM',
+    timestamp: calendarTextMinutesAgo(246),
     seen: true,
     internal: false,
     attachments: [],
@@ -567,8 +557,8 @@ export const messages: Message[] = [
     kind: 'image',
     body: 'Here is how the license page renders on our side, for reference.',
     links: [],
-    imageUrl: '/message-assets/preview-chart.svg',
-    timestamp: 'Aug 21, 2026 - 6:24 AM',
+    imageUrl: messageAsset('preview-chart.svg'),
+    timestamp: calendarTextMinutesAgo(240),
     seen: null,
     internal: false,
     attachments: [],
@@ -583,7 +573,7 @@ export const messages: Message[] = [
     body: 'I was charged twice for the same template. Can you refund the duplicate order?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 4:21 AM',
+    timestamp: calendarTextMinutesAgo(425),
     seen: null,
     internal: false,
     attachments: [],
@@ -596,7 +586,7 @@ export const messages: Message[] = [
     body: 'Thanks for reaching out - sorry about that! Could you share both order IDs so I can verify?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 5:21 AM',
+    timestamp: calendarTextMinutesAgo(365),
     seen: true,
     internal: false,
     attachments: [],
@@ -609,7 +599,7 @@ export const messages: Message[] = [
     body: 'Sure: #SS-10231 and #SS-10232, both dated yesterday.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 6:21 AM',
+    timestamp: calendarTextMinutesAgo(305),
     seen: null,
     internal: false,
     attachments: [],
@@ -622,7 +612,7 @@ export const messages: Message[] = [
     body: 'Confirmed - #SS-10232 is a duplicate. I have initiated a refund; it should land in 5-7 business days.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 7:21 AM',
+    timestamp: calendarTextMinutesAgo(245),
     seen: false,
     internal: false,
     attachments: [],
@@ -635,7 +625,7 @@ export const messages: Message[] = [
     body: '',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 7:26 AM',
+    timestamp: calendarTextMinutesAgo(240),
     seen: false,
     internal: false,
     attachments: [{ name: 'refund-confirmation.pdf', size: '64 KB' }],
@@ -650,7 +640,7 @@ export const messages: Message[] = [
     body: 'Our analysts want to export the reports table to CSV. Is that on the roadmap?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 3:40 AM',
+    timestamp: calendarTextMinutesAgo(474),
     seen: null,
     internal: false,
     attachments: [],
@@ -663,7 +653,7 @@ export const messages: Message[] = [
     body: 'Not scheduled yet, but I am attaching your team to the request so it carries weight in planning.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 4:02 AM',
+    timestamp: calendarTextMinutesAgo(452),
     seen: true,
     internal: false,
     attachments: [],
@@ -676,7 +666,7 @@ export const messages: Message[] = [
     body: 'Sharing the ticket numbers our analysts opened about it earlier this week.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 5:18 AM',
+    timestamp: calendarTextMinutesAgo(376),
     seen: null,
     internal: false,
     attachments: [],
@@ -689,7 +679,7 @@ export const messages: Message[] = [
     body: '@Alex Rivera this is the third request this week - worth prioritising?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 5:20 AM',
+    timestamp: calendarTextMinutesAgo(374),
     seen: null,
     internal: false,
     attachments: [],
@@ -702,7 +692,7 @@ export const messages: Message[] = [
     body: 'Raised - you can follow progress on the roadmap board from here.',
     links: [{ text: 'from here', href: '#' }],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 5:34 AM',
+    timestamp: calendarTextMinutesAgo(360),
     seen: false,
     internal: false,
     attachments: [],
@@ -717,7 +707,7 @@ export const messages: Message[] = [
     body: 'We are on v3 and the upgrade guide mentions a UI framework bump. Should we do that first?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 19, 2026 - 2:48 PM',
+    timestamp: calendarTextMinutesAgo(2910),
     seen: null,
     internal: false,
     attachments: [],
@@ -730,7 +720,7 @@ export const messages: Message[] = [
     body: 'Snoozing this until you have upgraded the UI framework - ping me when ready and we will finish the migration.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 19, 2026 - 3:12 PM',
+    timestamp: calendarTextMinutesAgo(2886),
     seen: true,
     internal: false,
     attachments: [],
@@ -742,8 +732,8 @@ export const messages: Message[] = [
     kind: 'image',
     body: 'For reference, here is the migration flow we recommend once you are ready to pick this back up.',
     links: [],
-    imageUrl: '/message-assets/preview-diagram.svg',
-    timestamp: 'Aug 19, 2026 - 3:18 PM',
+    imageUrl: messageAsset('preview-diagram.svg'),
+    timestamp: calendarTextMinutesAgo(2880),
     seen: true,
     internal: false,
     attachments: [],
@@ -758,7 +748,7 @@ export const messages: Message[] = [
     body: 'Some icons do not flip when I switch the app to RTL. Is that expected?',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 17, 2026 - 11:04 AM',
+    timestamp: calendarTextMinutesAgo(5787),
     seen: null,
     internal: false,
     attachments: [],
@@ -771,7 +761,7 @@ export const messages: Message[] = [
     body: 'Those are the directional icons - wrap them with the logical-flip utility and they will mirror in RTL. I will snooze this so you can test on your side.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 17, 2026 - 11:31 AM',
+    timestamp: calendarTextMinutesAgo(5760),
     seen: true,
     internal: false,
     attachments: [],
@@ -786,7 +776,7 @@ export const messages: Message[] = [
     body: 'Open the attached invoice to claim your reward immediately.',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 6:21 AM',
+    timestamp: calendarTextMinutesAgo(300),
     seen: null,
     internal: false,
     attachments: [],
@@ -799,7 +789,7 @@ export const messages: Message[] = [
     body: 'Click here within 24 hours to claim your $1,000,000 reward!',
     links: [],
     imageUrl: null,
-    timestamp: 'Aug 21, 2026 - 12:21 AM',
+    timestamp: calendarTextMinutesAgo(660),
     seen: null,
     internal: false,
     attachments: [],
@@ -817,9 +807,9 @@ export const contacts: Contact[] = [
   {
     id: 'r-1',
     name: 'Grace Park',
-    email: 'grace@fable.example',
+    email: 'grace@lumenworks.example',
     type: 'lead',
-    company: 'Fable Studio',
+    company: 'Lumen Works',
     jobTitle: 'Creative Director',
     phone: '',
     location: 'Seoul, South Korea',
@@ -841,7 +831,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Vendaja',
     jobTitle: 'Head of Support',
-    phone: '+55 11 5555 0112',
+    phone: '+1 212 555 0112',
     location: 'Sao Paulo, Brazil',
     presence: 'away',
     notes: 'Key account - escalate auth issues quickly.',
@@ -869,16 +859,7 @@ export const contacts: Contact[] = [
         status: 'open',
       },
     ],
-    conversations: [
-      {
-        id: 'c-20',
-        subject: 'Cannot access account',
-        snippet:
-          'Thanks for your patience. It looks like our email provider is delaying messages to your domain, so I have sent a secure one-time access link straight to you - can you confirm it arrived?',
-        channel: 'email',
-        at: hoursAgo(3),
-      },
-    ],
+    conversations: [],
   },
   {
     id: 'r-3',
@@ -915,16 +896,7 @@ export const contacts: Contact[] = [
         status: 'closed',
       },
     ],
-    conversations: [
-      {
-        id: 'c-9',
-        subject: 'Dark mode toggle not persisting',
-        snippet:
-          'One more thing - the whitelist steps for most privacy cleaners are on our help page, in case it is not obvious in the extension UI.',
-        channel: 'chat',
-        at: hoursAgo(1),
-      },
-    ],
+    conversations: [{ id: 'c-9' }],
   },
   {
     id: 'r-4',
@@ -962,7 +934,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'DevHaus',
     jobTitle: 'Engineering Lead',
-    phone: '+49 30 555 0192',
+    phone: '+1 312 555 0192',
     location: 'Berlin, Germany',
     presence: 'offline',
     notes: '',
@@ -1011,7 +983,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Atelier',
     jobTitle: 'Founder',
-    phone: '+33 1 5555 0188',
+    phone: '+1 617 555 0188',
     location: 'Paris, France',
     presence: 'offline',
     notes: 'Renewal conversation due next quarter.',
@@ -1048,7 +1020,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Nimbus',
     jobTitle: 'Support Manager',
-    phone: '+34 91 555 0123',
+    phone: '+1 305 555 0123',
     location: 'Madrid, Spain',
     presence: 'offline',
     notes: '',
@@ -1134,7 +1106,7 @@ export const contacts: Contact[] = [
     type: 'lead',
     company: 'Fjordly',
     jobTitle: 'CTO',
-    phone: '+47 21 555 0166',
+    phone: '+1 206 555 0166',
     location: 'Oslo, Norway',
     presence: 'offline',
     notes: 'Asked for a security questionnaire.',
@@ -1165,15 +1137,7 @@ export const contacts: Contact[] = [
     active: true,
     isNew: false,
     tickets: [],
-    conversations: [
-      {
-        id: 'c-2',
-        subject: 'Refund request for duplicate purchase',
-        snippet: 'refund-confirmation.pdf',
-        channel: 'email',
-        at: hoursAgo(4),
-      },
-    ],
+    conversations: [{ id: 'c-2' }],
   },
   {
     id: 'r-13',
@@ -1193,15 +1157,7 @@ export const contacts: Contact[] = [
     active: false,
     isNew: false,
     tickets: [],
-    conversations: [
-      {
-        id: 'c-3',
-        subject: 'Suspicious attachment',
-        snippet: 'Open the attached invoice to claim your reward immediately.',
-        channel: 'email',
-        at: hoursAgo(5),
-      },
-    ],
+    conversations: [{ id: 'c-3' }],
   },
   {
     id: 'r-14',
@@ -1210,7 +1166,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Studio Rossi',
     jobTitle: 'Art Director',
-    phone: '+39 02 5555 0111',
+    phone: '+1 718 555 0111',
     location: 'Milan, Italy',
     presence: 'offline',
     notes: '',
@@ -1259,7 +1215,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Purple Bow',
     jobTitle: 'Agency Lead',
-    phone: '+44 20 7555 0143',
+    phone: '+1 646 555 0143',
     location: 'London, UK',
     presence: 'online',
     notes: 'Buys client licenses in batches.',
@@ -1279,15 +1235,7 @@ export const contacts: Contact[] = [
         status: 'open',
       },
     ],
-    conversations: [
-      {
-        id: 'c-7',
-        subject: 'Purple Bow from United States',
-        snippet: 'Here is how the license page renders on our side, for reference.',
-        channel: 'chat',
-        at: hoursAgo(4),
-      },
-    ],
+    conversations: [{ id: 'c-7' }],
   },
   {
     id: 'r-17',
@@ -1316,15 +1264,7 @@ export const contacts: Contact[] = [
         status: 'open',
       },
     ],
-    conversations: [
-      {
-        id: 'c-5',
-        subject: 'Feature request: CSV export',
-        snippet: 'Raised - you can follow progress on the roadmap board from here.',
-        channel: 'chat',
-        at: hoursAgo(6),
-      },
-    ],
+    conversations: [{ id: 'c-5' }],
   },
   {
     id: 'r-18',
@@ -1362,7 +1302,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'PixelForge',
     jobTitle: 'Design Lead',
-    phone: '+65 6555 0121',
+    phone: '+1 808 555 0121',
     location: 'Singapore',
     presence: 'online',
     notes: 'Sends detailed specs - reads every release note.',
@@ -1390,15 +1330,7 @@ export const contacts: Contact[] = [
         status: 'closed',
       },
     ],
-    conversations: [
-      {
-        id: 'c-11',
-        subject: 'Design feedback on dashboard',
-        snippet: 'Noted. I will get these tweaks scoped and back to you shortly.',
-        channel: 'chat',
-        at: hoursAgo(1),
-      },
-    ],
+    conversations: [{ id: 'c-11' }],
   },
   {
     id: 'r-20',
@@ -1447,15 +1379,7 @@ export const contacts: Contact[] = [
         status: 'closed',
       },
     ],
-    conversations: [
-      {
-        id: 'c-6',
-        subject: 'You won a prize!!!',
-        snippet: 'Click here within 24 hours to claim your $1,000,000 reward!',
-        channel: 'email',
-        at: hoursAgo(11),
-      },
-    ],
+    conversations: [{ id: 'c-6' }],
   },
   {
     id: 'r-22',
@@ -1464,7 +1388,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'ScaleUp',
     jobTitle: 'Platform Engineer',
-    phone: '+234 1 555 0154',
+    phone: '+1 404 555 0154',
     location: 'Lagos, Nigeria',
     presence: 'online',
     notes: '',
@@ -1484,15 +1408,7 @@ export const contacts: Contact[] = [
         status: 'pending',
       },
     ],
-    conversations: [
-      {
-        id: 'c-4',
-        subject: 'Migration from v3 to v4',
-        snippet: 'For reference, here is the migration flow we recommend once you are ready to pick this back up.',
-        channel: 'chat',
-        at: daysAgo(2),
-      },
-    ],
+    conversations: [{ id: 'c-4' }],
   },
   {
     id: 'r-23',
@@ -1501,7 +1417,7 @@ export const contacts: Contact[] = [
     type: 'user',
     company: 'Silver Sunshine',
     jobTitle: 'Frontend Engineer',
-    phone: '+91 22 5555 0109',
+    phone: '+1 408 555 0109',
     location: 'Mumbai, India',
     presence: 'online',
     notes: '',
@@ -1521,16 +1437,7 @@ export const contacts: Contact[] = [
         status: 'pending',
       },
     ],
-    conversations: [
-      {
-        id: 'c-1',
-        subject: 'Silver Sunshine from India',
-        snippet:
-          'Those are the directional icons - wrap them with the logical-flip utility and they will mirror in RTL. I will snooze this so you can test on your side.',
-        channel: 'chat',
-        at: daysAgo(4),
-      },
-    ],
+    conversations: [{ id: 'c-1' }],
   },
   {
     id: 'r-24',

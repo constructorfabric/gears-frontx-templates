@@ -1,11 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
-type MediaQueryState = { query: string; matches: boolean };
-
-const readQuery = (query: string): MediaQueryState => ({
-  query,
-  matches: window.matchMedia(query).matches,
-});
+/** No window (a server render, a Node test) and no media-query engine both read as "no match". */
+const hasMatchMedia = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function';
 
 /**
  * Viewport state the panes need in JavaScript rather than in CSS.
@@ -15,26 +12,28 @@ const readQuery = (query: string): MediaQueryState => ({
  * width - neither is something a media query can decide on its own, so the
  * breakpoints that drive state live here and the ones that only hide a box
  * stay in the stylesheet.
+ *
+ * `useSyncExternalStore` rather than state plus an effect: it reads the match
+ * during render, so a new query answers immediately, and it re-reads right
+ * after subscribing, so a breakpoint crossed between that render and the
+ * subscription is not missed (`change` never replays what it missed).
  */
 export function useMediaQuery(query: string): boolean {
-  const [state, setState] = useState<MediaQueryState>(() => readQuery(query));
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!hasMatchMedia()) return () => undefined;
+      const mediaQuery = window.matchMedia(query);
+      mediaQuery.addEventListener('change', onChange);
+      return () => mediaQuery.removeEventListener('change', onChange);
+    },
+    [query]
+  );
 
-  // Re-read during render rather than from the effect below: a new query has a
-  // different answer immediately, and setting it from an effect would render
-  // one frame against the previous query's layout.
-  if (state.query !== query) {
-    setState(readQuery(query));
-  }
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(query);
-    const onChange = (event: MediaQueryListEvent) =>
-      setState({ query, matches: event.matches });
-    mediaQuery.addEventListener('change', onChange);
-    return () => mediaQuery.removeEventListener('change', onChange);
-  }, [query]);
-
-  return state.matches;
+  return useSyncExternalStore(
+    subscribe,
+    () => hasMatchMedia() && window.matchMedia(query).matches,
+    () => false
+  );
 }
 
 /** Below this the folder column has no room and stays collapsed. */

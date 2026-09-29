@@ -10,7 +10,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import { useApiMutation, useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
-import { BRAND, CHANNEL_GENERAL, NO_TEAM_INBOX } from '../../api/dataset';
+import { BRAND, CHANNEL_GENERAL, NO_TEAM_INBOX } from '../../api/constants';
 import type {
   Channel,
   Contact,
@@ -91,6 +91,9 @@ export function InboxScreen({ t }: InboxScreenProps) {
 
   const sendMessage = useApiMutation<PostMessageResponse, PostMessageRequest>({
     endpoint: service.postMessage,
+    // The mock store keeps the posted message, so the cached transcript is
+    // stale once the post succeeds and the next mount reads it again.
+    invalidates: [service.getMessages],
     onSuccess: (response) => {
       setSentMessages((previous) => [...previous, response.message]);
       // Cleared per conversation rather than globally, so a draft the agent
