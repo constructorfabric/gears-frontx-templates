@@ -12,6 +12,7 @@ import {
 import type { NewContactsSeries } from '../../api/dashboardTypes';
 import { weekdayLabel } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
+import { chartSummary } from './chartSummary';
 import { newContactsChartConfig } from './dashboardChartConfig';
 import {
   deltaTone,
@@ -74,6 +75,18 @@ export function NewContactsCard({ newContacts, t }: NewContactsCardProps) {
         <ChartContainer
           config={newContactsChartConfig(t)}
           className={styles.heroChart}
+          role="img"
+          aria-label={chartSummary(
+            t('new_contacts'),
+            chartData.map((point) => ({
+              label: point.day,
+              value: t('chart_new_contacts_day', {
+                inbound: formatCount(point.inbound),
+                total: formatCount(point.total),
+              }),
+            })),
+            t
+          )}
           initialDimension={CHART_DIMENSION}
         >
           <ComposedChart data={chartData} margin={CHART_MARGIN}>

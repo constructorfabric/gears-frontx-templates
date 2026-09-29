@@ -2,6 +2,7 @@ import { useApiQuery } from '../../api/queries';
 import { getDashboardApi, getInboxApi } from '../../api/registry';
 import type { Translate } from '../../shared/i18n';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { ActivityTable } from './ActivityTable';
 import { ConversionBySourceCard } from './ConversionBySourceCard';
 import { KpiRow } from './KpiRow';
@@ -61,7 +62,7 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
   return (
     <div className={dashboardStyles.dashboardMain}>
       <div className={layoutStyles.paneHeader}>
-        <span className={layoutStyles.paneTitle}>{t('dashboard')}</span>
+        <ScreenHeading className={layoutStyles.paneTitle}>{t('dashboard')}</ScreenHeading>
       </div>
       <div className={dashboardStyles.dashboardBody}>
         <KpiRow kpis={data.kpis} contactsByStage={data.contactsByStage} t={t} />

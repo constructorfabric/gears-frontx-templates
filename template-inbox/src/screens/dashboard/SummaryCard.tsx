@@ -6,6 +6,7 @@ import type { ActivityItem } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
 import { labelOf } from '../../shared/format';
 import { summaryTrendChartConfig } from './dashboardChartConfig';
+import { chartSummary } from './chartSummary';
 import { formatCount } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
@@ -43,21 +44,21 @@ export function SummaryCard({ activity, trend, t }: SummaryCardProps) {
       <CardContent className={styles.summaryContent}>
         <div className={styles.summaryStats}>
           <div className={styles.summaryStat}>
-            <span className={styles.summaryIconChip}>
+            <span className={styles.summaryIconChip} aria-hidden="true">
               <MessageSquareIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(openCount)}</span>
             <span className={styles.summaryStatLabel}>{labelOf('open', t)}</span>
           </div>
           <div className={styles.summaryStat}>
-            <span className={styles.summaryIconChip}>
+            <span className={styles.summaryIconChip} aria-hidden="true">
               <ClockIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(pendingCount)}</span>
             <span className={styles.summaryStatLabel}>{labelOf('pending', t)}</span>
           </div>
           <div className={styles.summaryStat}>
-            <span className={styles.summaryIconChip}>
+            <span className={styles.summaryIconChip} aria-hidden="true">
               <CircleAlertIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(escalatedCount)}</span>
@@ -67,6 +68,12 @@ export function SummaryCard({ activity, trend, t }: SummaryCardProps) {
         <ChartContainer
           config={summaryTrendChartConfig(t)}
           className={styles.summaryChart}
+          role="img"
+          aria-label={chartSummary(
+            t('chart_activity_trend'),
+            trend.map((value) => ({ label: '', value: formatCount(value) })),
+            t
+          )}
           initialDimension={CHART_DIMENSION}
         >
           <AreaChart data={trendData} margin={CHART_MARGIN}>

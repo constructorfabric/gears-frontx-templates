@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
 import type { FunnelStage } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
+import { chartSummary } from './chartSummary';
 import { stageFunnelChartConfig } from './dashboardChartConfig';
 import { formatCount, funnelSegmentGeometry, funnelTotal } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
@@ -55,7 +56,11 @@ export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
           // computes in viewBox units.
           preserveAspectRatio="xMidYMid meet"
           role="img"
-          aria-label={t('stage_funnel')}
+          aria-label={chartSummary(
+            t('stage_funnel'),
+            stages.map((stage) => ({ label: stage.label, value: formatCount(stage.count) })),
+            t
+          )}
         >
           {segments.map((segment) => (
             <g key={segment.id}>

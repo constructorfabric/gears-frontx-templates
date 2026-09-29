@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { SearchIcon, UserXIcon } from 'lucide-react';
+import { PanelLeftIcon, SearchIcon, UserXIcon } from 'lucide-react';
 import {
   Button,
   Empty,
@@ -15,7 +15,8 @@ import { getInboxApi } from '../../api/registry';
 import type { Translate } from '../../shared/i18n';
 import { CONTACTS_ROUTE, contactRoute, navigate } from '../../app/routing';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
-import { COMPACT_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
+import { ScreenHeading } from '../../shared/ScreenHeading';
+import { useSidebarToggle } from '../../shared/useSidebarToggle';
 import { ContactDetail } from './ContactDetail';
 import { ContactFilterSidebar } from './ContactFilterSidebar';
 import { ContactsTable } from './ContactsTable';
@@ -41,7 +42,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
   const [filter, setFilter] = useState<ContactFilter>('all');
   const [search, setSearch] = useState('');
 
-  const isCompact = useMediaQuery(COMPACT_QUERY);
+  const filterSidebar = useSidebarToggle();
 
   const contacts = useMemo(() => contactsQuery.data?.contacts ?? [], [contactsQuery.data]);
   const visibleContacts = useMemo(
@@ -103,7 +104,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
           contacts={contacts}
           selectedFilter={filter}
           onSelectFilter={setFilter}
-          collapsed={isCompact}
+          collapsed={filterSidebar.collapsed}
           t={t}
         />
       )}
@@ -118,8 +119,16 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
       ) : (
         <div className={styles.contactsMain}>
           <div className={styles.paneHeader}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<PanelLeftIcon />}
+              aria-label={t('toggle_contact_filters')}
+              aria-expanded={!filterSidebar.collapsed}
+              onClick={filterSidebar.toggle}
+            />
             <span className={styles.contactsHeaderText}>
-              <span className={styles.paneTitle}>{t('all_contacts')}</span>
+              <ScreenHeading className={styles.paneTitle}>{t('all_contacts')}</ScreenHeading>
               <span className={styles.paneCount}>
                 {t('people_count', { count: visibleContacts.length })}
               </span>

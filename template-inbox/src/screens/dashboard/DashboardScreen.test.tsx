@@ -22,7 +22,6 @@ vi.mock('../../api/queries', () => ({
 
 const { DashboardScreen } = await import('./DashboardScreen');
 
-
 afterEach(() => {
   resetApiMocks();
 });
@@ -138,5 +137,25 @@ describe('DashboardScreen', () => {
 
     expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
     expect(screen.queryByText(t('recent_activity'))).toBeNull();
+  });
+
+
+  it('gives every chart a text alternative and hides the decorative ones', () => {
+    const screen = renderScreen(<DashboardScreen t={t} />);
+    const charts = screen.getAllByRole('img');
+    const names = charts.map((chart) => chart.getAttribute('aria-label') ?? '');
+
+    for (const title of ['resolved_per_day', 'new_contacts', 'records_created', 'conversion_by_source', 'stage_funnel', 'chart_activity_trend']) {
+      expect(names.some((name) => name.startsWith(`${t(title)}: `)), title).toBe(true);
+    }
+    // The records chart names every series with its twelve-month total.
+    expect(names.find((name) => name.startsWith(t('records_created')))).toMatch(/Companies: \d+/);
+    // Every summary is a sentence, not a key or an unfilled template.
+    for (const name of names) expect(name).not.toMatch(/[{}]|chart_/);
+  });
+
+  it('renders one screen heading', () => {
+    const screen = renderScreen(<DashboardScreen t={t} />);
+    expect(screen.getAllByRole('heading', { level: 1 }).map((heading) => heading.textContent)).toEqual([t('dashboard')]);
   });
 });

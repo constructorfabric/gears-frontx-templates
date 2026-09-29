@@ -9,9 +9,10 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../../__test-utils__/apiMocks';
+import { stubMatchMedia } from '../../__test-utils__/matchMedia';
 import { renderScreen } from '../../__test-utils__/renderScreen';
 import { mails } from '../../api/mailDataset';
-import { SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
+import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
 import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({ getMailApi: () => endpointTags }));
@@ -21,7 +22,6 @@ vi.mock('../../api/queries', () => ({
 }));
 
 const { MailScreen } = await import('./MailScreen');
-
 
 const SEED_SENT_COUNT = mails.filter((mail) => mail.mailboxId === 'sent').length;
 
@@ -364,16 +364,7 @@ describe('MailScreen', () => {
   });
 
   it('gives the list and the reading pane turns on a narrow screen, with a way back', () => {
-    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
-      matches: query === SINGLE_PANE_QUERY,
-      media: query,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    }));
+    stubMatchMedia([SINGLE_PANE_QUERY]);
     const screen = renderScreen(<MailScreen t={t} />);
 
     // The auto-opened mail has the screen; the list is hidden.
@@ -384,5 +375,30 @@ describe('MailScreen', () => {
     });
     expect(list.className).not.toMatch(/singlePaneHidden/);
     expect(screen.queryByLabelText(t('back_to_mail_list'))).toBeNull();
+  });
+
+
+  it('folds the mailbox column below the compact width, takes it out of the tab order, and opens it from the list header', () => {
+    stubMatchMedia([COMPACT_QUERY]);
+    const screen = renderScreen(<MailScreen t={t} />);
+
+    const sidebar = screen.getByLabelText(t('mail'), { selector: 'aside' });
+    const toggle = screen.getByLabelText(t('toggle_mailboxes'));
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(sidebar.getAttribute('aria-hidden')).toBe('true');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    act(() => {
+      toggle.click();
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('says in words which mails are unread', () => {
+    const screen = renderScreen(<MailScreen t={t} />);
+    const unreadInInbox = mails.filter((mail) => mail.mailboxId === 'inbox' && !mail.read);
+
+    expect(screen.getAllByText(t('unread_mail'))).toHaveLength(unreadInInbox.length);
   });
 });

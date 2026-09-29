@@ -7,7 +7,9 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../../__test-utils__/apiMocks';
+import { stubMatchMedia } from '../../__test-utils__/matchMedia';
 import { renderScreen } from '../../__test-utils__/renderScreen';
+import { COMPACT_QUERY } from '../../shared/useMediaQuery';
 import { act } from 'react';
 import { contacts, conversations } from '../../api/dataset';
 import { t } from '../../shared/i18n';
@@ -19,7 +21,6 @@ vi.mock('../../api/queries', () => ({
 }));
 
 const { ContactsScreen } = await import('./ContactsScreen');
-
 
 afterEach(() => {
   resetApiMocks();
@@ -85,5 +86,38 @@ describe('ContactsScreen', () => {
       screen.getByRole('button', { name: t('retry') }).click();
     });
     expect(refetchCalls).toEqual(['contacts']);
+  });
+
+
+  it('keeps the filter column open on a wide screen and lets the header toggle fold it', () => {
+    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    const sidebar = screen.getByLabelText(t('contact_filters'));
+
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+    act(() => {
+      screen.getByLabelText(t('toggle_contact_filters')).click();
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(sidebar.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('starts the filter column folded below the compact width, and the toggle opens it', () => {
+    stubMatchMedia([COMPACT_QUERY]);
+    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    const sidebar = screen.getByLabelText(t('contact_filters'));
+
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    act(() => {
+      screen.getByLabelText(t('toggle_contact_filters')).click();
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+  });
+
+  it('renders one screen heading, the directory title', () => {
+    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    const headings = screen.getAllByRole('heading', { level: 1 });
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0].textContent).toBe(t('all_contacts'));
   });
 });

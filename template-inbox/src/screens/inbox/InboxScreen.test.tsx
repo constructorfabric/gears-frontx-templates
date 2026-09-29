@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { screen as domScreen } from '@testing-library/dom';
+import { fireEvent, screen as domScreen, waitFor } from '@testing-library/dom';
 import {
   endpointTags,
   mutationResult,
@@ -23,7 +23,6 @@ vi.mock('../../api/queries', () => ({
 }));
 
 const { InboxScreen } = await import('./InboxScreen');
-
 
 afterEach(() => {
   resetApiMocks();
@@ -180,14 +179,11 @@ describe('InboxScreen', () => {
       screen.getAllByText('Purple Bow from United States')[0].click();
     });
     // c-7's last message (m-7-3) is an image with a caption - the <img> and
-    // caption text both render, and the caption doubles as its alt text.
-    const image = screen.getByAltText(
-      'Here is how the license page renders on our side, for reference.'
-    );
-    expect(image instanceof HTMLImageElement).toBe(true);
-    if (image instanceof HTMLImageElement) {
-      expect(image.src).toContain('/message-assets/preview-chart.svg');
-    }
+    // the caption both render, and the image carries an empty alt because
+    // the caption beside it already says what it shows.
+    expect(screen.getAllByText(/Here is how the license page renders on our side/).length).toBe(2);
+    const image = screen.container.querySelector('img[src$="/message-assets/preview-chart.svg"]');
+    expect(image?.getAttribute('alt')).toBe('');
 
     act(() => {
       screen.getByText('Support').click();
@@ -430,5 +426,88 @@ describe('InboxScreen', () => {
 
     expect(unread).toBeDefined();
     expect(screen.getByLabelText(t('unread_messages_count', { count: unread?.unreadCount ?? 0 }))).toBeTruthy();
+  });
+
+  it('closes the new-channel dialog with Escape and gives focus back to the button that opened it', async () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    const trigger = screen.getByLabelText(t('new_channel'));
+
+    act(() => {
+      trigger.focus();
+      trigger.click();
+    });
+    const nameField = domScreen.getByLabelText(t('channel_name'));
+    await waitFor(() => expect(document.activeElement).toBe(nameField));
+
+    act(() => {
+      fireEvent.keyDown(nameField, { key: 'Escape' });
+    });
+    await waitFor(() => expect(domScreen.queryByLabelText(t('channel_name'))).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('opens the thread menu from the keyboard, and Escape closes it back onto its trigger', async () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    const trigger = screen.getByLabelText(t('more_actions'));
+
+    act(() => {
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    });
+    const item = await domScreen.findByRole('menuitem', { name: t('mark_as_spam') });
+    act(() => {
+      fireEvent.keyDown(item, { key: 'Escape' });
+    });
+    await waitFor(() => expect(domScreen.queryByRole('menuitem', { name: t('mark_as_spam') })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('adds a tag with Enter and returns focus to the add button, and Escape drops the draft', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+
+    act(() => {
+      screen.getByText(t('add_tag')).click();
+    });
+    const field = screen.getByPlaceholderText(t('add_tag'));
+    act(() => typeInto(field as HTMLInputElement, 'vip'));
+    act(() => {
+      fireEvent.keyDown(field, { key: 'Enter' });
+    });
+    expect(screen.getByLabelText(t('remove_tag', { tag: 'vip' }))).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe(t('add_tag'));
+
+    act(() => {
+      screen.getByText(t('add_tag')).click();
+    });
+    const second = screen.getByPlaceholderText(t('add_tag'));
+    act(() => typeInto(second as HTMLInputElement, 'discarded'));
+    act(() => {
+      fireEvent.keyDown(second, { key: 'Escape' });
+    });
+    expect(screen.queryByLabelText(t('remove_tag', { tag: 'discarded' }))).toBeNull();
+    expect(document.activeElement?.textContent).toBe(t('add_tag'));
+  });
+
+  it('folds the channel column from the list header and takes it out of the tab order', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    const sidebar = screen.getByLabelText(t('channels'), { selector: 'aside' });
+    const toggle = screen.getByLabelText(t('toggle_channels'));
+
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    act(() => {
+      toggle.click();
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(sidebar.getAttribute('aria-hidden')).toBe('true');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('names the pinned icon and the read receipts as images', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    expect(screen.getByLabelText(t('pinned_conversation')).getAttribute('role')).toBe('img');
+    for (const receipt of screen.queryAllByLabelText(t('message_read'))) {
+      expect(receipt.getAttribute('role')).toBe('img');
+    }
   });
 });

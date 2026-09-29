@@ -18,7 +18,8 @@ import type { Translate } from '../../shared/i18n';
 import { contactRoute, navigate } from '../../app/routing';
 import { cx } from '../../shared/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
-import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
+import { SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
+import { useSidebarToggle } from '../../shared/useSidebarToggle';
 import { ConversationList } from './ConversationList';
 import { ConversationThread } from './ConversationThread';
 import { countOpen, selectConversations, type SortOrder } from './conversationOrdering';
@@ -65,7 +66,6 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const [autoSelectChannelId, setAutoSelectChannelId] = useState<string | null>(CHANNEL_GENERAL);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOrder>('last-activity');
-  const [channelsCollapsed, setChannelsCollapsed] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(true);
   const [patches, setPatches] = useState<Record<string, ConversationPatch>>({});
   const [sentMessages, setSentMessages] = useState<Message[]>([]);
@@ -83,7 +83,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
   // conversation, so Composer's own effect knows to focus the reply box.
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 
-  const isCompact = useMediaQuery(COMPACT_QUERY);
+  const channelsSidebar = useSidebarToggle();
   const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
 
   const sendMessage = useApiMutation<PostMessageResponse, PostMessageRequest>({
@@ -280,9 +280,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
         selectedChannelId={channelId}
         onSelectChannel={selectChannel}
         onCreateChannel={createChannel}
-        // Below the compact width the column has no room to open into, so the
-        // toggle reflects the viewport rather than fighting it.
-        collapsed={channelsCollapsed || isCompact}
+        collapsed={channelsSidebar.collapsed}
         t={t}
       />
 
@@ -297,7 +295,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
         onSearchChange={setSearch}
         sort={sort}
         onSortChange={setSort}
-        onToggleChannels={() => setChannelsCollapsed((collapsed) => !collapsed)}
+        onToggleChannels={channelsSidebar.toggle}
+        channelsOpen={!channelsSidebar.collapsed}
         hidden={isSinglePane && showThread}
         t={t}
       />

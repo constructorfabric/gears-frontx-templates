@@ -26,6 +26,7 @@ import type { Contact, Conversation, TicketPriority } from '../../api/types';
 import { absoluteDate, labelOf, longRelativeTime, orDash } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { buildActivity, type ActivityKind } from './contactActivity';
 import styles from '../../styles/workspace.module.css';
 
@@ -98,7 +99,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
           onClick={onBack}
         />
         <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" t={t} />
-        <span className={styles.paneTitle}>{contact.name}</span>
+        <ScreenHeading className={styles.paneTitle}>{contact.name}</ScreenHeading>
         <Badge variant={contact.type === 'lead' ? 'warning' : 'info'}>
           {labelOf(contact.type, t)}
         </Badge>

@@ -64,9 +64,10 @@ export function FolderSidebar({
       className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
       aria-label={t('channels')}
       // Kept in the tree while collapsed so the width transition has something
-      // to animate, and hidden from assistive tech so a zero-width column is
-      // not read out as a live navigation region.
+      // to animate; `inert` takes its controls out of the tab order and
+      // `aria-hidden` keeps a zero-width column from being read out.
       aria-hidden={collapsed}
+      inert={collapsed}
     >
       <div className={styles.paneHeader}>
         <span className={styles.paneTitle}>{t('chat')}</span>

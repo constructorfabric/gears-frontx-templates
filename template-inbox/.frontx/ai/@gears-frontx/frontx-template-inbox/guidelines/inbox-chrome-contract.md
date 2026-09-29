@@ -4,9 +4,11 @@ This application owns its whole document. It is a plain Vite + React app on `@ge
 
 ## The icon rail is the navigation
 
-`src/app/IconRail.tsx` is the app's fixed narrow left edge: the product mark at the top, one button per section (Dashboard, Chat, Mail, Contacts), a flexible spacer, then the theme toggle and the profile-menu popover at the bottom. Adding a section means adding a button there, extending its `sectionOf`, and adding a branch in `src/app/App.tsx` - there is no manifest, no extension declaration and no id taxonomy.
+`src/app/IconRail.tsx` is the app's fixed narrow left edge: the product mark at the top, one button per section (Dashboard, Chat, Mail, Contacts) with the section's name as its accessible label and its tooltip, a flexible spacer, then the theme toggle and the profile-menu popover at the bottom. Adding a section means adding an entry to its `RAIL_SECTIONS`, extending its `sectionOf`, and adding a branch in `src/app/App.tsx` - there is no manifest, no extension declaration and no id taxonomy.
 
-The rail never collapses. It is the edge the rest of the layout is measured from; the channel, mailbox and filter columns beside it are the ones that collapse.
+The rail never collapses. It is the edge the rest of the layout is measured from; the channel, mailbox and filter columns beside it are the ones that collapse. Each of those takes its open state from `useSidebarToggle` in `src/shared/`, which starts it open on a wide viewport and folded below the compact width, and a `PanelLeftIcon` toggle with `aria-expanded` in the screen's list header flips it. A folded column stays in the tree for its width transition, with `inert` and `aria-hidden` so nothing in it is focusable or read.
+
+Every screen renders exactly one `h1`, through `ScreenHeading` in `src/shared/`, in the place its pane header puts its title. On a route change `App.tsx` names the document after the section (`document_title`) and asks the new screen's heading to take focus; the first load moves no focus.
 
 The dashboard is the one screen with no folder or filter column at all - a single full-width, scrollable pane straight after the rail. Not every screen needs a secondary sidebar; add one only when the screen has a folder or filter concept to hold, the way chat, mail and contacts do.
 
@@ -45,7 +47,7 @@ A screen never reads or writes the theme. `useTheme` exists for the one toggle i
 
 ## Shared parts
 
-`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `QueryStates.tsx`, and `cx`. A new screen reuses these rather than writing its own.
+`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `useSidebarToggle`, `ScreenHeading`, `QueryStates.tsx`, `submitShortcut.tsx`, and `cx`. A new screen reuses these rather than writing its own.
 
 ## Kit overlays need nothing
 
@@ -65,6 +67,7 @@ A screen added later should keep these as they are.
 2. Only the sections this app ships appear in the rail; the out-of-scope ones are absent (see the `inbox-scope-inventory` guideline).
 3. The palette is the kit's tokens.
 4. The rail's bottom cluster is the theme toggle and the profile menu, nothing else: no command palette, messenger settings, settings or theme customiser.
-5. Profile, Settings and Log out in the profile menu are inert.
+5. Profile, Settings and Log out in the profile menu render as disabled buttons.
 6. A control whose action this template does not ship renders disabled, never enabled with no handler.
-7. The side columns collapse at the compact width, and below the single-pane width a list and its detail take turns; the rail keeps its shape at every width.
+7. The side columns start folded at the compact width and open from their toggle, and below the single-pane width a list and its detail take turns; the rail keeps its shape at every width.
+8. A chart carries `role="img"` and a `chartSummary` label that lists what it plots; a sparkline or a donut whose numbers the card already prints in text is `aria-hidden`.

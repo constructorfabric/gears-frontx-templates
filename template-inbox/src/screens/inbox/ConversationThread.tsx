@@ -141,9 +141,9 @@ function MessageMeta({
       <span className={styles.bubbleMetaTime}>{messageTimeOfDay(message.sentAt)}</span>
       {message.direction === 'outbound' && message.seen !== null ? (
         message.seen ? (
-          <CheckCheckIcon className={styles.readTick} aria-label={t('message_read')} />
+          <CheckCheckIcon className={styles.readTick} role="img" aria-label={t('message_read')} />
         ) : (
-          <CheckIcon className={styles.deliveredTick} aria-label={t('message_delivered')} />
+          <CheckIcon className={styles.deliveredTick} role="img" aria-label={t('message_delivered')} />
         )
       ) : null}
     </span>
@@ -436,7 +436,9 @@ export function ConversationThread({
                                     {message.imageUrl === null ? null : (
                                       <img
                                         src={message.imageUrl}
-                                        alt={message.body}
+                                        // The caption right below already says it; repeating it as
+                                        // alt text would read it twice.
+                                        alt=""
                                         className={cx(styles.messageImageInset, styles.messageImageHasCaption)}
                                       />
                                     )}

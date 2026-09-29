@@ -21,7 +21,12 @@ import {
   PopoverContent,
   PopoverTrigger,
   Separator,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@gears-frontx/ui-kit';
+import type { ReactElement } from 'react';
 import type { AgentIdentity } from '../api/types';
 import { labelOf } from '../shared/format';
 import { PresenceAvatar } from '../shared/PresenceAvatar';
@@ -37,14 +42,28 @@ import {
 import type { Theme } from './theme';
 import styles from '../styles/workspace.module.css';
 
+type RailSection = 'dashboard' | 'inbox' | 'mail' | 'contacts';
+
 /** Which rail destination a route belongs to - a contact's own page keeps
  * Contacts lit. */
-const sectionOf = (route: Route): 'dashboard' | 'inbox' | 'mail' | 'contacts' => {
+export const sectionOf = (route: Route): RailSection => {
   if (route.name === 'dashboard') return 'dashboard';
   if (route.name === 'inbox') return 'inbox';
   if (route.name === 'mail') return 'mail';
   return 'contacts';
 };
+
+/** The rail's destinations, top to bottom; the label is also the tooltip. */
+const RAIL_SECTIONS: { section: RailSection; route: string; labelKey: string; icon: ReactElement }[] = [
+  { section: 'dashboard', route: DASHBOARD_ROUTE, labelKey: 'dashboard', icon: <LayoutDashboardIcon /> },
+  { section: 'inbox', route: INBOX_ROUTE, labelKey: 'chat', icon: <MessageCircleIcon /> },
+  { section: 'mail', route: MAIL_ROUTE, labelKey: 'mail', icon: <MailIcon /> },
+  { section: 'contacts', route: CONTACTS_ROUTE, labelKey: 'contacts', icon: <UsersIcon /> },
+];
+
+/** The rail label of the section a route belongs to, for the document title. */
+export const sectionLabelKey = (route: Route): string =>
+  RAIL_SECTIONS.find((entry) => entry.section === sectionOf(route))?.labelKey ?? 'dashboard';
 
 export type IconRailProps = {
   route: Route;
@@ -74,38 +93,25 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
       </span>
 
       <nav className={styles.railNav} aria-label={t('sections')}>
-        <Button
-          variant={section === 'dashboard' ? 'secondary' : 'ghost'}
-          size="sm"
-          icon={<LayoutDashboardIcon />}
-          aria-label={t('dashboard')}
-          aria-current={section === 'dashboard' ? 'page' : undefined}
-          onClick={() => navigate(DASHBOARD_ROUTE)}
-        />
-        <Button
-          variant={section === 'inbox' ? 'secondary' : 'ghost'}
-          size="sm"
-          icon={<MessageCircleIcon />}
-          aria-label={t('chat')}
-          aria-current={section === 'inbox' ? 'page' : undefined}
-          onClick={() => navigate(INBOX_ROUTE)}
-        />
-        <Button
-          variant={section === 'mail' ? 'secondary' : 'ghost'}
-          size="sm"
-          icon={<MailIcon />}
-          aria-label={t('mail')}
-          aria-current={section === 'mail' ? 'page' : undefined}
-          onClick={() => navigate(MAIL_ROUTE)}
-        />
-        <Button
-          variant={section === 'contacts' ? 'secondary' : 'ghost'}
-          size="sm"
-          icon={<UsersIcon />}
-          aria-label={t('contacts')}
-          aria-current={section === 'contacts' ? 'page' : undefined}
-          onClick={() => navigate(CONTACTS_ROUTE)}
-        />
+        <TooltipProvider>
+          {RAIL_SECTIONS.map((entry) => (
+            <Tooltip key={entry.section}>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={section === entry.section ? 'secondary' : 'ghost'}
+                    size="sm"
+                    icon={entry.icon}
+                    aria-label={t(entry.labelKey)}
+                    aria-current={section === entry.section ? 'page' : undefined}
+                    onClick={() => navigate(entry.route)}
+                  />
+                }
+              />
+              <TooltipContent side="right">{t(entry.labelKey)}</TooltipContent>
+            </Tooltip>
+          ))}
+        </TooltipProvider>
       </nav>
 
       <span className={styles.spacer} />
@@ -137,12 +143,12 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
             </div>
             <Separator aria-hidden="true" />
             {/*
-              Inert: this template ships no screen behind profile, settings or
-              log out. They stay disabled rather than silently doing
-              nothing, so the affordance does not lie.
+              This template ships no screen behind profile, settings or log
+              out, so each renders as a disabled button: the affordance shows
+              where it goes without offering an action that does nothing.
             */}
             <ItemGroup>
-              <Item size="sm" aria-disabled="true">
+              <Item size="sm" render={<button type="button" disabled />}>
                 <ItemMedia variant="icon">
                   <UserIcon />
                 </ItemMedia>
@@ -150,7 +156,7 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
                   <ItemTitle>{t('profile')}</ItemTitle>
                 </ItemContent>
               </Item>
-              <Item size="sm" aria-disabled="true">
+              <Item size="sm" render={<button type="button" disabled />}>
                 <ItemMedia variant="icon">
                   <SettingsIcon />
                 </ItemMedia>
@@ -159,7 +165,7 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
                 </ItemContent>
               </Item>
               <Separator aria-hidden="true" />
-              <Item size="sm" aria-disabled="true">
+              <Item size="sm" render={<button type="button" disabled />}>
                 <ItemMedia variant="icon">
                   <LogOutIcon />
                 </ItemMedia>

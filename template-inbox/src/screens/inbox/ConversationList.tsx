@@ -37,6 +37,7 @@ import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { countOpen, isSortOrder, SORT_ORDERS, type SortOrder } from './conversationOrdering';
 import styles from '../../styles/workspace.module.css';
 
@@ -59,6 +60,8 @@ export type ConversationListProps = {
   sort: SortOrder;
   onSortChange: (sort: SortOrder) => void;
   onToggleChannels: () => void;
+  /** Whether the channel column is open, for the toggle's own state. */
+  channelsOpen: boolean;
   hidden: boolean;
   t: Translate;
 };
@@ -75,6 +78,7 @@ export function ConversationList({
   sort,
   onSortChange,
   onToggleChannels,
+  channelsOpen,
   hidden,
   t,
 }: ConversationListProps) {
@@ -146,7 +150,7 @@ export function ConversationList({
             </ItemDescription>
             <span className={styles.rowActionsGroup}>
               {conversation.pinned ? (
-                <PinIcon className={styles.pinIcon} aria-label={t('pinned_conversation')} />
+                <PinIcon className={styles.pinIcon} role="img" aria-label={t('pinned_conversation')} />
               ) : null}
               {conversation.unreadCount > 0 ? (
                 <Badge
@@ -174,9 +178,10 @@ export function ConversationList({
           size="sm"
           icon={<PanelLeftIcon />}
           aria-label={t('toggle_channels')}
+          aria-expanded={channelsOpen}
           onClick={onToggleChannels}
         />
-        <h2 className={styles.paneTitle}>{channelLabel}</h2>
+        <ScreenHeading className={styles.paneTitle}>{channelLabel}</ScreenHeading>
         {/* The count follows the visible list, so a search moves it with the rows. */}
         <span className={styles.paneCount}>{conversations.length}</span>
         <span className={styles.spacer} />

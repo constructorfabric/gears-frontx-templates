@@ -13,7 +13,9 @@ import {
 import type { ResolvedPerDayPoint } from '../../api/dashboardTypes';
 import { weekdayLabel } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
+import { chartSummary } from './chartSummary';
 import { resolvedPerDayChartConfig } from './dashboardChartConfig';
+import { formatCount } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
 export type ResolvedPerDayCardProps = {
@@ -43,6 +45,19 @@ export function ResolvedPerDayCard({ data, t }: ResolvedPerDayCardProps) {
         <ChartContainer
           config={resolvedPerDayChartConfig(t)}
           className={styles.resolvedChart}
+          role="img"
+          aria-label={chartSummary(
+            t('resolved_per_day'),
+            chartData.map((point) => ({
+              label: point.day,
+              value: t('chart_by_source', {
+                chat: formatCount(point.chat),
+                mail: formatCount(point.mail),
+                tasks: formatCount(point.tasks),
+              }),
+            })),
+            t
+          )}
           initialDimension={CHART_DIMENSION}
         >
           <BarChart data={chartData} margin={CHART_MARGIN}>

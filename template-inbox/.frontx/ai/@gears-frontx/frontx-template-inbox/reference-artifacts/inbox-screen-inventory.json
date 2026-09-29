@@ -28,7 +28,7 @@
         "ItemTitle",
         "lucide-react: LayoutDashboardIcon, BlocksIcon, MessageCircleIcon, MailIcon, UsersIcon, SunIcon, MoonIcon, UserIcon, SettingsIcon, LogOutIcon"
       ],
-      "note": "Fixed 4rem, never collapsed. Mark at the top, one Button per section with variant=\"secondary\" and aria-current=\"page\" when active - Dashboard first, then Chat, Mail, Contacts - flexible spacer, then the theme toggle and the profile-menu Popover, whose Profile, Settings and Log out items are inert. Popups need no container - they portal to the app's own body."
+      "note": "Fixed 4rem, never collapsed. Mark at the top, one Button per section with variant=\"secondary\" and aria-current=\"page\" when active - Dashboard first, then Chat, Mail, Contacts - flexible spacer, then the theme toggle and the profile-menu Popover, whose Profile, Settings and Log out items render as disabled buttons. Every section button has a kit Tooltip naming it. Popups need no container - they portal to the app's own body."
     },
     {
       "part": "routing",

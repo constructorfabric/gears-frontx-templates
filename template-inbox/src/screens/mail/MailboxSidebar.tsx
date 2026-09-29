@@ -95,6 +95,7 @@ export function MailboxSidebar({
       className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
       aria-label={t('mail')}
       aria-hidden={collapsed}
+      inert={collapsed}
     >
       <div className={styles.paneHeader}>
         <span className={styles.paneTitle}>{t('mail')}</span>

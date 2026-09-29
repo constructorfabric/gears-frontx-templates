@@ -37,6 +37,7 @@ export function ContactFilterSidebar({
       className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
       aria-label={t('contact_filters')}
       aria-hidden={collapsed}
+      inert={collapsed}
     >
       <div className={styles.paneHeader}>
         <span className={styles.paneTitle}>{t('contacts')}</span>

@@ -12,8 +12,9 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { ConversionSource } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
+import { chartSummary } from './chartSummary';
 import { conversionChartConfig } from './dashboardChartConfig';
-import { conversionWonPercent, formatPercent } from './dashboardSelectors';
+import { conversionWonPercent, formatCount, formatPercent } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
 export type ConversionBySourceCardProps = {
@@ -46,6 +47,15 @@ export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardPro
         <ChartContainer
           config={conversionChartConfig(t)}
           className={styles.conversionChart}
+          role="img"
+          aria-label={chartSummary(
+            t('conversion_by_source'),
+            sources.map((source) => ({
+              label: source.label,
+              value: t('chart_won_lost', { won: formatCount(source.won), lost: formatCount(source.lost) }),
+            })),
+            t
+          )}
           initialDimension={CHART_DIMENSION}
         >
           <BarChart data={sources} layout="vertical" margin={CHART_MARGIN}>

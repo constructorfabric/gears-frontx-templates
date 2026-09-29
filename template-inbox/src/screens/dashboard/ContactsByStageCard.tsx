@@ -39,6 +39,9 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
         <ChartContainer
           config={contactsByStageChartConfig(t)}
           className={styles.stageDonut}
+          // The legend below lists every segment's count and share in text,
+          // so the donut itself is decoration to assistive technology.
+          aria-hidden="true"
           initialDimension={DONUT_DIMENSION}
         >
           <PieChart>

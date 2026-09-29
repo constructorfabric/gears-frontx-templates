@@ -1,5 +1,6 @@
-import { MailSearchIcon, PinIcon, StarIcon, SearchIcon } from 'lucide-react';
+import { MailSearchIcon, PanelLeftIcon, PinIcon, SearchIcon, StarIcon } from 'lucide-react';
 import {
+  Button,
   Empty,
   EmptyHeader,
   EmptyMedia,
@@ -22,6 +23,7 @@ import type { Translate } from '../../shared/i18n';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { isMailTab, selectMails, type MailTab } from './mailSelectors';
 import styles from '../../styles/workspace.module.css';
 import mailStyles from '../../styles/mail.module.css';
@@ -38,6 +40,9 @@ export type MailListProps = {
   onSearchChange: (search: string) => void;
   /** Hidden while the reading pane has the screen to itself. */
   hidden: boolean;
+  onToggleMailboxes: () => void;
+  /** Whether the mailbox column is open, for the toggle's own state. */
+  mailboxesOpen: boolean;
   t: Translate;
 };
 
@@ -59,6 +64,8 @@ export function MailList({
   search,
   onSearchChange,
   hidden,
+  onToggleMailboxes,
+  mailboxesOpen,
   t,
 }: MailListProps) {
   const allMails = selectMails(mails, mailboxId, 'all', search);
@@ -87,14 +94,16 @@ export function MailList({
       <ItemContent>
         <div className={styles.rowLine}>
           <ItemTitle className={cx(styles.rowText, styles.rowTitleText, mailStyles.correspondentText)}>
+            {/* Read or unread shows as weight and opacity; this says it in words. */}
+            {mail.read ? null : <span className={styles.visuallyHidden}>{t('unread_mail')}</span>}
             {mail.correspondentName}
           </ItemTitle>
           <span className={mailStyles.rowTimeGroup}>
             {mail.pinned ? (
-              <PinIcon className={styles.pinIcon} aria-label={t('pinned_mail')} />
+              <PinIcon className={styles.pinIcon} role="img" aria-label={t('pinned_mail')} />
             ) : null}
             {mail.starred ? (
-              <StarIcon className={mailStyles.starIcon} aria-label={t('starred_mail')} />
+              <StarIcon className={mailStyles.starIcon} role="img" aria-label={t('starred_mail')} />
             ) : null}
             <span className={styles.rowTime}>{shortRelativeTime(mail.receivedAt)}</span>
           </span>
@@ -146,7 +155,15 @@ export function MailList({
   return (
     <section className={cx(styles.listPane, hidden && styles.singlePaneHidden)} aria-label={mailboxLabel}>
       <div className={styles.paneHeader}>
-        <h2 className={styles.paneTitle}>{mailboxLabel}</h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<PanelLeftIcon />}
+          aria-label={t('toggle_mailboxes')}
+          aria-expanded={mailboxesOpen}
+          onClick={onToggleMailboxes}
+        />
+        <ScreenHeading className={styles.paneTitle}>{mailboxLabel}</ScreenHeading>
         <span className={styles.paneCount}>{allMails.length}</span>
       </div>
 

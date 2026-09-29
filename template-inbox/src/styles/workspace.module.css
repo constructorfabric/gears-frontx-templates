@@ -104,6 +104,12 @@
   border-right-width: 0;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
 .sidebarBody {
   flex: 1;
   min-height: 0;
@@ -178,6 +184,7 @@
 }
 
 .paneTitle {
+  margin: 0;
   font-size: var(--text-heading-2-size);
   font-weight: var(--text-heading-2-weight);
   line-height: var(--text-heading-2-line-height);
@@ -1005,4 +1012,18 @@
   .listPane {
     width: 100%;
   }
+}
+
+/* Text for assistive technology only: out of the layout, still read. The kit
+ * ships no such utility. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

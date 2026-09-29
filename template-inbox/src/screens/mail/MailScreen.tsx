@@ -8,7 +8,8 @@ import { getMailApi } from '../../api/registry';
 import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
-import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
+import { SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
+import { useSidebarToggle } from '../../shared/useSidebarToggle';
 import { MailboxSidebar, type ComposedMail } from './MailboxSidebar';
 import { MailList } from './MailList';
 import { MailReadingPane } from './MailReadingPane';
@@ -53,7 +54,7 @@ export function MailScreen({ t }: MailScreenProps) {
   // the mock API answered with.
   const [composedMails, setComposedMails] = useState<Mail[]>([]);
 
-  const isCompact = useMediaQuery(COMPACT_QUERY);
+  const mailboxesSidebar = useSidebarToggle();
   const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
 
   const mailboxes = mailboxesQuery.data?.mailboxes ?? [];
@@ -169,9 +170,7 @@ export function MailScreen({ t }: MailScreenProps) {
         selectedMailboxId={mailboxId}
         onSelectMailbox={selectMailbox}
         onComposeMail={composeMail}
-        // Below the compact width the column has no room, the same rule the
-        // inbox's channel column follows.
-        collapsed={isCompact}
+        collapsed={mailboxesSidebar.collapsed}
         t={t}
       />
 
@@ -186,6 +185,8 @@ export function MailScreen({ t }: MailScreenProps) {
         search={search}
         onSearchChange={setSearch}
         hidden={isSinglePane && showReading}
+        onToggleMailboxes={mailboxesSidebar.toggle}
+        mailboxesOpen={!mailboxesSidebar.collapsed}
         t={t}
       />
 

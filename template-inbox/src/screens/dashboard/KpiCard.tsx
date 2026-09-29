@@ -54,7 +54,9 @@ export function KpiCard({ kpi, t }: KpiCardProps) {
           </div>
           <span className={styles.kpiLabel}>{kpi.label}</span>
         </div>
-        <div className={styles.kpiChart}>
+        {/* The value, the delta and the label above already say what the
+            sparkline draws, so it is decoration to assistive technology. */}
+        <div className={styles.kpiChart} aria-hidden="true">
           {kpi.chartType === 'area' && (
             <AreaSparkline data={kpi.series} config={config} className={styles.sparkline} />
           )}

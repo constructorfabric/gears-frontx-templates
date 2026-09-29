@@ -19,8 +19,9 @@ import {
 import type { RecordsCreatedPoint } from '../../api/dashboardTypes';
 import { monthLabel } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
+import { chartSummary } from './chartSummary';
 import { recordsCreatedChartConfig } from './dashboardChartConfig';
-import { formatCount, recordsCreatedTotal } from './dashboardSelectors';
+import { formatCount, recordsCreatedTotal, sum } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
 export type RecordsCreatedCardProps = {
@@ -29,6 +30,7 @@ export type RecordsCreatedCardProps = {
 };
 
 const CHART_DIMENSION = { width: 480, height: 260 };
+const RECORD_SERIES = ['companies', 'opportunities', 'people'] as const;
 const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
 
 /**
@@ -45,6 +47,7 @@ const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
  */
 export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
   const total = recordsCreatedTotal(records);
+  const chartConfig = recordsCreatedChartConfig(t);
   const chartData = records.map((point) => ({ ...point, month: monthLabel(point.month) }));
   const periodItems = [{ value: 'last-12-months', label: t('last_12_months') }];
 
@@ -73,8 +76,17 @@ export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
         </div>
         <p className={styles.recordsCreatedSubtitle}>{t('records_created_subtitle')}</p>
         <ChartContainer
-          config={recordsCreatedChartConfig(t)}
+          config={chartConfig}
           className={styles.recordsChart}
+          role="img"
+          aria-label={chartSummary(
+            t('records_created'),
+            RECORD_SERIES.map((series) => ({
+              label: String(chartConfig[series]?.label ?? series),
+              value: formatCount(sum(records.map((point) => point[series]))),
+            })),
+            t
+          )}
           initialDimension={CHART_DIMENSION}
         >
           <LineChart data={chartData} margin={CHART_MARGIN}>
