@@ -18,7 +18,15 @@ export const CHANNEL_SALES = 'sales';
 export const BRAND = 'Acme';
 
 /** The routing value of a conversation that belongs to no team inbox. */
-export const NO_TEAM_INBOX = 'No team inbox';
+export const NO_TEAM_INBOX = 'none';
+
+/**
+ * Every team inbox a conversation can be routed to, by routing value. Folders
+ * per team inbox are out of scope; the routing value is not. What a value
+ * reads as on screen is the catalogue's (`team_inbox_<value>`), never this
+ * module's.
+ */
+export const TEAM_INBOXES = [NO_TEAM_INBOX, 'marketing', 'billing', 'customer_success'] as const;
 
 export const MAILBOX_INBOX: MailboxId = 'inbox';
 export const MAILBOX_DRAFTS: MailboxId = 'drafts';

@@ -1,7 +1,8 @@
 import type { KeyboardEvent } from 'react';
 import { SendIcon } from 'lucide-react';
 import { Button, Textarea } from '@gears-frontx/ui-kit';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
+import { SubmitShortcutHint } from '../../shared/submitShortcut';
 import styles from '../../styles/workspace.module.css';
 
 export type MailComposerProps = {
@@ -26,7 +27,7 @@ export type MailComposerProps = {
  */
 export function MailComposer({ correspondentName, draft, onDraftChange, onSend, t }: MailComposerProps) {
   const canSend = draft.trim() !== '';
-  const placeholder = t('reply_to_placeholder').replace('{name}', correspondentName);
+  const placeholder = t('reply_to_placeholder', { name: correspondentName });
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && canSend) {
@@ -48,7 +49,7 @@ export function MailComposer({ correspondentName, draft, onDraftChange, onSend, 
         />
         <div className={styles.composerToolbar}>
           <span className={styles.spacer} />
-          <span className={styles.composerHint}>{t('send_shortcut')}</span>
+          <SubmitShortcutHint t={t} className={styles.composerHint} />
           <Button icon={<SendIcon />} disabled={!canSend} onClick={onSend}>
             {t('send')}
           </Button>

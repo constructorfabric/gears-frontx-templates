@@ -10,6 +10,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { Contact } from '../../api/types';
 import { emailDomain, labelOf, longRelativeTime, orDash } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import styles from '../../styles/workspace.module.css';
 
@@ -19,7 +20,7 @@ const ROWS_PER_PAGE = 25;
 export type ContactsTableProps = {
   contacts: Contact[];
   onViewContact: (contactId: string) => void;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps) {
@@ -40,6 +41,7 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
               name={row.original.name}
               presence={row.original.presence}
               size="sm"
+              t={t}
             />
             <span className={styles.nameCellLines}>
               <span className={styles.rowText}>{row.original.name}</span>
@@ -53,7 +55,7 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
           <DataTableSortButton column={instance}>{t('type')}</DataTableSortButton>
         ),
         cell: ({ getValue }) => (
-          <Badge variant={getValue() === 'lead' ? 'warning' : 'info'}>{labelOf(getValue())}</Badge>
+          <Badge variant={getValue() === 'lead' ? 'warning' : 'info'}>{labelOf(getValue(), t)}</Badge>
         ),
       }),
       column.accessor('company', {
@@ -84,7 +86,7 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
         header: ({ column: instance }) => (
           <DataTableSortButton column={instance}>{t('last_seen')}</DataTableSortButton>
         ),
-        cell: ({ getValue }) => longRelativeTime(getValue()),
+        cell: ({ getValue }) => longRelativeTime(getValue(), t),
       }),
       column.display({
         id: 'actions',

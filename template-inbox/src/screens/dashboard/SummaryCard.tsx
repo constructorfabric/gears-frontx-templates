@@ -3,7 +3,7 @@ import { CircleAlertIcon, ClockIcon, MessageSquareIcon } from 'lucide-react';
 import { Area, AreaChart } from 'recharts';
 import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle, ChartContainer } from '@gears-frontx/ui-kit';
 import type { ActivityItem } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { labelOf } from '../../shared/format';
 import { summaryTrendChartConfig } from './dashboardChartConfig';
 import { formatCount } from './dashboardSelectors';
@@ -47,25 +47,25 @@ export function SummaryCard({ activity, trend, t }: SummaryCardProps) {
               <MessageSquareIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(openCount)}</span>
-            <span className={styles.summaryStatLabel}>{labelOf('open')}</span>
+            <span className={styles.summaryStatLabel}>{labelOf('open', t)}</span>
           </div>
           <div className={styles.summaryStat}>
             <span className={styles.summaryIconChip}>
               <ClockIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(pendingCount)}</span>
-            <span className={styles.summaryStatLabel}>{labelOf('pending')}</span>
+            <span className={styles.summaryStatLabel}>{labelOf('pending', t)}</span>
           </div>
           <div className={styles.summaryStat}>
             <span className={styles.summaryIconChip}>
               <CircleAlertIcon />
             </span>
             <span className={styles.summaryStatValue}>{formatCount(escalatedCount)}</span>
-            <span className={styles.summaryStatLabel}>{labelOf('escalated')}</span>
+            <span className={styles.summaryStatLabel}>{labelOf('escalated', t)}</span>
           </div>
         </div>
         <ChartContainer
-          config={summaryTrendChartConfig}
+          config={summaryTrendChartConfig(t)}
           className={styles.summaryChart}
           initialDimension={CHART_DIMENSION}
         >

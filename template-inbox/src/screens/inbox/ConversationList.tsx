@@ -35,6 +35,7 @@ import {
 import type { Contact, Conversation } from '../../api/types';
 import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { countOpen, isSortOrder, SORT_ORDERS, type SortOrder } from './conversationOrdering';
 import styles from '../../styles/workspace.module.css';
@@ -59,7 +60,7 @@ export type ConversationListProps = {
   onSortChange: (sort: SortOrder) => void;
   onToggleChannels: () => void;
   hidden: boolean;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function ConversationList({
@@ -129,6 +130,7 @@ export function ConversationList({
             name={contact?.name ?? conversation.subject}
             presence={contact?.presence ?? 'offline'}
             size="lg"
+            t={t}
           />
         </ItemMedia>
         <ItemContent>
@@ -149,7 +151,7 @@ export function ConversationList({
               {conversation.unreadCount > 0 ? (
                 <Badge
                   className={styles.unreadBadge}
-                  aria-label={t('unread_messages_count').replace('{count}', String(conversation.unreadCount))}
+                  aria-label={t('unread_messages_count', { count: conversation.unreadCount })}
                 >
                   {conversation.unreadCount}
                 </Badge>
@@ -249,7 +251,7 @@ export function ConversationList({
 
       <div className={cx(styles.paneRow, styles.paneToolbar)}>
         <span className={styles.toolbarCount}>
-          {t('open_count').replace('{count}', String(countOpen(conversations)))}
+          {t('open_count', { count: countOpen(conversations) })}
         </span>
         <Select
           value={sort}

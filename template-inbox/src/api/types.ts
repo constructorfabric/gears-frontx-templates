@@ -128,13 +128,11 @@ export type Message = {
   /** The image to render; only meaningful for `kind: 'image'`. */
   imageUrl: string | null;
   /**
-   * Calendar text in the transcript's format ("Aug 21, 2026 - 8:21 AM"),
-   * rendered as it arrives. Unlike the list's relative times the transcript
-   * shows calendar text, so the server states the text it wants displayed;
-   * the seed data derives it from its anchor (`seedClock.ts`), and the date
-   * half is what the thread groups its day dividers by.
+   * ISO instant the message was sent. The thread formats it in the app's
+   * locale - the time inside the bubble, the day on the divider above a run
+   * of same-day messages - so the data never carries display text.
    */
-  timestamp: string;
+  sentAt: string;
   /**
    * Read receipt: `true` read, `false` delivered and not yet read, `null` no
    * receipt at all - every inbound message, every internal note, and an

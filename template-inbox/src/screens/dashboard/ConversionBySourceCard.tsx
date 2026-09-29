@@ -11,9 +11,9 @@ import {
   ChartTooltipContent,
 } from '@gears-frontx/ui-kit';
 import type { ConversionSource } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { conversionChartConfig } from './dashboardChartConfig';
-import { conversionWonPercent } from './dashboardSelectors';
+import { conversionWonPercent, formatPercent } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
 export type ConversionBySourceCardProps = {
@@ -40,11 +40,11 @@ export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardPro
       </CardHeader>
       <CardContent className={styles.conversionContent}>
         <div className={styles.recordsCreatedHeadline}>
-          <span className={styles.heroValue}>{wonPercent}%</span>
+          <span className={styles.heroValue}>{formatPercent(wonPercent)}</span>
         </div>
         <p className={styles.recordsCreatedSubtitle}>{t('conversion_by_source_subtitle')}</p>
         <ChartContainer
-          config={conversionChartConfig}
+          config={conversionChartConfig(t)}
           className={styles.conversionChart}
           initialDimension={CHART_DIMENSION}
         >

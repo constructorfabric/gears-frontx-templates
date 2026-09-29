@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { CircleAlertIcon } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button } from '@gears-frontx/ui-kit';
-import type { Translate } from './i18n';
+import type { Translate } from '../shared/i18n';
 import styles from '../styles/workspace.module.css';
 
 export type AppErrorBoundaryProps = {

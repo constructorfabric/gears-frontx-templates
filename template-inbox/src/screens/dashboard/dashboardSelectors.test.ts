@@ -228,7 +228,12 @@ describe('funnelSegmentGeometry label fit', () => {
       { id: 'wide', label: 'Wide', count: 100 },
       { id: 'sliver', label: 'Sliver', count: 1 },
     ];
-    const [wide, sliver] = funnelSegmentGeometry(stages, { width: 300, height: 200, gap: 3 });
+    const [wide, sliver] = funnelSegmentGeometry(stages, {
+      width: 300,
+      height: 200,
+      gap: 3,
+      labelOf: (stage, percent) => `${stage.label} · ${percent}`,
+    });
 
     expect(wide.textLength === undefined || wide.textLength <= 300).toBe(true);
     // 1% of 300 is 3 units, less than the label padding on either side.

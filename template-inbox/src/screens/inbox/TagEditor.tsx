@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { PlusIcon, XIcon } from 'lucide-react';
 import { Badge, Button, Input } from '@gears-frontx/ui-kit';
+import type { Translate } from '../../shared/i18n';
 import styles from '../../styles/workspace.module.css';
 
 export type TagEditorProps = {
   tags: string[];
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
@@ -60,7 +61,7 @@ export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
             <button
               type="button"
               onClick={() => onRemoveTag(tag)}
-              aria-label={t('remove_tag').replace('{tag}', tag)}
+              aria-label={t('remove_tag', { tag })}
             />
           }
         >

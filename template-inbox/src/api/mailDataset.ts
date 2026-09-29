@@ -21,10 +21,7 @@ import {
   MAILBOX_TRASH,
 } from './constants';
 import type { Mail, MailMessage, Mailbox } from './mailTypes';
-import { calendarText, daysAgo, hoursAgo } from './seedClock';
-
-/** Calendar text for a history card's date line, in the transcript's format. */
-const historyDate = (iso: string): string => calendarText(new Date(iso));
+import { daysAgo, hoursAgo } from './seedClock';
 
 /** Static navigation metadata, fetched the same way `channels` is - a real
  * backend would answer the label set even though every count downstream is
@@ -235,7 +232,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-2',
     correspondentName: 'Alex Rivera',
     correspondentEmail: 'alex@brightlabs.example',
-    date: historyDate(hoursAgo(26)),
+    sentAt: hoursAgo(26),
     body: 'Could we get staging access set up for the new build? Devon on your side mentioned you handle provisioning.',
   },
   {
@@ -243,7 +240,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-2',
     correspondentName: 'Devon Ashworth',
     correspondentEmail: 'devon@brightlabs.example',
-    date: historyDate(hoursAgo(24)),
+    sentAt: hoursAgo(24),
     body: 'Sure, I will have it ready by tomorrow - sending the credentials in a separate email for security.',
   },
   {
@@ -251,7 +248,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-11',
     correspondentName: 'Alex Rivera',
     correspondentEmail: 'alex@northstar.example',
-    date: historyDate(daysAgo(24)),
+    sentAt: daysAgo(24),
     body: 'Starting on the year-end filing - I count two receipts missing from the folder you shared, can you send those over?',
   },
   {
@@ -259,7 +256,7 @@ export const mailMessages: MailMessage[] = [
     mailId: 'ml-11',
     correspondentName: 'Mateus Rocha',
     correspondentEmail: 'mateus@marea.example',
-    date: historyDate(daysAgo(22)),
+    sentAt: daysAgo(22),
     body: 'Found them - both attached now. Apologies, they were filed under the wrong quarter.',
   },
 ];

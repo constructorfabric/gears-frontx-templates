@@ -51,6 +51,7 @@ import type {
 } from '../../api/types';
 import { cx } from '../../shared/cx';
 import { labelOf, messageDayKey, messageDayLabel, messageTimeOfDay } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { Composer, type ComposerProps } from './Composer';
 import styles from '../../styles/workspace.module.css';
@@ -132,12 +133,12 @@ function MessageMeta({
   className,
 }: {
   message: ThreadMessage;
-  t: (key: string) => string;
+  t: Translate;
   className?: string;
 }) {
   return (
     <span className={cx(styles.bubbleMeta, className)}>
-      <span className={styles.bubbleMetaTime}>{messageTimeOfDay(message.timestamp)}</span>
+      <span className={styles.bubbleMetaTime}>{messageTimeOfDay(message.sentAt)}</span>
       {message.direction === 'outbound' && message.seen !== null ? (
         message.seen ? (
           <CheckCheckIcon className={styles.readTick} aria-label={t('message_read')} />
@@ -214,7 +215,7 @@ export type ConversationThreadProps = {
   /** Puts the chip's text in the composer; the chip row is what calls it. */
   onUseSuggestedReply: (reply: string) => void;
   composer: ComposerProps;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function ConversationThread({
@@ -253,11 +254,12 @@ export function ConversationThread({
           name={contactName}
           presence={contact?.presence ?? 'offline'}
           size="lg"
+          t={t}
         />
         <div className={styles.threadTitles}>
           <span className={styles.threadSubject}>{conversation.subject}</span>
           <span className={styles.threadSubtitle}>
-            {`${contactName} - ${labelOf(contact?.presence ?? 'offline')}`}
+            {t('contact_presence', { name: contactName, presence: labelOf(contact?.presence ?? 'offline', t) })}
           </span>
         </div>
         <span className={styles.spacer} />
@@ -373,12 +375,12 @@ export function ConversationThread({
                 const senderName = outbound ? (agent?.name ?? '') : contactName;
                 const previous = index > 0 ? messages[index - 1] : null;
                 const showDivider =
-                  previous === null || messageDayKey(previous.timestamp) !== messageDayKey(message.timestamp);
+                  previous === null || messageDayKey(previous.sentAt) !== messageDayKey(message.sentAt);
                 return (
                   <Fragment key={message.id}>
                     {showDivider ? (
                       <Marker variant="separator">
-                        <MarkerContent>{messageDayLabel(message.timestamp)}</MarkerContent>
+                        <MarkerContent>{messageDayLabel(message.sentAt)}</MarkerContent>
                       </Marker>
                     ) : null}
                     <MessageScrollerItem
@@ -393,6 +395,7 @@ export function ConversationThread({
                               outbound ? (agent?.presence ?? 'online') : (contact?.presence ?? 'offline')
                             }
                             size="sm"
+                            t={t}
                           />
                         </MessageAvatar>
                         <MessageContent>

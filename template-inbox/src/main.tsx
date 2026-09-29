@@ -9,7 +9,7 @@ import './styles/app.css';
 import { registerApiServices } from './api/registry';
 import { App } from './app/App';
 import { AppErrorBoundary } from './app/ErrorBoundary';
-import { t } from './app/i18n';
+import { t } from './shared/i18n';
 import { applyStoredTheme } from './app/theme';
 
 // Both before the first render, and in this order: a service the first query

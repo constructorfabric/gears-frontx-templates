@@ -14,7 +14,7 @@ import type {
   PostMessageRequest,
   PostMessageResponse,
 } from '../../api/types';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { contactRoute, navigate } from '../../app/routing';
 import { cx } from '../../shared/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';

@@ -30,13 +30,11 @@ import type {
 } from './dashboardTypes';
 import { ANCHOR_MS, daysAgo, hoursAgo } from './seedClock';
 
-
-const weekdayFormat = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
-
-/** The last 7 calendar days including today, oldest first - every chart on
- * this screen that plots a week shares this label set so the x-axes agree. */
+/** The last 7 calendar days including today, oldest first, as ISO instants -
+ * every chart on this screen that plots a week shares this set so the x-axes
+ * agree. The charts write the weekday names themselves, in the app's locale. */
 export const LAST_7_DAYS: string[] = Array.from({ length: 7 }, (_, index) =>
-  weekdayFormat.format(new Date(ANCHOR_MS - (6 - index) * 24 * 3_600_000))
+  new Date(ANCHOR_MS - (6 - index) * 24 * 3_600_000).toISOString()
 );
 
 /**
@@ -146,16 +144,15 @@ export const newContacts: NewContactsSeries = {
  * resolutions, so it reads differently from `resolvedPerDay` beside it. */
 export const summaryTrend: number[] = [30, 34, 31, 38, 36, 41, 44];
 
-/** The last 12 calendar months, oldest first - "Records created"'s own x-axis,
- * independent of `LAST_7_DAYS` since this card plots a full year rather than
- * a week. */
+/** The last 12 calendar months, oldest first, each as the ISO instant its
+ * first day starts - "Records created"'s own x-axis, independent of
+ * `LAST_7_DAYS` since this card plots a full year rather than a week. */
 const MONTHS_12: string[] = (() => {
   const anchor = new Date(ANCHOR_MS);
-  const monthFormat = new Intl.DateTimeFormat('en-US', { month: 'short' });
   // Calendar months, not 30-day steps: day 1 of each month, so eleven steps
   // back can neither skip a short month nor name a long one twice.
   return Array.from({ length: 12 }, (_, index) =>
-    monthFormat.format(new Date(anchor.getFullYear(), anchor.getMonth() - (11 - index), 1))
+    new Date(anchor.getFullYear(), anchor.getMonth() - (11 - index), 1).toISOString()
   );
 })();
 

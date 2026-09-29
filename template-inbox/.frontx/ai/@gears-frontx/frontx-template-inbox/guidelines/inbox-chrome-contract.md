@@ -41,7 +41,7 @@ A screen never reads or writes the theme. `useTheme` exists for the one toggle i
 
 ## Copy
 
-`src/app/i18n.ts` exports `t` and the `Translate` type, reading `src/i18n/en.json`. Screens take `t` as a prop rather than importing it, which is what keeps them renderable in a test with `t = (key) => key`. Add a screen's strings to that one file. A missing key returns the key itself and logs a console warning.
+`src/shared/i18n.ts` exports `t`, the `Translate` type and `locale`, reading `src/i18n/en.json` (in `shared/` because the formatters read `locale` and the layer rules keep `shared/` below `app/`). `t(key, params)` fills `{name}` parameters and picks a plural form (`<key>_one`, `<key>_other`, by `Intl.PluralRules`) from a numeric `count`. Screens take `t` as a prop rather than importing it, and their tests pass the real `t` and query by `t(key)`. Add a screen's strings, separators and sentence templates included, to that one file; every `Intl` formatter reads `locale`, and a number, a percent or a unit is written by `Intl`, never spelled out. A missing key returns the key itself and logs one console warning per key.
 
 ## Shared parts
 

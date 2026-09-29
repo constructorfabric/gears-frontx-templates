@@ -12,6 +12,7 @@ import {
 import { renderScreen } from '../../__test-utils__/renderScreen';
 import { mails } from '../../api/mailDataset';
 import { SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
+import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({ getMailApi: () => endpointTags }));
 vi.mock('../../api/queries', () => ({
@@ -21,7 +22,6 @@ vi.mock('../../api/queries', () => ({
 
 const { MailScreen } = await import('./MailScreen');
 
-const t = (key: string) => key;
 
 const SEED_SENT_COUNT = mails.filter((mail) => mail.mailboxId === 'sent').length;
 
@@ -74,8 +74,8 @@ describe('MailScreen', () => {
 
     // Inbox's most recently received mail opens on its own: no click needed,
     // the empty state is gone, and the reply box is ready.
-    expect(screen.queryByText('no_mail_selected_title')).toBeNull();
-    expect(screen.getByPlaceholderText('reply_to_placeholder')).toBeTruthy();
+    expect(screen.queryByText(t('no_mail_selected_title'))).toBeNull();
+    expect(screen.getByPlaceholderText(/^Reply to /)).toBeTruthy();
   });
 
   it('auto-selects the first mail again on a mailbox switch, without disturbing a hand-picked selection', () => {
@@ -83,7 +83,7 @@ describe('MailScreen', () => {
 
     // Inbox's own pinned mail (ml-3, Ava Laurent), picked automatically
     // ahead of Priya's more recent one.
-    expect(screen.queryByText('no_mail_selected_title')).toBeNull();
+    expect(screen.queryByText(t('no_mail_selected_title'))).toBeNull();
     expect(screen.getAllByText('Ava Laurent').length).toBe(2);
 
     // A mail the agent picks by hand must stick while the mailbox does not
@@ -98,7 +98,7 @@ describe('MailScreen', () => {
     });
     expect(screen.getByText(/Let me know if the reset link does not arrive/)).toBeTruthy();
     act(() => {
-      screen.getByText('earlier_messages').click();
+      screen.getByText(t('earlier_messages', { count: 2 })).click();
     });
     expect(screen.getByText(/Let me know if the reset link does not arrive/)).toBeTruthy();
 
@@ -114,8 +114,8 @@ describe('MailScreen', () => {
       // once it is the active one again; the nav row is the first match.
       screen.getAllByText('Inbox')[0].click();
     });
-    expect(screen.queryByText('no_mail_selected_title')).toBeNull();
-    expect(screen.getByPlaceholderText('reply_to_placeholder')).toBeTruthy();
+    expect(screen.queryByText(t('no_mail_selected_title'))).toBeNull();
+    expect(screen.getByPlaceholderText(/^Reply to /)).toBeTruthy();
   });
 
   it('opens a mail, and keeps its history collapsed until the toggle is used', () => {
@@ -131,11 +131,8 @@ describe('MailScreen', () => {
     expect(screen.getByText(/Let me know if the reset link does not arrive/)).toBeTruthy();
     expect(screen.queryByText(/Could we get staging access set up/)).toBeNull();
 
-    // The mock `t` returns the key verbatim, so the toggle reads the raw
-    // `earlier_messages` key rather than the interpolated "2 earlier
-    // messages" sentence a real translation would produce.
     act(() => {
-      screen.getByText('earlier_messages').click();
+      screen.getByText(t('earlier_messages', { count: 2 })).click();
     });
     expect(screen.getByText(/Could we get staging access set up/)).toBeTruthy();
   });
@@ -150,14 +147,14 @@ describe('MailScreen', () => {
 
     // Unique to the body, not the row's own subject-plus-snippet preview.
     expect(screen.getByText(/The headcount section is still rough/)).toBeTruthy();
-    expect(screen.queryByText('earlier_messages')).toBeNull();
+    expect(screen.queryByText(/earlier message/)).toBeNull();
   });
 
   it('filters to unread mail within the selected mailbox', () => {
     const screen = renderScreen(<MailScreen t={t} />);
 
     act(() => {
-      screen.getByText('unread_mail_count').click();
+      screen.getByText(/^Unread \(\d+\)$/).click();
     });
 
     // Unread within Inbox, so Priya's own row shows in the Unread tab's list.
@@ -171,7 +168,7 @@ describe('MailScreen', () => {
   it('filters instantly by correspondent and subject as the search box is typed', () => {
     const screen = renderScreen(<MailScreen t={t} />);
 
-    const search = screen.getByPlaceholderText('search_mail');
+    const search = screen.getByPlaceholderText(t('search_mail'));
     if (!(search instanceof HTMLInputElement)) throw new Error('search field is not an input');
 
     act(() => {
@@ -192,8 +189,8 @@ describe('MailScreen', () => {
     // Inbox opens by default; its two pinned mails (ml-3 Ava Laurent, ml-6
     // Carlos Mendez) render under a "Pinned" label, each with its own pin
     // icon.
-    expect(screen.getByText('pinned')).toBeTruthy();
-    expect(screen.getAllByLabelText('pinned_mail').length).toBe(2);
+    expect(screen.getByText(t('pinned'))).toBeTruthy();
+    expect(screen.getAllByLabelText(t('pinned_mail')).length).toBe(2);
 
     // Carlos Mendez's mail (ml-6) is Inbox's OTHER pinned row and its own
     // least recently received - it still leads Priya's and Devon's more
@@ -208,7 +205,7 @@ describe('MailScreen', () => {
     // rule: a pinned-but-read mail (Ava, Carlos) drops out of Unread same
     // as any other read mail would.
     act(() => {
-      screen.getByText('unread_mail_count').click();
+      screen.getByText(/^Unread \(\d+\)$/).click();
     });
     expect(screen.queryByText('Carlos Mendez')).toBeNull();
   });
@@ -221,13 +218,13 @@ describe('MailScreen', () => {
       screen.getByText('Priya Natarajan').click();
     });
 
-    const send = screen.getByText('send').closest('button');
+    const send = screen.getByText(t('send')).closest('button');
     if (send === null) throw new Error('send button not found');
     expect(send.hasAttribute('disabled') || send.getAttribute('aria-disabled') === 'true').toBe(
       true
     );
 
-    const draft = screen.getByPlaceholderText('reply_to_placeholder');
+    const draft = screen.getByPlaceholderText(/^Reply to /);
     if (!(draft instanceof HTMLTextAreaElement)) throw new Error('composer is not a textarea');
     act(() => {
       typeInto(draft, 'Sounds good, thanks.');
@@ -245,20 +242,20 @@ describe('MailScreen', () => {
     act(() => {
       screen.getByText('Sent').click();
     });
-    const sentNavButton = within(screen.getByLabelText('mail')).getByText('Sent').closest('button');
+    const sentNavButton = within(screen.getByLabelText(t('mail'))).getByText('Sent').closest('button');
     if (sentNavButton === null) throw new Error('Sent nav row not found');
     expect(within(sentNavButton).getByText(String(SEED_SENT_COUNT + 1))).toBeTruthy();
-    expect(screen.getAllByText(/reply_subject/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^Re: /).length).toBeGreaterThan(0);
   });
 
   it('composes a mail and sends it into the Sent mailbox, gated on To plus (Subject or Body)', () => {
     const screen = renderScreen(<MailScreen t={t} />);
 
     act(() => {
-      screen.getByLabelText('compose').click();
+      screen.getByLabelText(t('compose')).click();
     });
-    const toField = domScreen.getByLabelText('compose_to_label');
-    const subjectField = domScreen.getByLabelText('compose_subject_label');
+    const toField = domScreen.getByLabelText(t('compose_to_label'));
+    const subjectField = domScreen.getByLabelText(t('compose_subject_label'));
     if (!(toField instanceof HTMLInputElement)) throw new Error('to field is not an input');
     if (!(subjectField instanceof HTMLInputElement)) throw new Error('subject field is not an input');
     expect(document.activeElement).toBe(toField);
@@ -275,27 +272,27 @@ describe('MailScreen', () => {
     act(() => {
       typeInto(toField, 'devon@brightlabs.example');
     });
-    expect(dialog.getByText('send').closest('button')?.disabled).toBe(true);
+    expect(dialog.getByText(t('send')).closest('button')?.disabled).toBe(true);
 
     act(() => {
       typeInto(subjectField, 'Follow-up on staging access');
     });
-    expect(dialog.getByText('send').closest('button')?.disabled).toBe(false);
+    expect(dialog.getByText(t('send')).closest('button')?.disabled).toBe(false);
 
     act(() => {
-      dialog.getByText('send').click();
+      dialog.getByText(t('send')).click();
     });
 
     // The dialog closed, and the new mail is a real Sent row - switching
     // there shows it, count included.
-    expect(domScreen.queryByLabelText('compose_to_label')).toBeNull();
+    expect(domScreen.queryByLabelText(t('compose_to_label'))).toBeNull();
     act(() => {
       screen.getByText('Sent').click();
     });
     // The nav row's own badge, scoped to the mailbox sidebar itself - once
     // switched, the list pane's own heading also reads "Sent", and its
     // badge count can coincidentally match another mailbox's digit too.
-    const sentNavButton = within(screen.getByLabelText('mail')).getByText('Sent').closest('button');
+    const sentNavButton = within(screen.getByLabelText(t('mail'))).getByText('Sent').closest('button');
     if (sentNavButton === null) throw new Error('Sent nav row not found');
     // The badge's own text, matched exactly: a substring check would also
     // pass on "13".
@@ -311,25 +308,25 @@ describe('MailScreen', () => {
     const screen = renderScreen(<MailScreen t={t} />);
 
     act(() => {
-      screen.getByLabelText('compose').click();
+      screen.getByLabelText(t('compose')).click();
     });
-    const toField = domScreen.getByLabelText('compose_to_label');
+    const toField = domScreen.getByLabelText(t('compose_to_label'));
     if (!(toField instanceof HTMLInputElement)) throw new Error('to field is not an input');
     act(() => {
       typeInto(toField, 'devon@brightlabs.example');
     });
 
     act(() => {
-      domScreen.getByText('cancel').click();
+      domScreen.getByText(t('cancel')).click();
     });
-    expect(domScreen.queryByLabelText('compose_to_label')).toBeNull();
+    expect(domScreen.queryByLabelText(t('compose_to_label'))).toBeNull();
 
     act(() => {
       screen.getByText('Sent').click();
     });
     // Sent still reads 2 - nothing was appended. Scoped the same way as the
     // note above.
-    const sentNavButton = within(screen.getByLabelText('mail')).getByText('Sent').closest('button');
+    const sentNavButton = within(screen.getByLabelText(t('mail'))).getByText('Sent').closest('button');
     if (sentNavButton === null) throw new Error('Sent nav row not found');
     expect(within(sentNavButton).getByText(String(SEED_SENT_COUNT))).toBeTruthy();
     expect(screen.queryByText('devon@brightlabs.example')).toBeNull();
@@ -339,9 +336,9 @@ describe('MailScreen', () => {
     setQueryState('mails', { error: new Error('down') });
     const screen = renderScreen(<MailScreen t={t} />);
 
-    expect(screen.getByRole('alert').textContent).toContain('load_error_title');
+    expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     act(() => {
-      screen.getByRole('button', { name: 'retry' }).click();
+      screen.getByRole('button', { name: t('retry') }).click();
     });
     expect(refetchCalls).toEqual(['mails']);
   });
@@ -349,20 +346,20 @@ describe('MailScreen', () => {
   it('says so when the search matches no mail', () => {
     const screen = renderScreen(<MailScreen t={t} />);
     act(() => {
-      typeInto(screen.getByLabelText('search_mail') as HTMLInputElement, 'no such correspondent');
+      typeInto(screen.getByLabelText(t('search_mail')) as HTMLInputElement, 'no such correspondent');
     });
 
-    expect(screen.getAllByText('no_matching_mail').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(t('no_matching_mail')).length).toBeGreaterThan(0);
   });
 
   it('renders the reading pane actions it does not ship disabled, without a pressed state', () => {
     const screen = renderScreen(<MailScreen t={t} />);
 
     for (const label of ['archive_mail', 'trash_mail', 'reply_to_mail']) {
-      const button = screen.getByLabelText(label);
+      const button = screen.getByLabelText(t(label));
       expect(button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true').toBe(true);
     }
-    const star = screen.getByLabelText(/star_mail/);
+    const star = screen.getByLabelText(t('star_mail'));
     expect(star.hasAttribute('aria-pressed')).toBe(false);
   });
 
@@ -383,9 +380,9 @@ describe('MailScreen', () => {
     const list = screen.getByLabelText('Inbox', { selector: 'section' });
     expect(list.className).toMatch(/singlePaneHidden/);
     act(() => {
-      screen.getByLabelText('back_to_mail_list').click();
+      screen.getByLabelText(t('back_to_mail_list')).click();
     });
     expect(list.className).not.toMatch(/singlePaneHidden/);
-    expect(screen.queryByLabelText('back_to_mail_list')).toBeNull();
+    expect(screen.queryByLabelText(t('back_to_mail_list'))).toBeNull();
   });
 });

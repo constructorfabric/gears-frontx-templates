@@ -9,6 +9,7 @@ import {
 } from '../../__test-utils__/apiMocks';
 import { renderScreen } from '../../__test-utils__/renderScreen';
 import { act } from 'react';
+import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({
   getDashboardApi: () => endpointTags,
@@ -21,7 +22,6 @@ vi.mock('../../api/queries', () => ({
 
 const { DashboardScreen } = await import('./DashboardScreen');
 
-const t = (key: string) => key;
 
 afterEach(() => {
   resetApiMocks();
@@ -51,7 +51,7 @@ describe('DashboardScreen', () => {
   it('renders the fourth row 1 card, "Contacts by stage", with counts and computed percents', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('contacts_by_stage')).toBeTruthy();
+    expect(screen.getByText(t('contacts_by_stage'))).toBeTruthy();
     expect(screen.getByText('Prospect')).toBeTruthy();
     expect(screen.getByText('Churned')).toBeTruthy();
     // `contactsByStage` in `dashboardDataset.ts`: Prospect is 15 of 60
@@ -64,25 +64,25 @@ describe('DashboardScreen', () => {
   it('renders row 2: the resolved-per-day chart, the new contacts hero, and the summary card', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('resolved_per_day')).toBeTruthy();
-    expect(screen.getByText('new_contacts')).toBeTruthy();
+    expect(screen.getByText(t('resolved_per_day'))).toBeTruthy();
+    expect(screen.getByText(t('new_contacts'))).toBeTruthy();
     // New contacts totals inbound (89) + outbound (42) = 131 - computed, not
     // stored as its own field.
     expect(screen.getAllByText('131').length).toBeGreaterThan(0);
-    expect(screen.getByText('summary')).toBeTruthy();
-    expect(screen.getByText('view_report')).toBeTruthy();
+    expect(screen.getByText(t('summary'))).toBeTruthy();
+    expect(screen.getByText(t('view_report'))).toBeTruthy();
   });
 
   it('renders row 3: the records-created chart and the ranked top-agents list, Alex Rivera included', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('records_created')).toBeTruthy();
-    expect(screen.getByText('records_created_subtitle')).toBeTruthy();
+    expect(screen.getByText(t('records_created'))).toBeTruthy();
+    expect(screen.getByText(t('records_created_subtitle'))).toBeTruthy();
     // `recordsCreated` sums companies+opportunities+people across all 12
     // months to 266 - computed by `recordsCreatedTotal`, not hardcoded (see
     // `dashboardDataset.ts` and `dashboardSelectors.test.ts`).
     expect(screen.getAllByText('266').length).toBeGreaterThan(0);
-    expect(screen.getByText('top_agents')).toBeTruthy();
+    expect(screen.getByText(t('top_agents'))).toBeTruthy();
     // Alex Rivera appears both in the ranked list and as the owning agent of at
     // least one activity row, so more than one match is expected here.
     expect(screen.getAllByText('Alex Rivera').length).toBeGreaterThan(0);
@@ -91,7 +91,7 @@ describe('DashboardScreen', () => {
   it('renders the team workload strip as its own full-width row with four blocks', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('team_workload')).toBeTruthy();
+    expect(screen.getByText(t('team_workload'))).toBeTruthy();
     expect(screen.getByText('Support load')).toBeTruthy();
     expect(screen.getByText('Dev backlog')).toBeTruthy();
     expect(screen.getByText('CRM tasks')).toBeTruthy();
@@ -101,12 +101,12 @@ describe('DashboardScreen', () => {
   it('renders the stage-funnel and conversion-by-source row', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('stage_funnel')).toBeTruthy();
+    expect(screen.getByText(t('stage_funnel'))).toBeTruthy();
     // `stageFunnel` in `dashboardDataset.ts`: the first stage, New, is the
     // funnel's own total (120) - computed by `funnelTotal`, not hardcoded.
     expect(screen.getAllByText('120').length).toBeGreaterThan(0);
 
-    expect(screen.getByText('conversion_by_source')).toBeTruthy();
+    expect(screen.getByText(t('conversion_by_source'))).toBeTruthy();
     // `conversionBySource`: won (140) over won+lost (220) is a computed 64%
     // (see `dashboardSelectors.test.ts`), not hardcoded.
     expect(screen.getAllByText('64%').length).toBeGreaterThan(0);
@@ -115,7 +115,7 @@ describe('DashboardScreen', () => {
   it('renders row 4: the recent activity table, contacts resolved from the inbox dataset', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByText('recent_activity')).toBeTruthy();
+    expect(screen.getByText(t('recent_activity'))).toBeTruthy();
     // `activity[0]` in the mocked dataset is owned by Alex Rivera and points
     // at the first seeded contact, Grace Park.
     expect(screen.getByText('Grace Park')).toBeTruthy();
@@ -125,9 +125,9 @@ describe('DashboardScreen', () => {
     setQueryState('dashboard', { error: new Error('down') });
     const screen = renderScreen(<DashboardScreen t={t} />);
 
-    expect(screen.getByRole('alert').textContent).toContain('load_error_title');
+    expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     act(() => {
-      screen.getByRole('button', { name: 'retry' }).click();
+      screen.getByRole('button', { name: t('retry') }).click();
     });
     expect(refetchCalls).toEqual(['dashboard']);
   });
@@ -137,6 +137,6 @@ describe('DashboardScreen', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
     expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
-    expect(screen.queryByText('recent_activity')).toBeNull();
+    expect(screen.queryByText(t('recent_activity'))).toBeNull();
   });
 });

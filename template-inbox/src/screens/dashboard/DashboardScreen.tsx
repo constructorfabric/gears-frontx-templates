@@ -1,6 +1,6 @@
 import { useApiQuery } from '../../api/queries';
 import { getDashboardApi, getInboxApi } from '../../api/registry';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { ActivityTable } from './ActivityTable';
 import { ConversionBySourceCard } from './ConversionBySourceCard';

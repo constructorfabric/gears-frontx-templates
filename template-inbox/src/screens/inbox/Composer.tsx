@@ -2,6 +2,8 @@ import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { PaperclipIcon, SendIcon, SmileIcon, ZapIcon } from 'lucide-react';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from '@gears-frontx/ui-kit';
 import { cx } from '../../shared/cx';
+import type { Translate } from '../../shared/i18n';
+import { SubmitShortcutHint } from '../../shared/submitShortcut';
 import styles from '../../styles/workspace.module.css';
 
 export const COMPOSER_TABS = ['reply', 'note'] as const;
@@ -29,7 +31,7 @@ export type ComposerProps = {
    * the effect below only reacts to THIS value changing.
    */
   focusSignal?: number;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function Composer({
@@ -96,7 +98,7 @@ export function Composer({
           <Button variant="ghost" size="sm" icon={<ZapIcon />} aria-label={t('saved_replies')} disabled />
         </div>
         <span className={styles.spacer} />
-        <span className={styles.composerHint}>{t('send_shortcut')}</span>
+        <SubmitShortcutHint t={t} className={styles.composerHint} />
         <Button icon={<SendIcon />} disabled={!canSend} loading={sending} onClick={onSend}>
           {isNote ? t('add_note') : t('send')}
         </Button>

@@ -20,7 +20,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@gears-frontx/ui-kit';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import type { Channel } from '../../api/types';
 import { cx } from '../../shared/cx';
 import styles from '../../styles/workspace.module.css';

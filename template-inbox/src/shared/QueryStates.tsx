@@ -1,6 +1,7 @@
 import { CircleAlertIcon } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, Skeleton } from '@gears-frontx/ui-kit';
 import type { QueryResult } from '../api/queries';
+import type { Translate } from './i18n';
 import styles from '../styles/workspace.module.css';
 
 /** The part of a query result a screen's first paint depends on. */
@@ -50,7 +51,7 @@ export function LoadErrorPane({
   className,
 }: {
   onRetry: () => void;
-  t: (key: string) => string;
+  t: Translate;
   className?: string;
 }) {
   return (

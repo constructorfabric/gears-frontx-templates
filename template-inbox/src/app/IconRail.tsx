@@ -25,7 +25,7 @@ import {
 import type { AgentIdentity } from '../api/types';
 import { labelOf } from '../shared/format';
 import { PresenceAvatar } from '../shared/PresenceAvatar';
-import type { Translate } from './i18n';
+import type { Translate } from '../shared/i18n';
 import {
   CONTACTS_ROUTE,
   DASHBOARD_ROUTE,
@@ -120,15 +120,15 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
 
       <Popover>
         <PopoverTrigger className={styles.railIdentity} aria-label={t('open_profile_menu')}>
-          <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} />
+          <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
         </PopoverTrigger>
         <PopoverContent side="right" align="end">
           <div className={styles.stack}>
             <div className={styles.railIdentityCard}>
-              <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} />
+              <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
               <span className={styles.identityLines}>
                 <span className={styles.identityName}>{agent?.name ?? t('loading')}</span>
-                <span className={styles.identityMeta}>{agent ? labelOf(agent.presence) : ''}</span>
+                <span className={styles.identityMeta}>{agent ? labelOf(agent.presence, t) : ''}</span>
               </span>
             </div>
             <div className={styles.fieldRow}>

@@ -7,9 +7,9 @@
  * one shared anchor is what keeps the inbox, mail and dashboard datasets
  * agreeing with each other about what "an hour ago" was.
  *
- * The transcript and the mail history show calendar text rather than relative
- * times, so this module also owns the one formatter that text is written in:
- * a seeded message and a message the agent posts a minute ago read the same.
+ * Every instant is an ISO string, the transcript's and the mail history's
+ * included: how an instant reads on screen is the formatters' concern
+ * (`shared/format.ts`), in the app's locale, never the data's.
  */
 
 /** Resolved once per page load; every offset below is measured back from it. */
@@ -25,27 +25,3 @@ export const hoursAgo = (hours: number): string =>
   new Date(ANCHOR_MS - hours * HOUR_MS).toISOString();
 
 export const daysAgo = (days: number): string => hoursAgo(days * 24);
-
-const dateFormat = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
-
-const timeFormat = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-});
-
-/**
- * Calendar text in the transcript's format: "Aug 21, 2026 - 8:21 AM". The date
- * half is what the thread groups its day dividers by (`messageDayKey` in
- * `shared/format.ts`), so every writer of `Message.timestamp` goes through here.
- */
-export const calendarText = (at: Date): string =>
-  `${dateFormat.format(at)} - ${timeFormat.format(at)}`;
-
-/** Calendar text for an instant `minutes` before the anchor. */
-export const calendarTextMinutesAgo = (minutes: number): string =>
-  calendarText(new Date(ANCHOR_MS - minutes * MINUTE_MS));

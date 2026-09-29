@@ -5,7 +5,7 @@ import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
 import { InboxScreen } from '../screens/inbox/InboxScreen';
 import { MailScreen } from '../screens/mail/MailScreen';
 import { IconRail } from './IconRail';
-import { t } from './i18n';
+import { t } from '../shared/i18n';
 import { useRoute } from './routing';
 import { useTheme } from './theme';
 import styles from '../styles/workspace.module.css';

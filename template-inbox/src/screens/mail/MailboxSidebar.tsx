@@ -23,7 +23,7 @@ import {
   Textarea,
 } from '@gears-frontx/ui-kit';
 import type { Mail, Mailbox, MailboxId } from '../../api/mailTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
 import { countInMailbox } from './mailSelectors';
 import styles from '../../styles/workspace.module.css';

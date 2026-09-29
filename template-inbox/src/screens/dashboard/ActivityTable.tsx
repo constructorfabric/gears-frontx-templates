@@ -11,7 +11,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { ActivityItem, ActivityKind, ActivityStatus, TopAgent } from '../../api/dashboardTypes';
 import type { Contact } from '../../api/types';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { identityToneOf, initialsOf, labelOf, longRelativeTime, orDash } from '../../shared/format';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import styles from '../../styles/dashboard.module.css';
@@ -86,7 +86,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
         ),
         cell: ({ row }) => (
           <div className={styles.activityContactCell}>
-            <PresenceAvatar name={row.original.contact.name} presence={row.original.contact.presence} size="sm" />
+            <PresenceAvatar name={row.original.contact.name} presence={row.original.contact.presence} size="sm" t={t} />
             <span className={styles.activityContactLines}>
               <span className={styles.cellText}>{row.original.contact.name}</span>
               <span className={styles.activityContactCompany}>{orDash(row.original.contact.company)}</span>
@@ -103,7 +103,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
             </span>
           </DataTableSortButton>
         ),
-        cell: ({ getValue }) => <Badge variant={KIND_TONE[getValue()]}>{labelOf(getValue())}</Badge>,
+        cell: ({ getValue }) => <Badge variant={KIND_TONE[getValue()]}>{labelOf(getValue(), t)}</Badge>,
       }),
       column.accessor('status', {
         header: ({ column: instance }) => (
@@ -114,7 +114,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
             </span>
           </DataTableSortButton>
         ),
-        cell: ({ getValue }) => <Badge variant={STATUS_TONE[getValue()]}>{labelOf(getValue())}</Badge>,
+        cell: ({ getValue }) => <Badge variant={STATUS_TONE[getValue()]}>{labelOf(getValue(), t)}</Badge>,
       }),
       column.accessor('ownerName', {
         header: ({ column: instance }) => (
@@ -148,7 +148,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
             </span>
           </DataTableSortButton>
         ),
-        cell: ({ getValue }) => longRelativeTime(getValue()),
+        cell: ({ getValue }) => longRelativeTime(getValue(), t),
       }),
     ]);
   }, [t]);

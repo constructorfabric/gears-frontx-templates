@@ -7,7 +7,7 @@ import {
   ItemTitle,
 } from '@gears-frontx/ui-kit';
 import type { Contact } from '../../api/types';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
 import {
   CONTACT_FILTERS,

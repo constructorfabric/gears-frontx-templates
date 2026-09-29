@@ -11,7 +11,8 @@ import {
   ChartTooltipContent,
 } from '@gears-frontx/ui-kit';
 import type { ResolvedPerDayPoint } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import { weekdayLabel } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { resolvedPerDayChartConfig } from './dashboardChartConfig';
 import styles from '../../styles/dashboard.module.css';
 
@@ -32,6 +33,7 @@ const CHART_DIMENSION = { width: 420, height: 220 };
  * out.
  */
 export function ResolvedPerDayCard({ data, t }: ResolvedPerDayCardProps) {
+  const chartData = data.map((point) => ({ ...point, day: weekdayLabel(point.day) }));
   return (
     <Card className={styles.resolvedCard}>
       <CardHeader>
@@ -39,11 +41,11 @@ export function ResolvedPerDayCard({ data, t }: ResolvedPerDayCardProps) {
       </CardHeader>
       <CardContent>
         <ChartContainer
-          config={resolvedPerDayChartConfig}
+          config={resolvedPerDayChartConfig(t)}
           className={styles.resolvedChart}
           initialDimension={CHART_DIMENSION}
         >
-          <BarChart data={data} margin={CHART_MARGIN}>
+          <BarChart data={chartData} margin={CHART_MARGIN}>
             <CartesianGrid horizontal vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
               dataKey="day"

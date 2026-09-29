@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, Badge, Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
 import type { TopAgent } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { identityToneOf, initialsOf } from '../../shared/format';
 import { formatCount } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';

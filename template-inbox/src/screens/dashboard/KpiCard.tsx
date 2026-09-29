@@ -13,10 +13,11 @@ import {
   kpiDeltaPercent,
   kpiValue,
 } from './dashboardSelectors';
+import type { Translate } from '../../shared/i18n';
 import { AreaSparkline, BarSparkline, LineSparkline } from './Sparkline';
 import styles from '../../styles/dashboard.module.css';
 
-const CHART_CONFIG_BY_ID: Record<string, ChartConfig> = {
+const CHART_CONFIG_BY_ID: Record<string, (t: Translate) => ChartConfig> = {
   'open-conversations': openConversationsChartConfig,
   'resolved-this-week': resolvedThisWeekChartConfig,
   'avg-first-response': avgFirstResponseChartConfig,
@@ -24,6 +25,7 @@ const CHART_CONFIG_BY_ID: Record<string, ChartConfig> = {
 
 export type KpiCardProps = {
   kpi: DashboardKpiCard;
+  t: Translate;
 };
 
 /**
@@ -36,11 +38,11 @@ export type KpiCardProps = {
  * (`ContactsByStageCard`) rather than a fourth branch here - a donut with a
  * count+percent legend needs its own shape, not a `series`/`value` pair.
  */
-export function KpiCard({ kpi }: KpiCardProps) {
+export function KpiCard({ kpi, t }: KpiCardProps) {
   const value = kpiValue(kpi);
   const delta = kpiDeltaPercent(kpi);
   const tone = deltaTone(delta, kpi.goodWhenPositive);
-  const config = CHART_CONFIG_BY_ID[kpi.id] ?? openConversationsChartConfig;
+  const config = (CHART_CONFIG_BY_ID[kpi.id] ?? openConversationsChartConfig)(t);
 
   return (
     <Card>

@@ -24,22 +24,23 @@ import type {
   ConversationPriority,
   ConversationStatus,
 } from '../../api/types';
+import { TEAM_INBOXES } from '../../api/constants';
 import { labelOf, orDash } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { DetailsSection } from './DetailsSection';
 import { TagEditor } from './TagEditor';
 import styles from '../../styles/workspace.module.css';
 
-const UNASSIGNED = 'Unassigned';
+/**
+ * The select's own value for "nobody": `Conversation.assignee` says it with
+ * the empty string, which a select item cannot carry. A leading space keeps
+ * it from colliding with any person's name.
+ */
+const UNASSIGNED = ' unassigned';
 
 const PRIORITIES: ConversationPriority[] = ['none', 'low', 'medium', 'high'];
 const STATUSES: ConversationStatus[] = ['open', 'snoozed', 'closed'];
-
-/**
- * The team inboxes a conversation can be routed to. Folders per team inbox are
- * out of scope; the routing value is not.
- */
-const TEAM_INBOXES = ['No team inbox', 'Marketing Team', 'Billing', 'Customer Success'];
 
 const COPILOT_PROMPTS = ['copilot_summarize', 'copilot_draft', 'copilot_asking'];
 
@@ -67,7 +68,7 @@ export type CustomerDetailsPanelProps = {
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   isSpam: boolean;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function CustomerDetailsPanel({
@@ -92,6 +93,18 @@ export function CustomerDetailsPanel({
     (name) => name !== ''
   );
   const assigneeValue = conversation.assignee === '' ? UNASSIGNED : conversation.assignee;
+  const assigneeItems = assignees.map((name) => ({
+    value: name,
+    label: name === UNASSIGNED ? t('unassigned') : name,
+  }));
+  // The same rule for the team inbox: a routing value this build has no label
+  // for (a backend that added a team) is still an option, under its own value.
+  const teamInboxItems = [...new Set<string>([...TEAM_INBOXES, conversation.teamInbox])].map((value) => ({
+    value,
+    label: TEAM_INBOXES.some((known) => known === value) ? t(`team_inbox_${value}`) : value,
+  }));
+  const priorityItems = PRIORITIES.map((priority) => ({ value: priority, label: labelOf(priority, t) }));
+  const statusItems = STATUSES.map((status) => ({ value: status, label: labelOf(status, t) }));
   const contactName = contact?.name ?? conversation.subject;
 
   return (
@@ -109,10 +122,11 @@ export function CustomerDetailsPanel({
                 name={contactName}
                 presence={contact?.presence ?? 'offline'}
                 size="lg"
+                t={t}
               />
               <span className={styles.contactCardName}>{contactName}</span>
               <span className={styles.identityMeta}>
-                {labelOf(contact?.presence ?? 'offline')}
+                {labelOf(contact?.presence ?? 'offline', t)}
               </span>
               <Button variant="outline" size="sm" onClick={onViewContact} disabled={!contact}>
                 {t('view_contact')}
@@ -127,15 +141,15 @@ export function CustomerDetailsPanel({
                     onAssigneeChange(value === UNASSIGNED ? '' : value);
                   }
                 }}
-                items={assignees.map((name) => ({ value: name, label: name }))}
+                items={assigneeItems}
               >
                 <SelectTrigger size="sm" aria-label={t('assignee')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {assignees.map((name) => (
-                    <SelectItem key={name} value={name}>
-                      {name}
+                  {assigneeItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -146,15 +160,15 @@ export function CustomerDetailsPanel({
                 onValueChange={(value) => {
                   if (typeof value === 'string') onTeamInboxChange(value);
                 }}
-                items={TEAM_INBOXES.map((name) => ({ value: name, label: name }))}
+                items={teamInboxItems}
               >
                 <SelectTrigger size="sm" aria-label={t('team_inbox')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TEAM_INBOXES.map((name) => (
-                    <SelectItem key={name} value={name}>
-                      {name}
+                  {teamInboxItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -166,18 +180,15 @@ export function CustomerDetailsPanel({
                   const match = PRIORITIES.find((priority) => priority === value);
                   if (match) onPriorityChange(match);
                 }}
-                items={PRIORITIES.map((priority) => ({
-                  value: priority,
-                  label: labelOf(priority),
-                }))}
+                items={priorityItems}
               >
                 <SelectTrigger size="sm" aria-label={t('priority')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRIORITIES.map((priority) => (
-                    <SelectItem key={priority} value={priority}>
-                      {labelOf(priority)}
+                  {priorityItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -189,15 +200,15 @@ export function CustomerDetailsPanel({
                   const match = STATUSES.find((status) => status === value);
                   if (match) onStatusChange(match);
                 }}
-                items={STATUSES.map((status) => ({ value: status, label: labelOf(status) }))}
+                items={statusItems}
               >
                 <SelectTrigger size="sm" aria-label={t('status')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {labelOf(status)}
+                  {statusItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -217,7 +228,7 @@ export function CustomerDetailsPanel({
 
             <DetailsSection title={t('conversation_attributes')}>
               <FieldRow label={t('id')} value={conversation.id} />
-              <FieldRow label={t('channel')} value={labelOf(conversation.channel)} />
+              <FieldRow label={t('channel')} value={labelOf(conversation.channel, t)} />
               <FieldRow label={t('brand')} value={conversation.brand} />
             </DetailsSection>
 

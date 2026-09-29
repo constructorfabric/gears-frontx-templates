@@ -9,9 +9,9 @@ import {
   ChartTooltipContent,
 } from '@gears-frontx/ui-kit';
 import type { ContactStageSegment } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { contactsByStageChartConfig } from './dashboardChartConfig';
-import { contactsByStagePercent, formatCount } from './dashboardSelectors';
+import { contactsByStagePercent, formatCount, formatPercent } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
 export type ContactsByStageCardProps = {
@@ -37,7 +37,7 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
       </CardHeader>
       <CardContent className={styles.stageCardContent}>
         <ChartContainer
-          config={contactsByStageChartConfig}
+          config={contactsByStageChartConfig(t)}
           className={styles.stageDonut}
           initialDimension={DONUT_DIMENSION}
         >
@@ -69,7 +69,7 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
               <span className={styles.stageLegendLabel}>{segment.label}</span>
               <span className={styles.stageLegendCount}>{formatCount(segment.count)}</span>
               <span className={styles.stageLegendPercent}>
-                {contactsByStagePercent(segment, segments)}%
+                {formatPercent(contactsByStagePercent(segment, segments))}
               </span>
             </li>
           ))}

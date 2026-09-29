@@ -50,20 +50,32 @@ export type DashboardKpiCard = {
  * day's total is never stored - it is `chat + mail + tasks`, computed at
  * render (see `resolvedPerDayTotal`), the same number the "Resolved this
  * week" KPI card sums across the whole week. */
-export type ResolvedPerDayPoint = { day: string; chat: number; mail: number; tasks: number };
+export type ResolvedPerDayPoint = {
+  /** ISO instant within the day; the chart writes the weekday name. */
+  day: string;
+  chat: number;
+  mail: number;
+  tasks: number;
+};
 
 /** One month of "Records created": how many of each record type this
  * screen's world creates that month. The card's headline total is never
  * stored - it is the sum of all three fields across every point, computed
  * at render (see `recordsCreatedTotal`). */
 export type RecordsCreatedPoint = {
+  /** ISO instant the month starts; the chart writes the month name. */
   month: string;
   companies: number;
   opportunities: number;
   people: number;
 };
 
-export type NewContactsPoint = { day: string; inbound: number; outbound: number };
+export type NewContactsPoint = {
+  /** ISO instant within the day, as in `ResolvedPerDayPoint`. */
+  day: string;
+  inbound: number;
+  outbound: number;
+};
 
 export type NewContactsSeries = {
   series: NewContactsPoint[];

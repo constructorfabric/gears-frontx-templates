@@ -10,6 +10,7 @@ import {
 import { renderScreen } from '../../__test-utils__/renderScreen';
 import { act } from 'react';
 import { contacts, conversations } from '../../api/dataset';
+import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({ getInboxApi: () => endpointTags }));
 vi.mock('../../api/queries', () => ({
@@ -19,7 +20,6 @@ vi.mock('../../api/queries', () => ({
 
 const { ContactsScreen } = await import('./ContactsScreen');
 
-const t = (key: string) => key;
 
 afterEach(() => {
   resetApiMocks();
@@ -46,16 +46,16 @@ describe('ContactsScreen', () => {
     // The detail pane, not the table: Amara is on page two of the list, and
     // the qualification card only exists on a contact's own page.
     expect(screen.getAllByText('Amara Nwosu').length).toBeGreaterThan(0);
-    expect(screen.getByText('qualification')).toBeTruthy();
+    expect(screen.getByText(t('qualification'))).toBeTruthy();
   });
 
   it('gives the whole pane to a contact page by dropping the directory filters', () => {
     const list = renderScreen(<ContactsScreen openContactId={null} t={t} />);
-    expect(list.getByLabelText('contact_filters')).toBeTruthy();
+    expect(list.getByLabelText(t('contact_filters'))).toBeTruthy();
     list.unmount();
 
     const detail = renderScreen(<ContactsScreen openContactId="r-1" t={t} />);
-    expect(detail.queryByLabelText('contact_filters')).toBeNull();
+    expect(detail.queryByLabelText(t('contact_filters'))).toBeNull();
   });
 
   it("lists a contact's conversations from the inbox's own collection", () => {
@@ -65,24 +65,24 @@ describe('ContactsScreen', () => {
 
     const screen = renderScreen(<ContactsScreen openContactId={contact.id} t={t} />);
     expect(screen.getAllByText(conversation?.subject ?? '').length).toBeGreaterThan(0);
-    expect(screen.getByText(`conversations (${contact.conversations.length})`)).toBeTruthy();
+    expect(screen.getByText(t('conversations_count', { count: contact.conversations.length }))).toBeTruthy();
   });
 
   it('says a contact was not found, instead of showing the directory, for an id the directory lacks', () => {
     const screen = renderScreen(<ContactsScreen openContactId="r-missing" t={t} />);
 
-    expect(screen.getByText('contact_not_found_title')).toBeTruthy();
-    expect(screen.queryByLabelText('contact_filters')).toBeNull();
+    expect(screen.getByText(t('contact_not_found_title'))).toBeTruthy();
+    expect(screen.queryByLabelText(t('contact_filters'))).toBeNull();
   });
 
   it('shows an error with a retry, rather than an empty directory, when the contacts fail to load', () => {
     setQueryState('contacts', { error: new Error('down') });
     const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
 
-    expect(screen.getByRole('alert').textContent).toContain('load_error_title');
-    expect(screen.queryByText('no_contacts')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
+    expect(screen.queryByText(t('no_contacts'))).toBeNull();
     act(() => {
-      screen.getByRole('button', { name: 'retry' }).click();
+      screen.getByRole('button', { name: t('retry') }).click();
     });
     expect(refetchCalls).toEqual(['contacts']);
   });

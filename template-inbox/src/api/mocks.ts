@@ -16,7 +16,6 @@
 
 import { agent, channels, contacts, conversations, messages as seedMessages } from './dataset';
 import { mockReply, type RestMockMap } from './RestMockPlugin';
-import { calendarText } from './seedClock';
 import type { JsonValue } from '@gears-frontx/api';
 import type {
   GetAgentResponse,
@@ -82,7 +81,7 @@ const acceptPostedMessage = (request: PostMessageRequest): Message => {
     body: request.body,
     links: [],
     imageUrl: null,
-    timestamp: calendarText(new Date()),
+    sentAt: new Date().toISOString(),
     // No receipt yet: nothing has been delivered, and a note never gets one.
     seen: null,
     internal: request.kind === 'note',

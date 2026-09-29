@@ -5,7 +5,7 @@ import { MAILBOX_SENT } from '../../api/constants';
 import type { Mail, MailboxId } from '../../api/mailTypes';
 import { useApiQuery } from '../../api/queries';
 import { getMailApi } from '../../api/registry';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
@@ -125,7 +125,7 @@ export function MailScreen({ t }: MailScreenProps) {
       mailboxId: MAILBOX_SENT,
       correspondentName: selected.correspondentName,
       correspondentEmail: selected.correspondentEmail,
-      subject: t('reply_subject').replace('{subject}', selected.subject),
+      subject: t('reply_subject', { subject: selected.subject }),
       snippet: body,
       body,
       receivedAt: new Date().toISOString(),

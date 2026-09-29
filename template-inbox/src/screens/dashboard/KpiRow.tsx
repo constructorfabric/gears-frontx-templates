@@ -1,5 +1,5 @@
 import type { ContactStageSegment, DashboardKpiCard } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { ContactsByStageCard } from './ContactsByStageCard';
 import { KpiCard } from './KpiCard';
 import styles from '../../styles/dashboard.module.css';
@@ -14,7 +14,7 @@ export function KpiRow({ kpis, contactsByStage, t }: KpiRowProps) {
   return (
     <div className={styles.kpiRow}>
       {kpis.map((kpi) => (
-        <KpiCard key={kpi.id} kpi={kpi} />
+        <KpiCard key={kpi.id} kpi={kpi} t={t} />
       ))}
       <ContactsByStageCard segments={contactsByStage} t={t} />
     </div>

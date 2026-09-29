@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import { ClipboardCheckIcon, CodeIcon, FolderKanbanIcon, HeadsetIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Progress } from '@gears-frontx/ui-kit';
 import type { WorkloadMetric } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { formatCount, workloadPercent } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
 
@@ -42,7 +42,7 @@ export function WorkloadStrip({ workload, t }: WorkloadStripProps) {
                 <div className={styles.workloadItemHead}>
                   <span className={styles.workloadLabel}>{metric.label}</span>
                   <span className={styles.workloadValue}>
-                    {formatCount(metric.value)}/{formatCount(metric.max)}
+                    {t('workload_value', { value: formatCount(metric.value), max: formatCount(metric.max) })}
                   </span>
                 </div>
                 <Progress value={percent} aria-label={metric.label} className={styles.workloadProgress} />

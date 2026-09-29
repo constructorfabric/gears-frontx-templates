@@ -1,9 +1,11 @@
 /**
  * Display formatting shared by every screen.
  *
- * Everything here is computed at render from the instants the dataset resolved
- * at load, never stored: a conversation that read "1h" when the tab opened
- * reads "2h" an hour later without a refetch.
+ * Everything here is computed at render from the ISO instants the data
+ * carries, never stored: a conversation that read "1h" when the tab opened
+ * reads "2h" an hour later without a refetch. Every formatter writes in the
+ * catalogue's `locale`, and every word comes from the catalogue or from `Intl`
+ * itself, so a second language changes the catalogue and nothing here.
  */
 
 import type { ActivityKind, ActivityStatus } from '../api/dashboardTypes';
@@ -16,6 +18,7 @@ import type {
   TicketPriority,
   TicketStatus,
 } from '../api/types';
+import { locale, type Translate } from './i18n';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -23,7 +26,7 @@ const DAY_MS = 24 * HOUR_MS;
 const MONTH_MS = 30 * DAY_MS;
 const YEAR_MS = 365 * DAY_MS;
 
-const dateFormat = new Intl.DateTimeFormat('en-US', {
+const dateFormat = new Intl.DateTimeFormat(locale, {
   month: 'short',
   day: 'numeric',
   year: 'numeric',
@@ -31,78 +34,86 @@ const dateFormat = new Intl.DateTimeFormat('en-US', {
 
 /** No year - the transcript's date dividers separate days within a visible
  * window, not years, so a divider reads "Jun 7". */
-const dividerDateFormat = new Intl.DateTimeFormat('en-US', {
+const dividerDateFormat = new Intl.DateTimeFormat(locale, {
   month: 'short',
   day: 'numeric',
 });
 
-const plural = (count: number, unit: string): string =>
-  `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+const timeFormat = new Intl.DateTimeFormat(locale, {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+const dateTimeFormat = new Intl.DateTimeFormat(locale, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+const weekdayFormat = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+
+const monthFormat = new Intl.DateTimeFormat(locale, { month: 'short' });
+
+const relativeTimeFormat = new Intl.RelativeTimeFormat(locale, { numeric: 'always' });
+
+/** "26m", "1h", "4d" in English: a unit's narrowest form in the app's locale. */
+const narrowUnit = (unit: 'minute' | 'hour' | 'day') =>
+  new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'narrow' });
+
+const narrowMinutes = narrowUnit('minute');
+const narrowHours = narrowUnit('hour');
+const narrowDays = narrowUnit('day');
 
 /** The conversation list's compact form: "26m", "1h", "4d". */
 export const shortRelativeTime = (iso: string, now: number = Date.now()): string => {
   const elapsed = Math.max(0, now - Date.parse(iso));
-  if (elapsed < HOUR_MS) return `${Math.max(1, Math.floor(elapsed / MINUTE_MS))}m`;
-  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h`;
-  return `${Math.floor(elapsed / DAY_MS)}d`;
+  if (elapsed < HOUR_MS) return narrowMinutes.format(Math.max(1, Math.floor(elapsed / MINUTE_MS)));
+  if (elapsed < DAY_MS) return narrowHours.format(Math.floor(elapsed / HOUR_MS));
+  return narrowDays.format(Math.floor(elapsed / DAY_MS));
 };
 
 /** The contacts table and the activity timeline: "3 hours ago", "2 months ago". */
-export const longRelativeTime = (iso: string, now: number = Date.now()): string => {
+export const longRelativeTime = (iso: string, t: Translate, now: number = Date.now()): string => {
   const elapsed = Math.max(0, now - Date.parse(iso));
-  if (elapsed < MINUTE_MS) return 'just now';
-  if (elapsed < HOUR_MS) return plural(Math.floor(elapsed / MINUTE_MS), 'minute');
-  if (elapsed < DAY_MS) return plural(Math.floor(elapsed / HOUR_MS), 'hour');
-  if (elapsed < MONTH_MS) return plural(Math.floor(elapsed / DAY_MS), 'day');
-  if (elapsed < YEAR_MS) return plural(Math.floor(elapsed / MONTH_MS), 'month');
-  return plural(Math.floor(elapsed / YEAR_MS), 'year');
+  if (elapsed < MINUTE_MS) return t('just_now');
+  if (elapsed < HOUR_MS) return relativeTimeFormat.format(-Math.floor(elapsed / MINUTE_MS), 'minute');
+  if (elapsed < DAY_MS) return relativeTimeFormat.format(-Math.floor(elapsed / HOUR_MS), 'hour');
+  if (elapsed < MONTH_MS) return relativeTimeFormat.format(-Math.floor(elapsed / DAY_MS), 'day');
+  if (elapsed < YEAR_MS) return relativeTimeFormat.format(-Math.floor(elapsed / MONTH_MS), 'month');
+  return relativeTimeFormat.format(-Math.floor(elapsed / YEAR_MS), 'year');
 };
 
 /** Calendar text for the dates a contact detail shows: "Jun 27, 2025". */
 export const absoluteDate = (iso: string): string =>
   iso === '' ? MISSING_VALUE : dateFormat.format(new Date(iso));
 
-/**
- * A transcript message's day-boundary key, read off the calendar-date
- * prefix of `Message.timestamp` ("Aug 21, 2026 - 8:21 AM" -> "Aug 21,
- * 2026"). `timestamp` is calendar text by design (see `Message.timestamp`),
- * so grouping consecutive same-day messages reads that prefix directly.
- */
-export const messageDayKey = (timestamp: string): string => timestamp.split(' - ')[0];
+/** A chart axis's day name: "Mon". */
+export const weekdayLabel = (iso: string): string => weekdayFormat.format(new Date(iso));
 
-/** Month abbreviations as the transcript writes them ("Jan" ... "Dec"), by index. */
-const MONTH_ABBREVIATIONS = Array.from({ length: 12 }, (_, month) =>
-  new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(2000, month, 1))
-);
+/** A chart axis's month name: "Jan". */
+export const monthLabel = (iso: string): string => monthFormat.format(new Date(iso));
+
+/** A date and a time together, for a mail history card: "Aug 21, 2026, 8:21 AM". */
+export const dateTime = (iso: string): string => dateTimeFormat.format(new Date(iso));
 
 /**
- * Reads "Aug 21, 2026" into its parts explicitly: `new Date()` on a
- * non-ISO string is implementation-defined, so the day divider does not rely
- * on it. `null` for anything that is not that shape.
+ * A transcript message's day-boundary key: its local calendar date. Two
+ * messages share a divider exactly when their keys match; the key itself is
+ * never shown.
  */
-const parseDayKey = (dayKey: string): Date | null => {
-  const match = /^([A-Za-z]{3}) (\d{1,2}), (\d{4})$/.exec(dayKey);
-  if (match === null) return null;
-  const month = MONTH_ABBREVIATIONS.indexOf(match[1]);
-  if (month === -1) return null;
-  return new Date(Number(match[3]), month, Number(match[2]));
+export const messageDayKey = (iso: string): string => {
+  const at = new Date(iso);
+  return `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
 };
 
-/** A date divider's own label: "Aug 21" - month and day only,
- * dropping the year and time `messageDayKey` still carries. */
-export const messageDayLabel = (timestamp: string): string => {
-  const dayKey = messageDayKey(timestamp);
-  const parsed = parseDayKey(dayKey);
-  return parsed === null ? dayKey : dividerDateFormat.format(parsed);
-};
+/** A date divider's own label: "Aug 21" - month and day only. */
+export const messageDayLabel = (iso: string): string => dividerDateFormat.format(new Date(iso));
 
-/** The in-bubble timestamp: just the time-of-day half of `Message.timestamp`
- * ("Aug 21, 2026 - 8:21 AM" -> "8:21 AM") - the divider above the message
- * group already carries the date half. */
-export const messageTimeOfDay = (timestamp: string): string => {
-  const parts = timestamp.split(' - ');
-  return parts.length > 1 ? parts[1] : timestamp;
-};
+/** The in-bubble timestamp: the time of day only ("8:21 AM") - the divider
+ * above the message group already carries the date. */
+export const messageTimeOfDay = (iso: string): string => timeFormat.format(new Date(iso));
 
 /** What the app renders wherever a contact field has no value. */
 export const MISSING_VALUE = '-';
@@ -152,33 +163,34 @@ export type LabelledValue =
   | ActivityKind
   | ActivityStatus;
 
-const TITLE_CASE: Record<LabelledValue, string> = {
-  none: 'No priority',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  urgent: 'Urgent',
-  open: 'Open',
-  snoozed: 'Snoozed',
-  closed: 'Closed',
-  pending: 'Pending',
-  chat: 'Chat',
-  email: 'Email',
-  user: 'User',
-  lead: 'Lead',
-  online: 'Online',
-  offline: 'Offline',
-  away: 'Away',
-  mail: 'Mail',
-  task: 'Task',
-  resolved: 'Resolved',
-  escalated: 'Escalated',
+const LABEL_KEY: Record<LabelledValue, string> = {
+  none: 'label_no_priority',
+  low: 'label_low',
+  medium: 'label_medium',
+  high: 'label_high',
+  urgent: 'label_urgent',
+  open: 'label_open',
+  snoozed: 'label_snoozed',
+  closed: 'label_closed',
+  pending: 'label_pending',
+  chat: 'label_chat',
+  email: 'label_email',
+  user: 'label_user',
+  lead: 'label_lead',
+  online: 'label_online',
+  offline: 'label_offline',
+  away: 'label_away',
+  mail: 'label_mail',
+  task: 'label_task',
+  resolved: 'label_resolved',
+  escalated: 'label_escalated',
 };
 
 /**
- * The label for a closed vocabulary value. A lookup rather than a capitalise
- * helper because a value does not always capitalise into its label ("none"
- * reads "No priority"). Typed over the vocabularies themselves, so a value
- * with no label is a type error rather than raw text on screen.
+ * The label for a closed vocabulary value, from the catalogue. A key per value
+ * rather than a key built from the value, because a value does not always
+ * read as its label ("none" reads "No priority"). Typed over the vocabularies
+ * themselves, so a value with no label is a type error rather than raw text
+ * on screen.
  */
-export const labelOf = (value: LabelledValue): string => TITLE_CASE[value];
+export const labelOf = (value: LabelledValue, t: Translate): string => t(LABEL_KEY[value]);

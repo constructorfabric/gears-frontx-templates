@@ -7,7 +7,8 @@ import {
   MessageScrollerViewport,
 } from '@gears-frontx/ui-kit';
 import type { Mail, MailMessage } from '../../api/mailTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
+import { dateTime } from '../../shared/format';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { MailComposer } from './MailComposer';
 import styles from '../../styles/workspace.module.css';
@@ -89,7 +90,7 @@ export function MailReadingPane({
           <span className={styles.threadSubject}>{mail.subject}</span>
           <span className={styles.threadSubtitle}>{mail.correspondentName}</span>
           <span className={mailStyles.replyToLine}>
-            {t('reply_to_label')}: {mail.correspondentEmail}
+            {t('reply_to_line', { email: mail.correspondentEmail })}
           </span>
         </div>
       </div>
@@ -116,7 +117,7 @@ export function MailReadingPane({
                 >
                   {historyOpen
                     ? t('hide_earlier_messages')
-                    : t('earlier_messages').replace('{count}', String(history.length))}
+                    : t('earlier_messages', { count: history.length })}
                 </Button>
               ) : null}
 
@@ -126,7 +127,7 @@ export function MailReadingPane({
                       <div className={mailStyles.historyCardHeader}>
                         <IdentityAvatar name={message.correspondentName} size="default" />
                         <span className={mailStyles.historyCardSender}>{message.correspondentName}</span>
-                        <span className={mailStyles.historyCardDate}>{message.date}</span>
+                        <span className={mailStyles.historyCardDate}>{dateTime(message.sentAt)}</span>
                       </div>
                       <div className={mailStyles.historyCardBody}>{message.body}</div>
                     </div>

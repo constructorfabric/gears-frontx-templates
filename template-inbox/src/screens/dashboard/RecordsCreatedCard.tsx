@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from '@gears-frontx/ui-kit';
 import type { RecordsCreatedPoint } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import { monthLabel } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { recordsCreatedChartConfig } from './dashboardChartConfig';
 import { formatCount, recordsCreatedTotal } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
@@ -44,6 +45,7 @@ const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
  */
 export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
   const total = recordsCreatedTotal(records);
+  const chartData = records.map((point) => ({ ...point, month: monthLabel(point.month) }));
   const periodItems = [{ value: 'last-12-months', label: t('last_12_months') }];
 
   return (
@@ -71,11 +73,11 @@ export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
         </div>
         <p className={styles.recordsCreatedSubtitle}>{t('records_created_subtitle')}</p>
         <ChartContainer
-          config={recordsCreatedChartConfig}
+          config={recordsCreatedChartConfig(t)}
           className={styles.recordsChart}
           initialDimension={CHART_DIMENSION}
         >
-          <LineChart data={records} margin={CHART_MARGIN}>
+          <LineChart data={chartData} margin={CHART_MARGIN}>
             <CartesianGrid horizontal vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
               dataKey="month"

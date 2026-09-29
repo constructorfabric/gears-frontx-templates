@@ -40,8 +40,13 @@ describe('DashboardApiService', () => {
 
     expect(new Set(months).size).toBe(12);
     const now = new Date();
-    const expectedLast = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(now);
-    expect(months[months.length - 1]).toBe(expectedLast);
+    const last = new Date(months[months.length - 1]);
+    expect([last.getFullYear(), last.getMonth(), last.getDate()]).toEqual([now.getFullYear(), now.getMonth(), 1]);
+    months.slice(1).forEach((month, index) => {
+      const previous = new Date(months[index]);
+      const current = new Date(month);
+      expect((current.getFullYear() - previous.getFullYear()) * 12 + current.getMonth() - previous.getMonth()).toBe(1);
+    });
   });
 
   it('keeps "Resolved per day"\'s per-source stack consistent with the "Resolved this week" KPI', async () => {

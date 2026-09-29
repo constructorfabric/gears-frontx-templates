@@ -24,6 +24,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { Contact, Conversation, TicketPriority } from '../../api/types';
 import { absoluteDate, labelOf, longRelativeTime, orDash } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { buildActivity, type ActivityKind } from './contactActivity';
 import styles from '../../styles/workspace.module.css';
@@ -80,7 +81,7 @@ export type ContactDetailProps = {
    */
   conversations: Conversation[];
   onBack: () => void;
-  t: (key: string) => string;
+  t: Translate;
 };
 
 export function ContactDetail({ contact, conversations, onBack, t }: ContactDetailProps) {
@@ -96,12 +97,12 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
           aria-label={t('back_to_contacts')}
           onClick={onBack}
         />
-        <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" />
+        <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" t={t} />
         <span className={styles.paneTitle}>{contact.name}</span>
         <Badge variant={contact.type === 'lead' ? 'warning' : 'info'}>
-          {labelOf(contact.type)}
+          {labelOf(contact.type, t)}
         </Badge>
-        <span className={styles.paneCount}>{labelOf(contact.presence)}</span>
+        <span className={styles.paneCount}>{labelOf(contact.presence, t)}</span>
       </div>
 
       <div className={styles.contactsBody}>
@@ -110,11 +111,11 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
             <Card size="sm">
               <CardContent>
                 <div className={styles.contactCard}>
-                  <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" />
+                  <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" t={t} />
                   <span className={styles.contactCardName}>{contact.name}</span>
                   <span className={styles.identityMeta}>{contact.email}</span>
                   <Badge variant={contact.type === 'lead' ? 'warning' : 'info'}>
-                    {labelOf(contact.type)}
+                    {labelOf(contact.type, t)}
                   </Badge>
                 </div>
               </CardContent>
@@ -157,7 +158,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
               <CardContent>
                 <div className={styles.stack}>
                   <FieldRow label={t('signed_up')} value={absoluteDate(contact.signedUpAt)} />
-                  <FieldRow label={t('last_seen')} value={longRelativeTime(contact.lastSeenAt)} />
+                  <FieldRow label={t('last_seen')} value={longRelativeTime(contact.lastSeenAt, t)} />
                   <FieldRow label={t('added')} value={absoluteDate(contact.addedAt)} />
                   <FieldRow label={t('tickets')} value={String(contact.tickets.length)} />
                 </div>
@@ -207,7 +208,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
           <div className={styles.detailColumn}>
             <Card size="sm">
               <CardHeader>
-                <CardTitle>{`${t('tickets')} (${contact.tickets.length})`}</CardTitle>
+                <CardTitle>{t('tickets_count', { count: contact.tickets.length })}</CardTitle>
               </CardHeader>
               <CardContent>
                 {contact.tickets.length === 0 ? (
@@ -221,15 +222,15 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                             <ItemTitle className={styles.lineTitle}>{ticket.subject}</ItemTitle>
                           </div>
                           <ItemDescription>
-                            {`${ticket.number} - ${absoluteDate(ticket.openedAt)}`}
+                            {t('ticket_meta', { number: ticket.number, date: absoluteDate(ticket.openedAt) })}
                           </ItemDescription>
                         </ItemContent>
                         <div className={styles.ticketRow}>
                           <span className={PRIORITY_DOT_CLASS[ticket.priority]}>
                             <CircleIcon />
                           </span>
-                          <span className={styles.ticketMeta}>{labelOf(ticket.priority)}</span>
-                          <Badge variant="secondary">{labelOf(ticket.status)}</Badge>
+                          <span className={styles.ticketMeta}>{labelOf(ticket.priority, t)}</span>
+                          <Badge variant="secondary">{labelOf(ticket.status, t)}</Badge>
                         </div>
                       </Item>
                     ))}
@@ -241,7 +242,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
             <Card size="sm">
               <CardHeader>
                 <CardTitle>
-                  {`${t('conversations')} (${conversations.length})`}
+                  {t('conversations_count', { count: conversations.length })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -257,7 +258,10 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                               {conversation.subject}
                             </ItemTitle>
                             <span className={styles.rowTime}>
-                              {`${labelOf(conversation.channel)} - ${longRelativeTime(conversation.lastActivityAt)}`}
+                              {t('conversation_meta', {
+                                channel: labelOf(conversation.channel, t),
+                                time: longRelativeTime(conversation.lastActivityAt, t),
+                              })}
                             </span>
                           </div>
                           <ItemDescription className={styles.rowText}>
@@ -283,9 +287,9 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                     <div key={entry.id} className={styles.timelineItem}>
                       <span className={styles.timelineIcon}>{ACTIVITY_ICON[entry.kind]}</span>
                       <span className={styles.timelineLines}>
-                        <span>{entry.label}</span>
+                        <span>{t(entry.labelKey, entry.labelParams)}</span>
                         <span className={styles.timelineMeta}>
-                          {longRelativeTime(entry.at)}
+                          {longRelativeTime(entry.at, t)}
                         </span>
                       </span>
                     </div>

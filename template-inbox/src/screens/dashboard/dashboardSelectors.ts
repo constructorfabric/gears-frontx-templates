@@ -19,6 +19,7 @@ import type {
   ResolvedPerDayPoint,
   WorkloadMetric,
 } from '../../api/dashboardTypes';
+import { locale } from '../../shared/i18n';
 
 export const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 
@@ -53,26 +54,48 @@ export const deltaTone = (deltaPercent: number, goodWhenPositive: boolean): Delt
   return isGoodNews ? 'success' : 'danger';
 };
 
+/*
+ * Every number below is written by an `Intl` formatter in the app's locale,
+ * units included: "9m", "25%" and "+12.4%" are the locale's own narrow minute
+ * and percent forms, so no unit suffix is spelled out in code or catalogue.
+ */
+const numberFormat = new Intl.NumberFormat(locale);
+
+const percentFormat = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 });
+
+const deltaPercentFormat = new Intl.NumberFormat(locale, {
+  style: 'percent',
+  maximumFractionDigits: 1,
+  signDisplay: 'exceptZero',
+});
+
+const minutesFormat = new Intl.NumberFormat(locale, {
+  style: 'unit',
+  unit: 'minute',
+  unitDisplay: 'narrow',
+});
+
 /** "+12.4%" / "-8.3%" / "0%" - the delta badge's own label text, since a
  * tone alone is never a substitute for spelling the value out (see Badge's
  * accessibility note). */
 export const formatDeltaPercent = (deltaPercent: number): string =>
-  `${deltaPercent > 0 ? '+' : ''}${deltaPercent}%`;
-
-const numberFormat = new Intl.NumberFormat('en-US');
+  deltaPercentFormat.format(deltaPercent / 100);
 
 export const formatCount = (value: number): string => numberFormat.format(value);
 
+/** A whole-number share, `38` -> "38%". */
+export const formatPercent = (percent: number): string => percentFormat.format(percent / 100);
+
 /** A KPI's headline value, formatted for its own unit. */
 export const formatKpiValue = (kpi: DashboardKpiCard, value: number = kpiValue(kpi)): string => {
-  if (kpi.unit === 'minutes') return `${value}m`;
-  if (kpi.unit === 'percent') return `${value}%`;
+  if (kpi.unit === 'minutes') return minutesFormat.format(value);
+  if (kpi.unit === 'percent') return formatPercent(value);
   return numberFormat.format(value);
 };
 
 /** A KPI's footer stat, formatted for its own (independent) unit. */
 export const formatKpiFooterValue = (kpi: DashboardKpiCard): string =>
-  kpi.footerUnit === 'minutes' ? `${kpi.footerValue}m` : numberFormat.format(kpi.footerValue);
+  kpi.footerUnit === 'minutes' ? minutesFormat.format(kpi.footerValue) : numberFormat.format(kpi.footerValue);
 
 /** The combined (inbound + outbound) total across a "New contacts" series. */
 export const newContactsTotal = (series: NewContactsSeries['series']): number =>
@@ -126,6 +149,8 @@ export type FunnelGeometryOptions = {
   width: number;
   height: number;
   gap: number;
+  /** A segment's label from its stage and its share ("38%"), in the catalogue's words. */
+  labelOf: (stage: FunnelStage, percent: string) => string;
 };
 
 const FUNNEL_LABEL_FONT_SIZE = 12;
@@ -156,7 +181,7 @@ const FUNNEL_LABEL_PADDING = 10;
  */
 export const funnelSegmentGeometry = (
   stages: FunnelStage[],
-  { width, height, gap }: FunnelGeometryOptions
+  { width, height, gap, labelOf }: FunnelGeometryOptions
 ): FunnelSegmentGeometry[] => {
   const total = funnelTotal(stages);
   const count = stages.length;
@@ -183,7 +208,7 @@ export const funnelSegmentGeometry = (
       .map(([x, y]) => `${x},${y}`)
       .join(' ');
 
-    const text = `${stage.label} · ${funnelStagePercent(stage, stages)}%`;
+    const text = labelOf(stage, formatPercent(funnelStagePercent(stage, stages)));
     const availableWidth = Math.max(0, Math.min(topWidth, bottomWidth) - FUNNEL_LABEL_PADDING * 2);
     const naturalWidth = text.length * FUNNEL_LABEL_FONT_SIZE * FUNNEL_LABEL_CHAR_WIDTH_RATIO;
     const fontSize =

@@ -18,7 +18,7 @@ import {
   TabsTrigger,
 } from '@gears-frontx/ui-kit';
 import type { Mail, MailboxId } from '../../api/mailTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
@@ -101,7 +101,7 @@ export function MailList({
         </div>
         <div className={styles.rowLine}>
           <ItemDescription className={cx(styles.rowText, styles.rowPreviewText, mailStyles.subjectText)}>
-            {mail.subject} - {mail.snippet}
+            {t('mail_preview', { subject: mail.subject, snippet: mail.snippet })}
           </ItemDescription>
         </div>
       </ItemContent>
@@ -172,7 +172,7 @@ export function MailList({
         <TabsList variant="line" className={styles.paneRow}>
           <TabsTrigger value="all">{t('all_mail')}</TabsTrigger>
           <TabsTrigger value="unread">
-            {t('unread_mail_count').replace('{count}', String(unreadMails.length))}
+            {t('unread_mail_count', { count: unreadMails.length })}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="all" className={mailStyles.tabsPanel}>

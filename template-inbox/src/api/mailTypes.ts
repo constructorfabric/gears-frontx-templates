@@ -55,8 +55,8 @@ export type MailMessage = {
   mailId: string;
   correspondentName: string;
   correspondentEmail: string;
-  /** Calendar text, same convention as `Message.timestamp` in `types.ts`. */
-  date: string;
+  /** ISO instant, formatted for display by the reading pane, like `Message.sentAt`. */
+  sentAt: string;
   body: string;
 };
 

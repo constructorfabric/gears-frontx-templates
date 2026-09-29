@@ -12,7 +12,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import { useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { CONTACTS_ROUTE, contactRoute, navigate } from '../../app/routing';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { COMPACT_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
@@ -121,7 +121,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
             <span className={styles.contactsHeaderText}>
               <span className={styles.paneTitle}>{t('all_contacts')}</span>
               <span className={styles.paneCount}>
-                {t('people_count').replace('{count}', String(visibleContacts.length))}
+                {t('people_count', { count: visibleContacts.length })}
               </span>
             </span>
             <span className={styles.spacer} />

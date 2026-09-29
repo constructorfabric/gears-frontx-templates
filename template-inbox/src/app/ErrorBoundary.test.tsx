@@ -2,8 +2,8 @@ import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderScreen } from '../__test-utils__/renderScreen';
 import { AppErrorBoundary } from './ErrorBoundary';
+import { t } from '../shared/i18n';
 
-const t = (key: string) => key;
 
 function Broken(): never {
   throw new Error('render failed');
@@ -31,9 +31,9 @@ describe('AppErrorBoundary', () => {
       </AppErrorBoundary>
     );
 
-    expect(screen.getByRole('alert').textContent).toContain('app_error_title');
+    expect(screen.getByRole('alert').textContent).toContain(t('app_error_title'));
     act(() => {
-      screen.getByRole('button', { name: 'reload' }).click();
+      screen.getByRole('button', { name: t('reload') }).click();
     });
     expect(onReload).toHaveBeenCalledTimes(1);
   });

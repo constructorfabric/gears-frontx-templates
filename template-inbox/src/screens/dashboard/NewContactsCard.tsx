@@ -10,7 +10,8 @@ import {
   ChartTooltipContent,
 } from '@gears-frontx/ui-kit';
 import type { NewContactsSeries } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import { weekdayLabel } from '../../shared/format';
+import type { Translate } from '../../shared/i18n';
 import { newContactsChartConfig } from './dashboardChartConfig';
 import {
   deltaTone,
@@ -45,7 +46,7 @@ export function NewContactsCard({ newContacts, t }: NewContactsCardProps) {
   const outboundTotal = newContactsOutboundTotal(newContacts);
 
   const chartData = newContacts.series.map((point) => ({
-    day: point.day,
+    day: weekdayLabel(point.day),
     inbound: point.inbound,
     total: point.inbound + point.outbound,
   }));
@@ -71,7 +72,7 @@ export function NewContactsCard({ newContacts, t }: NewContactsCardProps) {
           </div>
         </div>
         <ChartContainer
-          config={newContactsChartConfig}
+          config={newContactsChartConfig(t)}
           className={styles.heroChart}
           initialDimension={CHART_DIMENSION}
         >

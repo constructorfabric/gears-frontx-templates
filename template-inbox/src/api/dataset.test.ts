@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageDayKey } from '../shared/format';
 import { contacts, conversations, messages } from './dataset';
-import { calendarText } from './seedClock';
 
 /**
  * The seed's own referential integrity: every id one collection names exists
@@ -32,13 +30,13 @@ describe('inbox seed dataset', () => {
     for (const conversation of conversations) {
       const thread = messages.filter((message) => message.conversationId === conversation.id);
       expect(thread.length, conversation.id).toBeGreaterThan(0);
-      expect(thread[thread.length - 1].timestamp).toBe(calendarText(new Date(conversation.lastActivityAt)));
+      expect(thread[thread.length - 1].sentAt).toBe(conversation.lastActivityAt);
     }
   });
 
-  it('writes every transcript timestamp in the calendar format the day dividers read', () => {
+  it('carries every transcript instant as an ISO string, never display text', () => {
     for (const message of messages) {
-      expect(messageDayKey(message.timestamp)).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+      expect(new Date(message.sentAt).toISOString()).toBe(message.sentAt);
     }
   });
 

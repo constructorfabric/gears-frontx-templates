@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
 import type { FunnelStage } from '../../api/dashboardTypes';
-import type { Translate } from '../../app/i18n';
+import type { Translate } from '../../shared/i18n';
 import { stageFunnelChartConfig } from './dashboardChartConfig';
 import { formatCount, funnelSegmentGeometry, funnelTotal } from './dashboardSelectors';
 import styles from '../../styles/dashboard.module.css';
@@ -29,10 +29,12 @@ const FUNNEL_SEGMENT_GAP = 3;
  */
 export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
   const total = funnelTotal(stages);
+  const chartConfig = stageFunnelChartConfig(t);
   const segments = funnelSegmentGeometry(stages, {
     width: FUNNEL_VIEWBOX.width,
     height: FUNNEL_VIEWBOX.height,
     gap: FUNNEL_SEGMENT_GAP,
+    labelOf: (stage, percent) => t('funnel_stage_label', { stage: stage.label, percent }),
   });
 
   return (
@@ -57,7 +59,7 @@ export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
         >
           {segments.map((segment) => (
             <g key={segment.id}>
-              <polygon points={segment.points} fill={stageFunnelChartConfig[segment.id]?.color} />
+              <polygon points={segment.points} fill={chartConfig[segment.id]?.color} />
               {segment.textLength === 0 ? null : (
                 <text
                   x={segment.labelX}
