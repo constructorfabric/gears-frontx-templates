@@ -114,6 +114,7 @@
   "internal_note": "Internal note",
   "job_title": "Job title",
   "just_now": "just now",
+  "key_combination": "{modifier}+{key}",
   "key_command": "Cmd",
   "key_control": "Ctrl",
   "key_enter": "Enter",

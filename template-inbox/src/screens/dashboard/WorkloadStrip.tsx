@@ -19,9 +19,9 @@ const ICON_BY_METRIC_ID: Record<string, ComponentType> = {
 };
 
 /**
- * Its own full-width row below row 3: four related workload metrics side by
- * side, icon+value+Progress each, four blocks so a fourth team dimension (QA) sits alongside
- * Support/Dev/CRM at the same visual weight.
+ * Row 4, full width: four related workload metrics side by side,
+ * icon+value+Progress each, four blocks so a fourth team dimension (QA) sits
+ * alongside Support/Dev/CRM at the same visual weight.
  */
 export function WorkloadStrip({ workload, t }: WorkloadStripProps) {
   return (

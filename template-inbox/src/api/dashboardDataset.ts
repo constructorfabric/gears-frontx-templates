@@ -233,7 +233,7 @@ export const topAgents: TopAgent[] = [
 ];
 
 /**
- * "Recent activity", row 4's table. Generated from a small cycle of kinds,
+ * "Recent activity", row 6's table. Generated from a small cycle of kinds,
  * statuses and agents rather than handwritten row by row - the table needs
  * enough rows for pagination to mean something (26, three pages at the
  * kit's default page size of 10), and a hand-typed list that long would

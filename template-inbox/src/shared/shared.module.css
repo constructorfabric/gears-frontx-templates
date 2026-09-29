@@ -349,6 +349,7 @@
 
 .composerHint {
   font-size: var(--text-meta-size);
+  line-height: var(--text-meta-line-height);
   color: var(--muted-foreground);
 }
 

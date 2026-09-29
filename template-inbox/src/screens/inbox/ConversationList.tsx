@@ -146,7 +146,7 @@ export function ConversationList({
         </ItemMedia>
         <ItemContent>
           <div className={sharedStyles.rowLine}>
-            <ItemTitle className={cx(sharedStyles.rowText, sharedStyles.rowTitleText)}>
+            <ItemTitle className={cx(sharedStyles.lineTitle, sharedStyles.rowText, sharedStyles.rowTitleText)}>
               {conversation.subject}
             </ItemTitle>
             <span className={sharedStyles.rowTime}>{shortRelativeTime(conversation.lastActivityAt)}</span>

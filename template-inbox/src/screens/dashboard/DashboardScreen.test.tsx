@@ -113,7 +113,7 @@ describe('DashboardScreen', () => {
     expect(screen.getAllByText('64%').length).toBeGreaterThan(0);
   });
 
-  it('renders row 4: the recent activity table, contacts resolved from the inbox dataset', () => {
+  it('renders row 6: the recent activity table, contacts resolved from the inbox dataset', () => {
     render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('recent_activity'))).toBeTruthy();

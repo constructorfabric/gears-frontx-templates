@@ -21,7 +21,7 @@ const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: 4 };
 
 /**
  * Row 2's third block: three icon-stat cells counted straight from the same
- * activity collection row 4's table renders (never a separately-stored
+ * activity collection row 6's table renders (never a separately-stored
  * total), a small gradient-filled trend area, and one CTA button that stays
  * inert - this
  * template ships no report screen behind it, so it stays disabled rather

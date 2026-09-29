@@ -94,7 +94,7 @@ export function MailList({
       </ItemMedia>
       <ItemContent>
         <div className={sharedStyles.rowLine}>
-          <ItemTitle className={cx(sharedStyles.rowText, sharedStyles.rowTitleText, styles.correspondentText)}>
+          <ItemTitle className={cx(sharedStyles.lineTitle, sharedStyles.rowText, sharedStyles.rowTitleText, styles.correspondentText)}>
             {/* Read or unread shows as weight and opacity; this says it in words. */}
             {mail.read ? null : <span className={sharedStyles.visuallyHidden}>{t('unread_mail')}</span>}
             {mail.correspondentName}

@@ -49,20 +49,20 @@ The dev server prints the local address. To serve a production build from a sub-
 | `npm test` | Unit tests (Vitest, jsdom) |
 | `npm run test:unit:watch` | Unit tests in watch mode |
 
-`arch:deps` is a dependency-cruiser check: no runtime import cycles, no screen importing another screen, and no import from `src/api/`, `src/shared/` or the test utilities up into a screen or into `src/app/`.
+`arch:deps` is a dependency-cruiser check: no runtime import cycles, no screen importing another screen, no import from `src/api/`, `src/shared/` or the test utilities up into a screen or into `src/app/`, and no import of the test utilities from code that ships.
 
 ## Project structure
 
 | Path | What it holds |
 |------|---------------|
 | `src/main.tsx` | Entry: kit theme CSS, API registration, stored theme, first render |
-| `src/app/` | The chrome: `App`, the icon rail, the hash router, the UI-string lookup, the theme switch |
-| `src/screens/<screen>/` | One vertical slice per screen: `dashboard`, `inbox`, `mail`, `contacts` |
-| `src/api/` | The API services, their mock maps and seed datasets, the response types and the query hooks |
-| `src/shared/` | Formatting helpers, avatars and the media-query hook every screen uses |
+| `src/app/` | The chrome: `App`, the icon rail (`IconRail`), the hash router (`routing.ts`), the theme switch (`theme.ts`) and the error boundary |
+| `src/screens/<screen>/` | One vertical slice per screen (`dashboard`, `inbox`, `mail`, `contacts`): its components, its selectors, its CSS module and, for the three data screens, its store (`inboxStore`, `mailStore`, `contactsStore`) |
+| `src/api/` | The API services, their mock maps and seed datasets, the response types and the query hooks (`queries.ts`) |
+| `src/shared/` | What more than one screen uses: the UI-string lookup (`i18n.ts`), the store primitive (`createStore.ts`), the loading and error panes (`QueryStates.tsx`), the screen heading (`ScreenHeading.tsx`), the hooks (`useMediaQuery`, `useSidebarToggle`, `useAutoSelect`), the submit shortcut, formatting helpers and avatars |
 | `src/i18n/en.json` | The UI-string catalogue |
 | `src/styles/app.css` | The document frame; every other stylesheet is a CSS module beside the components that use it |
-| `src/__test-utils__/` | The test renderer and the query-layer stand-in the screen tests use |
+| `src/__test-utils__/` | The query-layer stand-in the screen tests use (`apiMocks.ts`) and a media-query engine they can drive (`matchMedia.ts`) |
 | `public/` | Static assets served as they are |
 
 ## Screens
@@ -76,7 +76,7 @@ The dev server prints the local address. To serve a production build from a sub-
 
 Every conversation, message, mail, mailbox, contact, dashboard metric and identity comes from the seed datasets in `src/api/`, served by the app's own `@gears-frontx/api` services (`InboxApiService`, `MailApiService`, `DashboardApiService`) through the app's `RestMockPlugin`. Each service registers the plugin without switching it on; `setMockMode(true)` in `src/api/registry.ts` switches every service's mock plugin on at boot. Passing `false` there, or dropping the call, sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
 
-While mocks are on, a route the mock map does not know answers 404 instead of reaching the network, and `POST /api/inbox/messages` answers 400 to a body without a conversation or text. A posted reply or note is kept in the mock store, so it is still in the thread after the screen remounts, until the page reloads. All seed email addresses use reserved example domains, and all seed phone numbers use the fictional `555 01xx` range.
+While mocks are on, a route the mock map does not know answers 404 instead of reaching the network. `POST /api/inbox/messages` answers 400 to a body without a conversation, text or a `reply`/`note` kind and 404 for a conversation that does not exist; `POST /api/inbox/conversations` starts a conversation with an existing contact. A posted reply or note and a started conversation are kept in the mock store, so they are still there after the screen remounts, until the page reloads. What the user selects, types and changes on a screen is kept in that screen's store, so leaving a section and coming back finds it as it was. All seed email addresses use reserved example domains, and all seed phone numbers use the fictional `555 01xx` range.
 
 ## Theming
 

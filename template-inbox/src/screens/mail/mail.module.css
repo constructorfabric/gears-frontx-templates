@@ -25,16 +25,16 @@
 
 /* --- The mail list row: read/unread is typography only, no dot --- */
 
+/* A read row steps down to the kit's muted text colour, which is defined per
+   theme, rather than fading the foreground by a fixed amount. */
 .mailRowRead .correspondentText,
 .mailRowRead .subjectText {
   font-weight: 400;
-  color: var(--foreground);
-  opacity: 0.78;
+  color: var(--muted-foreground);
 }
 
 .correspondentText {
   font-weight: 600;
-  opacity: 1;
 }
 
 .starIcon {
@@ -48,13 +48,12 @@
 }
 
 /*
- * Groups the star and the time so `.rowLine`'s `justify-content:
- * space-between` (src/shared/shared.module.css) sees exactly two children - the
- * title and this group - rather than three, which was spreading an equal
- * gap on BOTH sides of the star and pushing it toward the row's middle
- * instead of flush against the time. An unstarred row renders this same
- * group with only the time inside, so its position is unaffected either
- * way - no placeholder gap left behind.
+ * Groups the pin, the star and the time so `.rowLine`'s `justify-content:
+ * space-between` (src/shared/shared.module.css) sees exactly two children -
+ * the title and this group - and the icons sit flush against the time
+ * instead of spreading toward the row's middle. A row with neither icon
+ * renders the same group with only the time inside, so nothing moves and no
+ * placeholder gap is left behind.
  */
 .rowTimeGroup {
   display: flex;

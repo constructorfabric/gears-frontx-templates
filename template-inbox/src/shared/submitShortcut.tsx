@@ -1,5 +1,4 @@
 import { useCallback, type KeyboardEvent } from 'react';
-import { Kbd, KbdGroup } from '@gears-frontx/ui-kit';
 import type { Translate } from './i18n';
 
 /**
@@ -11,23 +10,22 @@ export const isApplePlatform = (): boolean =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 
 /**
- * The composer's "Cmd+Enter to send" hint, with the keys drawn as the kit's
- * `Kbd`. The sentence comes from the catalogue (`send_shortcut`, where
- * `{keys}` marks the key group), so a language that puts the keys last only
- * changes the catalogue.
+ * The composer's "Cmd+Enter to send" hint, as plain text from the catalogue:
+ * `send_shortcut` places the keys (`{keys}`) in the sentence and
+ * `key_combination` joins them, so a language that orders either differently
+ * only changes the catalogue.
+ *
+ * Text rather than the kit's `Kbd` chips: `Kbd` paints `--muted`, which is
+ * the same colour as the page background in both themes (and dark `--card`
+ * matches it too), so on any surface this app has the chips vanish and the
+ * hint reads "Cmd  Enter to send".
  */
 export function SubmitShortcutHint({ t, className }: { t: Translate; className?: string }) {
-  const [before, after = ''] = t('send_shortcut').split('{keys}');
-  return (
-    <span className={className}>
-      {before}
-      <KbdGroup>
-        <Kbd>{isApplePlatform() ? t('key_command') : t('key_control')}</Kbd>
-        <Kbd>{t('key_enter')}</Kbd>
-      </KbdGroup>
-      {after}
-    </span>
-  );
+  const keys = t('key_combination', {
+    modifier: isApplePlatform() ? t('key_command') : t('key_control'),
+    key: t('key_enter'),
+  });
+  return <span className={className}>{t('send_shortcut', { keys })}</span>;
 }
 
 /**

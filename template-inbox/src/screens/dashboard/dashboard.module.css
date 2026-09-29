@@ -82,7 +82,7 @@
 /*
  * `ChartContainer`'s own root carries a fixed `aspect-ratio: 16 / 9` (see
  * the `chart` component's own CSS), which would otherwise force a sparkline
- * exactly this wide to grow far taller than the 44px row it sits in. This
+ * exactly this wide to grow far taller than the 120px (7.5rem) box it sits in. This
  * override - the same load-order-independent reasoning `src/shared/shared.module.css`
  * uses throughout - is what makes an explicit size win regardless of which
  * stylesheet the bundler places first.
@@ -272,9 +272,11 @@
   height: var(--icon-size-sm);
 }
 
+/* The figure takes the heading-1 size but keeps the card's own line height
+   (the kit's body line), so the three stats stay as short as the labels
+   under them and the chart and the button below do not move down. */
 .summaryStatValue {
   font-size: var(--text-heading-1-size);
-  line-height: var(--text-heading-1-line-height);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -333,7 +335,7 @@
   margin-top: var(--space-2);
 }
 
-/* --- Team workload: its own full-width row below row 3 --- */
+/* --- Row 4: team workload, full width --- */
 
 /*
  * Unlike every other card on this screen, this one sits directly as a flex
@@ -448,7 +450,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- New row: stage funnel + conversion by source, 1/3 + 2/3 --- */
+/* --- Row 5: stage funnel + conversion by source, 1/3 + 2/3 --- */
 
 .rowFunnel {
   display: grid;
@@ -491,7 +493,7 @@
   margin-top: var(--space-2);
 }
 
-/* --- Row 4: recent activity table --- */
+/* --- Row 6: recent activity table --- */
 
 .activitySection {
   display: flex;

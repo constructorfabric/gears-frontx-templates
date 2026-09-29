@@ -20,9 +20,9 @@ export type MailComposerProps = {
  * kind of message, and a real store for those three affordances is out of
  * scope here just as it is in the chat composer.
  *
- * Sending stays deliberately simple: it clears
- * the draft rather than posting anywhere or appending to the thread, since
- * this template ships no mail-send endpoint.
+ * Sending hands the draft to the screen, which files it as a reply under
+ * Sent (in `mailStore`) and clears the box; nothing is posted and the thread
+ * is not appended to, since this template ships no mail-send endpoint.
  */
 export function MailComposer({ correspondentName, draft, onDraftChange, onSend, t }: MailComposerProps) {
   const canSend = draft.trim() !== '';

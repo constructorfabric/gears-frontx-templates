@@ -39,7 +39,7 @@ const STATUS_TONE: Record<ActivityStatus, 'info' | 'warning' | 'success' | 'dang
 };
 
 /**
- * Row 4's full-width table: a contact cell reusing the same identity data
+ * Row 6's full-width table: a contact cell reusing the same identity data
  * the Contacts screen shows (avatar, name, company) so a person appearing
  * here reads as the same person there, plus the kind/status/owner/date
  * columns. Sorting and pagination come for free from the
