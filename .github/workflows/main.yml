@@ -106,10 +106,12 @@ jobs:
     - name: Check guideline index is generated from front matter
       run: npm run policy:guideline-index
 
-  # Architecture documents under architecture/ (ids, PRD to DESIGN coverage,
-  # references into gears-frontx), validated the way gears-frontx validates
-  # its own. The registry (.cf-studio/config/artifacts.toml) registers
-  # documents only, no code paths - see the comment at its top for why.
+  # Architecture documents of the catalogue (architecture/) and of each
+  # template (<template>/architecture): ids, PRD to DESIGN coverage and
+  # references, validated the way gears-frontx validates its own. The
+  # registry (.cf-studio/config/artifacts.toml) registers documents only, no
+  # code paths, and shares no ids with gears-frontx - see the comment at its
+  # top for why.
   studio-validate:
     name: Studio Validate Artifacts
     runs-on: ubuntu-latest
@@ -122,22 +124,6 @@ jobs:
       uses: actions/checkout@v5
       with:
         persist-credentials: false
-
-    # Documents here cite `cpt-` ids that gears-frontx defines; without its
-    # tree on disk every such reference fails as ref-no-definition. core.toml
-    # [workspace.sources.gears-frontx] points at this path, which is
-    # gitignored. Same checkout of develop as template-drift.yml, which puts it
-    # at `gears-frontx` in the workspace root; here it is nested under
-    # .cf-studio/ because the source path is resolved from this repository's
-    # root.
-    - name: Checkout gears-frontx develop
-      uses: actions/checkout@v5
-      with:
-        repository: constructorfabric/gears-frontx
-        ref: develop
-        path: .cf-studio/.workspace/gears-frontx
-        persist-credentials: false
-        fetch-depth: 1
 
     - name: Setup Python
       uses: actions/setup-python@v6
