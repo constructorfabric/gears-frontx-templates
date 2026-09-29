@@ -36,8 +36,27 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
-/** Below this the folder column has no room and stays collapsed. */
-export const COMPACT_QUERY = '(max-width: 48rem)';
+/*
+ * The pane breakpoints, in one place. The widths they are made of: the icon
+ * rail 4rem, the folder column 12rem, the list 22rem, and 24rem as the
+ * narrowest thread or reading pane that stays usable (a few words per line
+ * and the header's actions on a line under the title).
+ *
+ * - Up to 40rem (640px) the list and the thread take turns: the rail, a
+ *   list of any useful width and a 24rem thread do not fit side by side.
+ * - Up to 62rem (992px) the folder column starts folded: 4 + 12 + 22 + 24
+ *   is 62rem, so below it the column would squeeze the list and the thread.
+ *   Between the two the list gives way (`.listPane` shrinks) while the
+ *   thread keeps its 24rem (`.detailPane`), so the page never scrolls
+ *   sideways, even with the column opened by hand.
+ * - Wider, all three columns show at their full widths.
+ *
+ * CSS cannot read these constants: `.listPane` in `shared.module.css`
+ * repeats the 40rem, and `.detailPane` the 24rem.
+ */
+
+/** Below this the folder column starts folded, so the list and the thread keep their room. */
+export const COMPACT_QUERY = '(max-width: 62rem)';
 
 /** Below this the list and the thread take turns filling the mount area. */
 export const SINGLE_PANE_QUERY = '(max-width: 40rem)';

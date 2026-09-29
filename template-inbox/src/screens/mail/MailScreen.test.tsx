@@ -374,12 +374,14 @@ describe('MailScreen', () => {
   });
 
 
-  it('folds the mailbox column below the compact width, takes it out of the tab order, and opens it from the list header', () => {
+  it('folds the mailbox column between the single-pane and the compact widths, keeps the list and the reading pane side by side, and opens the column from the list header', () => {
     stubMatchMedia([COMPACT_QUERY]);
     render(<MailScreen t={t} />);
 
     const sidebar = screen.getByLabelText(t('mail'), { selector: 'aside' });
     const toggle = screen.getByLabelText(t('toggle_mailboxes'));
+    expect(screen.getByLabelText('Inbox', { selector: 'section' }).className).not.toMatch(/singlePaneHidden/);
+    expect(screen.queryByLabelText(t('back_to_mail_list'))).toBeNull();
     expect(sidebar.hasAttribute('inert')).toBe(true);
     expect(sidebar.getAttribute('aria-hidden')).toBe('true');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');

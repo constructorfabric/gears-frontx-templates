@@ -528,6 +528,33 @@ describe('InboxScreen', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('starts the channel column folded between the single-pane and the compact widths, with the list and the thread side by side', () => {
+    const media = stubMatchMedia([COMPACT_QUERY]);
+    render(<InboxScreen t={t} />);
+    const sidebar = screen.getByLabelText(t('channels'), { selector: 'aside' });
+    const toggle = screen.getByLabelText(t('toggle_channels'));
+
+    // Both panes show: the list is not taken out, and the thread offers no way back to it.
+    expect(screen.getByRole('region', { name: t('conversations') }).className).not.toMatch(/singlePaneHidden/);
+    expect(screen.queryByRole('button', { name: t('back_to_list') })).toBeNull();
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    act(() => {
+      toggle.click();
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+
+    // Past the compact width the column is open by default again.
+    act(() => {
+      toggle.click();
+    });
+    act(() => {
+      media.setMatching([]);
+    });
+    expect(sidebar.hasAttribute('inert')).toBe(false);
+  });
+
   it('names the pinned icon and the read receipts as images', () => {
     render(<InboxScreen t={t} />);
     expect(screen.getByLabelText(t('pinned_conversation')).getAttribute('role')).toBe('img');

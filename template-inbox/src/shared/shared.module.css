@@ -126,11 +126,16 @@
 }
 
 /* --- The conversation list pane --- */
+/*
+ * 22rem when there is room; narrower when the thread beside it would
+ * otherwise drop under its minimum (see `.detailPane`), down to nothing
+ * rather than pushing the page wider than the viewport.
+ */
 .listPane {
   display: flex;
   flex-direction: column;
-  flex: none;
-  width: 22rem;
+  flex: 0 1 22rem;
+  min-width: 0;
   min-height: 0;
   border-right: var(--border-width) solid var(--border);
 }
@@ -257,6 +262,19 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+/*
+ * Beside the list the thread or reading pane never gets narrower than
+ * 24rem, the minimum the breakpoints in `useMediaQuery.ts` are built on,
+ * and the list gives way instead. Not in the single-pane layout (up to
+ * 40rem, `SINGLE_PANE_QUERY`), where the pane is alone and takes just the
+ * width there is.
+ */
+@media not all and (max-width: 40rem) {
+  .detailPane {
+    min-width: 24rem;
+  }
 }
 
 .thread {
@@ -453,9 +471,11 @@
   padding: var(--space-6);
 }
 
-@media (max-width: 48rem) {
+/* The single-pane width (`SINGLE_PANE_QUERY`): the list, shown alone,
+ * fills the mount area. */
+@media (max-width: 40rem) {
   .listPane {
-    width: 100%;
+    flex-grow: 1;
   }
 }
 
