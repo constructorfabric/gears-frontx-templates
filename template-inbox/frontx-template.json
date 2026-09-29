@@ -6,15 +6,18 @@
   "ownershipBoundaries": {
     "exclusiveSubtrees": [
       "src/",
+      "public/",
       ".frontx/ai/@gears-frontx/frontx-template-inbox/",
       "index.html",
       "package.json",
+      "package-lock.json",
       "tsconfig.json",
       "tsconfig.node.json",
       "vite.config.ts",
       "vitest.config.ts",
       "vitest.setup.ts",
       "eslint.config.js",
+      ".dependency-cruiser.cjs",
       ".gitignore",
       "README.md"
     ],

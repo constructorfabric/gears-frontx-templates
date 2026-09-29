@@ -12,7 +12,7 @@ import tseslint from 'typescript-eslint';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.config.ts', '*.config.js'],
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.config.ts', '*.config.js', '.dependency-cruiser.cjs'],
   },
 
   js.configs.recommended,
