@@ -18,4 +18,5 @@ This directory contains **user-editable** configuration files.
 
 - `AGENTS.md` and `SKILL.md` start empty. Add any project-specific rules or
   skill instructions here - they will be picked up alongside the kit ones.
-- Kit files can be edited directly; `cfs kit update` shows a diff for changes.
+- The sdlc kit under `kits/` is rebuilt from the pinned v1.2.1 release on every
+  `cfs update`; local edits under `config/kits/` do not persist or reach CI.
