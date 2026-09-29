@@ -9,7 +9,7 @@ Every top-level directory carrying `frontx-template.json` is a template (ADR-001
 - **`template-design-guardrails/`** - manifest-only overlay: a design-review AI bundle and a verification package, no root `package.json` at all.
 - **`template-inbox/`** - self-contained: a workspace app (dashboard, inbox, mail, contacts) on `@gears-frontx/ui-kit`, with its own `package.json`, lockfile, and toolchain (build, lint, type-check, test:unit, arch:deps).
 
-`scripts/` holds the guards that keep all four consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
+`scripts/` holds the guards that keep all four consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on either self-contained template (`template-shell`, `template-inbox`) against a local ecosystem checkout.
 
 ## Versioning and publishing
 
@@ -24,7 +24,7 @@ no `develop` here. `.github/workflows/publish-packages.yml` triggers on pushes t
 | `0.y.z` | `latest` | `main` |
 | any version | `vN` | `release/vN` |
 
-A PR that changes non-documentation source under a governed root's `src/`, or the dependency fields of its `package.json`, must bump that root's own `version` in the same PR and update every exact pin on it (`policy:template-pin-drift`). A governed root is every `template-shell/packages/*` workspace member, and any other non-`private` `@gears-frontx`-scoped template or template workspace member added later - discovered structurally by `scripts/version-bump-on-change-check.mjs`, never a hardcoded list. `template-shell` itself is `"private": true` (a full app template meant to be seeded, not installed as a dependency) and is excluded from governance by that same non-`private` filter: it is never published to npm. `template-mfe`'s fixture MFE packages are `private` too, for the same reason: they pin published versions rather than being one.
+A PR that changes non-documentation source under a governed root's `src/`, or the dependency fields of its `package.json`, must bump that root's own `version` in the same PR and update every exact pin on it (`policy:template-pin-drift`). A governed root is every `template-shell/packages/*` workspace member, and any other non-`private` `@gears-frontx`-scoped template or template workspace member added later - discovered structurally by `scripts/version-bump-on-change-check.mjs`, never a hardcoded list. `template-shell` and `template-inbox` are both `"private": true` (full app templates meant to be seeded, not installed as a dependency) and are excluded from governance by that same non-`private` filter: neither is ever published to npm. `template-mfe`'s fixture MFE packages are `private` too, for the same reason: they pin published versions rather than being one.
 
 `policy:version-bump-on-change` (pull requests only) compares the version at the PR's merge base against its head, so a bump later reverted within the same PR does not count.
 
@@ -43,6 +43,8 @@ npm run dev:template:link     # point template-shell's node_modules at ../gears-
 cd template-shell && npm run dev
 ```
 
+The same loop works for the other self-contained template by naming it: `npm run dev:template:link -- template-inbox` links `template-inbox`'s `node_modules` instead. Without an argument the command links `template-shell`, as above. `scripts/pin-template-ecosystem-to-local.mjs` takes the same argument.
+
 `dev:template:link` ([`scripts/link-template-ecosystem.mjs`](scripts/link-template-ecosystem.mjs)) reads the template's own manifests to find out which registry-pinned packages to repoint, so a newly pinned package needs no change to the script. It never touches `package.json` or `package-lock.json` - only the installed directories under `node_modules`. What each linked directory then resolves through is its `dist/`, which is why the script refuses to link an unbuilt package.
 
 `FRONTX_ECOSYSTEM_DIR` controls where the ecosystem checkout is found, for both `dev:template:link` and `scripts/pin-template-ecosystem-to-local.mjs`: set it explicitly, or rely on the default `../gears-frontx` sibling shown above.
@@ -58,7 +60,7 @@ Two ways to lose the links without meaning to:
 
 ### Why Template Drift CI installs without a lockfile
 
-[`template-drift.yml`](.github/workflows/template-drift.yml) checks out `gears-frontx`'s `develop` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install --no-package-lock` instead of `npm ci`. Both departures from the ordinary install exist for reasons that are easy to re-break without this record.
+[`template-drift.yml`](.github/workflows/template-drift.yml) runs once per self-contained template (`template-shell` and `template-inbox`, a matrix). Each run checks out `gears-frontx`'s `develop` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install --no-package-lock` instead of `npm ci`. Both departures from the ordinary install exist for reasons that are easy to re-break without this record.
 
 **Why not `npm ci` against the rewritten manifests.** Rewriting the pins ahead of install desyncs the template's `package-lock.json` from its `package.json` by construction, and `npm ci` refuses to run against a desynced lockfile. `npm install` reconciles it instead - which is exactly the operation that trips `--no-package-lock`'s reason below.
 
@@ -81,10 +83,11 @@ npm run policy:template-mfes-import-boundary
 npm run policy:guideline-index
 ```
 
-Each template is also independently validatable:
+Each self-contained template is also independently validatable:
 
 ```bash
 cd template-shell && npm ci && npm run build && npm run type-check && npm run lint && npm run test:unit
+cd template-inbox && npm ci && npm run build && npm run type-check && npm run lint && npm run arch:deps && npm run test:unit
 ```
 
 `template-mfe` cannot be validated in place - its packages' `file:` links resolve into `template-mfe/../template-shell`, and its own root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes it onto `template-shell` (the way `frontx add` does) and validates the result; there is no equivalent single local command today.

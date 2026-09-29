@@ -1,7 +1,10 @@
 /**
- * Dev loop for the shell template against a sibling `gears-frontx` checkout.
+ * Dev loop for a self-contained template against a sibling `gears-frontx`
+ * checkout.
  *
- * `template-shell/` is not a root workspace: it is a standalone npm project
+ * A self-contained template (`template-shell/`, `template-inbox/`: a template
+ * directory carrying its own `package.json`) is not a root workspace: it is a
+ * standalone npm project
  * that pins the FrontX ecosystem packages it consumes to exact registry
  * versions so a seeded project can install outside any monorepo. The cost of
  * that pin is that a plain `npm install` inside the template resolves the
@@ -26,11 +29,11 @@
  * tree.
  *
  * A `npm install --no-save --no-package-lock <paths>` would do the linking too,
- * but npm rebuilds the whole ideal tree for it — pruning unrelated packages and
+ * but npm rebuilds the whole ideal tree for it - pruning unrelated packages and
  * replacing the template's `file:.` self-link with a packed snapshot of
  * `dist-lib`, which breaks the template's own rebuild-on-change loop.
  *
- * Run `npm ci` inside `template-shell` to go back to the pinned versions. There
+ * Run `npm ci` inside the template to go back to the pinned versions. There
  * is no `--unlink`: the links replace published tarball *content*, which only
  * npm can put back, so any inverse this script could offer would still end in
  * `npm ci` - after leaving a hole per linked package in the meantime.
@@ -44,7 +47,9 @@
  *
  * Core logic is exported for unit tests; only `runCli` touches the process.
  *
- * CLI entry: `npm run dev:template:link` (exit 0 on success).
+ * CLI entry: `npm run dev:template:link` links `template-shell`;
+ * `npm run dev:template:link -- template-inbox` links the named template
+ * instead (exit 0 on success).
  */
 import fsDefault from 'node:fs';
 import path from 'node:path';
@@ -52,8 +57,34 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveEcosystemDir, templatePinnedPackageDirs } from './template-ecosystem-packages.mjs';
 
-/** Template whose `node_modules` the links are written into. */
+/**
+ * Template whose `node_modules` the links are written into when the command
+ * names none. The shell is the default because it is the template the dev loop
+ * was built for and the one `CONTRIBUTING.md`'s plain command documents.
+ */
 export const templateDirName = 'template-shell';
+
+/**
+ * The template directory a command line names: its first positional argument,
+ * or `templateDirName` when there is none. Shared with
+ * `pin-template-ecosystem-to-local.mjs`, so both scripts read the same argument
+ * the same way.
+ *
+ * A name is a single directory at the repository root. Anything that could
+ * reach outside it (a path separator, `..`) is refused rather than resolved,
+ * since both scripts write into what the name points at.
+ *
+ * @param {readonly string[]} argv arguments after the script path
+ * @returns {string}
+ */
+export function templateDirFromArgv(argv) {
+  const named = argv.find((arg) => !arg.startsWith('-'));
+  if (named === undefined) return templateDirName;
+  if (named === '..' || named === '.' || /[\\/]/.test(named)) {
+    throw new Error(`"${named}" is not a template directory name; pass the directory at the repository root, e.g. template-inbox.`);
+  }
+  return named;
+}
 
 /**
  * Suffix of the directory an installed package is moved to while its symlink
@@ -78,10 +109,10 @@ export const backupSuffix = '.frontx-link-backup';
  * nothing visible and silently tests the published code instead of the working
  * copy, so the note names that trade rather than a build failure.
  */
-const silentStalenessNote =
+const silentStalenessNote = (templateDir) =>
   'Note: the template also builds from its pins alone, so nothing will tell you when these\n' +
   'links go stale. Two different things break them, and they need different fixes:\n' +
-  '  - `npm install` inside template-shell reifies the tree from the lockfile and REPLACES\n' +
+  `  - \`npm install\` inside ${templateDir} reifies the tree from the lockfile and REPLACES\n` +
   '    the links with the pinned registry tarballs. Re-run this command.\n' +
   '  - `npm run clean:artifacts` leaves the links in place and deletes the packages/*/dist\n' +
   '    they resolve through, so they point at nothing. Re-run `npm run build:packages`.\n' +
@@ -278,13 +309,14 @@ function describePackages(names) {
  * @param {{
  *   fs: FileSystemLike;
  *   staged: { name: string; linkPath: string; backupPath: string | null }[];
+ *   templateDir: string;
  *   failedPackage: string;
  *   failedStep: 'stage' | 'link';
  *   cause: unknown;
  * }} context
  * @returns {LinkRollback}
  */
-function restoreInstalledTree({ fs, staged, failedPackage, failedStep, cause }) {
+function restoreInstalledTree({ fs, staged, templateDir, failedPackage, failedStep, cause }) {
   /** @type {string[]} */
   const restored = [];
   /** @type {string[]} */
@@ -328,7 +360,7 @@ function restoreInstalledTree({ fs, staged, failedPackage, failedStep, cause }) 
     stateLine =
       `Rollback could not restore ${describePackages(unrestored)} - the installed ` +
       `content is still there under \`${backupSuffix}\`.`;
-    recoveryLine = `Run \`npm ci\` inside ${templateDirName} to repair the tree.`;
+    recoveryLine = `Run \`npm ci\` inside ${templateDir} to repair the tree.`;
   } else if (restored.length > 0 || cleared.length > 0) {
     // Two different true statements, and saying only the first of them about a
     // package that was never installed is the wording this fixes.
@@ -348,7 +380,7 @@ function restoreInstalledTree({ fs, staged, failedPackage, failedStep, cause }) 
   } else {
     stateLine = 'Nothing had been written yet, so the installed tree is untouched.';
     recoveryLine =
-      `Fix the cause and re-run, or run \`npm ci\` inside ${templateDirName} to rebuild ` +
+      `Fix the cause and re-run, or run \`npm ci\` inside ${templateDir} to rebuild ` +
       'the tree from the lockfile.';
   }
 
@@ -398,9 +430,13 @@ function restoreInstalledTree({ fs, staged, failedPackage, failedStep, cause }) 
  * to `repoRoot` so a caller that still has both trees under one root (every
  * existing test) needs no change.
  *
+ * `templateDir` is the template directory at `repoRoot` whose installed tree is
+ * linked; it defaults to `templateDirName`.
+ *
  * @param {{
  *   repoRoot: string;
  *   ecosystemRoot?: string;
+ *   templateDir?: string;
  *   packageDirs: string[];
  *   fs?: FileSystemLike;
  *   platform?: NodeJS.Platform;
@@ -410,11 +446,12 @@ function restoreInstalledTree({ fs, staged, failedPackage, failedStep, cause }) 
 export function linkEcosystemPackages({
   repoRoot,
   ecosystemRoot = repoRoot,
+  templateDir = templateDirName,
   packageDirs,
   fs = fsDefault,
   platform = process.platform,
 }) {
-  const scopeDir = path.join(repoRoot, templateDirName, 'node_modules', '@gears-frontx');
+  const scopeDir = path.join(repoRoot, templateDir, 'node_modules', '@gears-frontx');
 
   if (!fs.existsSync(scopeDir)) {
     return {
@@ -422,7 +459,7 @@ export function linkEcosystemPackages({
       reason: 'template-not-installed',
       message:
         `Cannot link: ${path.relative(repoRoot, scopeDir)} does not exist.\n` +
-        `Run \`npm ci\` inside ${templateDirName} first.`,
+        `Run \`npm ci\` inside ${templateDir} first.`,
     };
   }
 
@@ -436,7 +473,7 @@ export function linkEcosystemPackages({
       ok: false,
       reason: 'nothing-pinned',
       message:
-        `Cannot link: no packages/* directory is pinned at an exact registry version by ${templateDirName}.\n` +
+        `Cannot link: no packages/* directory is pinned at an exact registry version by ${templateDir}.\n` +
         'Nothing published can shadow a local edit, so there is nothing to link - which is either a real\n' +
         'change in how the template declares its dependencies, or a broken derivation.',
     };
@@ -496,7 +533,7 @@ export function linkEcosystemPackages({
         ok: false,
         reason: 'build-missing',
         message:
-          `Cannot link: packages/${name} is not built — ${path.join(`packages/${name}`, entryPoint)} is missing.\n` +
+          `Cannot link: packages/${name} is not built - ${path.join(`packages/${name}`, entryPoint)} is missing.\n` +
           'Run `npm run build:packages` first.',
       };
     }
@@ -522,6 +559,7 @@ export function linkEcosystemPackages({
       return restoreInstalledTree({
         fs,
         staged,
+        templateDir,
         failedPackage: name,
         failedStep: 'stage',
         cause: error,
@@ -538,6 +576,7 @@ export function linkEcosystemPackages({
       return restoreInstalledTree({
         fs,
         staged,
+        templateDir,
         failedPackage: name,
         failedStep: 'link',
         cause: error,
@@ -564,7 +603,7 @@ export function linkEcosystemPackages({
   return {
     ok: true,
     linked: plan.map(({ name }) => name),
-    warning: silentStalenessNote,
+    warning: silentStalenessNote(templateDir),
   };
 }
 
@@ -581,6 +620,7 @@ export function linkEcosystemPackages({
  * @param {{
  *   repoRoot?: string;
  *   ecosystemRoot?: string;
+ *   templateDir?: string;
  *   packageDirs?: string[];
  *   fs?: FileSystemLike;
  *   platform?: NodeJS.Platform;
@@ -592,6 +632,7 @@ export function linkEcosystemPackages({
 export function runCli({
   repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
   ecosystemRoot,
+  templateDir = templateDirName,
   packageDirs,
   fs = fsDefault,
   platform = process.platform,
@@ -603,13 +644,20 @@ export function runCli({
   /** @type {string[]} */
   let dirs;
   try {
-    dirs = packageDirs ?? templatePinnedPackageDirs(repoRoot, templateDirName, resolvedEcosystemRoot);
+    dirs = packageDirs ?? templatePinnedPackageDirs(repoRoot, templateDir, resolvedEcosystemRoot);
   } catch (cause) {
     error(`Cannot link: ${cause instanceof Error ? cause.message : String(cause)}`);
     return 1;
   }
 
-  const result = linkEcosystemPackages({ repoRoot, ecosystemRoot: resolvedEcosystemRoot, packageDirs: dirs, fs, platform });
+  const result = linkEcosystemPackages({
+    repoRoot,
+    ecosystemRoot: resolvedEcosystemRoot,
+    templateDir,
+    packageDirs: dirs,
+    fs,
+    platform,
+  });
 
   if (!result.ok) {
     error(result.message);
@@ -631,5 +679,10 @@ if (isEntryPoint) {
   // `process.exitCode` rather than `process.exit()`: the latter can truncate a
   // still-flushing stdout write, and the warning this script prints on success
   // is the whole reason it says anything at all.
-  process.exitCode = runCli();
+  try {
+    process.exitCode = runCli({ templateDir: templateDirFromArgv(process.argv.slice(2)) });
+  } catch (cause) {
+    console.error(`Cannot link: ${cause instanceof Error ? cause.message : String(cause)}`);
+    process.exitCode = 1;
+  }
 }
