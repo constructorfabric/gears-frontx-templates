@@ -210,8 +210,8 @@ export const workload: WorkloadMetric[] = [
 ];
 
 /**
- * The agent roster: the "Top agents" ranking and the owner of every activity
- * row (`ActivityItem.ownerAgentId`). Alex Rivera is the agent `dataset.ts`
+ * The agent roster: the "Top agents" ranking, and the agent each activity row
+ * belongs to (`ActivityItem.ownerAgentId`). Alex Rivera is the agent `dataset.ts`
  * seeds as the signed-in user in Chat and Mail - the dashboard is that
  * agent's own team's view.
  */
