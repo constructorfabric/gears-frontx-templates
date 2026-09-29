@@ -21,7 +21,7 @@ Every item here was left out on purpose. None of it is missing by accident, and 
 - **Other sections.** Tickets, Knowledge Base, AI Agent and Reports. The ticket rows on a contact's page are labels, not links into a Tickets section, the thread header's create-ticket button is disabled for the same reason, and the dashboard's "View report" opens nothing.
 - **Other channels and views.** Mentions, Created by you, All, Unassigned, Starred, High priority, Snoozed, and the team inboxes as channels. A conversation can be routed to a team inbox from the details panel, and a channel can be added from the sidebar for the session; renaming, removing or persisting channels is out of scope.
 - **A Spam mailbox, and labels.** The mail screen ships five mailboxes, not six - Spam is deliberately absent. Labels (colour-dot tags on a mail) are not shipped either.
-- **Sending mail for real.** `MailApiService` has no write endpoint: a composed mail or a reply is filed under Sent for as long as the mail screen is mounted, and nothing is delivered.
+- **Sending mail for real.** `MailApiService` has no write endpoint: a composed mail or a reply is filed under Sent in the mail store, kept across screen changes until the page reloads, and nothing is delivered.
 - **Moving mail.** Archive, trash and star in the reading pane stay disabled; mailbox membership never changes.
 - **The command palette**, the messenger settings, the settings screen and the theme customiser - none of the four is a rail control here. The app ships a plain two-state theme toggle and nothing else that changes appearance.
 - **The assistant's behaviour.** The tab renders its prompts and its input, all disabled; wiring them to a model is a project's own decision and its own backend.

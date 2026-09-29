@@ -79,15 +79,6 @@ export type IconRailProps = {
 };
 
 /**
- * The app's own navigation column: the mark, the sections it ships, and -
- * pushed to the bottom by a flexible spacer - the theme toggle and the profile
- * menu.
- *
- * It is always narrow. The folder and filter columns beside it collapse; this
- * one is the fixed edge of the window that the rest of the layout is measured
- * from, so it has no collapsed state to be in.
- */
-/**
  * The agent's circle: with a presence badge once the identity is known, and
  * without one while it loads or after it failed, rather than claiming
  * "offline" for someone whose presence nobody has read.
@@ -96,6 +87,15 @@ function AgentAvatar({ agent, t }: { agent: AgentIdentity | undefined; t: Transl
   return agent ? <PresenceAvatar name={agent.name} presence={agent.presence} t={t} /> : <IdentityAvatar name="" />;
 }
 
+/**
+ * The app's own navigation column: the mark, the sections it ships, and -
+ * pushed to the bottom by a flexible spacer - the theme toggle and the profile
+ * menu.
+ *
+ * It is always narrow. The folder and filter columns beside it collapse; this
+ * one is the fixed edge of the window that the rest of the layout is measured
+ * from, so it has no collapsed state to be in.
+ */
 export function IconRail({ route, agent, agentFailed, onRetryAgent, theme, onToggleTheme, t }: IconRailProps) {
   const section = sectionOf(route);
   const isDark = theme === 'dark';

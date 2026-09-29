@@ -152,6 +152,26 @@ describe('useApiQuery', () => {
   });
 });
 
+/*
+ * Vitest runs in Node, where a promise rejection nobody handles is reported
+ * on `process`; the app's test types carry no Node typings, so the one event
+ * this suite listens to is typed here.
+ */
+type RejectionListener = (reason: unknown) => void;
+const nodeProcess = (
+  globalThis as unknown as {
+    process: {
+      on: (event: 'unhandledRejection', listener: RejectionListener) => void;
+      off: (event: 'unhandledRejection', listener: RejectionListener) => void;
+    };
+  }
+).process;
+
+const watchUnhandledRejections = (listener: RejectionListener): (() => void) => {
+  nodeProcess.on('unhandledRejection', listener);
+  return () => nodeProcess.off('unhandledRejection', listener);
+};
+
 function MutationProbe<TData, TVariables>(props: {
   options: Parameters<typeof useApiMutation<TData, TVariables>>[0];
   onResult: (result: MutationResult<TVariables>) => void;
@@ -262,6 +282,59 @@ describe('useApiMutation', () => {
     calls[0].response.resolve('ok');
     await flush();
     expect(afterSuccess).toHaveBeenCalledWith('ok', 'x');
+  });
+
+  it('settles a call whose afterSuccess throws as failed, through error and onError', async () => {
+    const { endpoint, calls } = mutationEndpoint();
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    const unhandled = vi.fn();
+    const stopWatching = watchUnhandledRejections(unhandled);
+    const probe = mountMutation({
+      endpoint,
+      afterSuccess: () => {
+        throw new Error('store refused');
+      },
+      onSuccess,
+      onError,
+    });
+
+    act(() => probe.latest().mutate('x'));
+    calls[0].response.resolve('ok');
+    await flush();
+
+    expect(probe.latest().isPending).toBe(false);
+    expect(probe.latest().error?.message).toBe('store refused');
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'store refused' }), 'x');
+    expect(onSuccess).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(unhandled).not.toHaveBeenCalled();
+    stopWatching();
+    probe.view.unmount();
+  });
+
+  it('lets no afterSuccess failure escape after the caller unmounted', async () => {
+    const { endpoint, calls } = mutationEndpoint();
+    const onError = vi.fn();
+    const unhandled = vi.fn();
+    const stopWatching = watchUnhandledRejections(unhandled);
+    const writer = mountMutation({
+      endpoint,
+      afterSuccess: () => {
+        throw new Error('store refused');
+      },
+      onError,
+    });
+    act(() => writer.latest().mutate('x'));
+    writer.view.unmount();
+
+    calls[0].response.resolve('ok');
+    await flush();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(unhandled).not.toHaveBeenCalled();
+    stopWatching();
   });
 
   it('keeps mutate one function across renders, and calls back with the latest options', async () => {

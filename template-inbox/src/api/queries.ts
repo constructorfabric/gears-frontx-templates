@@ -221,7 +221,9 @@ export type MutationResult<TVariables> = {
  * nor any state update, runs after the component unmounted. `afterSuccess` is
  * the one exception: it runs on every success, mounted or not, for state that
  * outlives the component (a module-level store), so a write that lands after
- * the user left the screen still settles what the store holds.
+ * the user left the screen still settles what the store holds. If it throws,
+ * the call settles as failed: `error` and `onError` carry what it threw, and
+ * `onSuccess` is not called.
  */
 export function useApiMutation<TData, TVariables>(options: {
   endpoint: MutationDescriptor<TData, TVariables>;
@@ -260,10 +262,24 @@ export function useApiMutation<TData, TVariables>(options: {
     latestOptions.current.endpoint.fetch(variables).then(
       (data) => {
         for (const read of latestOptions.current.invalidates ?? []) invalidateQuery(read.key);
-        latestOptions.current.afterSuccess?.(data, variables);
+        // A throwing afterSuccess must neither leave the call pending nor
+        // escape as an unhandled rejection: this handler is the promise's
+        // last one. It is reported like a failed call; once the caller has
+        // unmounted, there is nobody left to report it to.
+        let afterSuccessFailure: Error | null = null;
+        try {
+          latestOptions.current.afterSuccess?.(data, variables);
+        } catch (cause) {
+          afterSuccessFailure = asError(cause);
+        }
         if (!mounted.current) return;
         setPendingCount((count) => count - 1);
-        latestOptions.current.onSuccess?.(data, variables);
+        if (afterSuccessFailure === null) {
+          latestOptions.current.onSuccess?.(data, variables);
+          return;
+        }
+        if (call === latestCall.current) setError(afterSuccessFailure);
+        latestOptions.current.onError?.(afterSuccessFailure, variables);
       },
       (cause: unknown) => {
         if (!mounted.current) return;

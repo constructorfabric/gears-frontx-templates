@@ -696,6 +696,30 @@ describe('InboxScreen', () => {
     expect(document.activeElement).not.toBe(replyBox());
   });
 
+  it('leaves a conversation started before a channel switch in its own channel, without opening it', () => {
+    render(<InboxScreen t={t} />);
+    // The agent starts a chat in General, then moves to Support before the
+    // server answers.
+    act(() => {
+      screen.getByText('Support').click();
+    });
+    const supportSelection = inboxStore.get().selectedId;
+    act(() => {
+      succeedMutation('createConversation', { conversation: startedConversation('c-new-1', 'general', 'r-3') }, {});
+    });
+
+    expect(inboxStore.get().selectedId).toBe(supportSelection);
+    expect(inboxStore.get().selectedId).not.toBe('c-new-1');
+    expect(screen.queryByText('Noah Williams')).toBeNull();
+    expect(document.activeElement).not.toBe(replyBox());
+
+    // Back in General, the started chat is in the list.
+    act(() => {
+      screen.getByText('General').click();
+    });
+    expect(screen.getAllByText('Noah Williams').length).toBeGreaterThan(0);
+  });
+
   it('says a conversation could not be started when the create fails', () => {
     render(<InboxScreen t={t} />);
     act(() => {

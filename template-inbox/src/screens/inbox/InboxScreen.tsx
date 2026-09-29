@@ -128,7 +128,11 @@ export function InboxScreen({ t }: InboxScreenProps) {
     endpoint: service.createConversation,
     invalidates: [service.getConversations],
     afterSuccess: (response) => inboxActions.addConversation(response.conversation),
+    // Opened only if the agent is still in the channel it was started from:
+    // after a switch the list would highlight nothing while the thread and
+    // the composer focus jumped to it. It stays in its own channel's list.
     onSuccess: (response) => {
+      if (response.conversation.channelId !== inboxStore.get().channelId) return;
       setSelectedId(response.conversation.id);
       inboxActions.requestComposerFocus();
     },

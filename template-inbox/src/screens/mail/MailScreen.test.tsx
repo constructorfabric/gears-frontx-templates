@@ -399,17 +399,37 @@ describe('MailScreen', () => {
   });
   it('keeps the mailbox, the open mail, the search, drafts and sent mail across a remount', () => {
     const first = render(<MailScreen t={t} />);
+    // A mailbox other than the one the screen opens on, a hand-picked mail
+    // in it, a reply sent from it, a second reply left half typed, and a
+    // search.
     act(() => {
-      screen.getByText('Priya Natarajan').click();
+      screen.getByText('Archive').click();
+    });
+    act(() => {
+      screen.getByText('Wanjiru Kamau').click();
+    });
+    act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(/^Reply to /), 'Filed, thanks.'));
+    act(() => {
+      screen.getByText(t('send')).click();
     });
     act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(/^Reply to /), 'Half a reply'));
-    act(() => typeInto(screen.getByLabelText<HTMLInputElement>(t('search_mail')), 'priya'));
+    act(() => typeInto(screen.getByLabelText<HTMLInputElement>(t('search_mail')), 'wanjiru'));
     first.unmount();
 
     render(<MailScreen t={t} />);
-    expect(screen.getByLabelText<HTMLInputElement>(t('search_mail')).value).toBe('priya');
+    expect(screen.getByRole('heading', { level: 1, name: 'Archive' })).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>(t('search_mail')).value).toBe('wanjiru');
     expect(screen.getByPlaceholderText<HTMLTextAreaElement>(/^Reply to /).value).toBe('Half a reply');
-    expect(screen.getByPlaceholderText(/^Reply to /).getAttribute('placeholder')).toContain('Priya Natarajan');
+    expect(screen.getByPlaceholderText(/^Reply to /).getAttribute('placeholder')).toContain('Wanjiru Kamau');
+
+    // The reply sent before the remount is still filed under Sent.
+    const sentNavButton = within(screen.getByLabelText(t('mail'))).getByText('Sent').closest('button');
+    if (sentNavButton === null) throw new Error('Sent nav row not found');
+    expect(within(sentNavButton).getByText(String(SEED_SENT_COUNT + 1))).toBeTruthy();
+    act(() => {
+      sentNavButton.click();
+    });
+    expect(screen.getAllByText(/Filed, thanks\./).length).toBeGreaterThan(0);
   });
 
   it('keeps a closed reading pane closed across a remount on a narrow screen', () => {
