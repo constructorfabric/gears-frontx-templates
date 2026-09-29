@@ -1,13 +1,14 @@
 {
-  "name": "frontx-inbox-app",
+  "name": "@gears-frontx/frontx-template-inbox",
+  "version": "0.1.0-alpha.0",
+  "description": "Workspace application template: a plain Vite + ui-kit app with a dashboard, chat inbox, mail and contacts screens over a mocked API layer",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint . --max-warnings 0",
     "arch:deps": "depcruise src --config .dependency-cruiser.cjs --output-type err-long",
     "test": "npm run test:unit",
@@ -36,9 +37,16 @@
     "eslint-plugin-unused-imports": "4.4.1",
     "globals": "15.12.0",
     "jsdom": "26.1.0",
-    "typescript": "5.4.2",
+    "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
     "vite": "6.4.3",
     "vitest": "4.1.4"
-  }
+  },
+  "keywords": [
+    "frontx",
+    "template",
+    "typescript"
+  ],
+  "author": "Cyber Fabric",
+  "license": "Apache-2.0"
 }

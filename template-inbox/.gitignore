@@ -2,5 +2,9 @@ node_modules
 dist
 coverage
 .eslintcache
+.vite
 *.local
+.env
+.env.local
+.env.*.local
 .DS_Store
