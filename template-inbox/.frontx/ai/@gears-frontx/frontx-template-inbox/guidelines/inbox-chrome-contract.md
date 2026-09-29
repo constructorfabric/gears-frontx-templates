@@ -1,95 +1,70 @@
 # Guideline: The App's Chrome, and What a New Screen Plugs Into
 
-This application owns its whole document. There is no host to ask for anything,
-so every mechanism below is a module in `src/app/` that a screen simply calls.
-Reuse them; do not write a second copy of any of them.
+This application owns its whole document. It is a plain Vite + React app on `@gears-frontx/ui-kit` without the FrontX runtime: there is no host to ask for anything, so every mechanism below is a module in `src/app/` or `src/shared/` that a screen simply calls. Reuse them; do not write a second copy of any of them.
 
 ## The icon rail is the navigation
 
-`src/app/IconRail.tsx` is the app's fixed 64px left edge: the product mark at
-the top, one button per section, a flexible spacer, then the theme toggle and
-the profile-menu popover at the bottom. Adding a section means adding a button
-there and a branch in `src/app/App.tsx` - there is no manifest, no extension
-declaration and no id taxonomy.
+`src/app/IconRail.tsx` is the app's fixed narrow left edge: the product mark at the top, one button per section (Dashboard, Chat, Mail, Contacts), a flexible spacer, then the theme toggle and the profile-menu popover at the bottom. Adding a section means adding a button there, extending its `sectionOf`, and adding a branch in `src/app/App.tsx` - there is no manifest, no extension declaration and no id taxonomy.
 
-The rail never collapses. It is the edge the rest of the layout is measured
-from; the folder and filter columns beside it are the ones that collapse.
+The rail never collapses. It is the edge the rest of the layout is measured from; the channel, mailbox and filter columns beside it are the ones that collapse.
 
-The dashboard is the one screen with no folder/filter column at all - it is a
-single full-width, scrollable pane straight after the rail. Not every screen
-needs a secondary sidebar; add one only when the screen actually has a
-folder/filter concept to hold, the way chat and mail do.
+The dashboard is the one screen with no folder or filter column at all - a single full-width, scrollable pane straight after the rail. Not every screen needs a secondary sidebar; add one only when the screen has a folder or filter concept to hold, the way chat, mail and contacts do.
 
 ## Routing is the URL fragment
 
-`src/app/routing.ts` owns five routes and the parser for them:
+`src/app/routing.ts` owns five routes, their constants and the parser for them:
 
-| Route | Screen |
-|---|---|
-| `#/dashboard` | the dashboard - the default for any unrecognised address, including a stale `#/inbox` link |
-| `#/chat` | the chat screen |
-| `#/mail` | the mail screen |
-| `#/contacts` | the contacts directory |
-| `#/contacts/{id}` | one contact's page |
+| Route | Constant or builder | Screen |
+|---|---|---|
+| `#/dashboard` | `DASHBOARD_ROUTE` | the dashboard, and the fallback for any unrecognised address |
+| `#/chat` | `INBOX_ROUTE` | the chat screen; `#/inbox` opens it too |
+| `#/mail` | `MAIL_ROUTE` | the mail screen |
+| `#/contacts` | `CONTACTS_ROUTE` | the contacts directory, and the fallback for a contact id that does not decode |
+| `#/contacts/{id}` | `contactRoute(id)` | one contact's page |
+
+`useRoute()` reads the fragment and corrects the address bar to the canonical fragment of what it opened (an unknown path, `#/inbox`, an undecodable contact id) with `history.replaceState`, so the address a visitor copies always opens what they see and no history entry is added. `hashOf(route)` is the inverse of `parseRoute`; `navigate(fragment)` is how a screen moves.
 
 Two properties are load-bearing:
 
-- **A section's own sub-state that a visitor could want to return to belongs in
-  the route, not in screen state.** A contact's page is a route for exactly that
-  reason: "View contact" in a thread is `navigate(contactRoute(id))`, and the
-  address it produces reloads, bookmarks and shares.
-- **The fragment, not the path.** A fragment needs no server rewrite, so the
-  built `index.html` deep-links correctly from any static host. Adding a route
-  means extending `parseRoute` and its test, not adding a router.
+- **A section's own sub-state that a visitor could want to return to belongs in the route, not in screen state.** A contact's page is a route for exactly that reason: "View contact" in a thread is `navigate(contactRoute(id))`, and the address it produces reloads, bookmarks and shares.
+- **The fragment, not the path.** A fragment needs no server rewrite, so the built `index.html` deep-links correctly from any static host, including one serving it from a sub-path (`VITE_BASE`). Adding a route means extending `Route`, `parseRoute`, `hashOf` and `routing.test.ts`, not adding a router.
 
-## Theme is one attribute
+## Errors are caught at the root
 
-`src/app/theme.ts` sets `data-theme` on the document root and mirrors it to
-`localStorage`; `@gears-frontx/ui-kit/theme.css` repaints every token from that
-attribute. The app is dark-first, and `index.html` already ships
-`data-theme="dark"` so the first paint is dark before any script runs -
-`applyStoredTheme()` in `src/main.tsx` then corrects it for a visitor who chose
-light, before the first render.
+`src/app/ErrorBoundary.tsx` wraps `App` in `src/main.tsx`. A render error anywhere replaces the app with a kit `Alert` and a reload button instead of a blank window. A screen's own failed query is not an error for the boundary: it renders `LoadErrorPane` from `src/shared/QueryStates.tsx` (see the `inbox-data-contract` guideline).
 
-A screen never reads or writes the theme. `useTheme` exists for the one toggle
-in the rail.
+## Theme follows the system until the visitor chooses
+
+`@gears-frontx/ui-kit/theme.css` paints every token from `data-theme` on the document root, and with no attribute it follows the system's `prefers-color-scheme`. `index.html` sets no `data-theme`, so the first paint is already in the visitor's system theme. `src/app/theme.ts` is the one writer: `applyStoredTheme()` in `src/main.tsx` restores a choice stored on an earlier visit before the first render, and `useTheme().toggleTheme` sets and stores a new one. A visitor who never toggles keeps following the system.
+
+A screen never reads or writes the theme. `useTheme` exists for the one toggle in the rail.
 
 ## Copy
 
-`src/app/i18n.ts` exports `t`, reading `src/i18n/en.json`. Screens take `t` as a
-prop rather than importing it, which is what keeps them renderable in a test
-with `t = (key) => key`. Add a screen's strings to that one file.
+`src/app/i18n.ts` exports `t` and the `Translate` type, reading `src/i18n/en.json`. Screens take `t` as a prop rather than importing it, which is what keeps them renderable in a test with `t = (key) => key`. Add a screen's strings to that one file. A missing key returns the key itself and logs a console warning.
+
+## Shared parts
+
+`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `QueryStates.tsx`, and `cx`. A new screen reuses these rather than writing its own.
 
 ## Kit overlays need nothing
 
-Select, Popover, Dialog, DropdownMenu, Tooltip and Sheet portal to `<body>`,
-which is this app's own document. Pass no `container`.
+The kit's overlays - Select, Combobox, Popover, Dialog, DropdownMenu - portal to `<body>`, which is this app's own document. Pass no `container`.
 
 ## Styles
 
-Kit component CSS travels with each component the bundler pulls in; there is
-nothing to import. The app's own layout lives in
-`src/styles/workspace.module.css`, written entirely in kit tokens - no raw
-colour, no raw metric, no CSS framework. `src/styles/app.css` is the document
-frame alone (full height, no page scroll) and should not grow. The dashboard
-is the one screen with a CSS module of its own, `src/styles/dashboard.module.css`
-- its grid composition and its KPI/hero/chip type scale are specific enough to
-that one screen that folding them into the shared file would only add classes
-nothing else reads. A future screen with a similarly self-contained layout can
-follow the same split; a screen that reuses the existing pane/header/sidebar
-shapes should keep reading `workspace.module.css` instead of starting a new
-file.
+Kit component CSS travels with each component the bundler pulls in; there is nothing to import. The app's own layout is CSS Modules over the kit's semantic tokens: `src/styles/workspace.module.css` holds the shared chrome and panes (rail, sidebars, lists, thread, details panel), `src/styles/dashboard.module.css` the dashboard's grid and type scale, and `src/styles/mail.module.css` the mail list and reading pane. Colours come from kit tokens (a tint is a `color-mix` over one); there is no CSS framework and no second component library. `src/styles/app.css` is the document frame alone (full height, no page scroll) and should not grow.
+
+A screen that reuses the existing pane, header and sidebar shapes reads `workspace.module.css`. A screen whose own grid and type scale would only add classes nothing else reads gets its own module in `src/styles/`, the way the dashboard and mail do.
 
 ## Chrome as shipped
 
 A screen added later should keep these as they are.
 
-1. The rail's mark is a neutral helpdesk glyph.
-2. Only the sections this app ships appear in the rail; the out-of-scope ones
-   are absent (see the `inbox-scope-inventory` guideline).
+1. The rail's mark is a neutral glyph.
+2. Only the sections this app ships appear in the rail; the out-of-scope ones are absent (see the `inbox-scope-inventory` guideline).
 3. The palette is the kit's tokens.
-4. The rail's bottom cluster is the theme toggle and the profile menu, nothing
-   else: no command palette, messenger settings, settings or theme customiser.
+4. The rail's bottom cluster is the theme toggle and the profile menu, nothing else: no command palette, messenger settings, settings or theme customiser.
 5. Profile, Settings and Log out in the profile menu are inert.
-6. The panes collapse for tablet and phone widths; the rail keeps its shape at
-   every width.
+6. A control whose action this template does not ship renders disabled, never enabled with no handler.
+7. The side columns collapse at the compact width, and below the single-pane width a list and its detail take turns; the rail keeps its shape at every width.

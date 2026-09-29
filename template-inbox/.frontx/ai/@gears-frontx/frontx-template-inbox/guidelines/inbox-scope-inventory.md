@@ -1,100 +1,34 @@
 # Guideline: What the Inbox App Is, and What It Is Not
 
-This template ships a working helpdesk application. Four screens are complete
-and nothing about them is a placeholder. The list below exists so that a
-screen added later stays inside the same product, and so that no one rebuilds
-something that was deliberately left out.
+This template ships a working workspace application. Four screens are complete and nothing about them is a placeholder. The list below exists so that a screen added later stays inside the same product, and so that no one rebuilds something that was deliberately left out.
 
 ## In scope, and already shipped
 
-- **Dashboard screen.** The app's first rail entry and its default landing
-  route (`#/dashboard`; an unrecognised address, including a stale `#/inbox`
-  link, lands here too). A single full-width, scrollable pane - no folder or
-  filter sidebar - with four rows: four KPI cards with a distinct chart type
-  each (area, bar, line, radial); a large "Resolved per day" bar chart, a
-  "New contacts" hero card with a combo line-over-bar chart, and a "Summary"
-  card with icon-stat cells, a trend area and an inert "View report" button;
-  a team-workload icon+progress strip and a ranked "Top agents" list; and a
-  full-width, sortable, paginated "Recent activity" table. Every number is
-  computed from `DashboardApiService`'s seeded dataset - a delta badge, a sum,
-  an average - never hardcoded in a component (see `inbox-data-contract`).
-  The activity table's contact cell reuses the inbox dataset's `contacts` by
-  id rather than inventing a second set of people.
-- **Chat screen.** Channel sidebar with "General", "Support" and "Sales" and
-  their counts; a conversation list with live search, an open-conversation
-  counter and four sort orders; the message thread with its attachment chip,
-  read receipts and internal notes; the reply-and-note composer; the
-  customer-details panel with its Details and Copilot tabs; the "Select a
-  conversation" empty state.
-- **The thread's inert chrome.** The create-ticket button and the overflow menu
-  in the thread header, and the attach, emoji and saved-replies buttons on the
-  composer, are drawn and reachable. They carry no handler, because each would
-  need a section or a store this template does not ship. They are shipped, not
-  missing: adding one means giving it a behaviour, not adding the control.
-- **Suggested replies.** Each conversation carries its own `suggestedReplies`,
-  rendered as chips between the transcript and the composer. Clicking one
-  drafts it into the reply box. A thread with an empty list - every spam thread
-  and every snoozed one - renders no chip row at all.
-- **Contacts screen.** Five filters with their counts, a sortable table paged
-  25 rows at a time, and the contact detail view with its qualification
-  checklist, tickets, conversations and activity timeline.
-- **Mail screen.** A mailbox sidebar - Compose, then Inbox, Drafts, Sent,
-  Archive and Trash with their counts; a mail list with "All mail"/"Unread
-  (N)" tabs and live search over the sender and the subject; a reading pane
-  that renders a mail flat, with no chat bubbles - the newest message full
-  width, any earlier ones behind an "N earlier messages" toggle as muted
-  cards - and a reply composer with the same send-gating as the chat
-  composer's. Read/unread is typography only (weight and opacity), never a
-  dot, and a starred mail shows a small filled star on its row.
-- **The mail toolbar's inert chrome.** Archive, move-to-trash, star and reply
-  in the reading pane's toolbar, and the Compose button above the mailbox
-  list, are drawn and reachable but carry no handler - the same dead-controls
-  convention as the chat thread's create-ticket button and composer
-  attachments (see above). They are shipped, not missing.
-- **The chrome around all three.** The icon rail: the product mark, a button
-  per section with its active state, and at the bottom the theme toggle and
-  the profile menu.
-- **The jump between screens.** "View contact" in a thread opens that
-  person's page at `#/contacts/{id}` - a real address, not screen state.
+- **Dashboard screen.** The app's first rail entry and its default landing route (`#/dashboard`; an unrecognised address lands here too). A single full-width, scrollable pane - no folder or filter sidebar - in six rows: three KPI cards, each with its own inline chart type (area, bar, line), and a "Contacts by stage" donut card with a count and percent legend; a "Resolved per day" bar chart stacked by source, a "New contacts" card with a combo line-over-bar chart, and a "Summary" card with icon-stat cells, a trend area and a disabled "View report" button; a "Records created" twelve-month line chart with a disabled period select, beside a ranked "Top agents" list; a full-width team-workload strip of four icon, value and progress blocks; a "Stage funnel" beside a "Conversion by source" stacked bar chart; and a full-width, sortable, paginated "Recent activity" table whose search field is disabled. Every number is computed from `DashboardApiService`'s seeded dataset - a delta badge, a sum, a percent - never hardcoded in a component (see `inbox-data-contract`). The activity table's contact cells are the inbox dataset's contacts, by id, rather than a second set of people.
+- **Chat screen.** A channel sidebar with "General", "Support" and "Sales" and their counts, and a dialog that adds a channel; a conversation list with live search, an open-conversation counter, four sort orders, a pinned group, and a "New chat" dialog that opens a conversation with an existing contact; the message thread with day dividers, attachment cards, inline images, read receipts and internal notes; the reply-and-note composer; the customer-details panel with its Details and Copilot tabs; the "Select a conversation" empty state. A reply or note is posted through `InboxApiService` and stays in the thread across remounts; a created channel or chat, and every change the details panel makes, lives in screen state.
+- **The thread's disabled chrome.** The create-ticket button and the Unassign item in the thread header's overflow menu, and the attach, emoji and saved-replies buttons on the composer, are drawn but disabled, because each would need a section or a store this template does not ship. Mark as spam in the same menu is live: it is the same toggle as the details panel's spam button. The disabled controls are shipped, not missing: adding one means giving it a behaviour, not adding the control.
+- **Suggested replies.** Each conversation carries its own `suggestedReplies`, rendered as chips between the transcript and the composer. Clicking one drafts it into the reply box. A thread with an empty list - every spam thread and every snoozed one - renders no chip row at all.
+- **Contacts screen.** Five filters with their counts, a searchable, sortable table paged 25 rows at a time, and the contact page with its details, qualification checklist, tags, notes, tickets, conversations and activity timeline. An unknown contact id shows a not-found state with a way back to the directory.
+- **Mail screen.** A mailbox sidebar - Compose, then Inbox, Drafts, Sent, Archive and Trash with their counts; a mail list with "All mail"/"Unread (N)" tabs, live search over the sender and the subject, and an empty state when nothing matches; a reading pane that renders a mail flat, with no chat bubbles - the newest message full width, any earlier ones behind an "N earlier messages" toggle as muted cards - and a reply composer with the same send-gating as the chat composer's. Compose opens a dialog (To, Subject, Body), and both a composed mail and a reply are filed under Sent in screen state. Read/unread is typography only (weight and opacity), never a dot, and a starred mail shows a small filled star on its row.
+- **The mail toolbar's disabled chrome.** Archive, move-to-trash, star and reply in the reading pane's toolbar are drawn but disabled - the same convention as the chat thread's create-ticket button. They are shipped, not missing.
+- **The chrome around all four.** The icon rail: the product mark, a button per section with its active state, and at the bottom the theme toggle and the profile menu. An error boundary at the root, and a translated error with a retry on any screen whose data fails to load.
+- **The jump between screens.** "View contact" in a thread opens that person's page at `#/contacts/{id}` - a real address, not screen state.
 
 ## Not to build
 
-Every item here exists in the product this workspace is modelled on. None of it
-is missing by accident, and none of it should be added while carrying out an
-unrelated request.
+Every item here was left out on purpose. None of it is missing by accident, and none of it should be added while carrying out an unrelated request.
 
-- **Other sections.** Tickets, Knowledge Base, AI Agent and Reports. The ticket
-  rows on a contact's detail page are labels, not links into a Tickets section,
-  and the thread header's create-ticket button opens nothing for the same
-  reason.
-- **Other channels and views.** Mentions, Created by you, All, Unassigned,
-  Starred, High priority, Snoozed, and the team inboxes. A conversation can be
-  routed to a team inbox from the details panel; adding, renaming or removing
-  channels themselves is out of scope.
-- **The new-conversation flow.** The compose trigger and its modal.
-- **A Spam mailbox, and labels.** The mail screen ships five mailboxes, not
-  six - Spam is deliberately absent from this product. Labels (colour-dot
-  tags on a mail) are not shipped either; do not add either while carrying out
-  an unrelated request.
-- **Sending mail for real, and the new-mail flow.** The mail composer's Send
-  button clears the draft rather than posting anywhere, and the Compose
-  button in the mailbox sidebar is inert, exactly as the create-conversation
-  flow above is absent from chat.
-- **The command palette**, the messenger settings, the settings screen and the
-  theme customiser - none of the four is a rail control here. The app ships a plain two-state theme toggle and nothing else that
-  changes appearance.
-- **Copilot's behaviour.** The tab renders its prompts and its input; wiring
-  them to a model is a project's own decision and its own backend.
-- **The behaviour behind the composer's three buttons**: an upload target for
-  the paperclip, a picker for the emoji button, a canned-reply library for
-  saved replies. The buttons themselves ship (see above). The transcript
-  renders an attachment that arrived with a message; nothing sends one.
-- **Authentication.** Profile, Settings and Log out in the profile menu are
-  inert. There is no sign-in screen and no
-  session.
+- **Other sections.** Tickets, Knowledge Base, AI Agent and Reports. The ticket rows on a contact's page are labels, not links into a Tickets section, the thread header's create-ticket button is disabled for the same reason, and the dashboard's "View report" opens nothing.
+- **Other channels and views.** Mentions, Created by you, All, Unassigned, Starred, High priority, Snoozed, and the team inboxes as channels. A conversation can be routed to a team inbox from the details panel, and a channel can be added from the sidebar for the session; renaming, removing or persisting channels is out of scope.
+- **A Spam mailbox, and labels.** The mail screen ships five mailboxes, not six - Spam is deliberately absent. Labels (colour-dot tags on a mail) are not shipped either.
+- **Sending mail for real.** `MailApiService` has no write endpoint: a composed mail or a reply is filed under Sent for as long as the mail screen is mounted, and nothing is delivered.
+- **Moving mail.** Archive, trash and star in the reading pane stay disabled; mailbox membership never changes.
+- **The command palette**, the messenger settings, the settings screen and the theme customiser - none of the four is a rail control here. The app ships a plain two-state theme toggle and nothing else that changes appearance.
+- **Copilot's behaviour.** The tab renders its prompts and its input, all disabled; wiring them to a model is a project's own decision and its own backend.
+- **The behaviour behind the composer's three buttons**: an upload target for the paperclip, a picker for the emoji button, a canned-reply library for saved replies. The buttons themselves ship, disabled (see above). The transcript renders an attachment that arrived with a message; nothing sends one.
+- **Activity filtering and other dashboard periods.** The recent-activity search field and the records-created period select stay disabled; the dashboard shows one fixed window.
+- **Authentication.** Profile, Settings and Log out in the profile menu are inert. There is no sign-in screen and no session.
 
 ## When a request asks for one of these
 
-Say which item it is and what it would take, then let the project decide. Do
-not fold a whole section into a screen that was asked for something smaller,
-and do not leave a half-built version of one behind.
+Say which item it is and what it would take, then let the project decide. Do not fold a whole section into a screen that was asked for something smaller, and do not leave a half-built version of one behind.

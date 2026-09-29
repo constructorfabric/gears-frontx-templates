@@ -1,11 +1,15 @@
 {
   "id": "inbox-screen-inventory",
-  "version": "2.2.0",
-  "description": "Each pane of the four shipped screens, and the @gears-frontx/ui-kit component that renders each of its parts. A screen added to this app composes from the same vocabulary; anything not listed here is either a plain element carrying a class from the app's own stylesheet, or a component that has not been needed yet.",
+  "version": "3.0.0",
+  "description": "Each pane of the four shipped screens, and the @gears-frontx/ui-kit component that renders each of its parts. A screen added to this app composes from the same vocabulary; anything not listed here is either a plain element carrying a class from the app's own stylesheets, or a component that has not been needed yet.",
   "app": {
     "entry": "src/main.tsx",
     "root": "src/app/App.tsx",
-    "stylesheet": "src/styles/workspace.module.css"
+    "stylesheet": "src/styles/workspace.module.css",
+    "screenStylesheets": [
+      "src/styles/dashboard.module.css",
+      "src/styles/mail.module.css"
+    ]
   },
   "chrome": [
     {
@@ -24,19 +28,32 @@
         "ItemTitle",
         "lucide-react: LayoutDashboardIcon, BlocksIcon, MessageCircleIcon, MailIcon, UsersIcon, SunIcon, MoonIcon, UserIcon, SettingsIcon, LogOutIcon"
       ],
-      "note": "Fixed 64px, never collapsed. Mark at the top, one Button per section with variant=\"secondary\" when active - Dashboard first, then Chat, Mail, Contacts - flexible spacer, then the theme toggle and the profile-menu Popover. Popups need no container - they portal to the app's own body."
+      "note": "Fixed 4rem, never collapsed. Mark at the top, one Button per section with variant=\"secondary\" and aria-current=\"page\" when active - Dashboard first, then Chat, Mail, Contacts - flexible spacer, then the theme toggle and the profile-menu Popover, whose Profile, Settings and Log out items are inert. Popups need no container - they portal to the app's own body."
     },
     {
       "part": "routing",
       "module": "src/app/routing.ts",
       "kit": [],
-      "note": "Hash routes: #/dashboard, #/chat, #/mail, #/contacts, #/contacts/{id}. parseRoute defaults anything unrecognised - including a stale #/inbox link - to the dashboard, the app's home."
+      "note": "Hash routes: #/dashboard (DASHBOARD_ROUTE), #/chat (INBOX_ROUTE), #/mail (MAIL_ROUTE), #/contacts (CONTACTS_ROUTE), #/contacts/{id} (contactRoute(id)). parseRoute sends anything unrecognised to the dashboard, #/inbox to the chat screen and an undecodable contact id to the directory; useRoute rewrites the address bar to the canonical fragment without a history entry."
     },
     {
       "part": "theme",
       "module": "src/app/theme.ts",
       "kit": [],
-      "note": "data-theme on the document root plus localStorage, dark by default; the kit's theme.css repaints from it."
+      "note": "No data-theme until the visitor toggles, so the kit's theme.css follows prefers-color-scheme; the toggle sets data-theme on the document root and stores the choice in localStorage, and applyStoredTheme restores it before the first render."
+    },
+    {
+      "part": "error boundary",
+      "module": "src/app/ErrorBoundary.tsx",
+      "kit": [
+        "Alert",
+        "AlertTitle",
+        "AlertDescription",
+        "AlertAction",
+        "Button",
+        "lucide-react: CircleAlertIcon"
+      ],
+      "note": "Wraps App in src/main.tsx; a render error replaces the app with a destructive Alert and a reload button."
     }
   ],
   "sharedParts": [
@@ -58,6 +75,20 @@
         "AvatarFallback"
       ],
       "note": "PresenceAvatar without the presence badge, reusing the same tone hash and initials from src/shared/format.ts, for an identity that carries no live state of its own - a mail correspondent, not a chat contact."
+    },
+    {
+      "part": "loading and load-error panes",
+      "module": "src/shared/QueryStates.tsx",
+      "kit": [
+        "Skeleton",
+        "Alert",
+        "AlertTitle",
+        "AlertDescription",
+        "AlertAction",
+        "Button",
+        "lucide-react: CircleAlertIcon"
+      ],
+      "note": "firstPaintOf gates a screen's first paint on every query it needs; LoadingPane shows a Skeleton while any is pending, LoadErrorPane a destructive Alert with a retry when any has failed. Every screen uses both."
     }
   ],
   "screens": [
@@ -67,7 +98,7 @@
         {
           "pane": "KPI row",
           "module": "src/screens/dashboard/KpiRow.tsx",
-          "note": "Four cards, one KpiCard.tsx per card, one chart type and one accent hue each (area, bar, line, radial) so the row reads as varied instruments rather than one chart type repeated - see src/screens/dashboard/dashboardChartConfig.ts for the palette.",
+          "note": "Three KpiCard.tsx cards, one inline chart type and one accent hue each (area, bar, line) so the row reads as varied instruments rather than one chart repeated, then ContactsByStageCard.tsx as the row's fourth card - see src/screens/dashboard/dashboardChartConfig.ts for the palette.",
           "parts": [
             {
               "part": "value, delta badge, footer stat",
@@ -84,8 +115,22 @@
                 "ChartContainer",
                 "ChartConfig"
               ],
-              "module": "src/screens/dashboard/Sparkline.tsx, src/screens/dashboard/RadialGauge.tsx",
-              "note": "Recharts primitives composed inside ChartContainer, per the kit chart doc: AreaChart+Area (gradient-filled), BarChart+Bar (rounded corners), LineChart+Line (smooth), and a RadialBarChart+RadialBar gauge with a centered percentage Label - the gauge is sized to be the row's largest single chart, not a shrunken decoration."
+              "module": "src/screens/dashboard/Sparkline.tsx",
+              "note": "Recharts primitives composed inside ChartContainer, per the kit chart doc: AreaChart+Area (gradient-filled), BarChart+Bar (rounded corners), LineChart+Line (smooth)."
+            },
+            {
+              "part": "contacts by stage",
+              "module": "src/screens/dashboard/ContactsByStageCard.tsx",
+              "kit": [
+                "Card",
+                "CardHeader",
+                "CardTitle",
+                "CardContent",
+                "ChartContainer",
+                "ChartTooltip",
+                "ChartTooltipContent"
+              ],
+              "note": "Recharts PieChart+Pie with a Cell per stage, drawn as a thick-ring donut, and a legend list of dot, label, count and percent in plain markup - the kit's ChartLegendContent renders a swatch and a label only."
             }
           ]
         },
@@ -94,15 +139,19 @@
           "module": "src/screens/dashboard/ResolvedPerDayCard.tsx",
           "parts": [
             {
-              "part": "large bar chart",
+              "part": "large stacked bar chart",
               "kit": [
                 "Card",
                 "CardHeader",
                 "CardTitle",
                 "CardContent",
-                "ChartContainer"
+                "ChartContainer",
+                "ChartTooltip",
+                "ChartTooltipContent",
+                "ChartLegend",
+                "ChartLegendContent"
               ],
-              "note": "Recharts BarChart with a LabelList (value above each bar) and a Cell per bar so the current day paints in the brand accent against otherwise-neutral bars."
+              "note": "Recharts BarChart with one stacked Bar per source (Chat, Mail, Tasks), a CartesianGrid and both axes; the tooltip shows every segment's value and the legend names the sources."
             }
           ]
         },
@@ -154,31 +203,46 @@
               "note": "A small gradient-filled Recharts AreaChart, distinct in shape from row 2's other two charts."
             },
             {
-              "part": "inert CTA",
+              "part": "disabled CTA",
               "kit": [
                 "Card",
                 "CardFooter",
                 "Button"
               ],
-              "note": "Disabled - this template ships no report screen behind it, the same dead-controls convention as the chat thread's create-ticket button."
+              "note": "\"View report\", rendered disabled - this template ships no report screen behind it, the same convention as the chat thread's create-ticket button."
             }
           ]
         },
         {
-          "pane": "team workload",
-          "module": "src/screens/dashboard/WorkloadStrip.tsx",
+          "pane": "records created",
+          "module": "src/screens/dashboard/RecordsCreatedCard.tsx",
           "parts": [
             {
-              "part": "icon + value + progress strip",
+              "part": "total and twelve-month line chart",
               "kit": [
                 "Card",
                 "CardHeader",
                 "CardTitle",
+                "CardAction",
                 "CardContent",
-                "Progress",
-                "lucide-react: HeadsetIcon, CodeIcon, FolderKanbanIcon"
+                "ChartContainer",
+                "ChartTooltip",
+                "ChartTooltipContent",
+                "ChartLegend",
+                "ChartLegendContent"
               ],
-              "note": "Three workload metrics (Support load, Dev backlog, CRM tasks) side by side, each an icon chip plus a value/max readout plus a Progress bar."
+              "note": "Recharts LineChart with three Lines (companies, opportunities, people) over the last twelve calendar months; the Y axis starts at zero and grows with the data."
+            },
+            {
+              "part": "period select",
+              "kit": [
+                "Select",
+                "SelectTrigger",
+                "SelectValue",
+                "SelectContent",
+                "SelectItem"
+              ],
+              "note": "Rendered disabled: the template ships one fixed twelve-month window."
             }
           ]
         },
@@ -202,6 +266,61 @@
           ]
         },
         {
+          "pane": "team workload",
+          "module": "src/screens/dashboard/WorkloadStrip.tsx",
+          "parts": [
+            {
+              "part": "icon + value + progress strip",
+              "kit": [
+                "Card",
+                "CardHeader",
+                "CardTitle",
+                "CardContent",
+                "Progress",
+                "lucide-react: HeadsetIcon, CodeIcon, FolderKanbanIcon, ClipboardCheckIcon"
+              ],
+              "note": "Four workload metrics (support, development, CRM and QA) side by side, each an icon chip plus a value/max readout plus a Progress bar."
+            }
+          ]
+        },
+        {
+          "pane": "stage funnel",
+          "module": "src/screens/dashboard/StageFunnelCard.tsx",
+          "parts": [
+            {
+              "part": "funnel",
+              "kit": [
+                "Card",
+                "CardHeader",
+                "CardTitle",
+                "CardContent"
+              ],
+              "note": "A plain SVG of equal-height trapezoid bands, each edge its stage's share of the widest stage, scaled uniformly (preserveAspectRatio xMidYMid meet); funnelSegmentGeometry in dashboardSelectors.ts fits each label to its segment and drops one that cannot fit."
+            }
+          ]
+        },
+        {
+          "pane": "conversion by source",
+          "module": "src/screens/dashboard/ConversionBySourceCard.tsx",
+          "parts": [
+            {
+              "part": "stacked horizontal bars",
+              "kit": [
+                "Card",
+                "CardHeader",
+                "CardTitle",
+                "CardContent",
+                "ChartContainer",
+                "ChartTooltip",
+                "ChartTooltipContent",
+                "ChartLegend",
+                "ChartLegendContent"
+              ],
+              "note": "Recharts BarChart laid out vertically, one bar per lead source split won and lost; the headline percent is computed, not stored."
+            }
+          ]
+        },
+        {
           "pane": "recent activity",
           "module": "src/screens/dashboard/ActivityTable.tsx",
           "parts": [
@@ -213,9 +332,11 @@
                 "DataTableSortButton",
                 "Avatar",
                 "AvatarFallback",
-                "Badge"
+                "Badge",
+                "Input",
+                "lucide-react: ContactIcon, TagIcon, CircleDotIcon, UserRoundIcon, CalendarDaysIcon, SearchIcon"
               ],
-              "note": "Full width, no secondary sidebar above it. The contact cell reuses PresenceAvatar and the inbox dataset's contacts by id, the same continuity dataset.ts already relies on for Conversation.contactId - it does not invent a second set of people."
+              "note": "Full width, no secondary sidebar above it; sorting and pagination come from DataTable. Each column header carries its lucide icon, and the header shows a live row count and a search Input rendered disabled. The contact cell is an Avatar with the contact's initials, name and company, read from the inbox dataset's contacts by id, and the agent a row belongs to is named by its TopAgent id - no second set of people."
             }
           ]
         }
@@ -251,8 +372,27 @@
               "kit": [
                 "lucide-react: HashIcon"
               ]
+            },
+            {
+              "part": "new channel dialog",
+              "kit": [
+                "Button",
+                "Dialog",
+                "DialogTrigger",
+                "DialogContent",
+                "DialogHeader",
+                "DialogTitle",
+                "DialogFooter",
+                "DialogClose",
+                "Field",
+                "FieldLabel",
+                "Input",
+                "lucide-react: PlusIcon"
+              ],
+              "note": "Adds a channel for the session and switches into it; the channel lives in screen state."
             }
-          ]
+          ],
+          "note": "Collapses below the compact width, and from the conversation list's toggle."
         },
         {
           "pane": "conversation list",
@@ -261,7 +401,8 @@
             {
               "part": "collapse-channels button",
               "kit": [
-                "Button"
+                "Button",
+                "lucide-react: PanelLeftIcon"
               ]
             },
             {
@@ -292,10 +433,41 @@
               ]
             },
             {
+              "part": "pinned group label",
+              "kit": [
+                "SidebarGroupLabel"
+              ],
+              "note": "Pinned conversations are listed first under their own label."
+            },
+            {
               "part": "unread count",
               "kit": [
                 "Badge"
-              ]
+              ],
+              "note": "Its aria-label carries the count."
+            },
+            {
+              "part": "new chat dialog",
+              "kit": [
+                "Button",
+                "Dialog",
+                "DialogTrigger",
+                "DialogContent",
+                "DialogHeader",
+                "DialogTitle",
+                "DialogFooter",
+                "DialogClose",
+                "Field",
+                "FieldLabel",
+                "Combobox",
+                "ComboboxInput",
+                "ComboboxContent",
+                "ComboboxEmpty",
+                "ComboboxList",
+                "ComboboxItem",
+                "lucide-react: UserRoundPlusIcon"
+              ],
+              "note": "Picks an existing contact and opens a new conversation with an empty transcript in the current channel; the conversation lives in screen state, and a reply posted into it goes through the same postMessage endpoint as any other."
             }
           ]
         },
@@ -308,7 +480,8 @@
               "kit": [
                 "Button",
                 "lucide-react: StarIcon, AlarmClockIcon, TicketIcon, PanelRightIcon"
-              ]
+              ],
+              "note": "Star and snooze are toggles with aria-pressed, the details toggle shows or hides the customer panel, and Close closes the conversation; create-ticket renders disabled."
             },
             {
               "part": "header overflow menu",
@@ -316,9 +489,10 @@
                 "DropdownMenu",
                 "DropdownMenuTrigger",
                 "DropdownMenuContent",
-                "DropdownMenuItem"
+                "DropdownMenuItem",
+                "lucide-react: MoreHorizontalIcon, UserMinusIcon, CircleAlertIcon"
               ],
-              "note": "Its two items carry no handler."
+              "note": "Unassign is disabled; Mark as spam (Remove from spam on a spam thread) toggles the same tag as the details panel's spam button."
             },
             {
               "part": "suggested reply chips",
@@ -339,14 +513,22 @@
               ]
             },
             {
+              "part": "day dividers",
+              "kit": [
+                "Marker",
+                "MarkerContent"
+              ],
+              "note": "A separator Marker before the first message of each calendar day."
+            },
+            {
               "part": "message row",
               "kit": [
                 "Message",
                 "MessageAvatar",
                 "MessageContent",
-                "MessageHeader",
-                "MessageFooter"
-              ]
+                "MessageHeader"
+              ],
+              "note": "MessageHeader marks an internal note; the time and the read receipt sit inside the bubble."
             },
             {
               "part": "message surface",
@@ -363,7 +545,8 @@
                 "AttachmentContent",
                 "AttachmentTitle",
                 "AttachmentDescription"
-              ]
+              ],
+              "note": "A file message renders attachment cards inside its bubble; an image message renders its image only when it has a URL. A message link opens only for http, https and mailto."
             }
           ]
         },
@@ -378,7 +561,8 @@
                 "TabsList",
                 "TabsTrigger",
                 "TabsContent"
-              ]
+              ],
+              "note": "One draft field serves both tabs; the kit's TabsContent unmounts the inactive panel. The whole composer is disabled on a closed conversation."
             },
             {
               "part": "draft field",
@@ -392,7 +576,7 @@
                 "Button",
                 "lucide-react: PaperclipIcon, SmileIcon, ZapIcon"
               ],
-              "note": "Attach, emoji and saved replies, left of the send hint. None carries a handler."
+              "note": "Attach, emoji and saved replies, left of the send hint, rendered disabled."
             },
             {
               "part": "submit",
@@ -416,14 +600,15 @@
               ]
             },
             {
-              "part": "routing comboboxes",
+              "part": "routing selects",
               "kit": [
                 "Select",
                 "SelectTrigger",
                 "SelectValue",
                 "SelectContent",
                 "SelectItem"
-              ]
+              ],
+              "note": "Assignee, team inbox, priority and status; the assignee options always include the current assignee."
             },
             {
               "part": "collapsible sections",
@@ -452,6 +637,15 @@
                 "ItemTitle",
                 "ItemDescription"
               ]
+            },
+            {
+              "part": "copilot tab",
+              "kit": [
+                "Button",
+                "Input",
+                "lucide-react: SparklesIcon, SendIcon"
+              ],
+              "note": "Prompt chips, the input and its send button, all disabled - the template wires no model."
             }
           ]
         },
@@ -468,14 +662,9 @@
                 "EmptyTitle",
                 "EmptyDescription"
               ]
-            },
-            {
-              "part": "loading placeholder",
-              "kit": [
-                "Skeleton"
-              ]
             }
-          ]
+          ],
+          "note": "Loading and load errors render src/shared/QueryStates.tsx's panes."
         }
       ],
       "route": "#/chat"
@@ -488,12 +677,24 @@
           "module": "src/screens/mail/MailboxSidebar.tsx",
           "parts": [
             {
-              "part": "compose button",
+              "part": "compose button and dialog",
               "kit": [
                 "Button",
+                "Dialog",
+                "DialogTrigger",
+                "DialogContent",
+                "DialogHeader",
+                "DialogTitle",
+                "DialogFooter",
+                "DialogClose",
+                "Field",
+                "FieldGroup",
+                "FieldLabel",
+                "Input",
+                "Textarea",
                 "lucide-react: PenSquareIcon"
               ],
-              "note": "Full width, primary style. Inert - no handler, the same as the chat thread's create-ticket button."
+              "note": "Full width, primary style. Opens a dialog with To, Subject and Body; sending needs a recipient plus a subject or a body, and files the mail under Sent in screen state."
             },
             {
               "part": "mailbox rows",
@@ -518,7 +719,8 @@
                 "lucide-react: InboxIcon, FileTextIcon, SendIcon, ArchiveIcon, Trash2Icon"
               ]
             }
-          ]
+          ],
+          "note": "Collapses below the compact width."
         },
         {
           "pane": "mail list",
@@ -553,11 +755,30 @@
               "note": "Reuses the conversation row shape from src/screens/inbox/ConversationList.tsx. Read/unread is a class toggle on the row's own text (weight and opacity), never a dot."
             },
             {
+              "part": "pinned group label",
+              "kit": [
+                "SidebarGroupLabel",
+                "lucide-react: PinIcon"
+              ],
+              "note": "Pinned mails are listed first under their own label."
+            },
+            {
               "part": "starred indicator",
               "kit": [
                 "lucide-react: StarIcon"
               ],
               "note": "Filled star between the sender and the time, independent of read state."
+            },
+            {
+              "part": "no match",
+              "kit": [
+                "Empty",
+                "EmptyHeader",
+                "EmptyMedia",
+                "EmptyTitle",
+                "lucide-react: MailSearchIcon"
+              ],
+              "note": "Shown when the search or the Unread tab leaves nothing to list."
             }
           ]
         },
@@ -569,9 +790,9 @@
               "part": "toolbar actions",
               "kit": [
                 "Button",
-                "lucide-react: ArchiveIcon, Trash2Icon, StarIcon, ReplyIcon"
+                "lucide-react: ArchiveIcon, Trash2Icon, StarIcon, ReplyIcon, ArrowLeftIcon"
               ],
-              "note": "Two clusters of icon-only ghost buttons. All inert - no handler, the same dead-controls convention as the chat thread header."
+              "note": "Two clusters of icon-only ghost buttons, all rendered disabled - the same convention as the chat thread's create-ticket button. Below the single-pane width a back button returns to the list."
             },
             {
               "part": "earlier-messages toggle",
@@ -582,10 +803,9 @@
             },
             {
               "part": "history cards",
-              "kit": [
-                "IdentityAvatar"
-              ],
-              "note": "Plain elements styled by src/styles/mail.module.css, not a kit Card - muted bordered blocks behind the toggle. The newest message renders flat, full width, never card-wrapped."
+              "kit": [],
+              "note": "Plain elements styled by src/styles/mail.module.css with an IdentityAvatar each, not a kit Card - muted bordered blocks behind the toggle. The newest message renders flat, full width, never card-wrapped.",
+              "module": "src/shared/IdentityAvatar.tsx"
             },
             {
               "part": "transcript viewport",
@@ -614,7 +834,7 @@
               "kit": [
                 "Button"
               ],
-              "note": "Disabled until the draft is non-empty. Sending clears the draft rather than posting anywhere - no reply/note tabs and no attach/emoji/saved-reply row, unlike src/screens/inbox/Composer.tsx: a mail is a single kind of message."
+              "note": "Disabled until the draft is non-empty. Sending files the reply under Sent in screen state and clears the draft - MailApiService has no write endpoint. No reply/note tabs and no attach/emoji/saved-reply row, unlike src/screens/inbox/Composer.tsx: a mail is a single kind of message."
             }
           ]
         },
@@ -631,14 +851,9 @@
                 "EmptyTitle",
                 "EmptyDescription"
               ]
-            },
-            {
-              "part": "loading placeholder",
-              "kit": [
-                "Skeleton"
-              ]
             }
-          ]
+          ],
+          "note": "Loading and load errors render src/shared/QueryStates.tsx's panes."
         }
       ],
       "route": "#/mail"
@@ -649,7 +864,7 @@
         {
           "pane": "filter sidebar",
           "module": "src/screens/contacts/ContactFilterSidebar.tsx",
-          "note": "Belongs to the directory: the app renders it only on #/contacts, so a contact's own page gets the whole pane.",
+          "note": "Belongs to the directory: the screen renders it only on #/contacts, so a contact's own page gets the whole pane. Collapses below the compact width.",
           "parts": [
             {
               "part": "filter rows",
@@ -666,6 +881,33 @@
               "kit": [
                 "Badge"
               ]
+            }
+          ]
+        },
+        {
+          "pane": "directory search and states",
+          "module": "src/screens/contacts/ContactsScreen.tsx",
+          "parts": [
+            {
+              "part": "search field",
+              "kit": [
+                "Input",
+                "lucide-react: SearchIcon"
+              ]
+            },
+            {
+              "part": "contact not found",
+              "kit": [
+                "Empty",
+                "EmptyHeader",
+                "EmptyMedia",
+                "EmptyTitle",
+                "EmptyDescription",
+                "EmptyActions",
+                "Button",
+                "lucide-react: UserXIcon"
+              ],
+              "note": "Shown for a #/contacts/{id} whose id matches no contact, with a way back to the directory."
             }
           ]
         },
@@ -691,13 +933,8 @@
             {
               "part": "row action",
               "kit": [
-                "Button"
-              ]
-            },
-            {
-              "part": "search field",
-              "kit": [
-                "Input"
+                "Button",
+                "lucide-react: EyeIcon"
               ]
             }
           ]
@@ -738,9 +975,10 @@
               ]
             },
             {
-              "part": "back and header actions",
+              "part": "back action",
               "kit": [
-                "Button"
+                "Button",
+                "lucide-react: ArrowLeftIcon"
               ]
             }
           ]
