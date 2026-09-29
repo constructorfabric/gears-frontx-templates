@@ -105,7 +105,9 @@ export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
               tickMargin={8}
               stroke="var(--muted-foreground)"
               fontSize={11}
-              width={24}
+              // Measured from the widest tick label: a fixed width cut two-digit
+              // counts off at the chart's left edge.
+              width="auto"
               domain={[0, 'auto']}
               allowDecimals={false}
             />

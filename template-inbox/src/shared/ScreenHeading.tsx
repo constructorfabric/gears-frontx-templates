@@ -30,6 +30,10 @@ const subscribe = (listener: () => void) => {
 
 const readRequested = () => requested;
 
+/** Whether the element lays out at least one box with a visible width. */
+const rendersVisibleBox = (element: Element): boolean =>
+  Array.from(element.getClientRects()).some((rect) => rect.width > 0);
+
 export type ScreenHeadingProps = {
   children: ReactNode;
   className?: string;
@@ -50,7 +54,9 @@ export function ScreenHeading({ children, className }: ScreenHeadingProps) {
     // A heading that renders no box - inside a hidden subtree (a screen
     // keeping its list mounted behind a detail page) or a pane a narrow
     // layout sets to `display: none` - leaves the request to the visible one.
-    if (request === answered || ref.current === null || ref.current.getClientRects().length === 0) return;
+    // So does one whose box is squeezed to zero width: it is laid out, but
+    // nothing of it shows, and focus on it would land on nothing visible.
+    if (request === answered || ref.current === null || !rendersVisibleBox(ref.current)) return;
     answered = request;
     ref.current.focus();
   }, [request]);

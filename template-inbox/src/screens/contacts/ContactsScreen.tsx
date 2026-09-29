@@ -12,6 +12,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import { useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
+import { cx } from '../../shared/cx';
 import type { Translate } from '../../shared/i18n';
 import { CONTACTS_ROUTE, contactRoute, navigate } from '../../app/routing';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
@@ -114,7 +115,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
         t={t}
       />
       <div className={styles.contactsMain} hidden={!showingDirectory}>
-        <div className={sharedStyles.paneHeader}>
+        <div className={cx(sharedStyles.paneHeader, styles.contactsHeader)}>
           <Button
             variant="ghost"
             size="sm"
@@ -130,15 +131,16 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
             </span>
           </span>
           <span className={sharedStyles.spacer} />
-          <Input
-            className={styles.searchField}
-            type="search"
-            value={search}
-            onValueChange={contactsActions.setSearch}
-            placeholder={t('search_contacts')}
-            icon={<SearchIcon />}
-            aria-label={t('search_contacts')}
-          />
+          <span className={styles.searchField}>
+            <Input
+              type="search"
+              value={search}
+              onValueChange={contactsActions.setSearch}
+              placeholder={t('search_contacts')}
+              icon={<SearchIcon />}
+              aria-label={t('search_contacts')}
+            />
+          </span>
         </div>
         <div className={styles.contactsBody}>
           <ContactsTable contacts={visibleContacts} onViewContact={viewContact} t={t} />

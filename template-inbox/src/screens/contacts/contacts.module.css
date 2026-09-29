@@ -24,9 +24,29 @@
   flex-direction: column;
 }
 
+/*
+ * The shared pane header is one fixed-height line; the directory's also
+ * carries an 18rem search field, which a narrow screen cannot fit beside
+ * the title. So this header wraps, grows with its lines, and the field
+ * drops under the title, at most as wide as the header. The ancestor class
+ * makes the rule outrank the shared one whichever stylesheet loads first.
+ */
+.contactsMain .contactsHeader {
+  flex-wrap: wrap;
+  height: auto;
+  /* The shared header's 3.5rem, less the padding added here. */
+  min-height: calc(3.5rem - 2 * var(--space-2));
+  padding-block: var(--space-2);
+}
+
+/*
+ * The slot the search field fills. The kit's Input with an icon wraps itself
+ * in a full-width span and takes a class only on the inner input, so a width
+ * set there cannot shrink the wrapper; the slot sizes both instead.
+ */
 .searchField {
-  width: 18rem;
-  max-width: 100%;
+  flex: 0 1 18rem;
+  min-width: 0;
 }
 
 .nameCell {
