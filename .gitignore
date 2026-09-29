@@ -62,11 +62,6 @@ __pycache__/
 # PR review data (.cf-studio/config/pr-review.toml sets data_dir = ".prs").
 /.prs/
 
-# gears-frontx develop checkout that `cfs validate` reads as the workspace
-# source for cross-repo `cpt-` references (core.toml [workspace.sources]);
-# CI checks it out, locally clone it here. Never committed.
-.cf-studio/.workspace/
-
 # BEGIN Constructor Studio
 # Generated Constructor Studio runtime and agent integration files.
 # Files matched here are owned by Constructor Studio and may be overwritten.
