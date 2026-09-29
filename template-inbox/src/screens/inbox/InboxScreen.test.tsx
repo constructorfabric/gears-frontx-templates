@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen as domScreen, waitFor } from '@testing-library/dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
   mutationResult,
@@ -11,9 +12,10 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../../__test-utils__/apiMocks';
-import { renderScreen } from '../../__test-utils__/renderScreen';
 import { conversations, messages } from '../../api/dataset';
 import { messageDayLabel, messageTimeOfDay } from '../../shared/format';
+import { stubMatchMedia } from '../../__test-utils__/matchMedia';
+import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
 import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({ getInboxApi: () => endpointTags }));
@@ -42,16 +44,13 @@ function typeInto(field: HTMLInputElement | HTMLTextAreaElement, value: string):
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// `screen` (from `renderScreen`) only ever queries inside its own mounted
-// container - but the kit's Dialog portals its popup straight to
-// `document.body` by default (dialog.md), a sibling of that container, not
-// a descendant. `domScreen`, `@testing-library/dom`'s own document-wide
-// singleton, is what reaches the dialog's own fields and buttons once one
-// is open.
+// Queries go through Testing Library's document-wide `screen`, which also
+// reaches what the kit portals to `document.body` - dialogs, menus and
+// their fields - once it is open.
 
 describe('InboxScreen', () => {
   it('lists the seeded channels and conversations, and opens the first conversation of the default channel automatically', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     // "General" is both the channel row and the open pane's own heading.
     expect(screen.getAllByText('General').length).toBe(2);
@@ -70,7 +69,7 @@ describe('InboxScreen', () => {
   });
 
   it('auto-selects the first conversation again on a channel switch, without disturbing a selection made while staying in one', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     act(() => {
       screen.getByText('Support').click();
@@ -113,7 +112,7 @@ describe('InboxScreen', () => {
   });
 
   it('offers the thread its suggested replies and drafts the one that is clicked', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByText('Support').click();
     });
@@ -141,7 +140,7 @@ describe('InboxScreen', () => {
   });
 
   it('offers no suggested reply on a spam-tagged thread', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByText('Support').click();
     });
@@ -157,7 +156,7 @@ describe('InboxScreen', () => {
   });
 
   it('renders every rich message type in a transcript: image, file, and an inline link', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    const view = render(<InboxScreen t={t} />);
 
     // "Design feedback on dashboard" (c-11, General's most active thread, open
     // by default) is the showcase thread: its m-11-3 is a file-only message
@@ -182,7 +181,7 @@ describe('InboxScreen', () => {
     // the caption both render, and the image carries an empty alt because
     // the caption beside it already says what it shows.
     expect(screen.getAllByText(/Here is how the license page renders on our side/).length).toBe(2);
-    const image = screen.container.querySelector('img[src$="/message-assets/preview-chart.svg"]');
+    const image = view.container.querySelector('img[src$="/message-assets/preview-chart.svg"]');
     expect(image?.getAttribute('alt')).toBe('');
 
     act(() => {
@@ -201,7 +200,7 @@ describe('InboxScreen', () => {
   });
 
   it('groups a transcript into one divider per calendar day, and puts the time inside the bubble', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByText('Support').click();
     });
@@ -224,7 +223,7 @@ describe('InboxScreen', () => {
   });
 
   it('groups pinned conversations under their own label, ahead of the rest', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     // General opens by default; its own pinned conversation (c-11, the
     // showcase thread) renders under a "Pinned" label, ahead of its two
@@ -248,7 +247,7 @@ describe('InboxScreen', () => {
   });
 
   it('sends a thread reader to the customer page as a link the URL can carry', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByText('Support').click();
     });
@@ -268,25 +267,25 @@ describe('InboxScreen', () => {
   });
 
   it('creates a channel from the dialog and switches into it, on the existing empty state', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     act(() => {
       screen.getByLabelText(t('new_channel')).click();
     });
-    const nameField = domScreen.getByLabelText(t('channel_name'));
+    const nameField = screen.getByLabelText(t('channel_name'));
     if (!(nameField instanceof HTMLInputElement)) throw new Error('channel name is not an input');
 
     // Empty name: the create action stays disabled rather than creating a
     // blank channel.
-    expect(domScreen.getByText(t('create_channel')).closest('button')?.disabled).toBe(true);
+    expect(screen.getByText(t('create_channel')).closest('button')?.disabled).toBe(true);
 
     act(() => {
       typeInto(nameField, 'Design Reviews');
     });
-    expect(domScreen.getByText(t('create_channel')).closest('button')?.disabled).toBe(false);
+    expect(screen.getByText(t('create_channel')).closest('button')?.disabled).toBe(false);
 
     act(() => {
-      domScreen.getByText(t('create_channel')).click();
+      screen.getByText(t('create_channel')).click();
     });
 
     // The dialog closed (its portalled content is gone from the whole
@@ -294,13 +293,13 @@ describe('InboxScreen', () => {
     // a real row in the sidebar (not a stub - it carries its own item
     // count), and it is the one now open, landing on the same empty state
     // any zero-conversation channel shows.
-    expect(domScreen.queryByText(t('channel_name'))).toBeNull();
+    expect(screen.queryByText(t('channel_name'))).toBeNull();
     expect(screen.getAllByText('Design Reviews').length).toBeGreaterThan(0);
     expect(screen.queryByText(t('empty_title'))).toBeTruthy();
   });
 
   it('opens the new-chat dialog focused on the contact field, gated on a pick', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     act(() => {
       screen.getByLabelText(t('new_chat')).click();
@@ -311,22 +310,22 @@ describe('InboxScreen', () => {
     // final report), not in this suite. What IS reliably testable here:
     // the dialog opens with focus already on the contact field, and Start
     // stays gated with nothing picked yet.
-    const contactField = domScreen.getByLabelText(t('new_chat_contact_label'));
+    const contactField = screen.getByLabelText(t('new_chat_contact_label'));
     expect(document.activeElement).toBe(contactField);
-    expect(domScreen.getByText(t('start_chat')).closest('button')?.disabled).toBe(true);
+    expect(screen.getByText(t('start_chat')).closest('button')?.disabled).toBe(true);
 
     act(() => {
-      domScreen.getByText(t('cancel')).click();
+      screen.getByText(t('cancel')).click();
     });
     // Cancel discards: no conversation was created - General's channel-nav
     // badge and its own pane count are both still "3".
-    expect(domScreen.queryByLabelText(t('new_chat_contact_label'))).toBeNull();
+    expect(screen.queryByLabelText(t('new_chat_contact_label'))).toBeNull();
     expect(screen.getAllByText('3').length).toBe(2);
   });
 
   it('shows an error with a retry instead of the panes when a query the first paint needs fails', () => {
     setQueryState('messages', { error: new Error('down') });
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     expect(screen.queryByText('General')).toBeNull();
@@ -338,14 +337,14 @@ describe('InboxScreen', () => {
 
   it('waits for every query before the first paint', () => {
     setQueryState('contacts', { isLoading: true });
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
     expect(screen.queryByText('General')).toBeNull();
   });
 
   it('clears the draft after a send only if it still holds what was sent', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     const box = screen.getByPlaceholderText(t('reply_placeholder'));
 
     act(() => typeInto(box as HTMLTextAreaElement, 'First answer'));
@@ -381,7 +380,7 @@ describe('InboxScreen', () => {
   });
 
   it('takes no reply on a closed conversation', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByText(t('close')).click();
     });
@@ -395,7 +394,7 @@ describe('InboxScreen', () => {
   });
 
   it('marks and unmarks spam from the thread header menu, and renders the actions it does not ship disabled', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     const ticket = screen.getByLabelText(t('create_ticket'));
     expect(ticket.hasAttribute('disabled') || ticket.getAttribute('aria-disabled') === 'true').toBe(true);
@@ -404,7 +403,7 @@ describe('InboxScreen', () => {
       screen.getByLabelText(t('more_actions')).click();
     });
     act(() => {
-      domScreen.getByRole('menuitem', { name: t('mark_as_spam') }).click();
+      screen.getByRole('menuitem', { name: t('mark_as_spam') }).click();
     });
     // The details panel's own toggle reads the same tag.
     expect(screen.getAllByText(t('remove_from_spam')).length).toBeGreaterThan(0);
@@ -413,13 +412,13 @@ describe('InboxScreen', () => {
       screen.getByLabelText(t('more_actions')).click();
     });
     act(() => {
-      domScreen.getByRole('menuitem', { name: t('remove_from_spam') }).click();
+      screen.getByRole('menuitem', { name: t('remove_from_spam') }).click();
     });
     expect(screen.queryAllByText(t('remove_from_spam'))).toHaveLength(0);
   });
 
   it('names the unread count in the badge label', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     const unread = conversations.find(
       (conversation) => conversation.unreadCount > 0 && conversation.channelId === 'general'
     );
@@ -429,41 +428,41 @@ describe('InboxScreen', () => {
   });
 
   it('closes the new-channel dialog with Escape and gives focus back to the button that opened it', async () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     const trigger = screen.getByLabelText(t('new_channel'));
 
     act(() => {
       trigger.focus();
       trigger.click();
     });
-    const nameField = domScreen.getByLabelText(t('channel_name'));
+    const nameField = screen.getByLabelText(t('channel_name'));
     await waitFor(() => expect(document.activeElement).toBe(nameField));
 
     act(() => {
       fireEvent.keyDown(nameField, { key: 'Escape' });
     });
-    await waitFor(() => expect(domScreen.queryByLabelText(t('channel_name'))).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(t('channel_name'))).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it('opens the thread menu from the keyboard, and Escape closes it back onto its trigger', async () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     const trigger = screen.getByLabelText(t('more_actions'));
 
     act(() => {
       trigger.focus();
       fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     });
-    const item = await domScreen.findByRole('menuitem', { name: t('mark_as_spam') });
+    const item = await screen.findByRole('menuitem', { name: t('mark_as_spam') });
     act(() => {
       fireEvent.keyDown(item, { key: 'Escape' });
     });
-    await waitFor(() => expect(domScreen.queryByRole('menuitem', { name: t('mark_as_spam') })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: t('mark_as_spam') })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it('adds a tag with Enter and returns focus to the add button, and Escape drops the draft', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
 
     act(() => {
       screen.getByText(t('add_tag')).click();
@@ -489,7 +488,7 @@ describe('InboxScreen', () => {
   });
 
   it('folds the channel column from the list header and takes it out of the tab order', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     const sidebar = screen.getByLabelText(t('channels'), { selector: 'aside' });
     const toggle = screen.getByLabelText(t('toggle_channels'));
 
@@ -504,7 +503,7 @@ describe('InboxScreen', () => {
   });
 
   it('names the pinned icon and the read receipts as images', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     expect(screen.getByLabelText(t('pinned_conversation')).getAttribute('role')).toBe('img');
     for (const receipt of screen.queryAllByLabelText(t('message_read'))) {
       expect(receipt.getAttribute('role')).toBe('img');
@@ -512,28 +511,28 @@ describe('InboxScreen', () => {
   });
 
   it('keeps the channel, the open conversation, drafts and thread changes across a remount', () => {
-    const first = renderScreen(<InboxScreen t={t} />);
+    const first = render(<InboxScreen t={t} />);
     act(() => {
-      first.getByText('Support').click();
+      screen.getByText('Support').click();
     });
     act(() => {
-      first.getAllByText('Dark mode toggle not persisting')[0].click();
+      screen.getAllByText('Dark mode toggle not persisting')[0].click();
     });
-    act(() => typeInto(first.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Half a reply'));
+    act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Half a reply'));
     act(() => {
-      first.getByLabelText(t('star_conversation')).click();
+      screen.getByLabelText(t('star_conversation')).click();
     });
     first.unmount();
 
     // What "View contact" and Back do: the screen unmounts and mounts again.
-    const second = renderScreen(<InboxScreen t={t} />);
-    expect(second.getAllByText('Dark mode toggle not persisting').length).toBe(2);
-    expect((second.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Half a reply');
-    expect(second.getByLabelText(t('star_conversation')).getAttribute('aria-pressed')).toBe('true');
+    render(<InboxScreen t={t} />);
+    expect(screen.getAllByText('Dark mode toggle not persisting').length).toBe(2);
+    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Half a reply');
+    expect(screen.getByLabelText(t('star_conversation')).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('says a failed send did not go out and keeps the draft, until the next send goes through', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Lost?'));
     act(() => {
       screen.getByText(t('send')).click();
@@ -553,13 +552,13 @@ describe('InboxScreen', () => {
   });
 
   it('settles the automatic pick on an empty channel, so a conversation started there stays open', () => {
-    const screen = renderScreen(<InboxScreen t={t} />);
+    render(<InboxScreen t={t} />);
     act(() => {
       screen.getByLabelText(t('new_channel')).click();
     });
-    act(() => typeInto(domScreen.getByLabelText(t('channel_name')) as HTMLInputElement, 'Empty'));
+    act(() => typeInto(screen.getByLabelText(t('channel_name')) as HTMLInputElement, 'Empty'));
     act(() => {
-      domScreen.getByText(t('create_channel')).click();
+      screen.getByText(t('create_channel')).click();
     });
     expect(screen.getByText(t('empty_title'))).toBeTruthy();
 
@@ -568,5 +567,48 @@ describe('InboxScreen', () => {
       screen.getByText('General').click();
     });
     expect(screen.queryByText(t('empty_title'))).toBeNull();
+  });
+
+  it('snoozes and unsnoozes from the thread header, and the status select follows', async () => {
+    const user = userEvent.setup();
+    render(<InboxScreen t={t} />);
+    const snooze = screen.getByRole('button', { name: t('snooze_conversation') });
+
+    await user.click(snooze);
+    expect(snooze.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('combobox', { name: t('status') }).textContent).toContain(t('label_snoozed'));
+    await user.click(snooze);
+    expect(snooze.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('combobox', { name: t('status') }).textContent).toContain(t('label_open'));
+  });
+
+  it('changes the priority and the team inbox from the details panel selects', async () => {
+    const user = userEvent.setup();
+    render(<InboxScreen t={t} />);
+
+    await user.click(screen.getByRole('combobox', { name: t('priority') }));
+    await user.click(await screen.findByRole('option', { name: t('label_high') }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: t('priority') }).textContent).toContain(t('label_high')));
+
+    await user.click(screen.getByRole('combobox', { name: t('team_inbox') }));
+    await user.click(await screen.findByRole('option', { name: t('team_inbox_billing') }));
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: t('team_inbox') }).textContent).toContain(t('team_inbox_billing'))
+    );
+  });
+
+  it('gives the list and the thread turns on a narrow screen, with a way back', async () => {
+    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
+    const user = userEvent.setup();
+    render(<InboxScreen t={t} />);
+
+    const list = screen.getByRole('region', { name: t('conversations') });
+    expect(list.className).toMatch(/singlePaneHidden/);
+    // Below the compact width the channel column starts folded.
+    expect(screen.getByLabelText(t('channels'), { selector: 'aside' }).hasAttribute('inert')).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: t('back_to_list') }));
+    expect(list.className).not.toMatch(/singlePaneHidden/);
+    expect(screen.queryByRole('button', { name: t('back_to_list') })).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { act, createElement } from 'react';
 import type { EndpointDescriptor, MutationDescriptor } from '@gears-frontx/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderScreen } from '../__test-utils__/renderScreen';
+import { render } from '@testing-library/react';
 import { resetQueryCache, useApiMutation, useApiQuery, type MutationResult, type QueryResult } from './queries';
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (cause: unknown) => void };
@@ -42,12 +42,12 @@ function QueryProbe<T>({ descriptor, onResult }: { descriptor: EndpointDescripto
 
 const mountQuery = <T,>(descriptor: EndpointDescriptor<T>) => {
   const results: QueryResult<T>[] = [];
-  const screen = renderScreen(createElement(QueryProbe<T>, { descriptor, onResult: (result) => results.push(result) }));
+  const view = render(createElement(QueryProbe<T>, { descriptor, onResult: (result) => results.push(result) }));
   return {
-    screen,
+    view,
     latest: () => results[results.length - 1],
     rerender: (next: EndpointDescriptor<T>) =>
-      screen.rerender(createElement(QueryProbe<T>, { descriptor: next, onResult: (result) => results.push(result) })),
+      view.rerender(createElement(QueryProbe<T>, { descriptor: next, onResult: (result) => results.push(result) })),
   };
 };
 
@@ -69,13 +69,13 @@ describe('useApiQuery', () => {
     expect(second.latest()).toMatchObject({ data: 'answer', isLoading: false });
 
     // A remount after the answer arrived is served from the cache.
-    first.screen.unmount();
+    first.view.unmount();
     const third = mountQuery(descriptor);
     await flush();
     expect(calls).toHaveLength(1);
     expect(third.latest().data).toBe('answer');
-    second.screen.unmount();
-    third.screen.unmount();
+    second.view.unmount();
+    third.view.unmount();
   });
 
   it('evicts a failed request so the next mount asks again', async () => {
@@ -85,9 +85,9 @@ describe('useApiQuery', () => {
     await flush();
     expect(first.latest()).toMatchObject({ data: undefined, isLoading: false });
     expect(first.latest().error?.message).toBe('boom');
-    first.screen.unmount();
+    first.view.unmount();
 
-    mountQuery(descriptor).screen.unmount();
+    mountQuery(descriptor).view.unmount();
     expect(calls).toHaveLength(2);
   });
 
@@ -101,7 +101,7 @@ describe('useApiQuery', () => {
 
     probe.rerender(two.descriptor);
     expect(probe.latest()).toMatchObject({ data: undefined, isLoading: true });
-    probe.screen.unmount();
+    probe.view.unmount();
   });
 
   it('refetches on demand, forgetting the cached answer', async () => {
@@ -116,24 +116,24 @@ describe('useApiQuery', () => {
     calls[1].response.resolve('up');
     await flush();
     expect(probe.latest()).toMatchObject({ data: 'up', error: null, isLoading: false });
-    probe.screen.unmount();
+    probe.view.unmount();
   });
 
   it('aborts a pending request once nobody is waiting for it, and starts over on the next mount', async () => {
     const { descriptor, calls } = controlledEndpoint<string>('abandoned');
     const probe = mountQuery(descriptor);
-    probe.screen.unmount();
+    probe.view.unmount();
     await flush();
 
     expect(calls[0].signal?.aborted).toBe(true);
-    mountQuery(descriptor).screen.unmount();
+    mountQuery(descriptor).view.unmount();
     expect(calls).toHaveLength(2);
   });
 
   it("keeps a pending request alive through StrictMode's unmount and remount", async () => {
     const { descriptor, calls } = controlledEndpoint<string>('strict');
     const results: QueryResult<string>[] = [];
-    const screen = renderScreen(
+    const view = render(
       createElement(
         (await import('react')).StrictMode,
         null,
@@ -147,7 +147,7 @@ describe('useApiQuery', () => {
     calls[0].response.resolve('kept');
     await flush();
     expect(results[results.length - 1].data).toBe('kept');
-    screen.unmount();
+    view.unmount();
   });
 });
 
@@ -175,10 +175,10 @@ describe('useApiMutation', () => {
 
   const mountMutation = (options: Parameters<typeof useApiMutation<string, string>>[0]) => {
     const results: MutationResult<string>[] = [];
-    const screen = renderScreen(
+    const view = render(
       createElement(MutationProbe<string, string>, { options, onResult: (result) => results.push(result) })
     );
-    return { screen, latest: () => results[results.length - 1] };
+    return { view, latest: () => results[results.length - 1] };
   };
 
   it('stays pending until every overlapping call settled, and reports each with its own variables', async () => {
@@ -201,7 +201,7 @@ describe('useApiMutation', () => {
       ['done-a', 'a'],
       ['done-b', 'b'],
     ]);
-    probe.screen.unmount();
+    probe.view.unmount();
   });
 
   it('evicts the reads it names after a success, so the next mount reads again', async () => {
@@ -216,15 +216,15 @@ describe('useApiMutation', () => {
     calls[0].response.resolve('ok');
     await flush();
 
-    reader.screen.unmount();
-    mountQuery(read.descriptor).screen.unmount();
+    reader.view.unmount();
+    mountQuery(read.descriptor).view.unmount();
     expect(read.calls).toHaveLength(2);
-    writer.screen.unmount();
+    writer.view.unmount();
   });
 
   it('still evicts after the caller unmounted, but calls back and updates nothing', async () => {
     const read = controlledEndpoint<string>('read-after-unmount');
-    mountQuery(read.descriptor).screen.unmount();
+    mountQuery(read.descriptor).view.unmount();
     read.calls[0].response.resolve('cached');
     await flush();
 
@@ -232,7 +232,7 @@ describe('useApiMutation', () => {
     const onSuccess = vi.fn();
     const writer = mountMutation({ endpoint, invalidates: [read.descriptor], onSuccess });
     act(() => writer.latest().mutate('x'));
-    writer.screen.unmount();
+    writer.view.unmount();
 
     const consoleError = vi.spyOn(console, 'error');
     calls[0].response.resolve('ok');
@@ -240,7 +240,7 @@ describe('useApiMutation', () => {
 
     expect(onSuccess).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
-    mountQuery(read.descriptor).screen.unmount();
+    mountQuery(read.descriptor).view.unmount();
     expect(read.calls.length).toBeGreaterThan(1);
   });
 
@@ -256,6 +256,6 @@ describe('useApiMutation', () => {
     expect(probe.latest().error?.message).toBe('rejected');
     expect(probe.latest().isPending).toBe(false);
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'rejected' }), 'bad');
-    probe.screen.unmount();
+    probe.view.unmount();
   });
 });

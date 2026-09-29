@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { renderScreen } from '../__test-utils__/renderScreen';
+import { render, screen } from '@testing-library/react';
 import { AppErrorBoundary } from './ErrorBoundary';
 import { t } from '../shared/i18n';
 
@@ -10,7 +10,7 @@ function Broken(): never {
 
 describe('AppErrorBoundary', () => {
   it('renders its children while nothing throws', () => {
-    const screen = renderScreen(
+    render(
       <AppErrorBoundary t={t}>
         <p>screen</p>
       </AppErrorBoundary>
@@ -24,7 +24,7 @@ describe('AppErrorBoundary', () => {
     // the suite's output stays about the suite.
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const onReload = vi.fn();
-    const screen = renderScreen(
+    render(
       <AppErrorBoundary t={t} onReload={onReload}>
         <Broken />
       </AppErrorBoundary>
@@ -44,7 +44,7 @@ describe('AppErrorBoundary', () => {
       if (broken) throw new Error('render failed');
       return <p>recovered</p>;
     }
-    const screen = renderScreen(
+    const view = render(
       <AppErrorBoundary t={t} resetKey="#/mail">
         <Flaky />
       </AppErrorBoundary>
@@ -58,14 +58,14 @@ describe('AppErrorBoundary', () => {
     expect(screen.getByText('recovered')).toBeTruthy();
 
     broken = true;
-    screen.rerender(
+    view.rerender(
       <AppErrorBoundary t={t} resetKey="#/mail">
         <Flaky />
       </AppErrorBoundary>
     );
     expect(screen.getByRole('alert')).toBeTruthy();
     broken = false;
-    screen.rerender(
+    view.rerender(
       <AppErrorBoundary t={t} resetKey="#/contacts">
         <Flaky />
       </AppErrorBoundary>

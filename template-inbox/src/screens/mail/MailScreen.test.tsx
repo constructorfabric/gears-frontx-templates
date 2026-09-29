@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { screen as domScreen, within } from '@testing-library/dom';
+import { render, screen, within } from '@testing-library/react';
 import {
   endpointTags,
   mutationResult,
@@ -10,7 +10,6 @@ import {
   setQueryState,
 } from '../../__test-utils__/apiMocks';
 import { stubMatchMedia } from '../../__test-utils__/matchMedia';
-import { renderScreen } from '../../__test-utils__/renderScreen';
 import { mails } from '../../api/mailDataset';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
 import { t } from '../../shared/i18n';
@@ -43,16 +42,13 @@ function typeInto(field: HTMLInputElement | HTMLTextAreaElement, value: string):
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// `screen` (from `renderScreen`) only ever queries inside its own mounted
-// container - but the kit's Dialog portals its popup straight to
-// `document.body` by default (dialog.md), a sibling of that container, not
-// a descendant. `domScreen`, `@testing-library/dom`'s own document-wide
-// singleton, is what reaches the compose dialog's own fields and buttons
-// once it is open.
+// Queries go through Testing Library's document-wide `screen`, which also
+// reaches what the kit portals to `document.body` - dialogs, menus and
+// their fields - once it is open.
 
 describe('MailScreen', () => {
   it('lists the seeded mailboxes and opens on Inbox, with its first mail selected automatically', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     // "Inbox" is both the mailbox nav row and the list pane's own heading.
     expect(screen.getAllByText('Inbox').length).toBe(2);
@@ -79,7 +75,7 @@ describe('MailScreen', () => {
   });
 
   it('auto-selects the first mail again on a mailbox switch, without disturbing a hand-picked selection', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     // Inbox's own pinned mail (ml-3, Ava Laurent), picked automatically
     // ahead of Priya's more recent one.
@@ -119,7 +115,7 @@ describe('MailScreen', () => {
   });
 
   it('opens a mail, and keeps its history collapsed until the toggle is used', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
     act(() => {
       screen.getByText('Devon Ashworth').click();
     });
@@ -138,7 +134,7 @@ describe('MailScreen', () => {
   });
 
   it('renders no history toggle for a mail with none', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
     // Ava's mail (Inbox's own pinned, auto-selected first mail) is open by
     // default; hand-pick Priya's instead - it has no history of its own.
     act(() => {
@@ -151,7 +147,7 @@ describe('MailScreen', () => {
   });
 
   it('filters to unread mail within the selected mailbox', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     act(() => {
       screen.getByText(/^Unread \(\d+\)$/).click();
@@ -166,7 +162,7 @@ describe('MailScreen', () => {
   });
 
   it('filters instantly by correspondent and subject as the search box is typed', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     const search = screen.getByPlaceholderText(t('search_mail'));
     if (!(search instanceof HTMLInputElement)) throw new Error('search field is not an input');
@@ -184,7 +180,7 @@ describe('MailScreen', () => {
   });
 
   it('groups pinned mail under its own label, ahead of the rest, within the current tab', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     // Inbox opens by default; its two pinned mails (ml-3 Ava Laurent, ml-6
     // Carlos Mendez) render under a "Pinned" label, each with its own pin
@@ -211,7 +207,7 @@ describe('MailScreen', () => {
   });
 
   it('gates Send on empty input', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
     // Ava's mail (Inbox's own pinned, auto-selected first mail) is open by
     // default; hand-pick Priya's instead.
     act(() => {
@@ -249,13 +245,13 @@ describe('MailScreen', () => {
   });
 
   it('composes a mail and sends it into the Sent mailbox, gated on To plus (Subject or Body)', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     act(() => {
       screen.getByLabelText(t('compose')).click();
     });
-    const toField = domScreen.getByLabelText(t('compose_to_label'));
-    const subjectField = domScreen.getByLabelText(t('compose_subject_label'));
+    const toField = screen.getByLabelText(t('compose_to_label'));
+    const subjectField = screen.getByLabelText(t('compose_subject_label'));
     if (!(toField instanceof HTMLInputElement)) throw new Error('to field is not an input');
     if (!(subjectField instanceof HTMLInputElement)) throw new Error('subject field is not an input');
     expect(document.activeElement).toBe(toField);
@@ -265,7 +261,7 @@ describe('MailScreen', () => {
     // just `aria-hidden`, while a dialog is open) - `within` the dialog is
     // what keeps this query pointed at the compose dialog's Send instead of
     // colliding with that one.
-    const dialog = within(domScreen.getByRole('dialog'));
+    const dialog = within(screen.getByRole('dialog'));
 
     // To alone is not enough - the exact rule is To plus at least one of
     // Subject/Body.
@@ -285,7 +281,7 @@ describe('MailScreen', () => {
 
     // The dialog closed, and the new mail is a real Sent row - switching
     // there shows it, count included.
-    expect(domScreen.queryByLabelText(t('compose_to_label'))).toBeNull();
+    expect(screen.queryByLabelText(t('compose_to_label'))).toBeNull();
     act(() => {
       screen.getByText('Sent').click();
     });
@@ -305,21 +301,21 @@ describe('MailScreen', () => {
   });
 
   it('discards the compose draft on Cancel', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     act(() => {
       screen.getByLabelText(t('compose')).click();
     });
-    const toField = domScreen.getByLabelText(t('compose_to_label'));
+    const toField = screen.getByLabelText(t('compose_to_label'));
     if (!(toField instanceof HTMLInputElement)) throw new Error('to field is not an input');
     act(() => {
       typeInto(toField, 'devon@brightlabs.example');
     });
 
     act(() => {
-      domScreen.getByText(t('cancel')).click();
+      screen.getByText(t('cancel')).click();
     });
-    expect(domScreen.queryByLabelText(t('compose_to_label'))).toBeNull();
+    expect(screen.queryByLabelText(t('compose_to_label'))).toBeNull();
 
     act(() => {
       screen.getByText('Sent').click();
@@ -334,7 +330,7 @@ describe('MailScreen', () => {
 
   it('shows an error with a retry instead of the panes when a query the first paint needs fails', () => {
     setQueryState('mails', { error: new Error('down') });
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     act(() => {
@@ -344,7 +340,7 @@ describe('MailScreen', () => {
   });
 
   it('says so when the search matches no mail', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
     act(() => {
       typeInto(screen.getByLabelText(t('search_mail')) as HTMLInputElement, 'no such correspondent');
     });
@@ -353,7 +349,7 @@ describe('MailScreen', () => {
   });
 
   it('renders the reading pane actions it does not ship disabled, without a pressed state', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     for (const label of ['archive_mail', 'trash_mail', 'reply_to_mail']) {
       const button = screen.getByLabelText(t(label));
@@ -365,7 +361,7 @@ describe('MailScreen', () => {
 
   it('gives the list and the reading pane turns on a narrow screen, with a way back', () => {
     stubMatchMedia([SINGLE_PANE_QUERY]);
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     // The auto-opened mail has the screen; the list is hidden.
     const list = screen.getByLabelText('Inbox', { selector: 'section' });
@@ -380,7 +376,7 @@ describe('MailScreen', () => {
 
   it('folds the mailbox column below the compact width, takes it out of the tab order, and opens it from the list header', () => {
     stubMatchMedia([COMPACT_QUERY]);
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
 
     const sidebar = screen.getByLabelText(t('mail'), { selector: 'aside' });
     const toggle = screen.getByLabelText(t('toggle_mailboxes'));
@@ -396,7 +392,7 @@ describe('MailScreen', () => {
   });
 
   it('says in words which mails are unread', () => {
-    const screen = renderScreen(<MailScreen t={t} />);
+    render(<MailScreen t={t} />);
     const unreadInInbox = mails.filter((mail) => mail.mailboxId === 'inbox' && !mail.read);
 
     expect(screen.getAllByText(t('unread_mail'))).toHaveLength(unreadInInbox.length);

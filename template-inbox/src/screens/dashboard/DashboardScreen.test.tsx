@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
   mutationResult,
@@ -7,8 +9,8 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../../__test-utils__/apiMocks';
-import { renderScreen } from '../../__test-utils__/renderScreen';
 import { act } from 'react';
+import { contacts } from '../../api/dataset';
 import { t } from '../../shared/i18n';
 
 vi.mock('../../api/registry', () => ({
@@ -28,7 +30,7 @@ afterEach(() => {
 
 describe('DashboardScreen', () => {
   it('renders every row 1 KPI card, with a delta badge computed from its series', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText('Open conversations')).toBeTruthy();
     expect(screen.getByText('Resolved this week')).toBeTruthy();
@@ -48,7 +50,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders the fourth row 1 card, "Contacts by stage", with counts and computed percents', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('contacts_by_stage'))).toBeTruthy();
     expect(screen.getByText('Prospect')).toBeTruthy();
@@ -61,7 +63,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders row 2: the resolved-per-day chart, the new contacts hero, and the summary card', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('resolved_per_day'))).toBeTruthy();
     expect(screen.getByText(t('new_contacts'))).toBeTruthy();
@@ -73,7 +75,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders row 3: the records-created chart and the ranked top-agents list, Alex Rivera included', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('records_created'))).toBeTruthy();
     expect(screen.getByText(t('records_created_subtitle'))).toBeTruthy();
@@ -88,7 +90,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders the team workload strip as its own full-width row with four blocks', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('team_workload'))).toBeTruthy();
     expect(screen.getByText('Support load')).toBeTruthy();
@@ -98,7 +100,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders the stage-funnel and conversion-by-source row', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('stage_funnel'))).toBeTruthy();
     // `stageFunnel` in `dashboardDataset.ts`: the first stage, New, is the
@@ -112,7 +114,7 @@ describe('DashboardScreen', () => {
   });
 
   it('renders row 4: the recent activity table, contacts resolved from the inbox dataset', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByText(t('recent_activity'))).toBeTruthy();
     // `activity[0]` in the mocked dataset is owned by Alex Rivera and points
@@ -122,7 +124,7 @@ describe('DashboardScreen', () => {
 
   it('shows an error with a retry, rather than a blank pane, when the dashboard fails to load', () => {
     setQueryState('dashboard', { error: new Error('down') });
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     act(() => {
@@ -133,7 +135,7 @@ describe('DashboardScreen', () => {
 
   it('shows the loading state until both of its queries have answered', () => {
     setQueryState('contacts', { isLoading: true });
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
 
     expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
     expect(screen.queryByText(t('recent_activity'))).toBeNull();
@@ -141,7 +143,7 @@ describe('DashboardScreen', () => {
 
 
   it('gives every chart a text alternative and hides the decorative ones', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
     const charts = screen.getAllByRole('img');
     const names = charts.map((chart) => chart.getAttribute('aria-label') ?? '');
 
@@ -155,7 +157,33 @@ describe('DashboardScreen', () => {
   });
 
   it('renders one screen heading', () => {
-    const screen = renderScreen(<DashboardScreen t={t} />);
+    render(<DashboardScreen t={t} />);
     expect(screen.getAllByRole('heading', { level: 1 }).map((heading) => heading.textContent)).toEqual([t('dashboard')]);
+  });
+
+  it('pages and sorts the activity table', async () => {
+    const user = userEvent.setup();
+    render(<DashboardScreen t={t} />);
+    const table = () => screen.getByText(t('recent_activity')).closest('div')?.parentElement ?? document.body;
+    const bodyRows = () => within(table()).getAllByRole('row').slice(1);
+
+    // 26 rows at the kit's page size of 10: three pages.
+    expect(bodyRows()).toHaveLength(10);
+    await user.click(within(table()).getByRole('button', { name: t('next_page') }));
+    await user.click(within(table()).getByRole('button', { name: t('next_page') }));
+    expect(bodyRows()).toHaveLength(6);
+
+    await user.click(within(table()).getByRole('button', { name: t('contact') }));
+    // A row's text also carries the avatar's initials, so each name is found
+    // among the seeded names rather than read off the start of the row.
+    const names = bodyRows().map((row) =>
+      contacts
+        .map((contact) => contact.name)
+        .filter((name) => (row.textContent ?? '').includes(name))
+        .sort((a, b) => b.length - a.length)[0]
+    );
+    expect(names.every((name) => name !== undefined)).toBe(true);
+    // The table compares text by code point, as a plain sort does.
+    expect([...names].sort()).toEqual(names);
   });
 });

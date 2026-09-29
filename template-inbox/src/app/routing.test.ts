@@ -1,6 +1,6 @@
 import { act, createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { renderScreen } from '../__test-utils__/renderScreen';
+import { render } from '@testing-library/react';
 import { contactRoute, hashOf, parseRoute, useRoute, type Route } from './routing';
 
 describe('parseRoute', () => {
@@ -73,26 +73,26 @@ describe('useRoute', () => {
     for (const [hash, shown, rewritten] of cases) {
       window.history.replaceState(null, '', hash);
       const historyLength = window.history.length;
-      const screen = renderScreen(createElement(RouteProbe));
+      const view = render(createElement(RouteProbe));
 
-      expect(screen.container.textContent).toBe(shown);
+      expect(view.container.textContent).toBe(shown);
       expect(window.location.hash).toBe(rewritten);
       expect(window.history.length).toBe(historyLength);
-      screen.unmount();
+      view.unmount();
     }
   });
 
   it('leaves a bare origin as it is and follows a later navigation', () => {
     window.history.replaceState(null, '', '#');
-    const screen = renderScreen(createElement(RouteProbe));
-    expect(screen.container.textContent).toBe('dashboard');
+    const view = render(createElement(RouteProbe));
+    expect(view.container.textContent).toBe('dashboard');
     expect(window.location.hash).toBe('');
 
     act(() => {
       window.location.hash = '#/contacts/r-3';
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
-    expect(screen.container.textContent).toBe('contact:r-3');
-    screen.unmount();
+    expect(view.container.textContent).toBe('contact:r-3');
+    view.unmount();
   });
 });

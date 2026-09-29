@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
   mutationResult,
@@ -8,7 +10,6 @@ import {
   setQueryState,
 } from '../../__test-utils__/apiMocks';
 import { stubMatchMedia } from '../../__test-utils__/matchMedia';
-import { renderScreen } from '../../__test-utils__/renderScreen';
 import { COMPACT_QUERY } from '../../shared/useMediaQuery';
 import { act } from 'react';
 import { contacts, conversations } from '../../api/dataset';
@@ -28,7 +29,7 @@ afterEach(() => {
 
 describe('ContactsScreen', () => {
   it('pages the seeded contacts and counts every filter from the same collection', () => {
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    render(<ContactsScreen openContactId={null} t={t} />);
 
     // The five filter counts the seed data yields: 29 all, 19 users, 10 leads,
     // 26 active, 8 new.
@@ -42,7 +43,7 @@ describe('ContactsScreen', () => {
   });
 
   it('opens the contact the route names, even one off the first page', () => {
-    const screen = renderScreen(<ContactsScreen openContactId="r-26" t={t} />);
+    render(<ContactsScreen openContactId="r-26" t={t} />);
 
     // The detail pane, not the table: Amara is on page two of the list, and
     // the qualification card only exists on a contact's own page.
@@ -51,12 +52,12 @@ describe('ContactsScreen', () => {
   });
 
   it('gives the whole pane to a contact page by dropping the directory filters', () => {
-    const list = renderScreen(<ContactsScreen openContactId={null} t={t} />);
-    expect(list.getByLabelText(t('contact_filters'))).toBeTruthy();
+    const list = render(<ContactsScreen openContactId={null} t={t} />);
+    expect(screen.getByLabelText(t('contact_filters'))).toBeTruthy();
     list.unmount();
 
-    const detail = renderScreen(<ContactsScreen openContactId="r-1" t={t} />);
-    expect(detail.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
+    render(<ContactsScreen openContactId="r-1" t={t} />);
+    expect(screen.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
   });
 
   it("lists a contact's conversations from the inbox's own collection", () => {
@@ -64,13 +65,13 @@ describe('ContactsScreen', () => {
     if (contact === undefined) throw new Error('the seed has no contact with a conversation');
     const conversation = conversations.find((candidate) => candidate.id === contact.conversations[0].id);
 
-    const screen = renderScreen(<ContactsScreen openContactId={contact.id} t={t} />);
+    render(<ContactsScreen openContactId={contact.id} t={t} />);
     expect(screen.getAllByText(conversation?.subject ?? '').length).toBeGreaterThan(0);
     expect(screen.getByText(t('conversations_count', { count: contact.conversations.length }))).toBeTruthy();
   });
 
   it('says a contact was not found, instead of showing the directory, for an id the directory lacks', () => {
-    const screen = renderScreen(<ContactsScreen openContactId="r-missing" t={t} />);
+    render(<ContactsScreen openContactId="r-missing" t={t} />);
 
     expect(screen.getByText(t('contact_not_found_title'))).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
@@ -78,7 +79,7 @@ describe('ContactsScreen', () => {
 
   it('shows an error with a retry, rather than an empty directory, when the contacts fail to load', () => {
     setQueryState('contacts', { error: new Error('down') });
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    render(<ContactsScreen openContactId={null} t={t} />);
 
     expect(screen.getByRole('alert').textContent).toContain(t('load_error_title'));
     expect(screen.queryByText(t('no_contacts'))).toBeNull();
@@ -90,7 +91,7 @@ describe('ContactsScreen', () => {
 
 
   it('keeps the filter column open on a wide screen and lets the header toggle fold it', () => {
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    render(<ContactsScreen openContactId={null} t={t} />);
     const sidebar = screen.getByLabelText(t('contact_filters'));
 
     expect(sidebar.hasAttribute('inert')).toBe(false);
@@ -103,7 +104,7 @@ describe('ContactsScreen', () => {
 
   it('starts the filter column folded below the compact width, and the toggle opens it', () => {
     stubMatchMedia([COMPACT_QUERY]);
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    render(<ContactsScreen openContactId={null} t={t} />);
     const sidebar = screen.getByLabelText(t('contact_filters'));
 
     expect(sidebar.hasAttribute('inert')).toBe(true);
@@ -114,7 +115,7 @@ describe('ContactsScreen', () => {
   });
 
   it('renders one screen heading, the directory title', () => {
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    render(<ContactsScreen openContactId={null} t={t} />);
     const headings = screen.getAllByRole('heading', { level: 1 });
 
     expect(headings).toHaveLength(1);
@@ -123,7 +124,7 @@ describe('ContactsScreen', () => {
 
   it('keeps the directory as it was behind a contact page, and Back steps back through history', () => {
     const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
-    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+    const view = render(<ContactsScreen openContactId={null} t={t} />);
 
     // Page two of the directory, then a contact from it.
     act(() => {
@@ -134,7 +135,7 @@ describe('ContactsScreen', () => {
       screen.getAllByLabelText(t('view_contact'))[0].click();
     });
     const openedId = decodeURIComponent(window.location.hash.replace('#/contacts/', ''));
-    screen.rerender(<ContactsScreen openContactId={openedId} t={t} />);
+    view.rerender(<ContactsScreen openContactId={openedId} t={t} />);
     expect(screen.getByText(t('qualification'))).toBeTruthy();
 
     act(() => {
@@ -143,7 +144,52 @@ describe('ContactsScreen', () => {
     expect(back).toHaveBeenCalledTimes(1);
 
     // The route comes back to the directory: still on page two.
-    screen.rerender(<ContactsScreen openContactId={null} t={t} />);
+    view.rerender(<ContactsScreen openContactId={null} t={t} />);
     expect(screen.getByText('Amara Nwosu')).toBeTruthy();
+  });
+
+  it('narrows the directory by search and by filter, and counts what is left', async () => {
+    const user = userEvent.setup();
+    render(<ContactsScreen openContactId={null} t={t} />);
+
+    await user.type(screen.getByLabelText(t('search_contacts')), 'Grace');
+    expect(screen.getByText(t('people_count', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('Grace Park')).toBeTruthy();
+
+    await user.clear(screen.getByLabelText(t('search_contacts')));
+    await user.click(screen.getByText(t('filter_leads')));
+    const leads = contacts.filter((contact) => contact.type === 'lead');
+    expect(screen.getByText(t('people_count', { count: leads.length }))).toBeTruthy();
+  });
+
+  it('sorts the directory by a column header', async () => {
+    const user = userEvent.setup();
+    render(<ContactsScreen openContactId={null} t={t} />);
+    // The row's text also carries the avatar's initials, so the name is found
+    // among the seeded names rather than read off the start of the row.
+    const firstName = () => {
+      const text = screen.getAllByRole('row')[1].textContent ?? '';
+      return contacts
+        .map((contact) => contact.name)
+        .filter((name) => text.includes(name))
+        .sort((a, b) => b.length - a.length)[0];
+    };
+
+    await user.click(screen.getByRole('button', { name: t('name') }));
+    // The table compares text by code point, as a plain sort does.
+    const ascending = contacts.map((contact) => contact.name).sort();
+    expect(firstName()).toBe(ascending[0]);
+    await user.click(screen.getByRole('button', { name: t('name') }));
+    expect(firstName()).toBe(ascending[ascending.length - 1]);
+  });
+
+  it("keeps a contact's private note editable on its page", async () => {
+    const user = userEvent.setup();
+    render(<ContactsScreen openContactId="r-1" t={t} />);
+    const notes = screen.getByLabelText(t('notes'));
+
+    await user.clear(notes);
+    await user.type(notes, 'Prefers mail');
+    expect((notes as HTMLTextAreaElement).value).toBe('Prefers mail');
   });
 });

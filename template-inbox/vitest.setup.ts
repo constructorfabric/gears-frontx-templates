@@ -14,7 +14,7 @@
  * seeded project carries no path to the shell.
  */
 import { afterEach, vi } from 'vitest';
-import { cleanupScreens } from './src/__test-utils__/renderScreen';
+import { cleanup } from '@testing-library/react';
 import { resetStores } from './src/shared/createStore';
 
 /**
@@ -153,7 +153,7 @@ installPointerEventConstructor();
 afterEach(() => {
   // Unmounted first, while every mock a screen's cleanup might call is still
   // in place.
-  cleanupScreens();
+  cleanup();
   // Module-level stores (the inbox's drafts and selection) outlive a mount
   // by design, so each test starts them from their initial state.
   resetStores();

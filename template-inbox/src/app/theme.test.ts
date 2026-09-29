@@ -1,6 +1,6 @@
 import { act, createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderScreen } from '../__test-utils__/renderScreen';
+import { render, screen } from '@testing-library/react';
 import { applyStoredTheme, readAppliedTheme, useTheme, type Theme } from './theme';
 
 const STORAGE_KEY = 'frontx.inbox.theme';
@@ -65,7 +65,7 @@ describe('useTheme', () => {
 
   it('stores nothing on mount, and stores and applies the choice on toggle', () => {
     stubSystemScheme('dark');
-    const screen = renderScreen(createElement(ThemeProbe));
+    render(createElement(ThemeProbe));
 
     expect(screen.getByRole('button').textContent).toBe('dark');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
