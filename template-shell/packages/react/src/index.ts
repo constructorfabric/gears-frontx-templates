@@ -428,6 +428,23 @@ export {
 export {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
+  entryAddressesSchema,
+} from '@gears-frontx/framework';
+
+// Extension-domain route composition is implemented by the framework and
+// exposed here so app-layer hosts preserve the L3 import boundary.
+export {
+  DomainRouting,
+  dispatchChain,
+  buildEntryAddresses,
+  readEntryAddress,
+  rootDomainKeyOf,
+} from '@gears-frontx/framework';
+export type {
+  DomainRouteStatus,
+  DomainRoutingOptions,
+  DispatchResult,
 } from '@gears-frontx/framework';
 
 // MFE Types

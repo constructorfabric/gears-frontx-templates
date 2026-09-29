@@ -7,7 +7,6 @@
 
 import { describe, it, expect } from 'vitest';
 import { isValidRouteName } from '@gears-frontx/mfes';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES as LIB_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
 import {
   screenDomain,
   sidebarDomain,
@@ -21,6 +20,7 @@ import {
   FRONTX_SCREEN_EXTENSION_TYPE,
 } from '../../../src/mfe/constants';
 import { loadLayoutDomains } from '../../../src/plugins/microfrontends/gts/loader';
+import { entryAddressesSchema } from '../../../src/mfe/entry-addresses-schema';
 import {
   FRONTX_ACTION_LOAD_EXT,
   FRONTX_ACTION_MOUNT_EXT,
@@ -145,8 +145,8 @@ describe('Base Extension Domain Constants - Shared Properties', () => {
 });
 
 describe('Base Extension Domain Constants - routing', () => {
-  it('the framework and the template lib name the same entry-addresses property', () => {
-    expect(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES).toBe(LIB_ENTRY_ADDRESSES);
+  it('ships the schema its base domains require', () => {
+    expect(entryAddressesSchema.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES}`);
   });
 
   it.each([

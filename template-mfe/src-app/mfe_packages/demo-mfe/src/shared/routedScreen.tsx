@@ -2,7 +2,7 @@ import React from 'react';
 import { resolveNavigationHistory } from '@gears-frontx/routing';
 import { adaptProviderHistory, createRootRoute, EngineProvider } from '@gears-frontx/routing-tanstack';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { readEntryAddress } from '@gears-frontx/frontx-template-shell';
+import { readEntryAddress } from '@gears-frontx/react';
 
 /**
  * One screen in its own router: composed over the entry the host addressed

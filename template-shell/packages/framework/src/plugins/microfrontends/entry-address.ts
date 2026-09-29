@@ -1,7 +1,6 @@
 import { validateName, type DomainKey, type EntryAddress, type ExtensionToken } from '@gears-frontx/routing';
-import type { ChildMfeBridge, ExtensionDomain, MfeRegistry } from '@gears-frontx/mfes';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../gts';
-import { extensionTokenOf } from './domain-routing';
+import { getExtensionRouteToken, type ChildMfeBridge, type ExtensionDomain, type MfeRegistry } from '@gears-frontx/mfes';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../../mfe/constants';
 
 type AddressMap = Record<string, { domainKey: string; extension: string }>;
 
@@ -51,7 +50,7 @@ export function buildEntryAddresses(
   const map: AddressMap = {};
   for (const { domainId, domainKey } of domains) {
     for (const extension of registry.getExtensionsForDomain(domainId)) {
-      const token = extensionTokenOf(extension);
+      const token = getExtensionRouteToken(extension);
       if (token !== undefined) map[extension.id] = { domainKey, extension: token };
     }
   }

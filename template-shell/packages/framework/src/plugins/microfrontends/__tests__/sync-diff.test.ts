@@ -18,7 +18,6 @@ import {
   themeSchema,
   languageSchema,
   extensionScreenSchema,
-  entryAddressesSchema,
 } from '@gears-frontx/frontx-template-shell';
 import { loadLayoutDomains } from '../gts/loader';
 import type { FrontXApp } from '../../../types';
@@ -145,7 +144,6 @@ function buildApp(): FrontXApp {
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageSchema);
   gtsPlugin.registerSchema(extensionScreenSchema);
-  gtsPlugin.registerSchema(entryAddressesSchema);
 
   return createFrontX()
         .use(microfrontends({ typeSystem: gtsPlugin }))

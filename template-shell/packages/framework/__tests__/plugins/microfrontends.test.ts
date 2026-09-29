@@ -20,11 +20,11 @@ import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import { createFrontX } from '../../src/createFrontX';
 import { microfrontends } from '../../src/plugins/microfrontends';
 import { loadLayoutDomains } from '../../src/plugins/microfrontends/gts/loader';
+import { entryAddressesSchema } from '../../src/mfe/entry-addresses-schema';
 import {
   themeSchema,
   languageSchema,
   extensionScreenSchema,
-  entryAddressesSchema,
 } from '@gears-frontx/frontx-template-shell';
 import type { MfeRegistry } from '@gears-frontx/framework';
 import { TestContainerProvider } from '../../src/testing/TestContainerProvider';
@@ -58,7 +58,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
     typeSystem.registerSchema(themeSchema);
     typeSystem.registerSchema(languageSchema);
     typeSystem.registerSchema(extensionScreenSchema);
-    typeSystem.registerSchema(entryAddressesSchema);
   });
 
   afterEach(() => {
@@ -81,6 +80,14 @@ describe('microfrontends plugin - Phase 7.9', () => {
   }
 
   describe('plugin factory', () => {
+    it('registers the entry-addresses schema required by its base domains', () => {
+      const registerSchema = vi.spyOn(typeSystem, 'registerSchema');
+
+      microfrontends({ typeSystem });
+
+      expect(registerSchema).toHaveBeenCalledWith(entryAddressesSchema);
+    });
+
     it('accepts required typeSystem parameter and returns a valid plugin object', () => {
       const plugin = microfrontends({ typeSystem });
 

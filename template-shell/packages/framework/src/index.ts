@@ -89,6 +89,14 @@ export {
   sidebarDomain,
   popupDomain,
   overlayDomain,
+  DomainRouting,
+  dispatchChain,
+  buildEntryAddresses,
+  readEntryAddress,
+  rootDomainKeyOf,
+  type DomainRouteStatus,
+  type DomainRoutingOptions,
+  type DispatchResult,
 } from './plugins';
 
 // MFE Type Constants (solution-specific GTS type ids, app-layer owned)
@@ -110,7 +118,9 @@ export {
 export {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
 } from './mfe/constants';
+export { entryAddressesSchema } from './mfe/entry-addresses-schema';
 
 // MFE Types (re-exported from @gears-frontx/mfes for convenience)
 export type {

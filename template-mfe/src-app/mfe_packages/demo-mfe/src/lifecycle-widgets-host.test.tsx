@@ -168,10 +168,12 @@ let fetchMock: ReturnType<typeof vi.fn>;
  * asserts against this array specifically so removing that dedup fails it.
  */
 let mountStrategyCalls: string[] = [];
+let mountGate: Promise<void> | undefined;
 
 class FakeConcurrentMountStrategy {
   async mount(payload: { subject: string }): Promise<void> {
     mountStrategyCalls.push(payload.subject);
+    await mountGate;
     // A real microtask gap between the call and marking the subject mounted:
     // without it, `getMountedExtensions(...).includes(subject)` would already
     // be true by the time a second, racing dispatch for the same subject
@@ -299,14 +301,14 @@ async function mount(
      * class the freshly-imported SUT actually calls — a prototype spy needs
      * this SAME freshly-imported handle to intercept anything (F3, Q2).
      */
-    beforeMount?: (templateShell: typeof import('@gears-frontx/frontx-template-shell')) => void;
+    beforeMount?: (framework: typeof import('@gears-frontx/react')) => void;
   } = {},
-): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement; templateShell: typeof import('@gears-frontx/frontx-template-shell') }> {
+): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement; framework: typeof import('@gears-frontx/react') }> {
   if (!keepModule) vi.resetModules();
   fetchMock = vi.fn().mockResolvedValue(fakeManifestResponse());
   vi.stubGlobal('fetch', fetchMock);
-  const templateShell = await import('@gears-frontx/frontx-template-shell');
-  beforeMount?.(templateShell);
+  const framework = await import('@gears-frontx/react');
+  beforeMount?.(framework);
   const module = await import('./lifecycle-widgets-host');
   const lifecycle = module.default as unknown as { mount: (c: Element, b: ChildMfeBridge) => Promise<void>; unmount: (c: Element) => unknown };
   const container = document.createElement('div');
@@ -319,7 +321,7 @@ async function mount(
   // and the callback cannot settle before that flush.
   await lifecycle.mount(container, bridge);
   mountedInstances.push({ lifecycle, container });
-  return { lifecycle, container, templateShell };
+  return { lifecycle, container, framework };
 }
 
 /**
@@ -460,8 +462,8 @@ describe('demo-mfe widgets-host lifecycle', () => {
     let stopSpy!: ReturnType<typeof vi.spyOn>;
 
     const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (templateShell) => {
-        stopSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'stop');
+      beforeMount: (framework) => {
+        stopSpy = vi.spyOn(framework.DomainRouting.prototype, 'stop');
       },
     });
     stopSpy.mockClear();
@@ -481,6 +483,50 @@ describe('demo-mfe widgets-host lifecycle', () => {
 
     expect(stopOrder).toBeLessThan(lastReleaseOrder);
     expect(lastReleaseOrder).toBeLessThan(superOrder);
+  });
+
+  it('attempts every widget release and still releases the React root when one widget unmount rejects', async () => {
+    const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    fakeRegistry!.mounted.clear();
+    for (const id of WIDGET_IDS) fakeRegistry!.mounted.add(id);
+
+    const originalUnmount = FakeConcurrentMountStrategy.prototype.unmount;
+    const strategyUnmountSpy = vi.spyOn(FakeConcurrentMountStrategy.prototype, 'unmount').mockImplementation(async function (this: FakeConcurrentMountStrategy, payload) {
+      if (payload.subject === ALPHA_ID) throw new Error('alpha release failed');
+      await originalUnmount.call(this, payload);
+    });
+    const superUnmountSpy = vi.spyOn(FakeThemeAwareReactLifecycle.prototype, 'unmount');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await lifecycle.unmount(container);
+
+    expect(strategyUnmountSpy.mock.calls.map(([payload]) => payload.subject)).toEqual(expect.arrayContaining(WIDGET_IDS));
+    expect(superUnmountSpy).toHaveBeenCalledWith(container);
+    expect(errorSpy).toHaveBeenCalledWith('[demo-mfe widgets-host] failed to release widget', expect.any(Error));
+  });
+
+  it('waits for an in-flight mount, then releases the occupant it created (release in-flight)', async () => {
+    const { framework } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    const holder = (globalThis as Record<symbol, { impl?: { mountThroughChain: (subject: string, timeoutMs: number) => Promise<void>; releaseAll: () => Promise<void> } } | undefined>)[
+      Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1')
+    ];
+    expect(holder?.impl).toBeDefined();
+
+    fakeRegistry!.mounted.clear();
+    let releaseMount!: () => void;
+    mountGate = new Promise<void>((resolve) => {
+      releaseMount = resolve;
+    });
+
+    const mounting = holder!.impl!.mountThroughChain(ALPHA_ID, 5000);
+    await Promise.resolve();
+    const releaseAll = holder!.impl!.releaseAll();
+    releaseMount();
+
+    await Promise.all([mounting, releaseAll]);
+
+    expect(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID)).not.toContain(ALPHA_ID);
+    expect(framework.DomainRouting).toBeDefined();
   });
 
   it('remounts on the same cached registry with a new address without registerDomain throwing (remount)', async () => {
@@ -572,8 +618,8 @@ describe('demo-mfe widgets-host lifecycle', () => {
     let startSpy!: ReturnType<typeof vi.spyOn>;
 
     await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (templateShell) => {
-        startSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'start');
+      beforeMount: (framework) => {
+        startSpy = vi.spyOn(framework.DomainRouting.prototype, 'start');
       },
     });
 
@@ -594,8 +640,8 @@ describe('demo-mfe widgets-host lifecycle', () => {
     let stopSpy!: ReturnType<typeof vi.spyOn>;
 
     await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (templateShell) => {
-        stopSpy = vi.spyOn(templateShell.DomainRouting.prototype, 'stop');
+      beforeMount: (framework) => {
+        stopSpy = vi.spyOn(framework.DomainRouting.prototype, 'stop');
       },
     });
 
@@ -619,9 +665,9 @@ describe('demo-mfe widgets-host lifecycle', () => {
 
     await expect(
       mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-        beforeMount: (templateShell) => {
+        beforeMount: (framework) => {
           withOpeningSpy = vi
-            .spyOn(templateShell.DomainRouting.prototype, 'withOpening')
+            .spyOn(framework.DomainRouting.prototype, 'withOpening')
             .mockRejectedValueOnce(new Error('boom'));
         },
       }),

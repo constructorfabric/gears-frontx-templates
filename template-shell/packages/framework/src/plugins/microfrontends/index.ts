@@ -27,6 +27,7 @@ import {
   FRONTX_ACTION_UNMOUNT_EXT,
 } from '@gears-frontx/gts-plugin';
 import { mfeRegistryFactory } from '../../mfe/registry';
+import { entryAddressesSchema } from '../../mfe/entry-addresses-schema';
 import { getStore } from '@gears-frontx/state';
 import type { FrontXPlugin } from '../../types';
 import { mfeSlice, addExtensionMounted, removeExtensionMounted } from './slice';
@@ -126,6 +127,10 @@ function collectLifecycleDomains(chain: ActionsChain): string[] {
 // @cpt-begin:cpt-frontx-state-framework-composition-mfe-mount:p1:inst-1
 // @cpt-begin:cpt-frontx-dod-framework-composition-mfe-plugin:p1:inst-1
 export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
+  // Base domains declare this shared property. Keeping its schema alongside
+  // those declarations makes every framework consumer valid without asking
+  // each shell to know an implementation detail of the domains it installs.
+  config.typeSystem.registerSchema(entryAddressesSchema);
   // Build the MfeRegistry instance with provided TypeSystemPlugin and optional handlers
   // This registry handles all MFE lifecycle: domains, extensions, actions, etc.
   // TypeSystemPlugin binding happens here at application wiring level.
@@ -278,6 +283,15 @@ export {
   FRONTX_OVERLAY_DOMAIN,
   MfeEvents,
 } from './constants';
+
+export {
+  DomainRouting,
+  dispatchChain,
+  type DomainRouteStatus,
+  type DomainRoutingOptions,
+  type DispatchResult,
+} from './domain-routing';
+export { buildEntryAddresses, readEntryAddress, rootDomainKeyOf } from './entry-address';
 
 // Re-export base ExtensionDomain constants
 export {

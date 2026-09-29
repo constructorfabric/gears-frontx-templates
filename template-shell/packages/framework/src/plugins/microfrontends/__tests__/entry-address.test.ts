@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChildMfeBridge, Extension, ExtensionDomain, MfeRegistry } from '@gears-frontx/mfes';
 import type { DomainKey } from '@gears-frontx/routing';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../../gts';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../../../mfe/constants';
 import { buildEntryAddresses, readEntryAddress, rootDomainKeyOf } from '../entry-address';
 
 const bridge = (value: unknown, extensionId = 'ext.a') =>

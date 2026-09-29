@@ -51,4 +51,12 @@ export {
   sidebarDomain,
   popupDomain,
   overlayDomain,
+  DomainRouting,
+  dispatchChain,
+  buildEntryAddresses,
+  readEntryAddress,
+  rootDomainKeyOf,
+  type DomainRouteStatus,
+  type DomainRoutingOptions,
+  type DispatchResult,
 } from './microfrontends';

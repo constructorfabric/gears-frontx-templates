@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRouteSignal } from '@gears-frontx/routing';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 import type { MfeRegistry } from '@gears-frontx/react';
 import { screenDomain } from '@gears-frontx/react';
 import { createShellRouting } from './shell-routing';
-import { fakeNavigation } from '../../../src/routing/__tests__/fake-navigation';
+import { fakeNavigation } from './__tests__/fake-navigation';
 
 function registry(extensions: Record<string, unknown[]> = {}) {
   return {

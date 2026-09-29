@@ -1,5 +1,4 @@
 import {
-  deriveExtensionToken,
   parseGrammar,
   type BackProjectionDelta,
   type DomainKey,
@@ -10,7 +9,7 @@ import {
   type RouteSignal,
   type Transition,
 } from '@gears-frontx/routing';
-import type { ActionsChain, Extension, MfeRegistry } from '@gears-frontx/mfes';
+import { getExtensionRouteToken, type ActionsChain, type Extension, type MfeRegistry } from '@gears-frontx/mfes';
 
 export interface DomainRouteStatus {
   readonly entries: number;
@@ -37,14 +36,8 @@ export interface DomainRoutingOptions {
  * (`Extension.route` doc comment: "usable by an extension without
  * `presentation`").
  */
-export function declaredRouteOf(extension: Extension): string | undefined {
-  if (typeof extension.route === 'string') return extension.route;
-  const presentation = (extension as { presentation?: { route?: unknown } }).presentation;
-  return typeof presentation?.route === 'string' ? presentation.route : undefined;
-}
-
-export function extensionTokenOf(extension: Extension): ExtensionToken | undefined {
-  return deriveExtensionToken(declaredRouteOf(extension));
+function extensionTokenOf(extension: Extension): ExtensionToken | undefined {
+  return getExtensionRouteToken(extension) as ExtensionToken | undefined;
 }
 
 export interface DispatchResult {
@@ -124,6 +117,21 @@ export class DomainRouting {
    * again to release.
    */
   private stopped = false;
+  /**
+   * A mount requested by this observer may finish after the URL has changed
+   * (or after this domain restarted). Its later `afterMount` is an
+   * acknowledgement, not a new user navigation, and must never project the
+   * old token back into history.
+   */
+  private lifecycleEpoch = 0;
+  /**
+   * Per-subject observer requests in dispatch order. A stop/start can have an
+   * old mount still pending while a new observer requests the same subject.
+   * `mfes` serializes a subject's lifecycle, so its callbacks arrive in this
+   * order too; retaining both records lets the old callback acknowledge only
+   * its own epoch instead of consuming the new observer's marker.
+   */
+  private readonly observerMounts = new Map<string, Array<{ readonly epoch: number }>>();
 
   constructor(private readonly options: DomainRoutingOptions) {}
 
@@ -153,6 +161,28 @@ export class DomainRouting {
    * against it itself.
    */
   afterMount(extensionId: string): void {
+    const observerMount = this.takeObserverMount(extensionId);
+    if (observerMount) {
+      if (this.stopped || observerMount.epoch !== this.lifecycleEpoch) return;
+      const token = this.tokenOf(extensionId);
+      if (token === undefined) return;
+      // The transition observer dispatched this mount from the URL. If that
+      // entry disappeared before the handler completed, release a stale
+      // multiple-domain occupant instead of restoring the old URL. For a
+      // still-present entry there is likewise nothing to back-project.
+      if (
+        !this.ownEntries().includes(token) &&
+        this.options.unmountActionType !== undefined &&
+        (!this.options.enclosing || this.enclosingPresent(this.options.enclosing))
+      ) {
+        dispatchChain(
+          this.options.registry,
+          { action: { type: this.options.unmountActionType, target: this.options.domainId, payload: { subject: extensionId } } },
+          `unmount stale ${extensionId}`,
+        );
+      }
+      return;
+    }
     if (this.stopped) return;
     const token = this.tokenOf(extensionId);
     if (token === undefined) return;
@@ -247,8 +277,9 @@ export class DomainRouting {
 
   /** Once discovery has settled and the domain's root is attached. Idempotent. */
   start(): void {
-    this.stopped = false;
     if (this.release) return;
+    this.stopped = false;
+    this.lifecycleEpoch += 1;
     this.release = this.options.signal.createObserver<string>(this.options.domainKey, this.source(), (t) => this.onTransition(t));
   }
 
@@ -426,8 +457,21 @@ export class DomainRouting {
           `unmount ${priorOwner}`,
         );
       }
-      if (mounted.has(owner)) continue; // an echo of this domain's own back-projection
-      dispatchChain(this.options.registry, { action: { type: this.options.mountActionType, target: this.options.domainId, payload: { subject: owner } } }, `mount ${owner}`);
+      if (mounted.has(owner) || this.hasObserverMountInEpoch(owner)) continue; // an echo or an in-flight observer mount
+      const observerMount = { epoch: this.lifecycleEpoch };
+      this.addObserverMount(owner, observerMount);
+      const result = dispatchChain(
+        this.options.registry,
+        { action: { type: this.options.mountActionType, target: this.options.domainId, payload: { subject: owner } } },
+        `mount ${owner}`,
+      );
+      if (!result.accepted) {
+        this.removeObserverMount(owner, observerMount);
+      } else if (result.settled) {
+        void result.settled.finally(() => {
+          this.removeObserverMount(owner, observerMount);
+        });
+      }
     }
     // With the enclosing entry gone, this is the enclosing occupant being removed (Back/Forward):
     // DefaultExtensionMounter.detach() unmounts this domain's occupants; a second unmount would race it.
@@ -447,5 +491,30 @@ export class DomainRouting {
       unresolved: transition.entries.filter((e) => !e.resolution.resolved).length,
     };
     this.notifyStatusListeners();
+  }
+
+  private addObserverMount(extensionId: string, observerMount: { readonly epoch: number }): void {
+    this.observerMounts.set(extensionId, [...(this.observerMounts.get(extensionId) ?? []), observerMount]);
+  }
+
+  private takeObserverMount(extensionId: string): { readonly epoch: number } | undefined {
+    const mounts = this.observerMounts.get(extensionId);
+    if (!mounts || mounts.length === 0) return undefined;
+    const [observerMount, ...remaining] = mounts;
+    if (remaining.length === 0) this.observerMounts.delete(extensionId);
+    else this.observerMounts.set(extensionId, remaining);
+    return observerMount;
+  }
+
+  private hasObserverMountInEpoch(extensionId: string): boolean {
+    return this.observerMounts.get(extensionId)?.some((observerMount) => observerMount.epoch === this.lifecycleEpoch) ?? false;
+  }
+
+  private removeObserverMount(extensionId: string, observerMount: { readonly epoch: number }): void {
+    const mounts = this.observerMounts.get(extensionId);
+    if (!mounts) return;
+    const remaining = mounts.filter((candidate) => candidate !== observerMount);
+    if (remaining.length === 0) this.observerMounts.delete(extensionId);
+    else this.observerMounts.set(extensionId, remaining);
   }
 }

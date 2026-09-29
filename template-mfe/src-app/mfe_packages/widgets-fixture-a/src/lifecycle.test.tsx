@@ -1,9 +1,7 @@
-import React from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from '@testing-library/react';
 import { resolveNavigationHistory } from '@gears-frontx/routing';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 
 /**
  * `ThemeAwareReactLifecycle` is real, unmocked, production behaviour
@@ -16,22 +14,32 @@ import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/frontx-tem
  * routing and all) while removing that dependency, mirroring
  * `lifecycle-widgets-host.test.tsx`'s own `FakeThemeAwareReactLifecycle`.
  */
-class FakeThemeAwareReactLifecycle {
-  private root: Root | null = null;
-  constructor(protected readonly app: unknown) {}
-  mount(container: Element | ShadowRoot, bridge: unknown): void {
-    this.root = createRoot(container as Element);
-    const renderContent = (this as unknown as { renderContent: (b: unknown) => React.ReactNode }).renderContent;
-    this.root.render(<>{renderContent.call(this, bridge)}</>);
-  }
-  unmount(_container: Element | ShadowRoot): void {
-    this.root?.unmount();
-    this.root = null;
-  }
-}
-
 vi.mock('@gears-frontx/react', async (importOriginal) => {
-  const real = await importOriginal<Record<string, unknown>>();
+  const [real, React, { createRoot }] = await Promise.all([
+    importOriginal<Record<string, unknown>>(),
+    import('react'),
+    import('react-dom/client'),
+  ]);
+
+  class FakeThemeAwareReactLifecycle {
+    private root: ReturnType<typeof createRoot> | null = null;
+
+    constructor(protected readonly app: unknown) {}
+
+    mount(container: Element | ShadowRoot, bridge: unknown): void {
+      this.root = createRoot(container as Element);
+      const renderContent = (this as unknown as {
+        renderContent: (value: unknown) => ReturnType<typeof React.createElement>;
+      }).renderContent;
+      this.root.render(React.createElement(React.Fragment, null, renderContent.call(this, bridge)));
+    }
+
+    unmount(_container: Element | ShadowRoot): void {
+      this.root?.unmount();
+      this.root = null;
+    }
+  }
+
   return { ...real, ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle };
 });
 

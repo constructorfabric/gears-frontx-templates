@@ -57,6 +57,7 @@ vi.mock('@gears-frontx/react', () => ({
       superMountSpy(container, bridge);
     }
   },
+  readEntryAddress: () => undefined,
 }));
 
 vi.mock('./init', () => ({

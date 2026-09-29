@@ -23,7 +23,7 @@ import {
   screenDomain,
   FRONTX_SCREEN_DOMAIN,
 } from '@gears-frontx/react';
-import type { DomainRouting } from '@gears-frontx/frontx-template-shell';
+import type { DomainRouting } from '@gears-frontx/react';
 import { bootstrapMFE } from './bootstrap';
 import type { ShellRouting } from './shell-routing';
 

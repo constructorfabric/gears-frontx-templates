@@ -39,7 +39,7 @@ import type {
   ActionPayload,
   MountStrategy,
 } from '@gears-frontx/react';
-import { entryAddressesSchema, type DomainRouting } from '@gears-frontx/frontx-template-shell';
+import type { DomainRouting } from '@gears-frontx/react';
 import {
   CHROME_ACTION_SCHEMAS,
   CHROME_SET_MENU_COLLAPSED,
@@ -90,8 +90,10 @@ class HostContainerHooks implements ContainerHooks {
     return el;
   }
 
-  destroy(extensionId: string): void {
-    this.elements.delete(extensionId);
+  destroy(extensionId: string, container?: Element): void {
+    if (!container || this.elements.get(extensionId) === container) {
+      this.elements.delete(extensionId);
+    }
   }
 }
 
@@ -420,9 +422,9 @@ async function registerMfePackage(
 /**
  * Bootstrap MFE system for the host application.
  *
- * Registers the chrome action schemas and `entryAddressesSchema` on the
- * registry's type system first (the four base domains' declarations
- * reference the latter by `x-gts-ref`), then synchronously registers the
+ * Registers the chrome action schemas on the registry's type system first;
+ * `microfrontends()` has already installed the base domains' entry-addresses
+ * schema. It then synchronously registers the
  * four well-known domains (screen, sidebar, popup, overlay) with their
  * per-domain implementation factories and broadcasts entry addresses once
  * they are all in — safe this early since nothing can mount yet. It then
@@ -459,20 +461,12 @@ export async function bootstrapMFE(app: FrontXApp, nav: ShellNavigation = shellN
 
   // The chrome action schemas must be on the type system before any action
   // carrying one of these types can be dispatched, and `registerDomain` is the
-  // first thing a mounted screen can act against. `entryAddressesSchema` joins
-  // them here for the same reason: the four base domains' declarations
-  // reference it by `x-gts-ref` in `sharedProperties`, so it must be
-  // registered before the first `registerDomain` call below. Registration is
-  // idempotent, so calling it here is safe no matter how many times this
-  // function runs against the same registry — but it says nothing about any
-  // OTHER registry: each `GtsPlugin` instance owns an independent GtsStore, so
-  // a nested runtime that also registers `screenDomain` directly (e.g.
-  // demo-mfe's `lifecycle-widgets-host.tsx`) needs its own copy of this
-  // registration against its own store, not this one.
+  // first thing a mounted screen can act against. The framework plugin owns
+  // the entry-addresses schema because its base-domain declarations reference
+  // it; a nested runtime must likewise initialize through that plugin.
   for (const schema of CHROME_ACTION_SCHEMAS) {
     registry.typeSystem.registerSchema(schema);
   }
-  registry.typeSystem.registerSchema(entryAddressesSchema);
 
   const routing = createShellRouting(registry, nav);
 

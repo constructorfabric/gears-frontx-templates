@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionHandler } from '@gears-frontx/react';
 import { createRouteSignal } from '@gears-frontx/routing';
-import { fakeNavigation } from '../../../src/routing/__tests__/fake-navigation';
+import { fakeNavigation } from './__tests__/fake-navigation';
 
 const registerDomain = vi.fn();
 const updateSharedProperty = vi.fn();
@@ -126,22 +126,18 @@ describe('bootstrapMFE (host-app)', () => {
     // Making them domain actions must not make them mandatory for the
     // extensions that mount into the domain.
     expect(screenDeclaration.extensionsActions).toBeUndefined();
-    // The two chrome action schemas plus `entryAddressesSchema` (N2 below).
-    expect(registerSchema).toHaveBeenCalledTimes(3);
+    expect(registerSchema).toHaveBeenCalledTimes(2);
   });
 
-  it('registers entryAddressesSchema before the first registerDomain call', async () => {
+  it('does not register the framework-owned entry-addresses schema itself', async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { entryAddressesSchema } = await import('@gears-frontx/frontx-template-shell');
+    const { entryAddressesSchema } = await import('@gears-frontx/react');
 
     const { bootstrapMFE } = await import('./bootstrap');
     await bootstrapMFE(mockApp as never);
 
-    const entryAddressesCallIndex = registerSchema.mock.calls.findIndex((call) => call[0] === entryAddressesSchema);
-    expect(entryAddressesCallIndex).toBeGreaterThanOrEqual(0);
-    const entryAddressesOrder = registerSchema.mock.invocationCallOrder[entryAddressesCallIndex];
-    expect(entryAddressesOrder).toBeLessThan(registerDomain.mock.invocationCallOrder[0]);
+    expect(registerSchema.mock.calls.some((call) => call[0] === entryAddressesSchema)).toBe(false);
   });
 
   it('broadcasts the entry-addresses shared property once per registration resolved so far, never ahead of it (M1)', async () => {
@@ -182,7 +178,7 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await import('./bootstrap');
-    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/frontx-template-shell');
+    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/react');
     await bootstrapMFE(mockApp as never);
 
     const addressValues = updateSharedProperty.mock.calls
@@ -409,7 +405,7 @@ describe('bootstrapMFE (host-app)', () => {
     const extB = { id: 'ext.b', domain: 'screen-domain' };
     getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/frontx-template-shell');
+    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/react');
     // Throws on exactly the SECOND entry-addresses broadcast (the one right
     // after `ext.a` registers) — the first is the domains-only broadcast, the
     // theme/language broadcasts use a different property id and are

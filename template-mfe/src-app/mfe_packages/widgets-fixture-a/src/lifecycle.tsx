@@ -39,7 +39,7 @@ import {
   useSearch,
   type AnyRouter,
 } from '@gears-frontx/routing-tanstack';
-import { readEntryAddress } from '@gears-frontx/frontx-template-shell';
+import { readEntryAddress } from '@gears-frontx/react';
 
 const PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';

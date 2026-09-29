@@ -71,13 +71,14 @@ import {
   themeSchema,
   languageSchema,
   extensionScreenSchema,
-  entryAddressesSchema,
+} from '@gears-frontx/frontx-template-shell';
+import {
   FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   DomainRouting,
   dispatchChain,
   buildEntryAddresses,
   readEntryAddress,
-} from '@gears-frontx/frontx-template-shell';
+} from '@gears-frontx/react';
 import { routedScreen } from './shared/routedScreen';
 
 const WIDGETS_DOMAIN_ID =
@@ -105,8 +106,10 @@ class WidgetsContainerHooks implements ContainerHooks {
     return el;
   }
 
-  destroy(extensionId: string): void {
-    this.elements.delete(extensionId);
+  destroy(extensionId: string, container?: Element): void {
+    if (!container || this.elements.get(extensionId) === container) {
+      this.elements.delete(extensionId);
+    }
   }
 }
 
@@ -169,45 +172,26 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
   }
 
   /**
-   * Unmount every extension this domain currently believes is mounted,
-   * through the SAME `strategy.unmount()` call `FRONTX_ACTION_UNMOUNT_EXT`'s
-   * own handler above uses — the one path in this class that actually clears
-   * `registry.getMountedExtensions()` (`ConcurrentMountStrategy.unmount()` →
-   * `DefaultExtensionMounter.unmount()`'s own `removeMountedExtension`
-   * callback).
-   *
-   * Called by `DemoMfeWidgetsHostLifecycle.unmount()`, strictly before
-   * `super.unmount(container)` triggers `ExtensionDomainSlot`'s own cleanup
-   * effect — a fire-and-forget `void mounter.detach()` that mass-unmounts
-   * through `DefaultExtensionMounter.detach()` instead. That method
-   * unmounts each occupant's DOM (`mountManager.unmountExtension` +
-   * `hooks.destroy`) but never calls `removeMountedExtension` (see its own
-   * source) — so on this file's module-singleton nested registry, which
-   * outlives any one mount of Widgets Host, `getMountedExtensions()` kept
-   * listing every widget as mounted forever after a screen switch or Back.
-   * The next entry's auto-mount pass then hit `mount()`'s "already mounted"
-   * early-return above for every widget and never called `strategy.mount()`
-   * again — no DOM, no mount log, permanently (D2).
-   *
-   * Awaiting this to completion before `super.unmount(container)` runs is
-   * what avoids a race between the two mass-unmount paths for the same
-   * extension ids: by the time `ExtensionDomainSlot`'s detach reads
-   * `getMountedExtensions()`, this method has already emptied it, so
-   * `detach()`'s own loop finds nothing left to unmount.
-   *
-   * Bypasses the actions chain deliberately (unlike `mountThroughChain`):
-   * this is the lifecycle's own teardown, not a URL-driven transition, so it
-   * needs neither chain dispatch nor a `next` continuation — only the one
-   * mfes call that both tears down the DOM and clears the registry's
-   * mounted-set. `holder.routing` is already stopped and cleared by the
-   * caller before this runs, so the same `afterUnmount` call the registered
-   * handler makes would no-op here regardless (`DomainRouting.stop()`'s own
-   * guard) — omitted for that reason, not skipped by oversight.
+   * Release every admitted widget through the strategy before React destroys
+   * the domain slot. Waiting for in-flight strategy mounts first makes the
+   * mounter's later fire-and-forget `detach()` observe an empty mount-set;
+   * the core mounter remains the fallback that clears DOM, mount-state and
+   * the container teardown callback if this lifecycle path is interrupted.
    */
   async releaseAll(): Promise<void> {
+    // A chain can still be inside `strategy.mount()` when its host starts
+    // teardown. Snapshotting the mounted set first misses that subject, then
+    // lets it become mounted after this method returns. Wait for every
+    // already-admitted mount before taking the teardown snapshot.
+    await Promise.allSettled([...this.inFlight.values()]);
     const mounted = Array.from(this.registry.getMountedExtensions(WIDGETS_DOMAIN_ID));
-    for (const subject of mounted) {
-      await this.strategy.unmount!({ subject });
+    const results = await Promise.allSettled(mounted.map((subject) => this.strategy.unmount!({ subject })));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        // One broken widget must not keep other widgets mounted or prevent
+        // the host lifecycle from reaching React-root cleanup.
+        console.error('[demo-mfe widgets-host] failed to release widget', result.reason);
+      }
     }
   }
 
@@ -360,26 +344,21 @@ export async function bootstrapWidgetsRuntime(
 
   // This nested type system's GtsStore is wholly independent of the shell's
   // (each GtsPlugin instance owns its own store — see plugin.ts), and this
-  // runtime never ran the shell-only `main.tsx` registration that puts these
-  // four application-layer derived schemas (theme, language, extension_screen,
-  // entry_addresses) onto the shell's own `gtsPlugin` singleton (see
+  // runtime never ran the shell-only `main.tsx` registration that puts the
+  // three application-layer derived schemas (theme, language, extension_screen)
+  // onto the shell's own `gtsPlugin` singleton (see
   // `loader.ts`'s comment: "application-specific derived schemas ...
   // registered at the application layer"). They MUST be registered here
   // before ANY domain that references them by `x-gts-ref` in its own
   // `sharedProperties` — not only the well-known `screenDomain` registered
   // below, but also the manifest-declared widgets domain in the loop that
-  // follows: `demo-mfe/mfe.json`'s own `domains[0]` declares
-  // `sharedProperties: [entry_addresses]` (RM-LIVE1 — real GTS validation of
-  // that domain instance was throwing `entry_addresses ... not found in
-  // registry` here, before this bootstrap ever reached
-  // `registerDomain(widgetsDomain)`, leaving Widgets Host blank on every cold
-  // load). Registering these four ahead of the manifest-driven domain loop
-  // covers both cases with one ordering rule, mirroring `bootstrapMFE`'s
-  // ordering in the shell's own `bootstrap.ts`.
+  // follows. The framework plugin has already registered the entry-addresses
+  // schema required by its base domain contract before this runtime exists.
+  // Registering these three ahead of the manifest-driven domain loop covers
+  // the application-level schema ordering rule.
   registry.typeSystem.registerSchema(themeSchema);
   registry.typeSystem.registerSchema(languageSchema);
   registry.typeSystem.registerSchema(extensionScreenSchema);
-  registry.typeSystem.registerSchema(entryAddressesSchema);
 
   let widgetsDomain: ExtensionDomain | undefined;
   for (const config of manifests) {
@@ -868,8 +847,12 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
     // already "mounted" and never call `strategy.mount()` again, leaving
     // Widgets Host permanently blank on re-entry (back/forward, or a fresh
     // Back after leaving).
-    await widgetsHolder.impl?.releaseAll();
-    await super.unmount(container);
+    try {
+      await widgetsHolder.impl?.releaseAll();
+    } finally {
+      // React's root must be released even when a widget's lifecycle rejects.
+      await super.unmount(container);
+    }
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {

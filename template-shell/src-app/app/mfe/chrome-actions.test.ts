@@ -19,11 +19,11 @@ import {
 // react resolve for a consumer outside this workspace (#601). `main.tsx` reaches
 // for them the same way.
 import {
-  entryAddressesSchema,
   extensionScreenSchema,
   languageSchema,
   themeSchema,
 } from '@gears-frontx/frontx-template-shell';
+import { entryAddressesSchema } from '@gears-frontx/react';
 
 import {
   CHROME_ACTION_SCHEMAS,

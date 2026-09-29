@@ -17,8 +17,11 @@ Authoritative files:
   (screen, sidebar, popup, overlay), wired to the shell's navigation history
 - `src-app/app/mfe/MfeScreenContainer.tsx` — starts/stops the four observers
   and renders the unresolved-route fallback
-- `src/routing/domain-routing.ts`, `src/routing/entry-address.ts` — the
-  back-projection and entry-address mechanism the domains above share
+- `packages/framework/src/plugins/microfrontends/domain-routing.ts`,
+  `entry-address.ts` — the published back-projection and entry-address
+  coordinator shared by hosts
+- `packages/framework/src/mfe/entry-addresses-schema.ts` — schema installed
+  by `microfrontends()` for the framework base domains
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
   the four well-known domain instances
@@ -50,7 +53,7 @@ Switching screens is still a mount action against a domain, not a direct route
 transition — but the shell now closes the loop between that action and the
 address bar. Each of the four base domains (`screen`, `sidebar`, `popup`,
 `overlay`) has its own `DomainRouting` instance (`shell-routing.ts`,
-`src/routing/domain-routing.ts`), created alongside the domain and started
+`@gears-frontx/framework`), created alongside the domain and started
 once the screen slot attaches (`MfeScreenContainer`'s `onAttached` calls
 `routing.start()`; `onDetached` calls `routing.stop()`). After a domain's mount
 handler settles, it calls that domain's `afterMount(extensionId)`, which
@@ -68,10 +71,10 @@ renders "No screen matches this address." whenever every entry in the screen
 domain is unresolved and nothing is mounted.
 
 Every occupant that mounts under a routed domain also learns its own address:
-the shell broadcasts the `entry_addresses` shared property (`src/routing/entry-address.ts`'s
-`buildEntryAddresses`), a map from extension id to `{ domainKey, extension }`,
-re-broadcast after each registration during bootstrap and after every
-mount/unmount thereafter. A mounted extension reads its own entry back via
+the shell broadcasts the `entry_addresses` shared property
+(`@gears-frontx/framework`'s `buildEntryAddresses`), a map from extension id
+to `{ domainKey, extension }`, and re-broadcasts after each successful
+registration during bootstrap. A mounted extension reads its own entry back via
 `readEntryAddress` rather than through the action-chain payload — the payload
 never carries it.
 
@@ -105,9 +108,10 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 `bootstrapMFE()` proceeds in a fixed order:
 
-1. Register the chrome action schemas and `entryAddressesSchema` — the four
-   base domain declarations reference the latter by `x-gts-ref` in
-   `sharedProperties`, so it must exist before any of them registers.
+1. `microfrontends()` registers `entryAddressesSchema` — the framework-owned
+   schema required by the four base domain declarations — before it constructs
+   the MFE registry. `bootstrapMFE()` then registers the shell's chrome action
+   schemas.
 2. Register the four well-known domains — `screen` (with
    `ExclusiveMountStrategy`: one mounted screen at a time), `sidebar`, `popup`,
    `overlay` — then broadcast the `entry_addresses` shared property once
@@ -173,6 +177,5 @@ host and MFEs.
   properties of the current schemas, tracked upstream in the platform's
   navigation-service planning — not bugs in this shell. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema
-  set — e.g. pressing Back while a newly selected screen is still mounting can
-  let that screen's late `afterMount` push on top of the Back navigation (see
-  the `live-run/README.md` "Known observations").
+  set. Observer-originated mounts acknowledge their current URL only: a late
+  mount after Back cannot restore a stale entry.

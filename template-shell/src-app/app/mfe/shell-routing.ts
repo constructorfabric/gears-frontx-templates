@@ -1,5 +1,5 @@
 import { createRouteSignal, resolveNavigationHistory, type DomainKey, type NavigationHistory, type RouteSignal } from '@gears-frontx/routing';
-import { DomainRouting, buildEntryAddresses, rootDomainKeyOf, FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/frontx-template-shell';
+import { DomainRouting, buildEntryAddresses, rootDomainKeyOf, FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 import {
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_ACTION_UNMOUNT_EXT,

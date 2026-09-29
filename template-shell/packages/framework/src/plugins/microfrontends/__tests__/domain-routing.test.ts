@@ -337,6 +337,123 @@ describe('observation', () => {
     expect(executeActionsChain).toHaveBeenCalledWith({ action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } } });
   });
 
+  it('does not dispatch the same URL-restored mount twice while its first chain is still in flight', () => {
+    let settleMount!: () => void;
+    const pendingMount = new Promise<void>((resolve) => {
+      settleMount = resolve;
+    });
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
+    executeActionsChain.mockImplementation(() => pendingMount);
+
+    routing.start();
+    history.set('/');
+    history.set('/?screen=hello-world');
+
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+    settleMount();
+  });
+
+  it('releases a late URL-restored mount when Back removes a single-domain entry', () => {
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
+
+    routing.start();
+    executeActionsChain.mockClear();
+    history.set('/');
+    routing.afterMount('ext.hello');
+
+    expect(history.writes).toEqual([]);
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
+    });
+  });
+
+  it('does not re-project a late observer-originated mount after Back, and releases the stale multiple-domain occupant', () => {
+    const { history, routing, executeActionsChain } = setup(
+      '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha',
+      [ALPHA],
+      { ...nested, unmountActionType: UNMOUNT },
+    );
+
+    routing.start();
+    history.set('/?screen=widgets-host');
+    routing.afterMount('ext.alpha');
+
+    expect(history.writes).toEqual([]);
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.alpha' } },
+    });
+  });
+
+  it('does not let a pre-stop mount callback write into a later start cycle', () => {
+    const { history, routing } = setup('/?screen=hello-world', [HELLO]);
+    routing.start();
+    routing.stop();
+    history.set('/');
+    routing.start();
+
+    routing.afterMount('ext.hello');
+
+    expect(history.writes).toEqual([]);
+  });
+
+  it('clears a callback that settles while stopped so a later observer can restore that route', () => {
+    const { routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
+    routing.start();
+    routing.stop();
+    routing.afterMount('ext.hello');
+    executeActionsChain.mockClear();
+
+    routing.start();
+
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
+    });
+  });
+
+  it('re-dispatches a URL-restored mount after stop/start when the old mount is still pending', () => {
+    let settleOldMount!: () => void;
+    const oldMount = new Promise<void>((resolve) => {
+      settleOldMount = resolve;
+    });
+    const { routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO]);
+    executeActionsChain.mockImplementation(() => oldMount);
+
+    routing.start();
+    routing.stop();
+    executeActionsChain.mockClear();
+    routing.start();
+
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: MOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
+    });
+    settleOldMount();
+  });
+
+  it('keeps a fresh observer marker when an older lifecycle callback settles after restart', () => {
+    let settleOldMount!: () => void;
+    const oldMount = new Promise<void>((resolve) => {
+      settleOldMount = resolve;
+    });
+    const { history, routing, executeActionsChain } = setup('/?screen=hello-world', [HELLO], { unmountActionType: UNMOUNT });
+    executeActionsChain.mockImplementation(() => oldMount);
+
+    routing.start();
+    routing.stop();
+    routing.start();
+    executeActionsChain.mockClear();
+    history.set('/');
+
+    routing.afterMount('ext.hello'); // the pre-stop request: acknowledgement only
+    expect(executeActionsChain).not.toHaveBeenCalled();
+    routing.afterMount('ext.hello'); // the current observer request: stale occupant release
+
+    expect(history.writes).toEqual([]);
+    expect(executeActionsChain).toHaveBeenCalledWith({
+      action: { type: UNMOUNT, target: 'dom', payload: { subject: 'ext.hello' } },
+    });
+    settleOldMount();
+  });
+
   it('does not dispatch for an echo of its own back-projection', () => {
     const mounted: string[] = [];
     const { history, routing, executeActionsChain } = setup('/', [HELLO], {}, mounted);

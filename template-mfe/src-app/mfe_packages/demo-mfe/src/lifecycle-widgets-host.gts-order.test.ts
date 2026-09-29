@@ -25,6 +25,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
 import type { ExtensionDomain, MfManifest } from '@gears-frontx/react';
+import { entryAddressesSchema } from '@gears-frontx/react';
 import { bootstrapWidgetsRuntime, type WidgetsRoutingHolder } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
@@ -85,6 +86,9 @@ const MANIFEST: MfManifest = {
  */
 function buildRealTypeSystemRegistry() {
   const typeSystem = new GtsPlugin();
+  // `bootstrapWidgetsRuntime` receives an already-built app; the framework
+  // plugin has installed its base-domain schema at that earlier boundary.
+  typeSystem.registerSchema(entryAddressesSchema);
   const domains = new Map<string, ExtensionDomain>();
   const extensions = new Map<string, unknown>();
   return {

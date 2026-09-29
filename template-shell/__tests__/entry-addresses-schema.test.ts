@@ -21,7 +21,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { gtsPlugin } from '@gears-frontx/gts-plugin';
 import { validateName } from '@gears-frontx/routing';
-import { entryAddressesSchema, FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../src';
+import { entryAddressesSchema } from '../packages/framework/src/mfe/entry-addresses-schema';
+import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '../packages/framework/src/mfe/constants';
 
 // Real extension ids drawn from the templates' own mfe.json manifests, so a
 // key containing both `~` and `_` is exercised by fixtures, not invented.
