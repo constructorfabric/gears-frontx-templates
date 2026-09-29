@@ -1,27 +1,31 @@
 # Studio artifacts registry
 #
-# Documents only. No [[systems.codebase]] or [[systems.children.codebase]]
-# entry is registered anywhere in this file, on purpose. gears-frontx
-# ADR-0033 (cpt-frontx-adr-template-territory-traceability) rules that
-# templates are not specified by the ecosystem artifact tree, that the `@cpt-`
-# markers present in template territory "are **residue of the archived
-# pre-redesign generation and bind nothing**", and that "a `@cpt-` marker
-# found in template payload binds nothing". This repository still carries such
-# residue markers in template-shell, template-mfe and scripts, so it registers
-# no code paths. A code path is registered here only once an artifact in this
-# repository gives it numbered instructions to point at.
+# The catalogue root system describes this repository as a collection of the
+# templates CF maintains. Every template, a top-level directory with a
+# frontx-template.json manifest, registers its own system over
+# <template>/architecture, with slug template-<name> and ids
+# cpt-template-<name>-*. A template that brings its documents lists its
+# system here by hand.
+#
+# This repository shares no id namespace with gears-frontx. The gears-frontx
+# ids are internal to it and may change without notice, so a document here
+# cites a gears-frontx decision as a link to its file, never as a backticked
+# cpt-frontx-* id. cfs v1.6.2 does not tie an id prefix to the system that
+# owns it: any registered prefix passes in any document. Review checks that a
+# template defines ids only under its own prefix.
+#
+# Every kind is `required = false` because none of the registered
+# directories holds documents yet. The PR that brings a template's PRD and
+# DESIGN sets those two kinds of its system to `required = true`.
+#
+# No code paths are registered. Markers in template code bind nothing to
+# gears-frontx artifacts, as ADR-0033 of gears-frontx rules
+# (https://github.com/constructorfabric/gears-frontx/blob/develop/architecture/ADR/0033-template-territory-traceability.md).
 
-# Every kind below is `required = false`. In cfs v1.6.2 the flag is not
-# enforced while core.toml declares a [workspace]: with `required = true` on
-# every kind, an absent or empty architecture/ and a PRD without its DESIGN
-# both pass `cfs validate`. Without a [workspace], the same setting fails an
-# empty tree as `Required autodetect artifact missing` for every kind. `false`
-# keeps main (no documents) green either way, so a missing document is caught
-# in review, not here. A document that does land is validated in full.
-
+# The catalogue: ids cpt-frontx-templates-*.
 [[systems]]
-name = "FrontX Templates"
-slug = "frontx"
+name = "FrontX Templates catalogue"
+slug = "frontx-templates"
 kit = "sdlc"
 artifacts_dir = "architecture"
 
@@ -33,59 +37,141 @@ artifacts_root = "architecture"
 [systems.autodetect.artifacts]
 [systems.autodetect.artifacts.PRD]
 pattern = "PRD.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
 [systems.autodetect.artifacts.DESIGN]
 pattern = "DESIGN.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
 [systems.autodetect.artifacts.DECOMPOSITION]
 pattern = "DECOMPOSITION.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
 [systems.autodetect.artifacts.ADR]
 pattern = "ADR/**/*.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
 [systems.autodetect.artifacts.FEATURE]
 pattern = "features/*/FEATURE.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
-# The workspace template family under architecture/workspace-templates, with
-# ids cpt-frontx-workspace-templates-*: its PRD and DESIGN, and the ADRs and
-# FEATUREs it adds later.
-[[systems.children]]
-name = "Workspace Templates"
-slug = "workspace-templates"
+# template-shell: ids cpt-template-shell-*.
+[[systems]]
+name = "template-shell"
+slug = "template-shell"
 kit = "sdlc"
-artifacts_dir = "architecture/workspace-templates"
+artifacts_dir = "template-shell/architecture"
 
-[[systems.children.autodetect]]
+[[systems.autodetect]]
 kit = "sdlc"
 system_root = "{project_root}"
-artifacts_root = "architecture/workspace-templates"
+artifacts_root = "template-shell/architecture"
 
-[systems.children.autodetect.artifacts.PRD]
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
 pattern = "PRD.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
-[systems.children.autodetect.artifacts.DESIGN]
+[systems.autodetect.artifacts.DESIGN]
 pattern = "DESIGN.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
-[systems.children.autodetect.artifacts.ADR]
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.ADR]
 pattern = "ADR/**/*.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
 required = false
 
-[systems.children.autodetect.artifacts.FEATURE]
+[systems.autodetect.artifacts.FEATURE]
 pattern = "features/*/FEATURE.md"
-traceability = "FULL"
+traceability = "DOCS-ONLY"
+required = false
+
+# template-mfe: ids cpt-template-mfe-*.
+[[systems]]
+name = "template-mfe"
+slug = "template-mfe"
+kit = "sdlc"
+artifacts_dir = "template-mfe/architecture"
+
+[[systems.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "template-mfe/architecture"
+
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "DOCS-ONLY"
+required = false
+
+# template-design-guardrails: ids cpt-template-design-guardrails-*. Its
+# top-level DESIGN.md is not an sdlc document, so the system covers
+# template-design-guardrails/architecture only.
+[[systems]]
+name = "template-design-guardrails"
+slug = "template-design-guardrails"
+kit = "sdlc"
+artifacts_dir = "template-design-guardrails/architecture"
+
+[[systems.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "template-design-guardrails/architecture"
+
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "DOCS-ONLY"
 required = false
