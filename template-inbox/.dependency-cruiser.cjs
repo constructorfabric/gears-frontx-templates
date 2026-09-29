@@ -32,6 +32,13 @@ module.exports = {
       to: { path: '^src/(screens|app)/' },
       comment: 'src/api/, src/shared/ and the test utilities sit below the screens and the chrome and must not import them.',
     },
+    {
+      name: 'no-test-utils-in-app-code',
+      severity: 'error',
+      from: { path: '^src/', pathNot: ['\\.test\\.tsx?$', '^src/__test-utils__/'] },
+      to: { path: '^src/__test-utils__/' },
+      comment: 'The test utilities stand the API in for tests; code that ships must never import them.',
+    },
   ],
   options: {
     doNotFollow: { path: 'node_modules' },

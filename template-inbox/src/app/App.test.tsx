@@ -71,7 +71,6 @@ describe('App', () => {
     expect(applied === 'light' || applied === 'dark').toBe(true);
     expect(window.localStorage.getItem('frontx.inbox.theme')).toBe(applied);
     expect(screen.getByRole('button', { name: /theme/i }).getAttribute('aria-label')).not.toBe(before);
-    document.documentElement.removeAttribute('data-theme');
   });
 
   it('sends a reply through the real service and keeps it when the chat screen comes back', async () => {

@@ -7,7 +7,8 @@
  * `PointerEvent`), so every suite starts from the same platform instead of
  * each test file shimming what it happens to trip over. After each test it
  * puts back every shared slot a test can change: mounted screens, spies and
- * mocks, fake timers, stubbed globals, storage and cookies.
+ * mocks, fake timers, stubbed globals, storage and cookies, the app's
+ * module-level state, the URL fragment and the theme attribute.
  *
  * A copy of the shell's approach rather than an import of its file: the shell
  * setup also clears Module Federation state this app does not have, and a
@@ -15,6 +16,8 @@
  */
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { resetInboxMockState } from './src/api/mocks';
+import { resetQueryCache } from './src/api/queries';
 import { resetStores } from './src/shared/createStore';
 
 /**
@@ -176,9 +179,15 @@ afterEach(() => {
   // Unmounted first, while every mock a screen's cleanup might call is still
   // in place.
   cleanup();
-  // Module-level stores (the inbox's drafts and selection) outlive a mount
-  // by design, so each test starts them from their initial state.
+  // Module-level state outlives a mount by design - the screens' stores,
+  // the heading-focus counters, the query cache and the mock API's store -
+  // so each test starts all of it from its initial state, and from the
+  // address and theme a fresh page has.
   resetStores();
+  resetQueryCache();
+  resetInboxMockState();
+  window.history.replaceState(null, '', window.location.pathname);
+  document.documentElement.removeAttribute('data-theme');
 
   vi.clearAllMocks();
   vi.restoreAllMocks();
