@@ -22,7 +22,7 @@ export type ContactsByStageCardProps = {
 const DONUT_DIMENSION = { width: 160, height: 160 };
 
 /**
- * Row 1's fourth card, replacing the old "Team utilization" radial gauge: a
+ * Row 1's fourth card: a
  * thick-ring donut of contact lifecycle stages plus a template-level legend
  * list under it (dot, label, count, percent) - a segmented donut with a
  * count+percent legend. The kit's `ChartLegendContent` only renders a

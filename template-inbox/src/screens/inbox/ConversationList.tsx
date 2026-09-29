@@ -147,7 +147,10 @@ export function ConversationList({
                 <PinIcon className={styles.pinIcon} aria-label={t('pinned_conversation')} />
               ) : null}
               {conversation.unreadCount > 0 ? (
-                <Badge className={styles.unreadBadge} aria-label={t('unread_messages')}>
+                <Badge
+                  className={styles.unreadBadge}
+                  aria-label={t('unread_messages_count').replace('{count}', String(conversation.unreadCount))}
+                >
                   {conversation.unreadCount}
                 </Badge>
               ) : null}

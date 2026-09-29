@@ -51,9 +51,9 @@ const STATUS_TONE: Record<ActivityStatus, 'info' | 'warning' | 'success' | 'dang
  * level only, through `DataTable`'s own
  * composition points (`header` render functions) and this file's own CSS,
  * no kit changes. The search field carries no handler: this template does
- * no activity filtering, so it stays disabled rather than silently doing
- * nothing (the same convention the rail's profile menu and
- * `ConversationThread`'s create-ticket button already follow).
+ * no activity filtering, so it renders disabled rather than silently doing
+ * nothing - the app's convention for a control with no action behind it
+ * (the rail's profile entries, the thread header's create-ticket button).
  */
 export function ActivityTable({ activity, contacts, agents, t }: ActivityTableProps) {
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -177,7 +177,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
           />
         </div>
       </div>
-      <DataTable columns={columns} data={rows} emptyMessage={t('no_conversations')} />
+      <DataTable columns={columns} data={rows} emptyMessage={t('no_activity')} />
     </div>
   );
 }

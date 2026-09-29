@@ -2,6 +2,9 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { within } from '@testing-library/dom';
 
+/** Every screen mounted and not yet unmounted, for `cleanupScreens`. */
+const mounted = new Set<() => void>();
+
 /**
  * Mounts a screen and hands back queries scoped to its container.
  *
@@ -11,6 +14,10 @@ import { within } from '@testing-library/dom';
  * `vitest.config.ts`). Importing the renderer directly keeps every React in
  * the test on one instance. `@testing-library/dom` supplies the queries and
  * pulls in no renderer of its own.
+ *
+ * A test never has to unmount what it rendered: `vitest.setup.ts` calls
+ * `cleanupScreens` after every test, failed or not. `unmount` stays available
+ * for a test whose subject is what unmounting does.
  */
 export function renderScreen(element: ReactNode) {
   const container = document.createElement('div');
@@ -21,6 +28,15 @@ export function renderScreen(element: ReactNode) {
     root.render(element);
   });
 
+  const unmount = () => {
+    if (!mounted.delete(unmount)) return;
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  };
+  mounted.add(unmount);
+
   return {
     container,
     ...within(container),
@@ -29,11 +45,11 @@ export function renderScreen(element: ReactNode) {
         root.render(next);
       });
     },
-    unmount: () => {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    },
+    unmount,
   };
+}
+
+/** Unmounts every screen still mounted. Called from `vitest.setup.ts` after each test. */
+export function cleanupScreens(): void {
+  for (const unmount of [...mounted]) unmount();
 }

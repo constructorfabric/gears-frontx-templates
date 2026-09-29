@@ -103,8 +103,8 @@ export const kpiCards: DashboardKpiCard[] = [
 ];
 
 /**
- * Row 1's fourth card, "Contacts by stage" - a five-segment donut replacing
- * the old "Team utilization" radial gauge. Counts are seeded directly
+ * Row 1's fourth card, "Contacts by stage" - a five-segment donut. Counts
+ * are seeded directly
  * (`dataset.ts`'s `contacts` collection carries no lifecycle-stage field of
  * its own, the same way `workload`/`topAgents` are their own seeded
  * collections rather than derived from another one); every percentage the

@@ -9,6 +9,7 @@ import {
   funnelStagePercent,
   funnelTotal,
   kpiDeltaPercent,
+  funnelSegmentGeometry,
   kpiValue,
   newContactsDeltaPercent,
   newContactsInboundTotal,
@@ -218,5 +219,27 @@ describe('workloadPercent', () => {
 
   it('never divides by zero', () => {
     expect(workloadPercent({ id: 'w', label: 'W', value: 0, max: 0 })).toBe(0);
+  });
+});
+
+describe('funnelSegmentGeometry label fit', () => {
+  it('never lets a label claim more width than its segment has, and drops it from a segment too thin for any', () => {
+    const stages = [
+      { id: 'wide', label: 'Wide', count: 100 },
+      { id: 'sliver', label: 'Sliver', count: 1 },
+    ];
+    const [wide, sliver] = funnelSegmentGeometry(stages, { width: 300, height: 200, gap: 3 });
+
+    expect(wide.textLength === undefined || wide.textLength <= 300).toBe(true);
+    // 1% of 300 is 3 units, less than the label padding on either side.
+    expect(sliver.textLength).toBe(0);
+  });
+});
+
+describe('kpiValue on an empty series', () => {
+  it('reads a snapshot KPI with no data points as zero rather than NaN', () => {
+    expect(
+      kpiValue({ ...baseKpi, series: [] })
+    ).toBe(0);
   });
 });

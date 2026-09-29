@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mail } from '../../api/mailTypes';
 import { countInMailbox, countUnreadInMailbox, selectMails } from './mailSelectors';
 
@@ -10,18 +10,23 @@ const mail = (overrides: Partial<Mail>): Mail => ({
   subject: 'Subject',
   snippet: 'Snippet',
   body: 'Body',
-  receivedAt: new Date().toISOString(),
+  receivedAt: new Date(NOW).toISOString(),
   read: true,
   starred: false,
   pinned: false,
   ...overrides,
 });
 
-// Explicit, distinct `receivedAt` values (rather than the `mail()` default of
-// `new Date()` at call time) - two calls a fraction of a millisecond apart
-// otherwise raced the "narrows to the selected mailbox" assertion below,
-// which needs ml-1 strictly more recent than ml-2 to sort first.
-const NOW = Date.now();
+// A fixed instant, with explicit and distinct `receivedAt` values from it:
+// the ordering assertions below need ml-1 strictly more recent than ml-2, and
+// nothing here may depend on when the suite runs. `beforeEach` pins the
+// clock to the same instant for any code under test that reads it.
+const NOW = Date.parse('2026-08-21T12:00:00.000Z');
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+});
 const mails: Mail[] = [
   mail({
     id: 'ml-1',

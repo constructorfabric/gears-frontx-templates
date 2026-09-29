@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
 import { MailIcon } from 'lucide-react';
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton } from '@gears-frontx/ui-kit';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@gears-frontx/ui-kit';
 import { MAILBOX_SENT } from '../../api/constants';
 import type { Mail, MailboxId } from '../../api/mailTypes';
 import { useApiQuery } from '../../api/queries';
 import { getMailApi } from '../../api/registry';
 import type { Translate } from '../../app/i18n';
+import { cx } from '../../shared/cx';
+import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
+import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
 import { MailboxSidebar, type ComposedMail } from './MailboxSidebar';
 import { MailList } from './MailList';
 import { MailReadingPane } from './MailReadingPane';
@@ -50,6 +53,9 @@ export function MailScreen({ t }: MailScreenProps) {
   // the mock API answered with.
   const [composedMails, setComposedMails] = useState<Mail[]>([]);
 
+  const isCompact = useMediaQuery(COMPACT_QUERY);
+  const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
+
   const mailboxes = mailboxesQuery.data?.mailboxes ?? [];
   const mails = useMemo(
     () => [...(mailsQuery.data?.mails ?? []), ...composedMails],
@@ -72,14 +78,15 @@ export function MailScreen({ t }: MailScreenProps) {
   // setting state from an effect and the one-frame flash of the empty state
   // an effect-based version would show first. Guarded by the id match so a
   // click that picks a different mail, once consumed, never gets
-  // second-guessed while the agent stays in that mailbox.
-  if (autoSelectMailboxId === mailboxId) {
+  // second-guessed while the agent stays in that mailbox. Disarmed as soon
+  // as the mails have arrived, whether or not the mailbox (under the current
+  // tab and search) has anything to pick: left armed on an empty list, it
+  // would later open a mail the agent never chose.
+  if (autoSelectMailboxId === mailboxId && !mailsQuery.isLoading) {
+    setAutoSelectMailboxId(null);
     const candidates = selectMails(mails, mailboxId, tab, search);
-    if (candidates.length > 0) {
-      setAutoSelectMailboxId(null);
-      if (selectedMailId !== candidates[0].id) {
-        setSelectedMailId(candidates[0].id);
-      }
+    if (candidates.length > 0 && selectedMailId !== candidates[0].id) {
+      setSelectedMailId(candidates[0].id);
     }
   }
 
@@ -96,22 +103,37 @@ export function MailScreen({ t }: MailScreenProps) {
     setAutoSelectMailboxId(nextMailboxId);
   };
 
-  if (mailboxesQuery.isLoading) {
-    return (
-      <div className={styles.emptyPane} role="status" aria-busy="true">
-        <Skeleton style={{ height: '2rem', width: '16rem' }} />
-      </div>
-    );
-  }
+  const firstPaint = firstPaintOf([mailboxesQuery, mailsQuery, mailMessagesQuery]);
+  if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
+  if (firstPaint.loading) return <LoadingPane />;
 
   const mailboxLabel = mailboxes.find((mailbox) => mailbox.id === mailboxId)?.label ?? '';
   const showReading = selected !== null;
 
+  /**
+   * A reply is filed the way a composed mail is: appended to `composedMails`
+   * under Sent, addressed to the correspondent and titled after the mail it
+   * answers, and the draft is cleared. The mail service has no write
+   * endpoint, so the reply lasts as long as this screen does.
+   */
   const sendReply = () => {
     if (!selected) return;
-    if ((drafts[selected.id] ?? '').trim() === '') return;
-    // Kept deliberately simple: no post endpoint, no appended
-    // message - sending just clears the draft the agent was typing.
+    const body = (drafts[selected.id] ?? '').trim();
+    if (body === '') return;
+    const reply: Mail = {
+      id: `ml-sent-${crypto.randomUUID()}`,
+      mailboxId: MAILBOX_SENT,
+      correspondentName: selected.correspondentName,
+      correspondentEmail: selected.correspondentEmail,
+      subject: t('reply_subject').replace('{subject}', selected.subject),
+      snippet: body,
+      body,
+      receivedAt: new Date().toISOString(),
+      read: true,
+      starred: false,
+      pinned: false,
+    };
+    setComposedMails((previous) => [...previous, reply]);
     setDrafts((previous) => ({ ...previous, [selected.id]: '' }));
   };
 
@@ -124,7 +146,7 @@ export function MailScreen({ t }: MailScreenProps) {
    */
   const composeMail = ({ to, subject, body }: ComposedMail) => {
     const newMail: Mail = {
-      id: `ml-sent-${Date.now()}`,
+      id: `ml-sent-${crypto.randomUUID()}`,
       mailboxId: MAILBOX_SENT,
       correspondentName: to,
       correspondentEmail: to,
@@ -147,7 +169,9 @@ export function MailScreen({ t }: MailScreenProps) {
         selectedMailboxId={mailboxId}
         onSelectMailbox={selectMailbox}
         onComposeMail={composeMail}
-        collapsed={false}
+        // Below the compact width the column has no room, the same rule the
+        // inbox's channel column follows.
+        collapsed={isCompact}
         t={t}
       />
 
@@ -161,11 +185,12 @@ export function MailScreen({ t }: MailScreenProps) {
         onSelectMail={setSelectedMailId}
         search={search}
         onSearchChange={setSearch}
+        hidden={isSinglePane && showReading}
         t={t}
       />
 
-      <div className={styles.detailPane}>
-        {showReading && selected ? (
+      <div className={cx(styles.detailPane, isSinglePane && !showReading && styles.singlePaneHidden)}>
+        {selected ? (
           <MailReadingPane
             mail={selected}
             history={history}
@@ -181,6 +206,7 @@ export function MailScreen({ t }: MailScreenProps) {
               setDrafts((previous) => ({ ...previous, [selected.id]: draft }))
             }
             onSend={sendReply}
+            onBack={isSinglePane ? () => setSelectedMailId(null) : null}
             t={t}
           />
         ) : (

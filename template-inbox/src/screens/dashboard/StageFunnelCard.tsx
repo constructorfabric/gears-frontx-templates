@@ -14,7 +14,7 @@ const FUNNEL_VIEWBOX = { width: 300, height: 200 };
 const FUNNEL_SEGMENT_GAP = 3;
 
 /**
- * The new row's left card: a true funnel - equal-height trapezoid bands
+ * The funnel row's left card: a true funnel - equal-height trapezoid bands
  * whose top/bottom edge widths are each stage's own share of the first
  * (widest) stage's count, thin gaps between bands, and a flat-bottomed
  * last segment that never narrows to a point - rendered as a plain SVG
@@ -48,26 +48,31 @@ export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
         <svg
           className={styles.funnelChart}
           viewBox={`0 0 ${FUNNEL_VIEWBOX.width} ${FUNNEL_VIEWBOX.height}`}
-          preserveAspectRatio="none"
+          // Uniform scaling: stretching the viewBox to the box would stretch
+          // the label glyphs too, undoing the per-label fit the geometry
+          // computes in viewBox units.
+          preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={t('stage_funnel')}
         >
           {segments.map((segment) => (
             <g key={segment.id}>
               <polygon points={segment.points} fill={stageFunnelChartConfig[segment.id]?.color} />
-              <text
-                x={segment.labelX}
-                y={segment.labelY}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={segment.fontSize}
-                fontWeight={600}
-                textLength={segment.textLength}
-                lengthAdjust={segment.textLength === undefined ? undefined : 'spacingAndGlyphs'}
-                className={styles.funnelSegmentLabel}
-              >
-                {segment.text}
-              </text>
+              {segment.textLength === 0 ? null : (
+                <text
+                  x={segment.labelX}
+                  y={segment.labelY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={segment.fontSize}
+                  fontWeight={600}
+                  textLength={segment.textLength}
+                  lengthAdjust={segment.textLength === undefined ? undefined : 'spacingAndGlyphs'}
+                  className={styles.funnelSegmentLabel}
+                >
+                  {segment.text}
+                </text>
+              )}
             </g>
           ))}
         </svg>

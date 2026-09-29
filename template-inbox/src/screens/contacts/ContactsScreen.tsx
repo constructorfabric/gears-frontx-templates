@@ -1,10 +1,20 @@
 import { useCallback, useMemo, useState } from 'react';
-import { SearchIcon } from 'lucide-react';
-import { Input, Skeleton } from '@gears-frontx/ui-kit';
+import { SearchIcon, UserXIcon } from 'lucide-react';
+import {
+  Button,
+  Empty,
+  EmptyActions,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  Input,
+} from '@gears-frontx/ui-kit';
 import { useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
 import type { Translate } from '../../app/i18n';
 import { CONTACTS_ROUTE, contactRoute, navigate } from '../../app/routing';
+import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { COMPACT_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
 import { ContactDetail } from './ContactDetail';
 import { ContactFilterSidebar } from './ContactFilterSidebar';
@@ -44,15 +54,34 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     []
   );
 
-  if (contactsQuery.isLoading || conversationsQuery.isLoading) {
+  const firstPaint = firstPaintOf([contactsQuery, conversationsQuery]);
+  if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
+  if (firstPaint.loading) return <LoadingPane />;
+
+  const openContact = contacts.find((contact) => contact.id === openContactId) ?? null;
+
+  // An address naming a contact the directory does not hold says so, rather
+  // than quietly showing the directory as if no one had been asked for.
+  if (openContactId !== null && openContact === null) {
     return (
-      <div className={styles.emptyPane} role="status" aria-busy="true">
-        <Skeleton style={{ height: '2rem', width: '16rem' }} />
+      <div className={styles.emptyPane}>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <UserXIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t('contact_not_found_title')}</EmptyTitle>
+            <EmptyDescription>{t('contact_not_found_description')}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyActions>
+            <Button variant="outline" size="sm" onClick={() => navigate(CONTACTS_ROUTE)}>
+              {t('back_to_contacts')}
+            </Button>
+          </EmptyActions>
+        </Empty>
       </div>
     );
   }
-
-  const openContact = contacts.find((contact) => contact.id === openContactId) ?? null;
   const conversationsById = new Map(
     (conversationsQuery.data?.conversations ?? []).map((conversation) => [conversation.id, conversation])
   );

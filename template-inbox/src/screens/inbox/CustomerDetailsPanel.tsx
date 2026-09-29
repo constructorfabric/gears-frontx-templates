@@ -85,7 +85,12 @@ export function CustomerDetailsPanel({
   isSpam,
   t,
 }: CustomerDetailsPanelProps) {
-  const assignees = [UNASSIGNED, agent?.name ?? ''].filter((name) => name !== '');
+  // The current assignee is always an option, even when it is neither the
+  // signed-in agent nor unassigned - otherwise the select would show nothing
+  // for a conversation routed to a teammate.
+  const assignees = [...new Set([UNASSIGNED, agent?.name ?? '', conversation.assignee])].filter(
+    (name) => name !== ''
+  );
   const assigneeValue = conversation.assignee === '' ? UNASSIGNED : conversation.assignee;
   const contactName = contact?.name ?? conversation.subject;
 
@@ -246,8 +251,8 @@ export function CustomerDetailsPanel({
                 <span className={styles.identityMeta}>{t('no_files')}</span>
               ) : (
                 <ItemGroup>
-                  {conversation.sharedFiles.map((file) => (
-                    <Item key={file.name} size="xs">
+                  {conversation.sharedFiles.map((file, fileIndex) => (
+                    <Item key={`${fileIndex}-${file.name}`} size="xs">
                       <ItemContent>
                         <ItemTitle>{file.name}</ItemTitle>
                         <ItemDescription>{file.size}</ItemDescription>
@@ -282,7 +287,7 @@ export function CustomerDetailsPanel({
               disabled
               placeholder={t('copilot_placeholder')}
               aria-label={t('copilot_placeholder')}
-              end={<Button variant="ghost" size="sm" icon={<SendIcon />} aria-label={t('send')} />}
+              end={<Button variant="ghost" size="sm" icon={<SendIcon />} aria-label={t('send')} disabled />}
             />
           </div>
         </TabsContent>

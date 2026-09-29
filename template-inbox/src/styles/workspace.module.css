@@ -419,9 +419,12 @@
  * this way) rather than reaching into the kit's class names.
  */
 .closeButton {
-  --button-bg: rgba(255, 100, 105, 0.2);
-  --button-bg-hover: rgba(255, 100, 105, 0.3);
-  --button-fg: rgb(255, 100, 103);
+  /* A soft wash of the kit's danger red under the red itself: the text uses
+   * `--danger` (the kit's red for text, lighter in dark), the fills mix it
+   * into transparency so they sit on either theme's surface. */
+  --button-bg: color-mix(in srgb, var(--danger) 20%, transparent);
+  --button-bg-hover: color-mix(in srgb, var(--danger) 30%, transparent);
+  --button-fg: var(--danger);
 }
 
 /*
@@ -445,13 +448,9 @@
 /*
  * The gap between whole messages (and the date dividers between them) in
  * the transcript. The kit's own `MessageScrollerContent` is a flex column
- * with no gap of its own - previously patched via a
- * `[data-message-id] + [data-message-id]` margin hack that existed only to
- * out-space `MessageContent`'s internal --space-3 gap for the old
- * under-bubble footer meta line; now that the timestamp lives inside the
- * bubble itself (see `MessageMeta` in ConversationThread.tsx) that
- * push-pull is gone, and a plain `gap` on the scroller's own content is
- * the direct way to space message rows.
+ * with no gap of its own, and the timestamp lives inside the bubble (see
+ * `MessageMeta` in ConversationThread.tsx), so a plain `gap` on the
+ * scroller's content is the whole spacing rule for message rows.
  */
 .transcriptContent {
   gap: var(--space-4);
@@ -603,14 +602,14 @@
   margin-inline-start: 0;
   padding: var(--space-1) var(--space-2);
   border-radius: 9999px;
-  /* `--overlay` (theme.css) is the kit's own scrim token - already a fixed
-   * black at 50% regardless of theme, which is exactly the point of a
-   * scrim: legible against arbitrary image content underneath, not tied
-   * to the surrounding light/dark surface. `--primary-foreground` is the
-   * kit's other theme-invariant color (white in both themes; see
-   * theme.css) - the same "always-light text" role a default-variant
-   * bubble already relies on, reused here instead of a literal white. */
-  background-color: var(--overlay);
+  /* `--overlay-modal` (theme.css) is the kit's dialog scrim - a fixed
+   * translucent near-black in both themes, which is exactly the point of a
+   * scrim: legible against arbitrary image content underneath, not tied to
+   * the surrounding light/dark surface. `--primary-foreground` is the kit's
+   * other theme-invariant color (white in both themes; see theme.css) - the
+   * same "always-light text" role a default-variant bubble already relies
+   * on, reused here instead of a literal white. */
+  background-color: var(--overlay-modal);
   color: var(--primary-foreground);
 }
 

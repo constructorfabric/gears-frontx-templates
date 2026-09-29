@@ -17,7 +17,10 @@ export type ComposerProps = {
   draft: string;
   onDraftChange: (draft: string) => void;
   onSend: () => void;
+  /** A post from this composer is in flight. */
   sending: boolean;
+  /** The conversation takes no more replies or notes (it is closed). */
+  disabled?: boolean;
   /**
    * Bumped by the parent (any changing value) right after opening a
    * freshly created conversation, so the reply box is ready to type into
@@ -36,11 +39,12 @@ export function Composer({
   onDraftChange,
   onSend,
   sending,
+  disabled = false,
   focusSignal,
   t,
 }: ComposerProps) {
   const isNote = tab === 'note';
-  const canSend = draft.trim() !== '' && !sending;
+  const canSend = draft.trim() !== '' && !sending && !disabled;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -55,30 +59,41 @@ export function Composer({
   };
 
   // One body for both tabs: the box stays the same and only the placeholder,
-  // the submit label and the frame swap. Each tab still owns a
-  // panel so the tablist has something to control.
+  // the submit label and the frame swap. Each tab still owns a panel so the
+  // tablist has something to control; the kit's TabsContent unmounts an
+  // inactive panel (Base UI's default), so only one textarea - and one
+  // `textareaRef` target - exists at a time.
   const body = (
     <div className={cx(styles.composerBox, isNote && styles.composerBoxNote)}>
       <Textarea
         ref={textareaRef}
         rows={3}
         value={draft}
+        disabled={disabled}
         onChange={(event) => onDraftChange(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={isNote ? t('note_placeholder') : t('reply_placeholder')}
+        placeholder={
+          disabled
+            ? t('conversation_closed_placeholder')
+            : isNote
+              ? t('note_placeholder')
+              : t('reply_placeholder')
+        }
         aria-label={isNote ? t('note') : t('reply')}
       />
       <div className={styles.composerToolbar}>
         {/*
-          Attach, emoji and saved replies carry no handler: each needs a store
-          this template does not ship - an upload target, a picker, a canned
-          reply library. They are drawn so the composer shows the full toolbar,
-          all three left of the send hint.
+          Attach, emoji and saved replies need a store this template does not
+          ship - an upload target, a picker, a canned reply library - so they
+          render disabled: the toolbar shows where they go without offering
+          an action that does nothing. The app's convention for every such
+          control (the rail's profile entries, the activity search, the
+          thread header's ticket and unassign actions).
         */}
         <div className={styles.composerTools}>
-          <Button variant="ghost" size="sm" icon={<PaperclipIcon />} aria-label={t('attach_file')} />
-          <Button variant="ghost" size="sm" icon={<SmileIcon />} aria-label={t('insert_emoji')} />
-          <Button variant="ghost" size="sm" icon={<ZapIcon />} aria-label={t('saved_replies')} />
+          <Button variant="ghost" size="sm" icon={<PaperclipIcon />} aria-label={t('attach_file')} disabled />
+          <Button variant="ghost" size="sm" icon={<SmileIcon />} aria-label={t('insert_emoji')} disabled />
+          <Button variant="ghost" size="sm" icon={<ZapIcon />} aria-label={t('saved_replies')} disabled />
         </div>
         <span className={styles.spacer} />
         <span className={styles.composerHint}>{t('send_shortcut')}</span>

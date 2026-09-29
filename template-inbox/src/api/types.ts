@@ -107,6 +107,7 @@ export type MessageKind = 'text' | 'image' | 'file';
  */
 export type MessageLink = {
   text: string;
+  /** An absolute http, https or mailto URL; the thread renders any other href as plain text. */
   href: string;
 };
 

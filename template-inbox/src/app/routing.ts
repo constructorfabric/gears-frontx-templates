@@ -10,8 +10,10 @@
  * A router library would earn its weight at the point this app has nested
  * layouts or loaders to express. With five routes and no nesting it would be a
  * dependency to explain rather than a problem solved, so the parse below is the
- * whole thing and stays replaceable: swap this module and the `navigate`
- * call sites, and nothing in the screens changes.
+ * whole thing. Replacing it means replacing this module and the screens that
+ * write a location through it: `ContactsScreen` and `InboxScreen` call
+ * `navigate` with `CONTACTS_ROUTE` and `contactRoute`, and the rail links to
+ * the route constants.
  */
 
 import { useEffect, useState } from 'react';
@@ -30,13 +32,42 @@ export const CONTACTS_ROUTE = '#/contacts';
 export const contactRoute = (contactId: string): string =>
   `#/contacts/${encodeURIComponent(contactId)}`;
 
-/** Anything unrecognised - including an empty fragment on first load, the
- * fragment-less origin, and a stale `#/inbox` link from before Chat had its
- * own route - falls back to the dashboard, which is the app's home. */
+/** The fragment a route is written at - the inverse of `parseRoute`. */
+export const hashOf = (route: Route): string => {
+  switch (route.name) {
+    case 'dashboard':
+      return DASHBOARD_ROUTE;
+    case 'inbox':
+      return INBOX_ROUTE;
+    case 'mail':
+      return MAIL_ROUTE;
+    case 'contacts':
+      return CONTACTS_ROUTE;
+    case 'contact':
+      return contactRoute(route.contactId);
+  }
+};
+
+/** A percent-decoded id, or `null` for an escape sequence that does not decode. */
+const decodeSegment = (segment: string): string | null => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Anything unrecognised - an empty fragment on first load, the fragment-less
+ * origin, a hand-edited or unknown path - falls back to the dashboard, which
+ * is the app's home. `#/inbox`, the address the chat screen had before it
+ * moved to `#/chat`, still opens it. A contact link whose id does not decode
+ * (a truncated `%E0%A4`) opens the directory instead of the person.
+ */
 export const parseRoute = (hash: string): Route => {
   const segments = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
 
-  if (segments[0] === 'chat') {
+  if (segments[0] === 'chat' || segments[0] === 'inbox') {
     return { name: 'inbox' };
   }
 
@@ -45,10 +76,8 @@ export const parseRoute = (hash: string): Route => {
   }
 
   if (segments[0] === 'contacts') {
-    const contactId = segments[1];
-    return contactId === undefined
-      ? { name: 'contacts' }
-      : { name: 'contact', contactId: decodeURIComponent(contactId) };
+    const contactId = segments[1] === undefined ? null : decodeSegment(segments[1]);
+    return contactId === null ? { name: 'contacts' } : { name: 'contact', contactId };
   }
 
   return { name: 'dashboard' };
@@ -58,11 +87,29 @@ export const navigate = (route: string): void => {
   window.location.hash = route;
 };
 
+/**
+ * The route the current fragment names, with the address bar corrected to that
+ * route's own fragment when the two differ - an unknown path, the legacy
+ * `#/inbox`, a contact link that did not decode - so the address a visitor
+ * copies is always one that opens what they see. `replaceState` rather than
+ * assigning the hash: the correction must not add a history entry, and must
+ * not fire another `hashchange`.
+ */
+const readLocation = (): Route => {
+  const route = parseRoute(window.location.hash);
+  const canonical = hashOf(route);
+  const isBareOrigin = window.location.hash === '' || window.location.hash === '#';
+  if (!isBareOrigin && window.location.hash !== canonical) {
+    window.history.replaceState(window.history.state, '', canonical);
+  }
+  return route;
+};
+
 export function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
+  const [route, setRoute] = useState<Route>(readLocation);
 
   useEffect(() => {
-    const onHashChange = () => setRoute(parseRoute(window.location.hash));
+    const onHashChange = () => setRoute(readLocation());
     window.addEventListener('hashchange', onHashChange);
     // A fragment can change between the lazy initializer and this listener
     // being attached, and `hashchange` never replays what it missed.

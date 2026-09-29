@@ -25,9 +25,9 @@ const CHART_DIMENSION = { width: 560, height: 220 };
 const CHART_MARGIN = { top: 8, right: 16, bottom: 0, left: 0 };
 
 /**
- * The new row's right card, roughly twice the funnel's width: one
- * horizontal stacked bar per lead source, split Won/Lost. The headline percent is every
- * source's won share of its own won-plus-lost total, computed in
+ * The funnel row's right card, roughly twice the funnel's width: one
+ * horizontal stacked bar per lead source, split Won/Lost. The headline
+ * percent is every source's won share of its own won-plus-lost total, computed in
  * `conversionWonPercent` rather than stored.
  */
 export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardProps) {

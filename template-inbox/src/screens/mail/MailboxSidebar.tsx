@@ -57,9 +57,9 @@ const EMPTY_DRAFT: ComposedMail = { to: '', subject: '', body: '' };
 /**
  * Same 12rem sidebar and 36px `.folderItem` Item as `FolderSidebar` and
  * `ContactFilterSidebar`, one nav section and a Compose button above it.
- * Counts render as the kit's own Badge, as the reuse mapping calls for - and
- * every count is
- * read off `mails`, never stored on a mailbox row.
+ * Counts render as the kit's own Badge, and every count is read off `mails`,
+ * never stored on a mailbox row. Below the compact width the column
+ * collapses (`collapsed`), as the inbox's channel column does.
  */
 export function MailboxSidebar({
   mailboxes,

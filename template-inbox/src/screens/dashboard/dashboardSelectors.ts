@@ -28,7 +28,7 @@ export const average = (values: number[]): number =>
 /** A KPI card's headline number: the latest day for a live snapshot, the
  * whole week's total for a period sum - see `DashboardKpiValueMode`. */
 export const kpiValue = (kpi: DashboardKpiCard): number =>
-  kpi.valueMode === 'sum' ? sum(kpi.series) : kpi.series[kpi.series.length - 1];
+  kpi.valueMode === 'sum' ? sum(kpi.series) : (kpi.series[kpi.series.length - 1] ?? 0);
 
 /** Percent change of the headline value against the card's own prior-period
  * comparison, rounded to one decimal place. */
@@ -148,9 +148,11 @@ const FUNNEL_LABEL_PADDING = 10;
  *
  * Each segment's label also gets its own fit here: a shrunk `fontSize` (down
  * to `FUNNEL_LABEL_MIN_FONT_SIZE`) when the label's estimated natural width
- * would overflow the narrower of its top/bottom edges, plus a belt-and-
- * suspenders `textLength` clamp for when even the minimum size would still
- * overflow - so a label never wraps or spills past its own segment.
+ * would overflow the narrower of its top/bottom edges, plus a `textLength`
+ * clamp to that edge's real inner width for when even the minimum size would
+ * still overflow - so a label never wraps or spills past its own segment. A
+ * segment too thin to hold any label gets `textLength: 0`, which the card
+ * reads as "no label".
  */
 export const funnelSegmentGeometry = (
   stages: FunnelStage[],
@@ -182,7 +184,7 @@ export const funnelSegmentGeometry = (
       .join(' ');
 
     const text = `${stage.label} · ${funnelStagePercent(stage, stages)}%`;
-    const availableWidth = Math.max(24, Math.min(topWidth, bottomWidth) - FUNNEL_LABEL_PADDING * 2);
+    const availableWidth = Math.max(0, Math.min(topWidth, bottomWidth) - FUNNEL_LABEL_PADDING * 2);
     const naturalWidth = text.length * FUNNEL_LABEL_FONT_SIZE * FUNNEL_LABEL_CHAR_WIDTH_RATIO;
     const fontSize =
       naturalWidth <= availableWidth

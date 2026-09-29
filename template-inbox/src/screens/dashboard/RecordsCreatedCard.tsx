@@ -29,19 +29,18 @@ export type RecordsCreatedCardProps = {
 
 const CHART_DIMENSION = { width: 480, height: 260 };
 const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
-const Y_TICKS = [0, 5, 10, 15, 20];
 
 /**
- * Row 3's new hero: a big total, a subtitle, and a 12-month three-line
- * trend - Companies/Opportunities/People, the same "new record" vocabulary
- * a CRM-shaped inbox already tracks. Takes the wider share of row 3 next to
- * `TopAgentsCard`, replacing the "Team workload" strip that now lives in
- * its own full-width row below (see `DashboardScreen`).
+ * Row 3's hero: a big total, a subtitle, and a 12-month three-line trend -
+ * Companies/Opportunities/People, the same "new record" vocabulary a
+ * CRM-shaped inbox already tracks. Takes the wider share of row 3 next to
+ * `TopAgentsCard`. The Y axis starts at zero and grows with the data, so a
+ * busier month is never clipped.
  *
- * The period `Select` is inert, same convention as the rail's profile menu
- * and `ConversationThread`'s create-ticket button: this template ships one
- * fixed 12-month window, so the control stays disabled rather than
- * accepting a change it would silently ignore.
+ * The period `Select` renders disabled, the app's convention for a control
+ * with no action behind it (the rail's profile entries, the thread header's
+ * create-ticket button): this template ships one fixed 12-month window, so
+ * the control does not accept a change it would silently ignore.
  */
 export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
   const total = recordsCreatedTotal(records);
@@ -93,8 +92,8 @@ export function RecordsCreatedCard({ records, t }: RecordsCreatedCardProps) {
               stroke="var(--muted-foreground)"
               fontSize={11}
               width={24}
-              domain={[0, 20]}
-              ticks={Y_TICKS}
+              domain={[0, 'auto']}
+              allowDecimals={false}
             />
             <ChartTooltip content={<ChartTooltipContent />} />
             <Line

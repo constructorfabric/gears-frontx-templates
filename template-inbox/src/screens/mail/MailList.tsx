@@ -1,5 +1,22 @@
-import { PinIcon, StarIcon, SearchIcon } from 'lucide-react';
-import { Input, Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle, SidebarGroupLabel, Tabs, TabsContent, TabsList, TabsTrigger } from '@gears-frontx/ui-kit';
+import { MailSearchIcon, PinIcon, StarIcon, SearchIcon } from 'lucide-react';
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  Input,
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+  SidebarGroupLabel,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@gears-frontx/ui-kit';
 import type { Mail, MailboxId } from '../../api/mailTypes';
 import type { Translate } from '../../app/i18n';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
@@ -19,16 +36,17 @@ export type MailListProps = {
   onSelectMail: (mailId: string) => void;
   search: string;
   onSearchChange: (search: string) => void;
+  /** Hidden while the reading pane has the screen to itself. */
+  hidden: boolean;
   t: Translate;
 };
 
 /**
- * The mail counterpart to `ConversationList`: the same row shape, reused
- * exactly (`.conversationRow`, the two `.rowLine`s, `.rowTitleText` /
- * `.rowPreviewText`), with subject and snippet compressed onto one preview
- * line instead of a separate third line, as the reuse mapping calls out
- * explicitly. Unread is typography only: a bold,
- * full-opacity row versus a normal, dimmed one, no dot.
+ * The mail counterpart to `ConversationList`: the same row shape
+ * (`.conversationRow`, the two `.rowLine`s, `.rowTitleText` /
+ * `.rowPreviewText`), with subject and snippet on one preview line rather
+ * than a third line. Unread is typography only: a bold, full-opacity row
+ * versus a normal, dimmed one, no dot.
  */
 export function MailList({
   mails,
@@ -40,6 +58,7 @@ export function MailList({
   onSelectMail,
   search,
   onSearchChange,
+  hidden,
   t,
 }: MailListProps) {
   const allMails = selectMails(mails, mailboxId, 'all', search);
@@ -93,6 +112,20 @@ export function MailList({
   // comparator does this regardless of tab/search), so splitting it here is
   // a plain filter, not a re-sort.
   const renderRows = (rows: Mail[]) => {
+    if (rows.length === 0) {
+      return (
+        <div className={styles.listBody}>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MailSearchIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t('no_matching_mail')}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      );
+    }
     const pinnedMails = rows.filter((mail) => mail.pinned);
     const otherMails = rows.filter((mail) => !mail.pinned);
     return (
@@ -111,7 +144,7 @@ export function MailList({
   };
 
   return (
-    <section className={styles.listPane} aria-label={mailboxLabel}>
+    <section className={cx(styles.listPane, hidden && styles.singlePaneHidden)} aria-label={mailboxLabel}>
       <div className={styles.paneHeader}>
         <h2 className={styles.paneTitle}>{mailboxLabel}</h2>
         <span className={styles.paneCount}>{allMails.length}</span>

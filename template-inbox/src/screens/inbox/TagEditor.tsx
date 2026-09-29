@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { PlusIcon, XIcon } from 'lucide-react';
 import { Badge, Button, Input } from '@gears-frontx/ui-kit';
 import styles from '../../styles/workspace.module.css';
@@ -12,6 +12,18 @@ export type TagEditorProps = {
 
 export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
   const [draft, setDraft] = useState<string | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  // Set when the input closes from the keyboard, so focus goes back to the
+  // button that opened it instead of dropping to the page. A blur closes it
+  // too, and there focus has already gone where the agent clicked.
+  const returnFocus = useRef(false);
+
+  useEffect(() => {
+    if (draft === null && returnFocus.current) {
+      returnFocus.current = false;
+      addButtonRef.current?.focus();
+    }
+  }, [draft]);
 
   const commit = () => {
     const tag = draft?.trim() ?? '';
@@ -24,9 +36,13 @@ export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
+      returnFocus.current = true;
       commit();
     }
-    if (event.key === 'Escape') setDraft(null);
+    if (event.key === 'Escape') {
+      returnFocus.current = true;
+      setDraft(null);
+    }
   };
 
   return (
@@ -53,7 +69,7 @@ export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
         </Badge>
       ))}
       {draft === null ? (
-        <Button variant="ghost" size="sm" icon={<PlusIcon />} onClick={() => setDraft('')}>
+        <Button ref={addButtonRef} variant="ghost" size="sm" icon={<PlusIcon />} onClick={() => setDraft('')}>
           {t('add_tag')}
         </Button>
       ) : (

@@ -1,13 +1,6 @@
 import { useMemo, useState } from 'react';
 import { InboxIcon } from 'lucide-react';
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  Skeleton,
-} from '@gears-frontx/ui-kit';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@gears-frontx/ui-kit';
 import { useApiMutation, useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
 import { BRAND, CHANNEL_GENERAL, NO_TEAM_INBOX } from '../../api/constants';
@@ -24,6 +17,7 @@ import type {
 import type { Translate } from '../../app/i18n';
 import { contactRoute, navigate } from '../../app/routing';
 import { cx } from '../../shared/cx';
+import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
 import { ConversationList } from './ConversationList';
 import { ConversationThread } from './ConversationThread';
@@ -76,6 +70,9 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const [patches, setPatches] = useState<Record<string, ConversationPatch>>({});
   const [sentMessages, setSentMessages] = useState<Message[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Conversations with a post in flight, so one thread's send never shows
+  // another thread's composer as busy.
+  const [sendingIds, setSendingIds] = useState<Record<string, number>>({});
   const [composerTab, setComposerTab] = useState<ComposerTab>('reply');
   // Client-side only, never round-tripped through RestMockPlugin - a
   // channel or a chat the agent creates from the "+" dialogs, appended
@@ -94,13 +91,31 @@ export function InboxScreen({ t }: InboxScreenProps) {
     // The mock store keeps the posted message, so the cached transcript is
     // stale once the post succeeds and the next mount reads it again.
     invalidates: [service.getMessages],
-    onSuccess: (response) => {
+    onSuccess: (response, request) => {
       setSentMessages((previous) => [...previous, response.message]);
-      // Cleared per conversation rather than globally, so a draft the agent
-      // left open on another thread survives a send on this one.
-      setDrafts((previous) => ({ ...previous, [response.message.conversationId]: '' }));
+      finishSending(request.conversationId);
+      // Cleared per conversation, and only if the box still holds what was
+      // sent: text typed while the post was in flight is a new draft, not
+      // the one that just went out.
+      setDrafts((previous) =>
+        (previous[request.conversationId] ?? '').trim() === request.body
+          ? { ...previous, [request.conversationId]: '' }
+          : previous
+      );
     },
+    // A failed post keeps the draft where it is, so nothing typed is lost.
+    onError: (_error, request) => finishSending(request.conversationId),
   });
+
+  function finishSending(conversationId: string) {
+    setSendingIds((previous) => {
+      const remaining = (previous[conversationId] ?? 1) - 1;
+      const next = { ...previous };
+      if (remaining > 0) next[conversationId] = remaining;
+      else delete next[conversationId];
+      return next;
+    });
+  }
 
   const conversations: Conversation[] = useMemo(() => {
     const fetched = conversationsQuery.data?.conversations ?? [];
@@ -181,7 +196,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
    * one would, since it is a real `Channel` row from here on, not a stub.
    */
   const createChannel = (name: string) => {
-    const newChannelId = `channel-${Date.now()}`;
+    const newChannelId = `channel-${crypto.randomUUID()}`;
     setExtraChannels((previous) => [
       ...previous,
       { id: newChannelId, label: name, icon: 'hash', itemCount: 0, openCount: 0 },
@@ -192,12 +207,13 @@ export function InboxScreen({ t }: InboxScreenProps) {
   /**
    * A demo-grade conversation with an existing contact, in the CURRENT
    * channel, opened immediately with an empty transcript - sending into it
-   * goes through the same `sendMessage` mutation as any other thread,
-   * since that endpoint only ever echoes back whatever `conversationId`
-   * the request carried (see mocks.ts's `acceptPostedMessage`).
+   * goes through the same `sendMessage` mutation as any other thread: the
+   * mock endpoint stores a post for any `conversationId` it is given (see
+   * `acceptPostedMessage` in `mocks.ts`). The conversation itself is not
+   * posted anywhere, so it lasts as long as this screen does.
    */
   const startChat = (contactId: string) => {
-    const newConversationId = `dm-${Date.now()}`;
+    const newConversationId = `dm-${crypto.randomUUID()}`;
     const contact = contactsById.get(contactId);
     const newConversation: Conversation = {
       id: newConversationId,
@@ -223,29 +239,37 @@ export function InboxScreen({ t }: InboxScreenProps) {
     setExtraConversations((previous) => [...previous, newConversation]);
     // Cleared defensively: without this, a channel with no conversations
     // yet (just created) would still have its auto-select armed, and the
-    // derived-state block below would immediately overwrite this explicit
+    // derived-state block above would immediately overwrite this explicit
     // selection back to "nothing" once `visibleConversations` updates.
     setAutoSelectChannelId(null);
     setSelectedId(newConversationId);
     setComposerFocusSignal((signal) => signal + 1);
   };
 
-  if (channelsQuery.isLoading) {
-    return (
-      <div className={styles.emptyPane} role="status" aria-busy="true">
-        <Skeleton style={{ height: '2rem', width: '16rem' }} />
-      </div>
-    );
-  }
+  const firstPaint = firstPaintOf([agentQuery, channelsQuery, conversationsQuery, messagesQuery, contactsQuery]);
+  if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
+  if (firstPaint.loading) return <LoadingPane />;
 
   const channelLabel = channels.find((channel) => channel.id === channelId)?.label ?? '';
   const isSpam = selected?.tags.includes('spam') ?? false;
   const showThread = selected !== null;
 
-  const sendCurrentDraft = () => {
+  // Spam is a tag, not a channel: the conversation stays put in whichever
+  // channel it is already in, so marking or unmarking it never moves the
+  // selection out from under the agent. The thread header's menu and the
+  // details panel both call this.
+  const toggleSpam = () => {
     if (!selected) return;
+    patchConversation(selected.id, {
+      tags: isSpam ? selected.tags.filter((tag) => tag !== 'spam') : [...selected.tags, 'spam'],
+    });
+  };
+
+  const sendCurrentDraft = () => {
+    if (!selected || selected.status === 'closed') return;
     const body = (drafts[selected.id] ?? '').trim();
     if (body === '') return;
+    setSendingIds((previous) => ({ ...previous, [selected.id]: (previous[selected.id] ?? 0) + 1 }));
     sendMessage.mutate({ conversationId: selected.id, body, kind: composerTab });
   };
 
@@ -295,6 +319,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
                   status: selected.snoozed ? 'open' : 'snoozed',
                 })
               }
+              onToggleSpam={toggleSpam}
+              isSpam={isSpam}
               onCloseConversation={() => {
                 patchConversation(selected.id, { status: 'closed' });
                 setSelectedId(null);
@@ -321,7 +347,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
                 onDraftChange: (draft) =>
                   setDrafts((previous) => ({ ...previous, [selected.id]: draft })),
                 onSend: sendCurrentDraft,
-                sending: sendMessage.isPending,
+                sending: (sendingIds[selected.id] ?? 0) > 0,
+                disabled: selected.status === 'closed',
                 focusSignal: composerFocusSignal,
                 t,
               }}
@@ -346,17 +373,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
                 onStatusChange={(status: ConversationStatus) =>
                   patchConversation(selected.id, { status, snoozed: status === 'snoozed' })
                 }
-                onToggleSpam={() => {
-                  // Spam is a tag, not a channel: the conversation stays put in
-                  // whichever channel it is already in, so marking or
-                  // unmarking it never moves the selection out from under the
-                  // agent.
-                  patchConversation(selected.id, {
-                    tags: isSpam
-                      ? selected.tags.filter((tag) => tag !== 'spam')
-                      : [...selected.tags, 'spam'],
-                  });
-                }}
+                onToggleSpam={toggleSpam}
                 onAddTag={(tag: string) =>
                   patchConversation(selected.id, { tags: [...selected.tags, tag] })
                 }

@@ -1,6 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
-import { endpointTags, mutationResult, queryResultFor } from '../../__test-utils__/apiMocks';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  endpointTags,
+  mutationResult,
+  queryResultFor,
+  refetchCalls,
+  resetApiMocks,
+  setQueryState,
+} from '../../__test-utils__/apiMocks';
 import { renderScreen } from '../../__test-utils__/renderScreen';
+import { act } from 'react';
 
 vi.mock('../../api/registry', () => ({
   getDashboardApi: () => endpointTags,
@@ -14,6 +22,10 @@ vi.mock('../../api/queries', () => ({
 const { DashboardScreen } = await import('./DashboardScreen');
 
 const t = (key: string) => key;
+
+afterEach(() => {
+  resetApiMocks();
+});
 
 describe('DashboardScreen', () => {
   it('renders every row 1 KPI card, with a delta badge computed from its series', () => {
@@ -34,8 +46,6 @@ describe('DashboardScreen', () => {
 
     // "Avg first response" reads its latest point in minutes.
     expect(screen.getAllByText('9m').length).toBeGreaterThan(0);
-
-    screen.unmount();
   });
 
   it('renders the fourth row 1 card, "Contacts by stage", with counts and computed percents', () => {
@@ -49,8 +59,6 @@ describe('DashboardScreen', () => {
     // `dashboardSelectors.test.ts`).
     expect(screen.getAllByText('15').length).toBeGreaterThan(0);
     expect(screen.getAllByText('25%').length).toBeGreaterThan(0);
-
-    screen.unmount();
   });
 
   it('renders row 2: the resolved-per-day chart, the new contacts hero, and the summary card', () => {
@@ -63,8 +71,6 @@ describe('DashboardScreen', () => {
     expect(screen.getAllByText('131').length).toBeGreaterThan(0);
     expect(screen.getByText('summary')).toBeTruthy();
     expect(screen.getByText('view_report')).toBeTruthy();
-
-    screen.unmount();
   });
 
   it('renders row 3: the records-created chart and the ranked top-agents list, Alex Rivera included', () => {
@@ -80,8 +86,6 @@ describe('DashboardScreen', () => {
     // Alex Rivera appears both in the ranked list and as the owning agent of at
     // least one activity row, so more than one match is expected here.
     expect(screen.getAllByText('Alex Rivera').length).toBeGreaterThan(0);
-
-    screen.unmount();
   });
 
   it('renders the team workload strip as its own full-width row with four blocks', () => {
@@ -92,11 +96,9 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Dev backlog')).toBeTruthy();
     expect(screen.getByText('CRM tasks')).toBeTruthy();
     expect(screen.getByText('QA reviews')).toBeTruthy();
-
-    screen.unmount();
   });
 
-  it('renders the new stage-funnel and conversion-by-source row', () => {
+  it('renders the stage-funnel and conversion-by-source row', () => {
     const screen = renderScreen(<DashboardScreen t={t} />);
 
     expect(screen.getByText('stage_funnel')).toBeTruthy();
@@ -108,8 +110,6 @@ describe('DashboardScreen', () => {
     // `conversionBySource`: won (140) over won+lost (220) is a computed 64%
     // (see `dashboardSelectors.test.ts`), not hardcoded.
     expect(screen.getAllByText('64%').length).toBeGreaterThan(0);
-
-    screen.unmount();
   });
 
   it('renders row 4: the recent activity table, contacts resolved from the inbox dataset', () => {
@@ -119,7 +119,24 @@ describe('DashboardScreen', () => {
     // `activity[0]` in the mocked dataset is owned by Alex Rivera and points
     // at the first seeded contact, Grace Park.
     expect(screen.getByText('Grace Park')).toBeTruthy();
+  });
 
-    screen.unmount();
+  it('shows an error with a retry, rather than a blank pane, when the dashboard fails to load', () => {
+    setQueryState('dashboard', { error: new Error('down') });
+    const screen = renderScreen(<DashboardScreen t={t} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('load_error_title');
+    act(() => {
+      screen.getByRole('button', { name: 'retry' }).click();
+    });
+    expect(refetchCalls).toEqual(['dashboard']);
+  });
+
+  it('shows the loading state until both of its queries have answered', () => {
+    setQueryState('contacts', { isLoading: true });
+    const screen = renderScreen(<DashboardScreen t={t} />);
+
+    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+    expect(screen.queryByText('recent_activity')).toBeNull();
   });
 });

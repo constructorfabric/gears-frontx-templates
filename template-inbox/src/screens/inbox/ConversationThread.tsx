@@ -65,13 +65,31 @@ const bubbleVariantFor = (message: ThreadMessage): 'muted' | 'default' | 'second
   return message.direction === 'outbound' ? 'default' : 'secondary';
 };
 
+/** The schemes a message link may open; anything else renders as plain text. */
+const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+/**
+ * Whether `href` is an absolute URL with a scheme the thread is willing to
+ * open. A `javascript:` or `data:` href from a message body would run or load
+ * content in the app's own origin, and a relative one points into the app
+ * rather than at the resource the sender meant.
+ */
+export const isSafeLinkHref = (href: string): boolean => {
+  try {
+    return SAFE_LINK_PROTOCOLS.has(new URL(href).protocol);
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Splits `body` on each `link.text` occurrence (in the order the links are
  * listed) and renders that substring as an anchor - never markdown, never
- * `dangerouslySetInnerHTML`, so a message can never inject markup it did
- * not already own as plain text. A link whose `text` is not actually found
- * in `body` (a dataset mistake) is silently skipped rather than thrown -
- * the rest of the message still renders.
+ * `dangerouslySetInnerHTML`, so a message cannot add markup to its text. The
+ * href is the other half of that: only an http, https or mailto URL becomes
+ * an anchor (`isSafeLinkHref`); any other link keeps its text as plain text.
+ * A link whose `text` is not actually found in `body` (a dataset mistake) is
+ * skipped rather than thrown - the rest of the message still renders.
  */
 function renderMessageBody(body: string, links: MessageLink[]): ReactNode {
   if (links.length === 0) return body;
@@ -81,6 +99,11 @@ function renderMessageBody(body: string, links: MessageLink[]): ReactNode {
     const at = remaining.indexOf(link.text);
     if (at === -1) return;
     if (at > 0) nodes.push(remaining.slice(0, at));
+    if (!isSafeLinkHref(link.href)) {
+      nodes.push(link.text);
+      remaining = remaining.slice(at + link.text.length);
+      return;
+    }
     nodes.push(
       <a
         key={`link-${index}`}
@@ -99,11 +122,9 @@ function renderMessageBody(body: string, links: MessageLink[]): ReactNode {
 }
 
 /**
- * The in-bubble timestamp, moved off the transcript's old under-bubble
- * footer and into the surface it belongs to. Outbound-only read receipts:
- * a single check for delivered-not-read, a filled double check for read -
- * the same two-state signal `MessageFooter`'s old "Seen"/"Not seen" text
- * carried, now iconic and inline instead of a separate meta row.
+ * The in-bubble timestamp, inside the bubble it dates. Outbound-only read
+ * receipts: a single check for delivered-not-read, a filled double check for
+ * read, nothing while there is no receipt (`seen: null`).
  */
 function MessageMeta({
   message,
@@ -140,8 +161,8 @@ function ScrollToNewest({ label }: { label: string }) {
 
 /**
  * Renders no DOM of its own - it exists purely to call the primitive's
- * imperative `scrollToEnd` at the right moment. `@shadcn/react`'s own
- * content-diff heuristic (`handleContentChange`) aligns a single newly
+ * imperative `scrollToEnd` at the right moment. The kit's message scroller
+ * primitive has a content-diff heuristic (`handleContentChange`) that aligns a single newly
  * appended `scrollAnchor` item to the viewport's START, not its end -
  * that alignment is what it uses whenever exactly one new message shows
  * up, `autoScroll` or not (its own multi-anchor fast path never applies
@@ -185,6 +206,9 @@ export type ConversationThreadProps = {
   onToggleDetails: () => void;
   onToggleStar: () => void;
   onToggleSnooze: () => void;
+  /** Marks the conversation as spam, or takes the mark off. */
+  onToggleSpam: () => void;
+  isSpam: boolean;
   onCloseConversation: () => void;
   onBack: (() => void) | null;
   /** Puts the chip's text in the composer; the chip row is what calls it. */
@@ -202,6 +226,8 @@ export function ConversationThread({
   onToggleDetails,
   onToggleStar,
   onToggleSnooze,
+  onToggleSpam,
+  isSpam,
   onCloseConversation,
   onBack,
   onUseSuggestedReply,
@@ -253,18 +279,19 @@ export function ConversationThread({
             onClick={onToggleSnooze}
           />
           {/*
-            Create-ticket and the two overflow entries below carry no handler:
-            Tickets is a section this template does not ship, and unassigning
-            is a routing change the details panel already owns through its
-            Assignee combobox. They are drawn at full contrast rather than
-            disabled because both read as live chrome in the header they
-            belong to.
+            Create-ticket and Unassign render disabled, the app's convention
+            for a control whose action this template does not ship: Tickets is
+            a section the template leaves out, and unassigning is a routing
+            change the details panel already owns through its Assignee select.
+            Mark as spam is live - it is the same toggle as the details
+            panel's spam button.
           */}
           <Button
             variant="ghost"
             size="sm"
             icon={<TicketIcon />}
             aria-label={t('create_ticket')}
+            disabled
           />
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -273,13 +300,13 @@ export function ConversationThread({
               }
             />
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <UserMinusIcon />
                 {t('unassign')}
               </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive">
+              <DropdownMenuItem variant={isSpam ? 'default' : 'destructive'} onClick={onToggleSpam}>
                 <CircleAlertIcon />
-                {t('mark_as_spam')}
+                {isSpam ? t('remove_from_spam') : t('mark_as_spam')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -305,7 +332,7 @@ export function ConversationThread({
 
       {/*
         Keyed by conversation id: MessageScrollerProvider/MessageScroller
-        hold @shadcn/react's own scroll-anchor/spacer state in refs that
+        hold the primitive's own scroll-anchor/spacer state in refs that
         never reset on their own (see message-scroller.md's anti-patterns).
         Without this key, switching conversations keeps the SAME provider
         instance mounted and swaps its messages prop for a different
@@ -325,7 +352,7 @@ export function ConversationThread({
         newest button and the scrollable-edge state it reads don't know
         the reader is now caught up.
 
-        `FollowNewestMessage`: `@shadcn/react`'s own content-diff heuristic
+        `FollowNewestMessage`: the primitive's own content-diff heuristic
         aligns a single newly appended `scrollAnchor` item to the
         viewport's START, not its end - a single append never takes its
         multi-anchor "follow to end" fast path, `autoScroll` or not - and
@@ -379,15 +406,13 @@ export function ConversationThread({
                             tail, same padding) - `.bubbleText` carries that parity
                             on every BubbleContent below, not just the plain-text
                             one. Only what goes INSIDE differs: text, an inset
-                            image, or attachment card(s) - none of them float
-                            outside the bubble the way an unframed `ghost` variant
-                            or a pre-Bubble Attachment previously did.
+                            image, or attachment card(s), all inside the bubble.
                           */}
                           {message.kind === 'file' ? (
                             <Bubble align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
                               <BubbleContent className={cx(styles.bubbleText, styles.fileBubbleContent)}>
-                                {message.attachments.map((file) => (
-                                  <Attachment key={file.name} className={styles.attachmentSlot}>
+                                {message.attachments.map((file, fileIndex) => (
+                                  <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
                                     <AttachmentMedia>
                                       <FileIcon />
                                     </AttachmentMedia>
@@ -405,11 +430,13 @@ export function ConversationThread({
                               <BubbleContent className={cx(styles.bubbleText, styles.imageBubbleContent)}>
                                 {message.body ? (
                                   <>
-                                    <img
-                                      src={message.imageUrl ?? ''}
-                                      alt={message.body}
-                                      className={cx(styles.messageImageInset, styles.messageImageHasCaption)}
-                                    />
+                                    {message.imageUrl === null ? null : (
+                                      <img
+                                        src={message.imageUrl}
+                                        alt={message.body}
+                                        className={cx(styles.messageImageInset, styles.messageImageHasCaption)}
+                                      />
+                                    )}
                                     {/* Meta trails the caption inline (same technique as the
                                         plain-text bubble below) - only reached for a captioned
                                         image, since it needs the caption's own text flow to
@@ -423,11 +450,13 @@ export function ConversationThread({
                                   // No caption: nothing for the meta to trail into, so it
                                   // overlays the image's own bottom-right corner instead.
                                   <span className={styles.imageFrame}>
-                                    <img
-                                      src={message.imageUrl ?? ''}
-                                      alt={t('shared_image')}
-                                      className={styles.messageImageInset}
-                                    />
+                                    {message.imageUrl === null ? null : (
+                                      <img
+                                        src={message.imageUrl}
+                                        alt={t('shared_image')}
+                                        className={styles.messageImageInset}
+                                      />
+                                    )}
                                     <MessageMeta
                                       message={message}
                                       t={t}
@@ -443,12 +472,11 @@ export function ConversationThread({
                               variant={bubbleVariantFor(message)}
                             >
                               <BubbleContent className={styles.bubbleText}>
-                                {/* A `text`-kind message can still mention files alongside its
-                                    own body (unchanged from before `kind` existed) - distinct
-                                    from `kind: 'file'` above, which IS the attachment(s). Lives
-                                    inside this same bubble too, not floating ahead of it. */}
-                                {message.attachments.map((file) => (
-                                  <Attachment key={file.name} className={styles.attachmentSlot}>
+                                {/* A `text`-kind message can still carry files alongside its
+                                    own body - distinct from `kind: 'file'` above, which IS the
+                                    attachment(s). They sit inside the same bubble. */}
+                                {message.attachments.map((file, fileIndex) => (
+                                  <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
                                     <AttachmentMedia>
                                       <PaperclipIcon />
                                     </AttachmentMedia>
@@ -483,9 +511,9 @@ export function ConversationThread({
       */}
       {suggestions.length > 0 ? (
         <div className={styles.suggestions} aria-label={t('suggested_replies')} role="group">
-          {suggestions.map((reply) => (
+          {suggestions.map((reply, replyIndex) => (
             <Button
-              key={reply}
+              key={`${replyIndex}-${reply}`}
               className={styles.suggestionChip}
               variant="outline"
               size="sm"

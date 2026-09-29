@@ -1,7 +1,7 @@
-import { Skeleton } from '@gears-frontx/ui-kit';
 import { useApiQuery } from '../../api/queries';
 import { getDashboardApi, getInboxApi } from '../../api/registry';
 import type { Translate } from '../../app/i18n';
+import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { ActivityTable } from './ActivityTable';
 import { ConversionBySourceCard } from './ConversionBySourceCard';
 import { KpiRow } from './KpiRow';
@@ -24,7 +24,7 @@ export type DashboardScreenProps = {
  * its default landing route. Unlike Chat/Mail/Contacts it has no secondary
  * sidebar: a single full-width, scrollable pane holding six rows - KPIs,
  * the resolved/new-contacts/summary trio, records-created plus top agents,
- * the full-width team-workload strip, the new stage-funnel plus
+ * the full-width team-workload strip, the stage-funnel plus
  * conversion-by-source pair, and finally the activity table - fed by one
  * `getDashboard` fetch plus the inbox service's own `getContacts` (the
  * activity table reuses those contact identities rather than inventing new
@@ -37,20 +37,26 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
   const dashboardQuery = useApiQuery(dashboardService.getDashboard);
   const contactsQuery = useApiQuery(inboxService.getContacts);
 
-  if (dashboardQuery.isLoading || contactsQuery.isLoading) {
+  const firstPaint = firstPaintOf([dashboardQuery, contactsQuery]);
+  const data = dashboardQuery.data;
+  const contacts = contactsQuery.data?.contacts;
+
+  // Loading and failure keep the dashboard's own pane, so the rail's layout
+  // does not jump when the data arrives.
+  if (firstPaint.failed) {
     return (
       <div className={dashboardStyles.dashboardMain}>
-        <div className={layoutStyles.emptyPane} role="status" aria-busy="true">
-          <Skeleton style={{ height: '2rem', width: '16rem' }} />
-        </div>
+        <LoadErrorPane onRetry={firstPaint.retry} t={t} />
       </div>
     );
   }
-
-  const data = dashboardQuery.data;
-  const contacts = contactsQuery.data?.contacts ?? [];
-
-  if (!data) return null;
+  if (firstPaint.loading || data === undefined || contacts === undefined) {
+    return (
+      <div className={dashboardStyles.dashboardMain}>
+        <LoadingPane />
+      </div>
+    );
+  }
 
   return (
     <div className={dashboardStyles.dashboardMain}>

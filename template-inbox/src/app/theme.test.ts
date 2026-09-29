@@ -77,7 +77,5 @@ describe('useTheme', () => {
     expect(screen.getByRole('button').textContent).toBe('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('light');
-
-    screen.unmount();
   });
 });

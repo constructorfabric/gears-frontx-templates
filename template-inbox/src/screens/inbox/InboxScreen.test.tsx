@@ -1,9 +1,18 @@
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen as domScreen } from '@testing-library/dom';
-import { endpointTags, mutationResult, queryResultFor } from '../../__test-utils__/apiMocks';
+import {
+  endpointTags,
+  mutationResult,
+  queryResultFor,
+  mutateMock,
+  mutationCalls,
+  refetchCalls,
+  resetApiMocks,
+  setQueryState,
+} from '../../__test-utils__/apiMocks';
 import { renderScreen } from '../../__test-utils__/renderScreen';
-import { messages } from '../../api/dataset';
+import { conversations, messages } from '../../api/dataset';
 import { messageDayLabel, messageTimeOfDay } from '../../shared/format';
 
 vi.mock('../../api/registry', () => ({ getInboxApi: () => endpointTags }));
@@ -15,6 +24,10 @@ vi.mock('../../api/queries', () => ({
 const { InboxScreen } = await import('./InboxScreen');
 
 const t = (key: string) => key;
+
+afterEach(() => {
+  resetApiMocks();
+});
 
 /**
  * React tracks a controlled input's previous value on the DOM node itself, so
@@ -55,8 +68,6 @@ describe('InboxScreen', () => {
     // needed, the empty state is gone, and the composer is ready.
     expect(screen.queryByText('empty_title')).toBeNull();
     expect(screen.getByPlaceholderText('reply_placeholder')).toBeTruthy();
-
-    screen.unmount();
   });
 
   it('auto-selects the first conversation again on a channel switch, without disturbing a selection made while staying in one', () => {
@@ -100,8 +111,6 @@ describe('InboxScreen', () => {
     });
     expect(screen.queryByText('empty_title')).toBeNull();
     expect(screen.getByPlaceholderText('reply_placeholder')).toBeTruthy();
-
-    screen.unmount();
   });
 
   it('offers the thread its suggested replies and drafts the one that is clicked', () => {
@@ -130,8 +139,6 @@ describe('InboxScreen', () => {
       chip.click();
     });
     expect(draft.value).toBe('Share your browser?');
-
-    screen.unmount();
   });
 
   it('offers no suggested reply on a spam-tagged thread', () => {
@@ -148,8 +155,6 @@ describe('InboxScreen', () => {
     // normal channel - spam is a tag here, not a destination.
     expect(screen.getByPlaceholderText('reply_placeholder')).toBeTruthy();
     expect(screen.queryByLabelText('suggested_replies')).toBeNull();
-
-    screen.unmount();
   });
 
   it('renders every rich message type in a transcript: image, file, and an inline link', () => {
@@ -191,14 +196,12 @@ describe('InboxScreen', () => {
       screen.getAllByText('Dark mode toggle not persisting')[0].click();
     });
     // c-9's last message (m-9-9) embeds one inline link - rendered as a real
-    // anchor, not markdown text, and opened in a new tab so a dead demo href
-    // never hijacks the app's own hash router.
+    // anchor, not markdown text, and opened in a new tab so it never replaces
+    // the app itself.
     const link = screen.getByText('our help page');
     expect(link.tagName).toBe('A');
-    expect(link.getAttribute('href')).toBe('#');
+    expect(link.getAttribute('href')).toBe('https://example.com/help');
     expect(link.getAttribute('target')).toBe('_blank');
-
-    screen.unmount();
   });
 
   it('groups a transcript into one divider per calendar day, and puts the time inside the bubble', () => {
@@ -222,8 +225,6 @@ describe('InboxScreen', () => {
     // The time of day sits in the bubble; there is no meta line under it.
     expect(screen.queryByText(/ - (Seen|Not seen)$/)).toBeNull();
     expect(screen.getAllByText(messageTimeOfDay(thread[1].timestamp)).length).toBeGreaterThan(0);
-
-    screen.unmount();
   });
 
   it('groups pinned conversations under their own label, ahead of the rest', () => {
@@ -248,8 +249,6 @@ describe('InboxScreen', () => {
     const purpleBowIndex = listText.indexOf('Purple Bow');
     expect(refundIndex).toBeGreaterThanOrEqual(0);
     expect(purpleBowIndex).toBeGreaterThan(refundIndex);
-
-    screen.unmount();
   });
 
   it('sends a thread reader to the customer page as a link the URL can carry', () => {
@@ -270,8 +269,6 @@ describe('InboxScreen', () => {
     // The jump is a route change, not screen-local state: that is what lets the
     // same address be reloaded, bookmarked and shared.
     expect(window.location.hash).toBe('#/contacts/r-3');
-
-    screen.unmount();
   });
 
   it('creates a channel from the dialog and switches into it, on the existing empty state', () => {
@@ -304,8 +301,6 @@ describe('InboxScreen', () => {
     expect(domScreen.queryByText('channel_name')).toBeNull();
     expect(screen.getAllByText('Design Reviews').length).toBeGreaterThan(0);
     expect(screen.queryByText('empty_title')).toBeTruthy();
-
-    screen.unmount();
   });
 
   it('opens the new-chat dialog focused on the contact field, gated on a pick', () => {
@@ -331,7 +326,110 @@ describe('InboxScreen', () => {
     // badge and its own pane count are both still "3".
     expect(domScreen.queryByLabelText('new_chat_contact_label')).toBeNull();
     expect(screen.getAllByText('3').length).toBe(2);
+  });
 
-    screen.unmount();
+  it('shows an error with a retry instead of the panes when a query the first paint needs fails', () => {
+    setQueryState('messages', { error: new Error('down') });
+    const screen = renderScreen(<InboxScreen t={t} />);
+
+    expect(screen.getByRole('alert').textContent).toContain('load_error_title');
+    expect(screen.queryByText('General')).toBeNull();
+    act(() => {
+      screen.getByRole('button', { name: 'retry' }).click();
+    });
+    expect(refetchCalls).toEqual(['messages']);
+  });
+
+  it('waits for every query before the first paint', () => {
+    setQueryState('contacts', { isLoading: true });
+    const screen = renderScreen(<InboxScreen t={t} />);
+
+    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+    expect(screen.queryByText('General')).toBeNull();
+  });
+
+  it('clears the draft after a send only if it still holds what was sent', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    const box = screen.getByPlaceholderText('reply_placeholder');
+
+    act(() => typeInto(box as HTMLTextAreaElement, 'First answer'));
+    act(() => {
+      screen.getByText('send').click();
+    });
+    const latestOptions = () => mutationCalls[mutationCalls.length - 1];
+    const [request] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    expect(request).toMatchObject({ body: 'First answer', kind: 'reply' });
+
+    // Typed while the post is in flight: a new draft, not the sent one.
+    act(() => typeInto(screen.getByPlaceholderText('reply_placeholder') as HTMLTextAreaElement, 'Follow-up'));
+    act(() => {
+      latestOptions().onSuccess?.(
+        { message: { ...messages[0], id: 'm-sent-1', conversationId: request.conversationId, body: 'First answer' } } as never,
+        request as never
+      );
+    });
+    expect((screen.getByPlaceholderText('reply_placeholder') as HTMLTextAreaElement).value).toBe('Follow-up');
+
+    // The next send's success clears it, because nothing changed meanwhile.
+    act(() => {
+      screen.getByText('send').click();
+    });
+    const [second] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    act(() => {
+      latestOptions().onSuccess?.(
+        { message: { ...messages[0], id: 'm-sent-2', conversationId: second.conversationId, body: 'Follow-up' } } as never,
+        second as never
+      );
+    });
+    expect((screen.getByPlaceholderText('reply_placeholder') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('takes no reply on a closed conversation', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    act(() => {
+      screen.getByText('close').click();
+    });
+    // Closing clears the selection; opening the thread again shows it closed.
+    act(() => {
+      screen.getAllByText('Design feedback on dashboard')[0].click();
+    });
+
+    const box = screen.getByPlaceholderText('conversation_closed_placeholder');
+    expect((box as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  it('marks and unmarks spam from the thread header menu, and renders the actions it does not ship disabled', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+
+    const ticket = screen.getByLabelText('create_ticket');
+    expect(ticket.hasAttribute('disabled') || ticket.getAttribute('aria-disabled') === 'true').toBe(true);
+
+    act(() => {
+      screen.getByLabelText('more_actions').click();
+    });
+    act(() => {
+      domScreen.getByRole('menuitem', { name: 'mark_as_spam' }).click();
+    });
+    // The details panel's own toggle reads the same tag.
+    expect(screen.getAllByText('remove_from_spam').length).toBeGreaterThan(0);
+
+    act(() => {
+      screen.getByLabelText('more_actions').click();
+    });
+    act(() => {
+      domScreen.getByRole('menuitem', { name: 'remove_from_spam' }).click();
+    });
+    expect(screen.queryAllByText('remove_from_spam')).toHaveLength(0);
+  });
+
+  it('names the unread count in the badge label', () => {
+    const withTemplate = (key: string) => (key === 'unread_messages_count' ? 'Unread: {count}' : key);
+    const screen = renderScreen(<InboxScreen t={withTemplate} />);
+    const unread = conversations.find(
+      (conversation) => conversation.unreadCount > 0 && conversation.channelId === 'general'
+    );
+
+    expect(unread).toBeDefined();
+    expect(screen.getByLabelText(`Unread: ${unread?.unreadCount}`)).toBeTruthy();
   });
 });

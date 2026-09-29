@@ -1,4 +1,4 @@
-import { ArchiveIcon, ReplyIcon, StarIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, ArrowLeftIcon, ReplyIcon, StarIcon, Trash2Icon } from 'lucide-react';
 import {
   Button,
   MessageScroller,
@@ -22,6 +22,8 @@ export type MailReadingPaneProps = {
   draft: string;
   onDraftChange: (draft: string) => void;
   onSend: () => void;
+  /** Back to the list, where the list and the reading pane take turns; `null` beside it. */
+  onBack: (() => void) | null;
   t: Translate;
 };
 
@@ -42,25 +44,42 @@ export function MailReadingPane({
   draft,
   onDraftChange,
   onSend,
+  onBack,
   t,
 }: MailReadingPaneProps) {
   return (
     <div className={styles.thread}>
+      {/*
+        Archive, trash, star and reply render disabled: moving a mail between
+        mailboxes and starring it are writes this template's mail service does
+        not offer, and the reply composer below is always open, so the reply
+        button would have nothing to open. The app's convention for a control
+        with no action behind it.
+      */}
       <div className={styles.paneHeader}>
+        {onBack ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<ArrowLeftIcon />}
+            aria-label={t('back_to_mail_list')}
+            onClick={onBack}
+          />
+        ) : null}
         <div className={styles.threadActions}>
-          <Button variant="ghost" size="sm" icon={<ArchiveIcon />} aria-label={t('archive_mail')} />
-          <Button variant="ghost" size="sm" icon={<Trash2Icon />} aria-label={t('trash_mail')} />
+          <Button variant="ghost" size="sm" icon={<ArchiveIcon />} aria-label={t('archive_mail')} disabled />
+          <Button variant="ghost" size="sm" icon={<Trash2Icon />} aria-label={t('trash_mail')} disabled />
           <Button
             variant="ghost"
             size="sm"
             icon={<StarIcon />}
             aria-label={mail.starred ? t('unstar_mail') : t('star_mail')}
-            aria-pressed={mail.starred}
+            disabled
           />
         </div>
         <span className={styles.spacer} />
         <div className={styles.threadActions}>
-          <Button variant="ghost" size="sm" icon={<ReplyIcon />} aria-label={t('reply_to_mail')} />
+          <Button variant="ghost" size="sm" icon={<ReplyIcon />} aria-label={t('reply_to_mail')} disabled />
         </div>
       </div>
 
@@ -78,8 +97,8 @@ export function MailReadingPane({
       {/*
         Keyed by mail id - same reasoning as ConversationThread's
         MessageScrollerProvider: without a key, switching the open mail
-        keeps the same provider instance mounted, and @shadcn/react reads
-        the swapped content as an in-place edit to the CURRENT transcript
+        keeps the same provider instance mounted, and the scroller primitive
+        reads the swapped content as an in-place edit to the CURRENT transcript
         rather than a fresh one, which can leave a stray
         [data-message-scroller-spacer] gap. The key forces a genuine
         remount per mail.
