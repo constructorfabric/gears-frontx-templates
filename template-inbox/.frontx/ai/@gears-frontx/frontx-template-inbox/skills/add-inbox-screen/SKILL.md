@@ -13,7 +13,7 @@ The project wants another section: a queue, a report over the same data, a direc
 
 ## What the app already gives you
 
-- **A service and a dataset per domain**: `InboxApiService` (five reads, one write) behind the chat and contacts screens, `MailApiService` (three reads) behind the mail screen, and `DashboardApiService` (one read, the whole dashboard snapshot together) behind the dashboard, each read through `useApiQuery`. A screen whose domain does not overlap with any of the three gets its own sibling service, registered in `src/api/registry.ts`, the same way mail and the dashboard did; `setMockMode` covers its mock plugin with no further change. See the `inbox-data-contract` guideline.
+- **A service and a dataset per domain**: `InboxApiService` (five reads, two writes) behind the chat and contacts screens, `MailApiService` (three reads) behind the mail screen, and `DashboardApiService` (one read, the whole dashboard snapshot together) behind the dashboard, each read through `useApiQuery`. A screen whose domain does not overlap with any of the three gets its own sibling service, registered in `src/api/registry.ts`, the same way mail and the dashboard did; `setMockMode` covers its mock plugin with no further change. See the `inbox-data-contract` guideline.
 - **Chrome**: the icon rail, hash routing, the screen and root error boundaries, the theme, the copy catalogue, the avatars, the formatters, the media-query hook and the first-paint gate (`firstPaintOf`, `LoadingPane`, `LoadErrorPane`), in `src/app/` and `src/shared/`. See the `inbox-chrome-contract` guideline.
 - **A composition to copy**: `src/screens/inbox/` is the nearest existing screen for a list-and-detail layout, `src/screens/dashboard/` for a single scrollable pane of cards. The `inbox-screen-inventory` reference artifact in this bundle maps each pane and each part of all four shipped screens to the kit component that renders it.
 
@@ -51,7 +51,7 @@ The project wants another section: a queue, a report over the same data, a direc
 
 ## Boundaries
 
-- No global store. Screen state is local React state; server state comes through `useApiQuery` against the app's own services.
+- No global store. A screen keeps what must survive leaving it (selection, search, drafts) in its own small store built with `createStore` beside the screen, and everything else in local React state; server state comes through `useApiQuery` against the app's own services.
 - No new service for a screen whose domain already overlaps with `InboxApiService`, `MailApiService` or `DashboardApiService` - read from the one that already owns it. Seed data lives in the owning service's dataset module, never in a fixture file or in a screen.
 - No import from one screen into another; `npm run arch:deps` enforces it. What two screens share moves to `src/shared/`.
 - No router dependency. A handful of routes and a parser are the whole mechanism; if a screen genuinely needs nested layouts or loaders, say so and let the project decide to adopt a router, rather than adding one inside a screen.

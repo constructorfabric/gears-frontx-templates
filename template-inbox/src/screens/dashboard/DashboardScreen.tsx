@@ -42,22 +42,11 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
   const data = dashboardQuery.data;
   const contacts = contactsQuery.data?.contacts;
 
-  // Loading and failure keep the dashboard's own pane, so the rail's layout
-  // does not jump when the data arrives.
-  if (firstPaint.failed) {
-    return (
-      <div className={styles.dashboardMain}>
-        <LoadErrorPane onRetry={firstPaint.retry} t={t} />
-      </div>
-    );
-  }
-  if (firstPaint.loading || data === undefined || contacts === undefined) {
-    return (
-      <div className={styles.dashboardMain}>
-        <LoadingPane />
-      </div>
-    );
-  }
+  // The same gate and the same panes as the other three screens: each pane
+  // fills the section on its own (`emptyPane` is `flex: 1`), so the rail's
+  // layout does not jump when the data arrives.
+  if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
+  if (firstPaint.loading || data === undefined || contacts === undefined) return <LoadingPane />;
 
   return (
     <div className={styles.dashboardMain}>

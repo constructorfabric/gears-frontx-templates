@@ -4,7 +4,7 @@
  * `@gears-frontx/api` hands out endpoint *descriptors* - a stable cache key
  * plus a `fetch` - and leaves the caching to whoever consumes them. A server-
  * state library is one answer; for an app whose whole dataset is a handful of
- * reads and one write, it would be a dependency carrying an invalidation model
+ * reads and two writes, it would be a dependency carrying an invalidation model
  * nothing here has an opinion about. So the two hooks below are the whole
  * answer instead, and a project that grows past them replaces this file with
  * its library of choice: the screens only ever see these two signatures.
@@ -25,7 +25,7 @@
  * and forgets an entry when a mutation says so (`invalidates`).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EndpointDescriptor, MutationDescriptor } from '@gears-frontx/api';
 
 export type QueryResult<TData> = {
@@ -46,6 +46,8 @@ type CacheEntry = {
   controller: AbortController;
   consumers: number;
   settled: boolean;
+  /** The answer, once the request succeeded, so a later mount can paint it without waiting a tick. */
+  resolved?: { data: unknown };
 };
 
 const cache = new Map<string, CacheEntry>();
@@ -74,6 +76,7 @@ const subscribe = <TData>(
       promise: descriptor.fetch({ signal: controller.signal }).then(
         (data) => {
           created.settled = true;
+          created.resolved = { data };
           return data;
         },
         (cause: unknown) => {
@@ -132,24 +135,30 @@ type QueryState<TData> = {
   isLoading: boolean;
 };
 
-const loadingState = <TData>(cacheKey: string, attempt: number): QueryState<TData> => ({
-  cacheKey,
-  attempt,
-  data: undefined,
-  error: null,
-  isLoading: true,
-});
+/**
+ * Where a request starts: from the cached answer when the cache holds one, so
+ * a screen that comes back to data it already read paints it on its first
+ * render instead of flashing its loading state for a tick; from loading
+ * otherwise.
+ */
+const initialState = <TData>(cacheKey: string, attempt: number): QueryState<TData> => {
+  const resolved = cache.get(cacheKey)?.resolved;
+  return resolved === undefined
+    ? { cacheKey, attempt, data: undefined, error: null, isLoading: true }
+    : // The descriptor's own type is the only thing that ever wrote this key.
+      { cacheKey, attempt, data: resolved.data as TData, error: null, isLoading: false };
+};
 
 export function useApiQuery<TData>(descriptor: EndpointDescriptor<TData>): QueryResult<TData> {
   const cacheKey = cacheKeyOf(descriptor.key);
   const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState<QueryState<TData>>(() => loadingState(cacheKey, attempt));
+  const [state, setState] = useState<QueryState<TData>>(() => initialState(cacheKey, attempt));
 
-  // A different request (or a retry) starts from loading, decided during
-  // render: setting it from the effect would paint one frame of the previous
+  // A different request (or a retry) starts over, decided during render:
+  // setting it from the effect would paint one frame of the previous
   // request's data under the new key.
   if (state.cacheKey !== cacheKey || state.attempt !== attempt) {
-    setState(loadingState(cacheKey, attempt));
+    setState(initialState(cacheKey, attempt));
   }
 
   useEffect(() => {
@@ -209,23 +218,31 @@ export type MutationResult<TVariables> = {
  *
  * Each call reports through `onSuccess`/`onError` with the variables it was
  * made with, so a caller can tell overlapping calls apart. Neither callback,
- * nor any state update, runs after the component unmounted.
+ * nor any state update, runs after the component unmounted. `afterSuccess` is
+ * the one exception: it runs on every success, mounted or not, for state that
+ * outlives the component (a module-level store), so a write that lands after
+ * the user left the screen still settles what the store holds.
  */
-export function useApiMutation<TData, TVariables>({
-  endpoint,
-  invalidates = [],
-  onSuccess,
-  onError,
-}: {
+export function useApiMutation<TData, TVariables>(options: {
   endpoint: MutationDescriptor<TData, TVariables>;
   invalidates?: readonly { readonly key: readonly unknown[] }[];
   onSuccess?: (data: TData, variables: TVariables) => void;
   onError?: (error: Error, variables: TVariables) => void;
+  afterSuccess?: (data: TData, variables: TVariables) => void;
 }): MutationResult<TVariables> {
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<Error | null>(null);
   const mounted = useRef(false);
   const latestCall = useRef(0);
+  // The options of the latest render, read when a call settles rather than
+  // when it starts: a callback that closes over state sees the state of the
+  // moment the answer arrives, and `mutate` itself can stay one function for
+  // the component's lifetime.
+  const latestOptions = useRef(options);
+
+  useEffect(() => {
+    latestOptions.current = options;
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -234,28 +251,29 @@ export function useApiMutation<TData, TVariables>({
     };
   }, []);
 
-  const mutate = (variables: TVariables): void => {
+  const mutate = useCallback((variables: TVariables): void => {
     latestCall.current += 1;
     const call = latestCall.current;
     setPendingCount((count) => count + 1);
     setError(null);
 
-    endpoint.fetch(variables).then(
+    latestOptions.current.endpoint.fetch(variables).then(
       (data) => {
-        for (const read of invalidates) invalidateQuery(read.key);
+        for (const read of latestOptions.current.invalidates ?? []) invalidateQuery(read.key);
+        latestOptions.current.afterSuccess?.(data, variables);
         if (!mounted.current) return;
         setPendingCount((count) => count - 1);
-        onSuccess?.(data, variables);
+        latestOptions.current.onSuccess?.(data, variables);
       },
       (cause: unknown) => {
         if (!mounted.current) return;
         const failure = asError(cause);
         setPendingCount((count) => count - 1);
         if (call === latestCall.current) setError(failure);
-        onError?.(failure, variables);
+        latestOptions.current.onError?.(failure, variables);
       }
     );
-  };
+  }, []);
 
   return { mutate, isPending: pendingCount > 0, error };
 }

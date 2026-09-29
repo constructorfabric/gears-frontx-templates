@@ -73,7 +73,7 @@ describe('ContactsScreen', () => {
   it('says a contact was not found, instead of showing the directory, for an id the directory lacks', () => {
     render(<ContactsScreen openContactId="r-missing" t={t} />);
 
-    expect(screen.getByText(t('contact_not_found_title'))).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: t('contact_not_found_title') })).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
   });
 
@@ -186,10 +186,21 @@ describe('ContactsScreen', () => {
   it("keeps a contact's private note editable on its page", async () => {
     const user = userEvent.setup();
     render(<ContactsScreen openContactId="r-1" t={t} />);
-    const notes = screen.getByLabelText(t('notes'));
+    const notes = screen.getByLabelText<HTMLTextAreaElement>(t('notes'));
 
     await user.clear(notes);
     await user.type(notes, 'Prefers mail');
-    expect((notes as HTMLTextAreaElement).value).toBe('Prefers mail');
+    expect(notes.value).toBe('Prefers mail');
+  });
+  it('keeps the filter and the search across a remount', async () => {
+    const user = userEvent.setup();
+    const first = render(<ContactsScreen openContactId={null} t={t} />);
+    await user.click(screen.getByText(t('filter_leads')));
+    await user.type(screen.getByLabelText(t('search_contacts')), 'Grace');
+    first.unmount();
+
+    render(<ContactsScreen openContactId={null} t={t} />);
+    expect(screen.getByLabelText<HTMLInputElement>(t('search_contacts')).value).toBe('Grace');
+    expect(screen.getByText(t('people_count', { count: 1 }))).toBeTruthy();
   });
 });

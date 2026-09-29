@@ -220,3 +220,17 @@ export type PostMessageRequest = {
 };
 
 export type PostMessageResponse = { message: Message };
+
+/**
+ * A new conversation with an existing contact. The server fills in everything
+ * else a conversation carries (id, timestamps, an empty transcript), the way
+ * it assigns a posted message's id and time.
+ */
+export type CreateConversationRequest = {
+  channelId: string;
+  contactId: string;
+  /** The agent the conversation starts assigned to; empty for unassigned. */
+  assignee: string;
+};
+
+export type CreateConversationResponse = { conversation: Conversation };

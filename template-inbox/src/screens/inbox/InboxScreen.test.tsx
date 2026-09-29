@@ -4,15 +4,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
+  latestMutation,
+  latestVariables,
   mutationResult,
   queryResultFor,
-  mutateMock,
-  mutationCalls,
   refetchCalls,
   resetApiMocks,
   setQueryState,
+  succeedMutation,
 } from '../../__test-utils__/apiMocks';
-import { conversations, messages } from '../../api/dataset';
+import { contacts, conversations, messages } from '../../api/dataset';
+import type { Conversation, PostMessageRequest } from '../../api/types';
 import { messageDayLabel, messageTimeOfDay } from '../../shared/format';
 import { stubMatchMedia } from '../../__test-utils__/matchMedia';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '../../shared/useMediaQuery';
@@ -25,9 +27,32 @@ vi.mock('../../api/queries', () => ({
 }));
 
 const { InboxScreen } = await import('./InboxScreen');
+const { inboxStore } = await import('./inboxStore');
 
+// `inboxStore` outlives a mount by design; `vitest.setup.ts` resets it (and
+// every other store) after each test, so each case starts from the initial
+// channel and selection.
 afterEach(() => {
   resetApiMocks();
+});
+
+const replyBox = () => screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder'));
+
+/** A conversation as the server answers a create: empty, open, in `channelId`. */
+const startedConversation = (id: string, channelId: string, contactId: string): Conversation => ({
+  ...conversations[0],
+  id,
+  channelId,
+  contactId,
+  subject: contacts.find((contact) => contact.id === contactId)?.name ?? '',
+  snippet: '',
+  unreadCount: 0,
+  status: 'open',
+  starred: false,
+  snoozed: false,
+  pinned: false,
+  tags: [],
+  suggestedReplies: [],
 });
 
 /**
@@ -345,38 +370,39 @@ describe('InboxScreen', () => {
 
   it('clears the draft after a send only if it still holds what was sent', () => {
     render(<InboxScreen t={t} />);
-    const box = screen.getByPlaceholderText(t('reply_placeholder'));
+    const box = screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder'));
 
-    act(() => typeInto(box as HTMLTextAreaElement, 'First answer'));
+    act(() => typeInto(box, 'First answer'));
     act(() => {
       screen.getByText(t('send')).click();
     });
-    const latestOptions = () => mutationCalls[mutationCalls.length - 1];
-    const [request] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    const request = latestVariables('postMessage') as PostMessageRequest;
     expect(request).toMatchObject({ body: 'First answer', kind: 'reply' });
 
     // Typed while the post is in flight: a new draft, not the sent one.
-    act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Follow-up'));
+    act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')), 'Follow-up'));
     act(() => {
-      latestOptions().onSuccess?.(
-        { message: { ...messages[0], id: 'm-sent-1', conversationId: request.conversationId, body: 'First answer' } } as never,
-        request as never
+      succeedMutation(
+        'postMessage',
+        { message: { ...messages[0], id: 'm-sent-1', conversationId: request.conversationId, body: 'First answer' } },
+        request
       );
     });
-    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Follow-up');
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')).value).toBe('Follow-up');
 
     // The next send's success clears it, because nothing changed meanwhile.
     act(() => {
       screen.getByText(t('send')).click();
     });
-    const [second] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    const second = latestVariables('postMessage') as PostMessageRequest;
     act(() => {
-      latestOptions().onSuccess?.(
-        { message: { ...messages[0], id: 'm-sent-2', conversationId: second.conversationId, body: 'Follow-up' } } as never,
-        second as never
+      succeedMutation(
+        'postMessage',
+        { message: { ...messages[0], id: 'm-sent-2', conversationId: second.conversationId, body: 'Follow-up' } },
+        second
       );
     });
-    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('');
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')).value).toBe('');
   });
 
   it('takes no reply on a closed conversation', () => {
@@ -389,8 +415,8 @@ describe('InboxScreen', () => {
       screen.getAllByText('Design feedback on dashboard')[0].click();
     });
 
-    const box = screen.getByPlaceholderText(t('conversation_closed_placeholder'));
-    expect((box as HTMLTextAreaElement).disabled).toBe(true);
+    const box = screen.getByPlaceholderText<HTMLTextAreaElement>(t('conversation_closed_placeholder'));
+    expect(box.disabled).toBe(true);
   });
 
   it('marks and unmarks spam from the thread header menu, and renders the actions it does not ship disabled', () => {
@@ -467,8 +493,8 @@ describe('InboxScreen', () => {
     act(() => {
       screen.getByText(t('add_tag')).click();
     });
-    const field = screen.getByPlaceholderText(t('add_tag'));
-    act(() => typeInto(field as HTMLInputElement, 'vip'));
+    const field = screen.getByPlaceholderText<HTMLInputElement>(t('add_tag'));
+    act(() => typeInto(field, 'vip'));
     act(() => {
       fireEvent.keyDown(field, { key: 'Enter' });
     });
@@ -478,8 +504,8 @@ describe('InboxScreen', () => {
     act(() => {
       screen.getByText(t('add_tag')).click();
     });
-    const second = screen.getByPlaceholderText(t('add_tag'));
-    act(() => typeInto(second as HTMLInputElement, 'discarded'));
+    const second = screen.getByPlaceholderText<HTMLInputElement>(t('add_tag'));
+    act(() => typeInto(second, 'discarded'));
     act(() => {
       fireEvent.keyDown(second, { key: 'Escape' });
     });
@@ -505,7 +531,10 @@ describe('InboxScreen', () => {
   it('names the pinned icon and the read receipts as images', () => {
     render(<InboxScreen t={t} />);
     expect(screen.getByLabelText(t('pinned_conversation')).getAttribute('role')).toBe('img');
-    for (const receipt of screen.queryAllByLabelText(t('message_read'))) {
+    // The default thread carries seen receipts, so the loop has something to check.
+    const receipts = screen.getAllByLabelText(t('message_read'));
+    expect(receipts.length).toBeGreaterThan(0);
+    for (const receipt of receipts) {
       expect(receipt.getAttribute('role')).toBe('img');
     }
   });
@@ -518,7 +547,7 @@ describe('InboxScreen', () => {
     act(() => {
       screen.getAllByText('Dark mode toggle not persisting')[0].click();
     });
-    act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Half a reply'));
+    act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')), 'Half a reply'));
     act(() => {
       screen.getByLabelText(t('star_conversation')).click();
     });
@@ -527,23 +556,23 @@ describe('InboxScreen', () => {
     // What "View contact" and Back do: the screen unmounts and mounts again.
     render(<InboxScreen t={t} />);
     expect(screen.getAllByText('Dark mode toggle not persisting').length).toBe(2);
-    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Half a reply');
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')).value).toBe('Half a reply');
     expect(screen.getByLabelText(t('star_conversation')).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('says a failed send did not go out and keeps the draft, until the next send goes through', () => {
     render(<InboxScreen t={t} />);
-    act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Lost?'));
+    act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')), 'Lost?'));
     act(() => {
       screen.getByText(t('send')).click();
     });
-    const [request] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    const request = latestVariables('postMessage');
     act(() => {
-      mutationCalls[mutationCalls.length - 1].onError?.(new Error('offline'), request as never);
+      latestMutation('postMessage').onError?.(new Error('offline'), request as never);
     });
 
     expect(screen.getByRole('alert').textContent).toContain(t('send_failed_title'));
-    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Lost?');
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')).value).toBe('Lost?');
 
     act(() => {
       screen.getByText(t('send')).click();
@@ -556,17 +585,27 @@ describe('InboxScreen', () => {
     act(() => {
       screen.getByLabelText(t('new_channel')).click();
     });
-    act(() => typeInto(screen.getByLabelText(t('channel_name')) as HTMLInputElement, 'Empty'));
+    act(() => typeInto(screen.getByLabelText<HTMLInputElement>(t('channel_name')), 'Empty'));
     act(() => {
       screen.getByText(t('create_channel')).click();
     });
     expect(screen.getByText(t('empty_title'))).toBeTruthy();
+
+    // The server answers a start in the new channel: the conversation opens
+    // with its reply box focused, and nothing replaces it with another pick.
+    const { channelId } = inboxStore.get();
+    act(() => {
+      succeedMutation('createConversation', { conversation: startedConversation('c-new-1', channelId, 'r-3') }, {});
+    });
+    expect(screen.queryByText(t('empty_title'))).toBeNull();
+    expect(document.activeElement).toBe(replyBox());
 
     // Leaving and re-entering General still opens its first conversation.
     act(() => {
       screen.getByText('General').click();
     });
     expect(screen.queryByText(t('empty_title'))).toBeNull();
+    expect(screen.getAllByText('Design feedback on dashboard').length).toBe(2);
   });
 
   it('snoozes and unsnoozes from the thread header, and the status select follows', async () => {
@@ -610,5 +649,86 @@ describe('InboxScreen', () => {
     await user.click(screen.getByRole('button', { name: t('back_to_list') }));
     expect(list.className).not.toMatch(/singlePaneHidden/);
     expect(screen.queryByRole('button', { name: t('back_to_list') })).toBeNull();
+  });
+  it("lays the agent's changes over a started conversation, and Close closes it like any other", () => {
+    render(<InboxScreen t={t} />);
+    act(() => {
+      succeedMutation('createConversation', { conversation: startedConversation('c-new-1', 'general', 'r-3') }, {});
+    });
+    const opened = contacts.find((contact) => contact.id === 'r-3')?.name ?? '';
+    expect(screen.getAllByText(opened).length).toBeGreaterThan(0);
+
+    act(() => {
+      screen.getByLabelText(t('star_conversation')).click();
+    });
+    expect(screen.getByLabelText(t('star_conversation')).getAttribute('aria-pressed')).toBe('true');
+
+    act(() => {
+      screen.getByText(t('close')).click();
+    });
+    expect(screen.getByText(t('empty_title'))).toBeTruthy();
+    expect(screen.getByRole('region', { name: t('conversations') }).querySelector('[aria-current="true"]')).toBeNull();
+  });
+
+  it('keeps a closed thread closed across a remount instead of opening the first one again', () => {
+    const first = render(<InboxScreen t={t} />);
+    act(() => {
+      screen.getByText(t('close')).click();
+    });
+    expect(screen.getByText(t('empty_title'))).toBeTruthy();
+    first.unmount();
+
+    render(<InboxScreen t={t} />);
+    expect(screen.getByText(t('empty_title'))).toBeTruthy();
+  });
+
+  it('focuses the reply box of a started conversation once, not of every thread opened after it', () => {
+    render(<InboxScreen t={t} />);
+    act(() => {
+      succeedMutation('createConversation', { conversation: startedConversation('c-new-1', 'general', 'r-3') }, {});
+    });
+    expect(document.activeElement).toBe(replyBox());
+
+    act(() => {
+      replyBox().blur();
+      screen.getAllByText('Design feedback on dashboard')[0].click();
+    });
+    expect(document.activeElement).not.toBe(replyBox());
+  });
+
+  it('says a conversation could not be started when the create fails', () => {
+    render(<InboxScreen t={t} />);
+    act(() => {
+      latestMutation('createConversation').onError?.(new Error('down'), {} as never);
+    });
+    expect(screen.getByRole('alert').textContent).toContain(t('start_chat_failed_title'));
+  });
+
+  it('clears the sent draft even when the post lands after the screen unmounted', () => {
+    const first = render(<InboxScreen t={t} />);
+    act(() => typeInto(replyBox(), 'Sent while leaving'));
+    act(() => {
+      screen.getByText(t('send')).click();
+    });
+    const request = latestVariables('postMessage') as PostMessageRequest;
+    first.unmount();
+
+    // What the real hook runs once the caller is gone: `afterSuccess` only.
+    act(() => {
+      latestMutation('postMessage').afterSuccess?.(
+        { message: { ...messages[0], id: 'm-sent-1', conversationId: request.conversationId, body: request.body } } as never,
+        request as never
+      );
+    });
+    render(<InboxScreen t={t} />);
+    expect(replyBox().value).toBe('');
+  });
+  it('gives the open thread the screen heading while the list is hidden on a narrow screen', () => {
+    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
+    render(<InboxScreen t={t} />);
+    const visible = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.getClientRects().length > 0);
+
+    expect(visible).toHaveLength(1);
+    expect(visible[0].textContent).toBe('Design feedback on dashboard');
   });
 });

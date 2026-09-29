@@ -82,17 +82,22 @@ describe('App', () => {
     await user.type(box, 'Thanks, looking into it now.');
     await user.click(screen.getByRole('button', { name: t('send') }));
     // The post succeeded: the box is cleared and the reply is a message in the thread.
-    await waitFor(() => expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe(''), {
+    await waitFor(() => expect(screen.getByPlaceholderText<HTMLTextAreaElement>(t('reply_placeholder')).value).toBe(''), {
       timeout: 3000,
     });
-    expect(screen.getAllByText('Thanks, looking into it now.', { ignore: 'textarea' })).toHaveLength(1);
+    // Once in the thread, and once as the conversation's snippet in the list.
+    const list = () => screen.getByRole('region', { name: t('conversations') });
+    expect(screen.getAllByText('Thanks, looking into it now.', { ignore: 'textarea' })).toHaveLength(2);
+    expect(within(list()).getAllByText('Thanks, looking into it now.')).toHaveLength(1);
 
-    // Away and back: the reply is read back from the mock store, once.
+    // Away and back: the reply and the snippet are read back from the mock
+    // store, each once.
     act(() => navigate(CONTACTS_ROUTE));
     await screen.findByRole('heading', { level: 1, name: t('all_contacts') }, { timeout: 3000 });
     act(() => navigate(INBOX_ROUTE));
     await screen.findByPlaceholderText(t('reply_placeholder'), undefined, { timeout: 3000 });
-    expect(screen.getAllByText('Thanks, looking into it now.', { ignore: 'textarea' })).toHaveLength(1);
+    expect(screen.getAllByText('Thanks, looking into it now.', { ignore: 'textarea' })).toHaveLength(2);
+    expect(within(list()).getAllByText('Thanks, looking into it now.')).toHaveLength(1);
   });
 
   it('composes a mail through the Mail screen and files it under Sent', async () => {

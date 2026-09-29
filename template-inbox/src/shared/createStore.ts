@@ -20,7 +20,16 @@ export type Store<State> = {
   reset: () => void;
 };
 
-const stores = new Set<{ reset: () => void }>();
+const resettables = new Set<{ reset: () => void }>();
+
+/**
+ * Registers module-level state that is not a store (a counter, a cache) to
+ * be put back together with the stores, so `resetStores` leaves nothing a
+ * previous test changed.
+ */
+export const onResetStores = (reset: () => void): void => {
+  resettables.add({ reset });
+};
 
 export function createStore<State>(initial: () => State): Store<State> {
   let state = initial();
@@ -45,7 +54,7 @@ export function createStore<State>(initial: () => State): Store<State> {
       notify();
     },
   };
-  stores.add(store);
+  resettables.add(store);
   return store;
 }
 
@@ -54,7 +63,7 @@ export function useStore<State, Slice>(store: Store<State>, select: (state: Stat
   return useSyncExternalStore(store.subscribe, read, read);
 }
 
-/** Puts every store back to its initial state. For tests, between cases. */
+/** Puts every store, and every state registered with `onResetStores`, back to its initial state. For tests, between cases. */
 export const resetStores = (): void => {
-  for (const store of stores) store.reset();
+  for (const resettable of resettables) resettable.reset();
 };

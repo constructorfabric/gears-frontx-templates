@@ -10,6 +10,7 @@ import type { Mail, MailMessage } from '../../api/mailTypes';
 import type { Translate } from '../../shared/i18n';
 import { dateTime } from '../../shared/format';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { MailComposer } from './MailComposer';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './mail.module.css';
@@ -87,7 +88,13 @@ export function MailReadingPane({
       <div className={sharedStyles.threadHeader}>
         <IdentityAvatar name={mail.correspondentName} size="default" />
         <div className={sharedStyles.threadTitles}>
-          <span className={sharedStyles.threadSubject}>{mail.subject}</span>
+          {/* Where the list and the reading pane take turns, the list's
+              heading is hidden with it, so the subject is the screen's h1. */}
+          {onBack ? (
+            <ScreenHeading className={sharedStyles.threadSubject}>{mail.subject}</ScreenHeading>
+          ) : (
+            <span className={sharedStyles.threadSubject}>{mail.subject}</span>
+          )}
           <span className={sharedStyles.threadSubtitle}>{mail.correspondentName}</span>
           <span className={styles.replyToLine}>
             {t('reply_to_line', { email: mail.correspondentEmail })}

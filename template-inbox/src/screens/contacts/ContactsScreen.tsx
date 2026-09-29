@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { PanelLeftIcon, SearchIcon, UserXIcon } from 'lucide-react';
 import {
   Button,
@@ -20,7 +20,8 @@ import { useSidebarToggle } from '../../shared/useSidebarToggle';
 import { ContactDetail } from './ContactDetail';
 import { ContactFilterSidebar } from './ContactFilterSidebar';
 import { ContactsTable } from './ContactsTable';
-import { selectContacts, type ContactFilter } from './contactFilters';
+import { selectContacts } from './contactFilters';
+import { contactsActions, useContacts } from './contactsStore';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './contacts.module.css';
 
@@ -40,8 +41,8 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
   const contactsQuery = useApiQuery(service.getContacts);
   const conversationsQuery = useApiQuery(service.getConversations);
 
-  const [filter, setFilter] = useState<ContactFilter>('all');
-  const [search, setSearch] = useState('');
+  const filter = useContacts((state) => state.filter);
+  const search = useContacts((state) => state.search);
 
   const filterSidebar = useSidebarToggle();
 
@@ -99,7 +100,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
       <ContactFilterSidebar
         contacts={contacts}
         selectedFilter={filter}
-        onSelectFilter={setFilter}
+        onSelectFilter={contactsActions.setFilter}
         collapsed={filterSidebar.collapsed}
         hidden={!showingDirectory}
         t={t}
@@ -125,7 +126,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
             className={styles.searchField}
             type="search"
             value={search}
-            onValueChange={setSearch}
+            onValueChange={contactsActions.setSearch}
             placeholder={t('search_contacts')}
             icon={<SearchIcon />}
             aria-label={t('search_contacts')}
@@ -155,7 +156,9 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
               <EmptyMedia variant="icon">
                 <UserXIcon />
               </EmptyMedia>
-              <EmptyTitle>{t('contact_not_found_title')}</EmptyTitle>
+              <EmptyTitle>
+                <ScreenHeading className={sharedStyles.inlineHeading}>{t('contact_not_found_title')}</ScreenHeading>
+              </EmptyTitle>
               <EmptyDescription>{t('contact_not_found_description')}</EmptyDescription>
             </EmptyHeader>
             <EmptyActions>

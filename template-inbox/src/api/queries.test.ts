@@ -68,12 +68,13 @@ describe('useApiQuery', () => {
     expect(first.latest()).toMatchObject({ data: 'answer', isLoading: false, error: null });
     expect(second.latest()).toMatchObject({ data: 'answer', isLoading: false });
 
-    // A remount after the answer arrived is served from the cache.
+    // A remount after the answer arrived is served from the cache, on its
+    // very first render: no loading frame before the cached answer.
     first.view.unmount();
     const third = mountQuery(descriptor);
+    expect(third.latest()).toMatchObject({ data: 'answer', isLoading: false });
     await flush();
     expect(calls).toHaveLength(1);
-    expect(third.latest().data).toBe('answer');
     second.view.unmount();
     third.view.unmount();
   });
@@ -224,9 +225,16 @@ describe('useApiMutation', () => {
 
   it('still evicts after the caller unmounted, but calls back and updates nothing', async () => {
     const read = controlledEndpoint<string>('read-after-unmount');
-    mountQuery(read.descriptor).view.unmount();
+    // Mounted until the answer is cached: a reader leaving earlier would
+    // abort and evict the request itself, and the refetch below would prove
+    // nothing about the write.
+    const reader = mountQuery(read.descriptor);
     read.calls[0].response.resolve('cached');
     await flush();
+    reader.view.unmount();
+    await flush();
+    mountQuery(read.descriptor).view.unmount();
+    expect(read.calls).toHaveLength(1);
 
     const { endpoint, calls } = mutationEndpoint();
     const onSuccess = vi.fn();
@@ -241,7 +249,39 @@ describe('useApiMutation', () => {
     expect(onSuccess).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
     mountQuery(read.descriptor).view.unmount();
-    expect(read.calls.length).toBeGreaterThan(1);
+    expect(read.calls).toHaveLength(2);
+  });
+
+  it('runs afterSuccess even after the caller unmounted', async () => {
+    const { endpoint, calls } = mutationEndpoint();
+    const afterSuccess = vi.fn();
+    const writer = mountMutation({ endpoint, afterSuccess });
+    act(() => writer.latest().mutate('x'));
+    writer.view.unmount();
+
+    calls[0].response.resolve('ok');
+    await flush();
+    expect(afterSuccess).toHaveBeenCalledWith('ok', 'x');
+  });
+
+  it('keeps mutate one function across renders, and calls back with the latest options', async () => {
+    const { endpoint, calls } = mutationEndpoint();
+    const first = vi.fn();
+    const second = vi.fn();
+    const results: MutationResult<string>[] = [];
+    const onResult = (result: MutationResult<string>) => results.push(result);
+    const view = render(createElement(MutationProbe<string, string>, { options: { endpoint, onSuccess: first }, onResult }));
+    const mutate = results[results.length - 1].mutate;
+
+    act(() => mutate('x'));
+    view.rerender(createElement(MutationProbe<string, string>, { options: { endpoint, onSuccess: second }, onResult }));
+    expect(results[results.length - 1].mutate).toBe(mutate);
+
+    calls[0].response.resolve('ok');
+    await flush();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith('ok', 'x');
+    view.unmount();
   });
 
   it('reports the failure of the latest call through error and onError', async () => {

@@ -94,6 +94,13 @@
   border-bottom: var(--border-width) solid var(--border);
 }
 
+/* A screen heading inside a kit title (an empty state, an alert) takes the
+   title's own type rather than the browser's h1 defaults. */
+.inlineHeading {
+  margin: 0;
+  font: inherit;
+}
+
 .paneTitle {
   margin: 0;
   font-size: var(--text-heading-2-size);
@@ -276,6 +283,7 @@
 }
 
 .threadSubject {
+  margin: 0;
   font-size: var(--text-heading-2-size);
   font-weight: var(--text-heading-2-weight);
   line-height: var(--text-heading-2-line-height);

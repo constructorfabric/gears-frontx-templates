@@ -342,7 +342,7 @@ describe('MailScreen', () => {
   it('says so when the search matches no mail', () => {
     render(<MailScreen t={t} />);
     act(() => {
-      typeInto(screen.getByLabelText(t('search_mail')) as HTMLInputElement, 'no such correspondent');
+      typeInto(screen.getByLabelText<HTMLInputElement>(t('search_mail')), 'no such correspondent');
     });
 
     expect(screen.getAllByText(t('no_matching_mail')).length).toBeGreaterThan(0);
@@ -396,5 +396,40 @@ describe('MailScreen', () => {
     const unreadInInbox = mails.filter((mail) => mail.mailboxId === 'inbox' && !mail.read);
 
     expect(screen.getAllByText(t('unread_mail'))).toHaveLength(unreadInInbox.length);
+  });
+  it('keeps the mailbox, the open mail, the search, drafts and sent mail across a remount', () => {
+    const first = render(<MailScreen t={t} />);
+    act(() => {
+      screen.getByText('Priya Natarajan').click();
+    });
+    act(() => typeInto(screen.getByPlaceholderText<HTMLTextAreaElement>(/^Reply to /), 'Half a reply'));
+    act(() => typeInto(screen.getByLabelText<HTMLInputElement>(t('search_mail')), 'priya'));
+    first.unmount();
+
+    render(<MailScreen t={t} />);
+    expect(screen.getByLabelText<HTMLInputElement>(t('search_mail')).value).toBe('priya');
+    expect(screen.getByPlaceholderText<HTMLTextAreaElement>(/^Reply to /).value).toBe('Half a reply');
+    expect(screen.getByPlaceholderText(/^Reply to /).getAttribute('placeholder')).toContain('Priya Natarajan');
+  });
+
+  it('keeps a closed reading pane closed across a remount on a narrow screen', () => {
+    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
+    const first = render(<MailScreen t={t} />);
+    act(() => {
+      screen.getByRole('button', { name: t('back_to_mail_list') }).click();
+    });
+    first.unmount();
+
+    render(<MailScreen t={t} />);
+    expect(screen.queryByRole('button', { name: t('back_to_mail_list') })).toBeNull();
+  });
+
+  it('gives the open mail the screen heading while the list is hidden on a narrow screen', () => {
+    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
+    render(<MailScreen t={t} />);
+    const headings = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.getClientRects().length > 0);
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0].closest('[class*="singlePaneHidden"]')).toBeNull();
   });
 });

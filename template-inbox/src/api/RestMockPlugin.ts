@@ -54,7 +54,7 @@ export const mockReply = (status: number, data: JsonCompatible): MockReply => ({
   data,
 });
 
-const isMockReply = (value: unknown): value is MockReply =>
+export const isMockReply = (value: unknown): value is MockReply =>
   typeof value === 'object' && value !== null && MOCK_REPLY in value;
 
 /** Called with the parsed request body, or `undefined` when the request has none. */

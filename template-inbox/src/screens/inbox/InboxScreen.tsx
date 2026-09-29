@@ -3,12 +3,13 @@ import { InboxIcon } from 'lucide-react';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@gears-frontx/ui-kit';
 import { useApiMutation, useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
-import { BRAND, NO_TEAM_INBOX } from '../../api/constants';
 import type {
   Contact,
   Conversation,
   ConversationPriority,
   ConversationStatus,
+  CreateConversationRequest,
+  CreateConversationResponse,
   Message,
   PostMessageRequest,
   PostMessageResponse,
@@ -42,7 +43,8 @@ export type InboxScreenProps = {
  * the composer alone, so a keystroke re-renders the composer and nothing
  * else. What stays here is per mount: posts in flight, a failed post's
  * error, and the replies this mount has sent (the next mount reads them back
- * from the service).
+ * from the service). `MailScreen` and `ContactsScreen` follow the same split
+ * over their own stores.
  */
 export function InboxScreen({ t }: InboxScreenProps) {
   const service = getInboxApi();
@@ -54,8 +56,11 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const contactsQuery = useApiQuery(service.getContacts);
 
   const channelId = useInbox((state) => state.channelId);
+  // The open conversation is the screen's own state while it is mounted: the
+  // automatic first pick is decided during render, where only a component's
+  // own state may change. It is written back to the store with the pick
+  // still owed, so a later mount starts from both.
   const [selectedId, setSelectedId] = useState(() => inboxStore.get().selectedId);
-  useEffect(() => inboxActions.rememberSelection(selectedId), [selectedId]);
   const search = useInbox((state) => state.search);
   const sort = useInbox((state) => state.sort);
   const composerTab = useInbox((state) => state.composerTab);
@@ -73,9 +78,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const [sendingIds, setSendingIds] = useState<Record<string, number>>({});
   // The conversations whose latest post failed; their draft is kept.
   const [failedIds, setFailedIds] = useState<Record<string, true>>({});
-  // Bumped right after opening a just-created conversation, so the composer
-  // knows to focus the reply box.
-  const [composerFocusSignal, setComposerFocusSignal] = useState(0);
+  // The latest attempt to start a conversation failed.
+  const [startChatFailed, setStartChatFailed] = useState(false);
 
   const channelsSidebar = useSidebarToggle();
   const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
@@ -100,13 +104,17 @@ export function InboxScreen({ t }: InboxScreenProps) {
 
   const sendMessage = useApiMutation<PostMessageResponse, PostMessageRequest>({
     endpoint: service.postMessage,
-    // The mock store keeps the posted message, so the cached transcript is
-    // stale once the post succeeds and the next mount reads it again.
-    invalidates: [service.getMessages],
+    // The mock store keeps the posted message and moves its conversation's
+    // snippet and last activity, so the cached transcript and list are stale
+    // once the post succeeds and the next mount reads both again.
+    invalidates: [service.getMessages, service.getConversations],
+    // The draft lives in the store, so it is cleared even when the agent left
+    // the screen before the post came back; otherwise the next visit would
+    // show the sent text still in the box, ready to be sent twice.
+    afterSuccess: (_response, request) => inboxActions.clearDraftIfSent(request.conversationId, request.body),
     onSuccess: (response, request) => {
       setSentMessages((previous) => [...previous, response.message]);
       finishSending(request.conversationId);
-      inboxActions.clearDraftIfSent(request.conversationId, request.body);
     },
     // A failed post keeps the draft where it is, so nothing typed is lost,
     // and the composer says the post did not go out.
@@ -116,11 +124,36 @@ export function InboxScreen({ t }: InboxScreenProps) {
     },
   });
 
+  const startConversation = useApiMutation<CreateConversationResponse, CreateConversationRequest>({
+    endpoint: service.createConversation,
+    invalidates: [service.getConversations],
+    afterSuccess: (response) => inboxActions.addConversation(response.conversation),
+    onSuccess: (response) => {
+      setSelectedId(response.conversation.id);
+      inboxActions.requestComposerFocus();
+    },
+    onError: () => setStartChatFailed(true),
+  });
+
+  // The fetched list, the conversations started since it was read, and the
+  // replies this mount sent, with the agent's own changes over all of them: a
+  // started conversation takes a star, a status or a tag like any other.
   const conversations: Conversation[] = useMemo(() => {
     const fetched = conversationsQuery.data?.conversations ?? [];
-    const patched = fetched.map((conversation) => ({ ...conversation, ...patches[conversation.id] }));
-    return [...patched, ...extraConversations];
-  }, [conversationsQuery.data, patches, extraConversations]);
+    const fetchedIds = new Set(fetched.map((conversation) => conversation.id));
+    const latestSent = new Map<string, Message>();
+    for (const message of sentMessages) latestSent.set(message.conversationId, message);
+    return [...fetched, ...extraConversations.filter((conversation) => !fetchedIds.has(conversation.id))].map(
+      (conversation) => {
+        const sent = latestSent.get(conversation.id);
+        const activity =
+          sent !== undefined && Date.parse(sent.sentAt) > Date.parse(conversation.lastActivityAt)
+            ? { snippet: sent.body, lastActivityAt: sent.sentAt }
+            : null;
+        return { ...conversation, ...activity, ...patches[conversation.id] };
+      }
+    );
+  }, [conversationsQuery.data, extraConversations, sentMessages, patches]);
 
   const contactsById = useMemo(() => {
     const index = new Map<string, Contact>();
@@ -139,7 +172,12 @@ export function InboxScreen({ t }: InboxScreenProps) {
     firstId: visibleConversations[0]?.id,
     selectedId,
     onSelect: setSelectedId,
+    initialOwedTo: inboxStore.get().autoSelectOwedTo,
   });
+  useEffect(
+    () => inboxActions.rememberSelection(selectedId, autoSelect.owedTo),
+    [selectedId, autoSelect.owedTo]
+  );
 
   // Selected from the whole collection rather than the visible slice: typing a
   // search narrows the list without closing the thread the agent is reading.
@@ -181,38 +219,14 @@ export function InboxScreen({ t }: InboxScreenProps) {
   };
 
   /**
-   * A demo-grade conversation with an existing contact, in the current
-   * channel, opened immediately with an empty transcript. Sending into it goes
-   * through the same post as any other thread (the mock endpoint stores a post
-   * for any `conversationId`); the conversation itself is not posted anywhere,
-   * so it lasts for the session.
+   * A conversation with an existing contact, in the current channel, assigned
+   * to the agent. The server creates it (id, timestamps, an empty transcript)
+   * and it opens with the reply box focused once the answer arrives; sending
+   * into it is the same post as into any other thread.
    */
   const startChat = (contactId: string) => {
-    const contact = contactsById.get(contactId);
-    const id = `dm-${crypto.randomUUID()}`;
-    inboxActions.addConversation({
-      id,
-      channelId,
-      subject: contact?.name ?? '',
-      contactId,
-      snippet: '',
-      lastActivityAt: new Date().toISOString(),
-      unreadCount: 0,
-      priority: 'none',
-      status: 'open',
-      assignee: agentQuery.data?.agent.name ?? '',
-      teamInbox: NO_TEAM_INBOX,
-      channel: 'chat',
-      brand: BRAND,
-      tags: [],
-      sharedFiles: [],
-      suggestedReplies: [],
-      starred: false,
-      snoozed: false,
-      pinned: false,
-    });
-    setSelectedId(id);
-    setComposerFocusSignal((signal) => signal + 1);
+    setStartChatFailed(false);
+    startConversation.mutate({ channelId, contactId, assignee: agentQuery.data?.agent.name ?? '' });
   };
 
   const firstPaint = firstPaintOf([agentQuery, channelsQuery, conversationsQuery, messagesQuery, contactsQuery]);
@@ -263,6 +277,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
         selectedConversationId={selectedId}
         onSelectConversation={setSelectedId}
         onStartChat={startChat}
+        startChatFailed={startChatFailed}
         search={search}
         onSearchChange={inboxActions.setSearch}
         sort={sort}
@@ -312,7 +327,6 @@ export function InboxScreen({ t }: InboxScreenProps) {
                 sending: (sendingIds[selected.id] ?? 0) > 0,
                 failed: selected.id in failedIds,
                 disabled: selected.status === 'closed',
-                focusSignal: composerFocusSignal,
                 t,
               }}
               t={t}

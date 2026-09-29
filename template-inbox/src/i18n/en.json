@@ -235,6 +235,8 @@
   "star_mail": "Star",
   "starred_mail": "Starred",
   "start_chat": "Start chat",
+  "start_chat_failed_description": "The conversation could not be created. Try starting it again.",
+  "start_chat_failed_title": "Chat not started",
   "status": "Status",
   "suggested_replies": "Suggested replies",
   "summary": "Summary",

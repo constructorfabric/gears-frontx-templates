@@ -130,6 +130,27 @@ const installPointerEventConstructor = (): void => {
   });
 };
 
+/**
+ * Client rects for an element that would render a box.
+ *
+ * jsdom has no layout, so `getClientRects()` is empty for every element, and
+ * `ScreenHeading` (which leaves a focus request to a heading that renders a
+ * box) would find no heading visible at all. The stand-in answers from the two
+ * signals this app hides a pane with: the `hidden` attribute, and the
+ * single-pane class a narrow layout sets to `display: none` (CSS is not
+ * loaded under Vitest, so the class name is what there is to read).
+ */
+const installClientRects = (): void => {
+  Object.defineProperty(Element.prototype, 'getClientRects', {
+    configurable: true,
+    writable: true,
+    value(this: Element): DOMRectList | DOMRect[] {
+      const hidden = this.closest('[hidden]') !== null || this.closest('[class*="singlePaneHidden"]') !== null;
+      return hidden ? [] : [new DOMRect(0, 0, 1, 1)];
+    },
+  });
+};
+
 const ORIGINAL_FETCH = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
 
 const restoreFetch = (): void => {
@@ -149,6 +170,7 @@ const clearDocumentCookies = (): void => {
 
 ensureUsableWebStorage();
 installPointerEventConstructor();
+installClientRects();
 
 afterEach(() => {
   // Unmounted first, while every mock a screen's cleanup might call is still

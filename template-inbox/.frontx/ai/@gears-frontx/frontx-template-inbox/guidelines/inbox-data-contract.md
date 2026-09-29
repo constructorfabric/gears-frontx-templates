@@ -62,10 +62,11 @@ While a mock plugin is on it answers every request its protocol sends:
 |---|---|
 | `GET /api/inbox/me` | the agent identity: name, presence, workspace |
 | `GET /api/inbox/channels` | the three seeded channels with id, label, icon name, item count, open count |
-| `GET /api/inbox/conversations` | every conversation across all channels |
+| `GET /api/inbox/conversations` | every conversation across all channels, including the ones created this session |
 | `GET /api/inbox/messages` | every message across every conversation, including the ones posted this session |
 | `GET /api/inbox/contacts` | all 29 contacts with their full detail payload |
-| `POST /api/inbox/messages` | stores a posted reply or note and answers with it, with a server-assigned id and timestamp; 400 when the body has no `conversationId` or no non-blank `body` |
+| `POST /api/inbox/messages` | stores a posted reply or note and answers with it, with a server-assigned id and timestamp, and moves the conversation's snippet and last activity to it; 400 when the body has no `conversationId`, no non-blank `body` or a `kind` other than `reply` or `note`, 404 when the conversation does not exist |
+| `POST /api/inbox/conversations` | creates an empty conversation with an existing contact in a channel and answers with it, with a server-assigned id and timestamp; 400 when the body has no `channelId` or no `contactId`, 404 when the contact does not exist |
 
 `MailApiService` answers the mail screen the same read-only-collections way, off its own baseURL:
 
@@ -75,7 +76,7 @@ While a mock plugin is on it answers every request its protocol sends:
 | `GET /api/mail/mails` | every mail across every mailbox |
 | `GET /api/mail/messages` | every earlier message behind a mail's "N earlier messages" toggle |
 
-The mail service has no write endpoint. A reply sent from the reading pane and a mail written in the Compose dialog are both appended to the mail screen's own state under Sent (`MAILBOX_SENT`), so they last as long as that screen does. Adding a real send is adding a `POST /api/mail/...` mutation to `MailApiService` and its mock map, the way `postMessage` exists on `InboxApiService`.
+The mail service has no write endpoint. A reply sent from the reading pane and a mail written in the Compose dialog are both kept in the mail screen's store (`mailStore`) under Sent (`MAILBOX_SENT`), so they last until the page reloads. Adding a real send is adding a `POST /api/mail/...` mutation to `MailApiService` and its mock map, the way `postMessage` exists on `InboxApiService`.
 
 `DashboardApiService` answers the dashboard with a single response rather than one endpoint per section, because the dashboard is one coherent view, not a set of independently browsable lists the way mailboxes, mails and messages are:
 
@@ -93,7 +94,7 @@ A new screen follows the same rule. If it needs a slice nobody fetches today, ad
 
 ## The mock store
 
-The inbox transcript is the one collection a request changes. `POST /api/inbox/messages` appends the posted reply or note (`seen: null`, `internal: true` for a note) to a mock store in `mocks.ts`, and `GET /api/inbox/messages` serves that store, so a sent message is still in the thread after the screen remounts, until the page reloads. Every factory, in all three mock maps, answers with a `structuredClone` of its data, so nothing a screen does to a response reaches the store or the seed. `resetMockState()` in `registry.ts` puts every mock store back to its seed; tests call it between cases together with `apiRegistry.reset()`.
+The inbox conversations and transcript are the collections a request changes. `POST /api/inbox/messages` appends the posted reply or note (`seen: null`, `internal: true` for a note) to a mock store in `mocks.ts` and moves its conversation's snippet and last activity, `POST /api/inbox/conversations` adds a conversation to the same store, and the two `GET`s serve that store, so a sent message and a started conversation are still there after the screen remounts, until the page reloads. Every factory, in all three mock maps, answers with a `structuredClone` of its data, so nothing a screen does to a response reaches the store or the seed. `resetMockState()` in `registry.ts` puts every mock store back to its seed; tests call it between cases together with `apiRegistry.reset()`.
 
 ## Rules for content
 
@@ -103,6 +104,6 @@ The inbox transcript is the one collection a request changes. `POST /api/inbox/m
 - **Derive what can be derived.** Initials, the email domain column, the qualification checklist, the filter counts, the dashboard's totals, deltas and percents, and the contact activity timeline are all computed from the records. A stored copy would be a second thing to keep in step, and the one that drifts is the one on screen.
 - **Relations are ids.** A contact lists its conversations as `{ id }` references joined on the client, and a dashboard activity row names its owner by `ownerAgentId`. A reference that points at nothing is a defect; `dataset.test.ts` checks the seed's referential integrity.
 - **Suggested replies are content, not a model call.** A conversation's `suggestedReplies` are authored in `dataset.ts` alongside its transcript. An empty array is the way to say a thread gets none - every spam and every snoozed conversation carries one - and the chip row disappears rather than emptying.
-- **Writes.** Posting a reply or a note is the only change the services persist. Everything the details panel moves - assignee, team inbox, priority, status, tags, spam - and a channel or chat created from the conversation list are applied in screen state, because a real backend would own those. Keep that split: adding a write means adding an endpoint to the service and its mock map, not pretending in a component.
+- **Writes.** Posting a reply or a note and starting a conversation are the changes the services persist. Everything the details panel moves - assignee, team inbox, priority, status, tags, spam - and a channel created from the channel column are applied in screen state (`inboxStore`), because a real backend would own those. Keep that split: adding a write means adding an endpoint to the service and its mock map, not pretending in a component.
 - **Fictional contact data.** Seed email addresses use reserved example domains and seed phone numbers use the `555 01xx` range. Keep it that way for any record added.
 - **A mail's history is a separate collection, like a conversation's messages.** `Mail.body` is the newest message only, and `mailDataset.ts`'s `mailMessages` holds only the earlier ones, oldest first, keyed by `mailId`. Most mails have none, which is what keeps the reading pane's history toggle off their pane entirely - the same "empty is meaningful" rule `suggestedReplies` follows above.

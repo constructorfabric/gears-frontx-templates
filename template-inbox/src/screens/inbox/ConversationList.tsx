@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { PanelLeftIcon, PinIcon, SearchIcon, UserRoundPlusIcon } from 'lucide-react';
+import { CircleAlertIcon, PanelLeftIcon, PinIcon, SearchIcon, UserRoundPlusIcon } from 'lucide-react';
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
   Combobox,
@@ -57,6 +60,8 @@ export type ConversationListProps = {
   selectedConversationId: string | null;
   onSelectConversation: (conversationId: string) => void;
   onStartChat: (contactId: string) => void;
+  /** The latest conversation the agent tried to start was not created. */
+  startChatFailed: boolean;
   search: string;
   onSearchChange: (search: string) => void;
   sort: SortOrder;
@@ -75,6 +80,7 @@ export function ConversationList({
   selectedConversationId,
   onSelectConversation,
   onStartChat,
+  startChatFailed,
   search,
   onSearchChange,
   sort,
@@ -242,6 +248,16 @@ export function ConversationList({
           </DialogContent>
         </Dialog>
       </div>
+
+      {startChatFailed ? (
+        <div className={sharedStyles.paneRow}>
+          <Alert variant="destructive">
+            <CircleAlertIcon />
+            <AlertTitle>{t('start_chat_failed_title')}</AlertTitle>
+            <AlertDescription>{t('start_chat_failed_description')}</AlertDescription>
+          </Alert>
+        </div>
+      ) : null}
 
       <div className={sharedStyles.paneRow}>
         <Input

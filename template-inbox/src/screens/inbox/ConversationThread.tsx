@@ -55,6 +55,7 @@ import { cx } from '../../shared/cx';
 import { labelOf, messageDayKey, messageDayLabel, messageTimeOfDay } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
+import { ScreenHeading } from '../../shared/ScreenHeading';
 import { Composer, type ComposerProps } from './Composer';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './inbox.module.css';
@@ -400,7 +401,13 @@ export function ConversationThread({
           t={t}
         />
         <div className={sharedStyles.threadTitles}>
-          <span className={sharedStyles.threadSubject}>{conversation.subject}</span>
+          {/* Where the list and the thread take turns, the list's heading is
+              hidden with it, so the thread's subject is the screen's h1. */}
+          {onBack ? (
+            <ScreenHeading className={sharedStyles.threadSubject}>{conversation.subject}</ScreenHeading>
+          ) : (
+            <span className={sharedStyles.threadSubject}>{conversation.subject}</span>
+          )}
           <span className={sharedStyles.threadSubtitle}>
             {t('contact_presence', { name: contactName, presence: labelOf(contact?.presence ?? 'offline', t) })}
           </span>

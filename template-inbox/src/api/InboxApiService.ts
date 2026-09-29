@@ -12,6 +12,8 @@ import { BaseApiService, RestEndpointProtocol, RestProtocol } from '@gears-front
 import { inboxMockMap } from './mocks';
 import { RestMockPlugin } from './RestMockPlugin';
 import type {
+  CreateConversationRequest,
+  CreateConversationResponse,
   GetAgentResponse,
   GetChannelsResponse,
   GetContactsResponse,
@@ -51,4 +53,9 @@ export class InboxApiService extends BaseApiService {
     PostMessageResponse,
     PostMessageRequest
   >('POST', '/messages');
+
+  readonly createConversation = this.protocol(RestEndpointProtocol).mutation<
+    CreateConversationResponse,
+    CreateConversationRequest
+  >('POST', '/conversations');
 }

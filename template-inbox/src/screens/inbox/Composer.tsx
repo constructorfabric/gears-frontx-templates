@@ -37,14 +37,6 @@ export type ComposerProps = {
   failed: boolean;
   /** The conversation takes no more replies or notes (it is closed). */
   disabled?: boolean;
-  /**
-   * Bumped by the parent (any changing value) right after opening a
-   * freshly created conversation, so the reply box is ready to type into
-   * without an extra click - "composer focused" for the new-chat flow.
-   * Not tied to `tab`/`draft`, both of which change on every keystroke;
-   * the effect below only reacts to THIS value changing.
-   */
-  focusSignal?: number;
   t: Translate;
 };
 
@@ -61,17 +53,23 @@ export function Composer({
   sending,
   failed,
   disabled = false,
-  focusSignal,
   t,
 }: ComposerProps) {
   const draft = useInbox((state) => state.drafts[conversationId] ?? '');
   const isNote = tab === 'note';
   const canSend = draft.trim() !== '' && !sending && !disabled;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const focusPending = useInbox((state) => state.composerFocusPending);
 
+  // A just-started conversation asks for its reply box once (the store's
+  // request, set when the server answered the create), and the request is
+  // consumed here: opening any thread later, or coming back to the screen,
+  // leaves focus where it is.
   useEffect(() => {
-    if (focusSignal) textareaRef.current?.focus();
-  }, [focusSignal]);
+    if (!focusPending || textareaRef.current === null) return;
+    textareaRef.current.focus();
+    inboxActions.composerFocused();
+  }, [focusPending]);
 
   const onKeyDown = useSubmitShortcut(onSend, canSend);
 

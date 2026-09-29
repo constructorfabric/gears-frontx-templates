@@ -2,6 +2,7 @@ import { CircleAlertIcon } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, Skeleton } from '@gears-frontx/ui-kit';
 import type { QueryResult } from '../api/queries';
 import type { Translate } from './i18n';
+import { ScreenHeading } from './ScreenHeading';
 import styles from './shared.module.css';
 
 /** The part of a query result a screen's first paint depends on. */
@@ -44,7 +45,11 @@ export function LoadingPane({ className }: { className?: string }) {
   );
 }
 
-/** What a pane shows instead of its content when a query it needs has failed. */
+/**
+ * What a pane shows instead of its content when a query it needs has failed.
+ * Its title is the screen's heading while it stands in for the screen, so a
+ * route change still has a heading to move focus to.
+ */
 export function LoadErrorPane({
   onRetry,
   t,
@@ -58,7 +63,9 @@ export function LoadErrorPane({
     <div className={className ?? styles.emptyPane}>
       <Alert variant="destructive">
         <CircleAlertIcon />
-        <AlertTitle>{t('load_error_title')}</AlertTitle>
+        <AlertTitle>
+          <ScreenHeading className={styles.inlineHeading}>{t('load_error_title')}</ScreenHeading>
+        </AlertTitle>
         <AlertDescription>{t('load_error_description')}</AlertDescription>
         <AlertAction>
           <Button size="sm" variant="outline" onClick={onRetry}>
