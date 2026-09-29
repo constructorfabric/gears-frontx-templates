@@ -1,18 +1,26 @@
 # Studio artifacts registry
 #
-# The catalogue root system describes this repository as a collection of the
-# templates CF maintains. Every template, a top-level directory with a
-# frontx-template.json manifest, registers its own system over
-# <template>/architecture, with slug template-<name> and ids
-# cpt-template-<name>-*. A template that brings its documents lists its
-# system here by hand.
+# The catalogue root system, slug templates and ids cpt-templates-*,
+# describes this repository as a collection of the FrontX templates. Every
+# template, a top-level directory with a frontx-template.json manifest,
+# registers its own system over <template>/architecture, with slug
+# template-<name> and ids cpt-template-<name>-*. Registration is by hand: a
+# template that brings its documents adds its [[systems]] block here, and a
+# template directory without one is simply not validated. Auto-discovered
+# child systems would take the parent's prefix (cpt-<parent>-<child>-*), so
+# templates are not auto-discovered.
 #
 # This repository shares no id namespace with gears-frontx. The gears-frontx
 # ids are internal to it and may change without notice, so a document here
 # cites a gears-frontx decision as a link to its file, never as a backticked
-# cpt-frontx-* id. cfs v1.6.2 does not tie an id prefix to the system that
-# owns it: any registered prefix passes in any document. Review checks that a
-# template defines ids only under its own prefix.
+# cpt-frontx-* id. Both prefix rules are checked in review, because cfs
+# v1.6.2 neither ties a prefix to its owning system (any registered prefix
+# passes in any document) nor flags a backticked cpt-frontx-* reference;
+# both silently pass. Sources: the registry spec
+# .cf-studio/.core/architecture/specs/artifacts-registry.md (Autodetect
+# section) and the engine's longest-prefix match over all registered
+# systems in .cf-studio/.core/skills/studio/scripts/studio/commands/validate.py,
+# line 173.
 #
 # Every kind is `required = false` because none of the registered
 # directories holds documents yet. The PR that brings a template's PRD and
@@ -22,10 +30,10 @@
 # gears-frontx artifacts, as ADR-0033 of gears-frontx rules
 # (https://github.com/constructorfabric/gears-frontx/blob/develop/architecture/ADR/0033-template-territory-traceability.md).
 
-# The catalogue: ids cpt-frontx-templates-*.
+# The catalogue: ids cpt-templates-*.
 [[systems]]
 name = "FrontX Templates catalogue"
-slug = "frontx-templates"
+slug = "templates"
 kit = "sdlc"
 artifacts_dir = "architecture"
 
