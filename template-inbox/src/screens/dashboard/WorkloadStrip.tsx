@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, Progress } from '@gears-front
 import type { WorkloadMetric } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
 import { formatCount, workloadPercent } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type WorkloadStripProps = {
   workload: WorkloadMetric[];

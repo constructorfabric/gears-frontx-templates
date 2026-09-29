@@ -3,7 +3,7 @@ import { SendIcon } from 'lucide-react';
 import { Button, Textarea } from '@gears-frontx/ui-kit';
 import type { Translate } from '../../shared/i18n';
 import { SubmitShortcutHint } from '../../shared/submitShortcut';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 export type MailComposerProps = {
   correspondentName: string;
@@ -37,8 +37,8 @@ export function MailComposer({ correspondentName, draft, onDraftChange, onSend, 
   };
 
   return (
-    <div className={styles.composer}>
-      <div className={styles.composerBox}>
+    <div className={sharedStyles.composer}>
+      <div className={sharedStyles.composerBox}>
         <Textarea
           rows={3}
           value={draft}
@@ -47,9 +47,9 @@ export function MailComposer({ correspondentName, draft, onDraftChange, onSend, 
           placeholder={placeholder}
           aria-label={placeholder}
         />
-        <div className={styles.composerToolbar}>
-          <span className={styles.spacer} />
-          <SubmitShortcutHint t={t} className={styles.composerHint} />
+        <div className={sharedStyles.composerToolbar}>
+          <span className={sharedStyles.spacer} />
+          <SubmitShortcutHint t={t} className={sharedStyles.composerHint} />
           <Button icon={<SendIcon />} disabled={!canSend} onClick={onSend}>
             {t('send')}
           </Button>

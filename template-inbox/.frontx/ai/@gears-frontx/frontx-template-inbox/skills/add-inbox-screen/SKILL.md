@@ -27,7 +27,7 @@ The project wants another section: a queue, a report over the same data, a direc
 
    If `.frontx/ai/@gears-frontx/template-design-guardrails/` exists in the project, that bundle's `generate-interface` skill and its design contract govern how the screen is generated - follow them, and load the contract once for the whole screen rather than re-reading it per file. If it is not installed, state in the plan that the screen is being generated without a design contract.
 
-   Layout on kit tokens: `src/styles/workspace.module.css` for a screen that reuses the existing pane, header and sidebar shapes, or - only when the screen's own grid and type scale would add classes nothing else reads - its own CSS module in `src/styles/`, the way `dashboard.module.css` and `mail.module.css` do. Either way: kit tokens for every colour, no CSS framework.
+   Layout on kit tokens: the screen's own CSS module beside it (`src/screens/{screen}/{screen}.module.css`), plus `src/shared/shared.module.css` for the pane, header, sidebar and row shapes every screen shares. Never another screen's module. Kit tokens for every colour, space step and radius, no CSS framework.
 
 4. **Give it a route** in `src/app/routing.ts`: a variant in the `Route` union, a branch in `parseRoute`, a case in `hashOf`, and a `{SCREEN}_ROUTE` constant (for example `DASHBOARD_ROUTE`) - or, for a route that carries an id, a camelCase builder like `contactRoute(id)`. Extend `routing.test.ts` in the same edit - the parser is the one place a wrong address turns into a wrong screen silently.
 

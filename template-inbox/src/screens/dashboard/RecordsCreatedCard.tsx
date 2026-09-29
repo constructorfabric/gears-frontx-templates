@@ -22,7 +22,7 @@ import type { Translate } from '../../shared/i18n';
 import { chartSummary } from './chartSummary';
 import { recordsCreatedChartConfig } from './dashboardChartConfig';
 import { formatCount, recordsCreatedTotal, sum } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type RecordsCreatedCardProps = {
   records: RecordsCreatedPoint[];

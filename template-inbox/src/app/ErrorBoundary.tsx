@@ -2,7 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { CircleAlertIcon } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button } from '@gears-frontx/ui-kit';
 import type { Translate } from '../shared/i18n';
-import styles from '../styles/workspace.module.css';
+import sharedStyles from '../shared/shared.module.css';
 
 export type AppErrorBoundaryProps = {
   children: ReactNode;
@@ -40,7 +40,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     if (!this.state.failed) return children;
 
     return (
-      <div className={styles.emptyPane}>
+      <div className={sharedStyles.emptyPane}>
         <Alert variant="destructive">
           <CircleAlertIcon />
           <AlertTitle>{t('app_error_title')}</AlertTitle>

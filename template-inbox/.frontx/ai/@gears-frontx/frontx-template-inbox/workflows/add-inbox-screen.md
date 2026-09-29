@@ -21,7 +21,7 @@ Ordered execution procedure for the `add-inbox-screen` skill in this same bundle
    - Props: `t`, plus whatever the route carries. No wrapper element of its own - the panes are siblings, and the app frame is already around them.
    - Read data with `useApiQuery` off the service that owns the domain (`getInboxApi()`, `getMailApi()` or `getDashboardApi()`), or off a new sibling service registered in `src/api/registry.ts` when no existing one owns it.
    - Gate the first paint with `firstPaintOf` from `src/shared/QueryStates.tsx`, rendering `LoadErrorPane` and `LoadingPane`.
-   - Layout classes go in `src/styles/workspace.module.css`, or in a screen-specific module in `src/styles/` when the screen's layout is its own (as `dashboard.module.css` and `mail.module.css` are).
+   - Layout classes go in the screen's own module beside it (`src/screens/{screen}/{screen}.module.css`); what the screen reuses from the others (pane chrome, list rows, thread and composer frames) comes from `src/shared/shared.module.css`. A screen never imports another screen's module - `npm run arch:deps` rejects it.
 
 3. **Add the route** in `src/app/routing.ts`:
    ```ts

@@ -23,7 +23,7 @@ import {
 import type { Translate } from '../../shared/i18n';
 import type { Channel } from '../../api/types';
 import { cx } from '../../shared/cx';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 const CHANNEL_ICON: Record<Channel['icon'], ReactElement> = {
   hash: <HashIcon />,
@@ -61,7 +61,7 @@ export function FolderSidebar({
 
   return (
     <aside
-      className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
+      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
       aria-label={t('channels')}
       // Kept in the tree while collapsed so the width transition has something
       // to animate; `inert` takes its controls out of the tab order and
@@ -69,9 +69,9 @@ export function FolderSidebar({
       aria-hidden={collapsed}
       inert={collapsed}
     >
-      <div className={styles.paneHeader}>
-        <span className={styles.paneTitle}>{t('chat')}</span>
-        <span className={styles.spacer} />
+      <div className={sharedStyles.paneHeader}>
+        <span className={sharedStyles.paneTitle}>{t('chat')}</span>
+        <span className={sharedStyles.spacer} />
         <Dialog
           open={createOpen}
           onOpenChange={(open) => {
@@ -111,13 +111,13 @@ export function FolderSidebar({
           </DialogContent>
         </Dialog>
       </div>
-      <nav className={styles.sidebarBody}>
+      <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {channels.map((channel) => (
             <Item
               key={channel.id}
               size="sm"
-              className={cx(styles.folderItem, channel.id === selectedChannelId && styles.rowSelected)}
+              className={cx(sharedStyles.folderItem, channel.id === selectedChannelId && sharedStyles.rowSelected)}
               variant={channel.id === selectedChannelId ? 'muted' : 'default'}
               render={
                 <button

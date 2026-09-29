@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { PlusIcon, XIcon } from 'lucide-react';
 import { Badge, Button, Input } from '@gears-frontx/ui-kit';
 import type { Translate } from '../../shared/i18n';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 export type TagEditorProps = {
   tags: string[];
@@ -47,7 +47,7 @@ export function TagEditor({ tags, onAddTag, onRemoveTag, t }: TagEditorProps) {
   };
 
   return (
-    <div className={styles.chipRow}>
+    <div className={sharedStyles.chipRow}>
       {/*
         The whole chip is the remove control, through Badge's own `render`
         prop: a button nested inside a Badge would be an interactive element

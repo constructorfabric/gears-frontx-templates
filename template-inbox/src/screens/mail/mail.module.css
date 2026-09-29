@@ -1,14 +1,12 @@
 /*
- * Mail-only styling. Everything the mail screen shares with chat/contacts -
- * the sidebar, the pane header, the row shape, the thread scroller, the
- * composer chrome - stays in `workspace.module.css` and is reused as-is; only
- * what the mail reading pane needs that neither screen has (history
- * cards, the flat focused message, the read/unread text states) lives here.
- * Same discipline as the shared file: every value is a kit token.
+ * The mail screen's own layout: the list row's read state, the reading
+ * pane's history cards and focused message. What it shares with the chat
+ * screen (pane chrome, thread and composer frames) lives in
+ * `src/shared/shared.module.css`.
  */
 
 /* --- The tabs wrapper: it must grow to fill the list pane so the scrollable
-   row list beneath it (`.listBody`, reused from workspace.module.css) has a
+   row list beneath it (`.listBody`, from src/shared/shared.module.css) has a
    real height to overflow within. --- */
 
 .tabsFill {
@@ -41,6 +39,8 @@
 
 .starIcon {
   flex: none;
+  /* 14px: the kit's icon scale has no step between --icon-size-xs (12px)
+   * and --icon-size-sm (16px). */
   width: 0.875rem;
   height: 0.875rem;
   color: var(--warning);
@@ -49,7 +49,7 @@
 
 /*
  * Groups the star and the time so `.rowLine`'s `justify-content:
- * space-between` (workspace.module.css) sees exactly two children - the
+ * space-between` (src/shared/shared.module.css) sees exactly two children - the
  * title and this group - rather than three, which was spreading an equal
  * gap on BOTH sides of the star and pushing it toward the row's middle
  * instead of flush against the time. An unstarred row renders this same
@@ -76,12 +76,15 @@
   margin-bottom: var(--space-4);
 }
 
+/* A history card sits a step quieter than the reading pane's own surface:
+ * the border and the fill are the kit's `--border` and `--muted` mixed into
+ * transparency, because the kit has no softer token for either. */
 .historyCard {
   box-sizing: border-box;
   width: 100%;
   margin-bottom: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border: var(--border-width) solid color-mix(in srgb, var(--border) 60%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--muted) 40%, transparent);
 }
@@ -94,7 +97,7 @@
 }
 
 .historyCardSender {
-  font-size: 0.875rem; /* 14px */
+  font-size: var(--text-body-size);
   font-weight: 600;
 }
 
@@ -104,7 +107,7 @@
 }
 
 .historyCardBody {
-  font-size: 0.875rem; /* 14px */
+  font-size: var(--text-body-size);
   font-weight: 400;
   white-space: pre-wrap;
 }
@@ -112,7 +115,7 @@
 /* --- The focused message: flat, full width, never card-wrapped --- */
 
 .focusedMessage {
-  font-size: 0.875rem; /* 14px */
+  font-size: var(--text-body-size);
   font-weight: 400;
   white-space: pre-wrap;
 }

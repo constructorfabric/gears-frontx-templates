@@ -1,9 +1,9 @@
 /*
- * The dashboard screen's own layout: a four-row composition on top of the kit's Card/Badge/Progress/DataTable/chart
- * chrome as-is - no kit internals are restyled here. Every value is a kit
- * token, same discipline as `workspace.module.css`; this file adds only
- * what the kit has no token for - the big-number type scale, icon-chip
- * boxes, and the grid composition itself.
+ * The dashboard screen's own layout: a four-row composition on top of the
+ * kit's Card/Badge/Progress/DataTable/chart chrome as-is. Every colour,
+ * space and radius is a kit token; the literal values left are what the
+ * kit has no token for - the big-number type scale, two icon sizes, and the
+ * grid composition itself - and each says so where it is set.
  *
  * 24px (`--space-6`) is the grid gap throughout.
  */
@@ -83,7 +83,7 @@
  * `ChartContainer`'s own root carries a fixed `aspect-ratio: 16 / 9` (see
  * the `chart` component's own CSS), which would otherwise force a sparkline
  * exactly this wide to grow far taller than the 44px row it sits in. This
- * override - the same load-order-independent reasoning `workspace.module.css`
+ * override - the same load-order-independent reasoning `src/shared/shared.module.css`
  * uses throughout - is what makes an explicit size win regardless of which
  * stylesheet the bundler places first.
  */
@@ -129,9 +129,9 @@
 }
 
 .stageLegendDot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 999px;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
 }
 
 .stageLegendLabel {
@@ -154,7 +154,7 @@
 
 .kpiCardFooter {
   justify-content: space-between;
-  border-top: 1px solid var(--border);
+  border-top: var(--border-width) solid var(--border);
   padding-top: var(--card-spacing);
   font-size: var(--text-meta-size);
 }
@@ -260,20 +260,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   border-radius: var(--radius-md);
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
 .summaryIconChip svg {
-  width: 1rem;
-  height: 1rem;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 .summaryStatValue {
-  font-size: 1.25rem; /* 20px */
+  font-size: var(--text-heading-1-size);
+  line-height: var(--text-heading-1-line-height);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -366,14 +367,15 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
   border-radius: var(--radius-md);
   background: var(--secondary);
   color: var(--foreground);
 }
 
 .workloadIconChip svg {
+  /* 18px: between the kit's --icon-size-sm (16px) and --icon-size-md (20px). */
   width: 1.125rem;
   height: 1.125rem;
 }
@@ -424,7 +426,7 @@
 
 .topAgentRank {
   flex: none;
-  width: 1.25rem;
+  width: var(--space-5);
   color: var(--muted-foreground);
   font-size: var(--text-meta-size);
   font-variant-numeric: tabular-nums;
@@ -542,6 +544,7 @@
 }
 
 .tableHeaderLabel svg {
+  /* 14px: between the kit's --icon-size-xs (12px) and --icon-size-sm (16px). */
   width: 0.875rem;
   height: 0.875rem;
   color: var(--subtle-foreground);
@@ -582,7 +585,7 @@
 }
 
 /*
- * Responsive, matching `workspace.module.css`'s own thresholds. Above
+ * Responsive, on the same thresholds as the other screens. Above
  * 80rem (1280px, the checked lower bound) every row keeps its full column
  * count; below it the two densest rows step down before anything is forced
  * to overflow.

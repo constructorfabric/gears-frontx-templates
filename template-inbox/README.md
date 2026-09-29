@@ -61,7 +61,7 @@ The dev server prints the local address. To serve a production build from a sub-
 | `src/api/` | The API services, their mock maps and seed datasets, the response types and the query hooks |
 | `src/shared/` | Formatting helpers, avatars and the media-query hook every screen uses |
 | `src/i18n/en.json` | The UI-string catalogue |
-| `src/styles/` | The document frame (`app.css`) and the CSS modules the screens use |
+| `src/styles/app.css` | The document frame; every other stylesheet is a CSS module beside the components that use it |
 | `src/__test-utils__/` | The test renderer and the query-layer stand-in the screen tests use |
 | `public/` | Static assets served as they are |
 

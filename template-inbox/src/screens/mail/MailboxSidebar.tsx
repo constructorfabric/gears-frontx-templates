@@ -26,7 +26,7 @@ import type { Mail, Mailbox, MailboxId } from '../../api/mailTypes';
 import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
 import { countInMailbox } from './mailSelectors';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 const MAILBOX_ICON: Record<MailboxId, ReactElement> = {
   inbox: <InboxIcon />,
@@ -92,14 +92,14 @@ export function MailboxSidebar({
 
   return (
     <aside
-      className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
+      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
       aria-label={t('mail')}
       aria-hidden={collapsed}
       inert={collapsed}
     >
-      <div className={styles.paneHeader}>
-        <span className={styles.paneTitle}>{t('mail')}</span>
-        <span className={styles.spacer} />
+      <div className={sharedStyles.paneHeader}>
+        <span className={sharedStyles.paneTitle}>{t('mail')}</span>
+        <span className={sharedStyles.spacer} />
         <Dialog
           open={composeOpen}
           onOpenChange={(open) => {
@@ -161,13 +161,13 @@ export function MailboxSidebar({
           </DialogContent>
         </Dialog>
       </div>
-      <nav className={styles.sidebarBody}>
+      <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {mailboxes.map((mailbox) => (
             <Item
               key={mailbox.id}
               size="sm"
-              className={cx(styles.folderItem, mailbox.id === selectedMailboxId && styles.rowSelected)}
+              className={cx(sharedStyles.folderItem, mailbox.id === selectedMailboxId && sharedStyles.rowSelected)}
               variant={mailbox.id === selectedMailboxId ? 'muted' : 'default'}
               render={
                 <button

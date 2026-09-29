@@ -16,7 +16,7 @@ import type { Translate } from '../../shared/i18n';
 import { chartSummary } from './chartSummary';
 import { resolvedPerDayChartConfig } from './dashboardChartConfig';
 import { formatCount } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type ResolvedPerDayCardProps = {
   data: ResolvedPerDayPoint[];

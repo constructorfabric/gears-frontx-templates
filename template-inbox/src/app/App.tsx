@@ -10,7 +10,7 @@ import { t } from '../shared/i18n';
 import { requestScreenHeadingFocus } from '../shared/ScreenHeading';
 import { hashOf, useRoute } from './routing';
 import { useTheme } from './theme';
-import styles from '../styles/workspace.module.css';
+import styles from './App.module.css';
 
 /**
  * The whole window: the icon rail on the left, and whichever section the URL

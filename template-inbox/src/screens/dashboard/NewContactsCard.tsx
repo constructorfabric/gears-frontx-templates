@@ -23,7 +23,7 @@ import {
   newContactsOutboundTotal,
   newContactsTotal,
 } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type NewContactsCardProps = {
   newContacts: NewContactsSeries;

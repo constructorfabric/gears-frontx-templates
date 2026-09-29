@@ -21,7 +21,8 @@ import { ContactDetail } from './ContactDetail';
 import { ContactFilterSidebar } from './ContactFilterSidebar';
 import { ContactsTable } from './ContactsTable';
 import { selectContacts, type ContactFilter } from './contactFilters';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './contacts.module.css';
 
 export type ContactsScreenProps = {
   /**
@@ -65,7 +66,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
   // than quietly showing the directory as if no one had been asked for.
   if (openContactId !== null && openContact === null) {
     return (
-      <div className={styles.emptyPane}>
+      <div className={sharedStyles.emptyPane}>
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -118,7 +119,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
         />
       ) : (
         <div className={styles.contactsMain}>
-          <div className={styles.paneHeader}>
+          <div className={sharedStyles.paneHeader}>
             <Button
               variant="ghost"
               size="sm"
@@ -128,12 +129,12 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
               onClick={filterSidebar.toggle}
             />
             <span className={styles.contactsHeaderText}>
-              <ScreenHeading className={styles.paneTitle}>{t('all_contacts')}</ScreenHeading>
-              <span className={styles.paneCount}>
+              <ScreenHeading className={sharedStyles.paneTitle}>{t('all_contacts')}</ScreenHeading>
+              <span className={sharedStyles.paneCount}>
                 {t('people_count', { count: visibleContacts.length })}
               </span>
             </span>
-            <span className={styles.spacer} />
+            <span className={sharedStyles.spacer} />
             <Input
               className={styles.searchField}
               type="search"

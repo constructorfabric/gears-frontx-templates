@@ -4,7 +4,8 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from '@gea
 import { cx } from '../../shared/cx';
 import type { Translate } from '../../shared/i18n';
 import { SubmitShortcutHint } from '../../shared/submitShortcut';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './inbox.module.css';
 
 export const COMPOSER_TABS = ['reply', 'note'] as const;
 
@@ -66,7 +67,7 @@ export function Composer({
   // inactive panel (Base UI's default), so only one textarea - and one
   // `textareaRef` target - exists at a time.
   const body = (
-    <div className={cx(styles.composerBox, isNote && styles.composerBoxNote)}>
+    <div className={cx(sharedStyles.composerBox, isNote && styles.composerBoxNote)}>
       <Textarea
         ref={textareaRef}
         rows={3}
@@ -83,7 +84,7 @@ export function Composer({
         }
         aria-label={isNote ? t('note') : t('reply')}
       />
-      <div className={styles.composerToolbar}>
+      <div className={sharedStyles.composerToolbar}>
         {/*
           Attach, emoji and saved replies need a store this template does not
           ship - an upload target, a picker, a canned reply library - so they
@@ -97,8 +98,8 @@ export function Composer({
           <Button variant="ghost" size="sm" icon={<SmileIcon />} aria-label={t('insert_emoji')} disabled />
           <Button variant="ghost" size="sm" icon={<ZapIcon />} aria-label={t('saved_replies')} disabled />
         </div>
-        <span className={styles.spacer} />
-        <SubmitShortcutHint t={t} className={styles.composerHint} />
+        <span className={sharedStyles.spacer} />
+        <SubmitShortcutHint t={t} className={sharedStyles.composerHint} />
         <Button icon={<SendIcon />} disabled={!canSend} loading={sending} onClick={onSend}>
           {isNote ? t('add_note') : t('send')}
         </Button>
@@ -107,7 +108,7 @@ export function Composer({
   );
 
   return (
-    <div className={styles.composer}>
+    <div className={sharedStyles.composer}>
       <Tabs
         value={tab}
         onValueChange={(value) => {

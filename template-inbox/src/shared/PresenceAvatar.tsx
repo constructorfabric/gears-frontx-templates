@@ -2,7 +2,7 @@ import { Avatar, AvatarBadge, AvatarFallback, type AvatarProps } from '@gears-fr
 import type { Presence } from '../api/types';
 import { identityToneOf, initialsOf, labelOf } from './format';
 import type { Translate } from './i18n';
-import styles from '../styles/workspace.module.css';
+import styles from './shared.module.css';
 
 const PRESENCE_CLASS: Record<Presence, string> = {
   online: styles.presenceOnline,

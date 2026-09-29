@@ -39,6 +39,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  Toggle,
   useMessageScroller,
   useMessageScrollerScrollable,
 } from '@gears-frontx/ui-kit';
@@ -54,7 +55,8 @@ import { labelOf, messageDayKey, messageDayLabel, messageTimeOfDay } from '../..
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { Composer, type ComposerProps } from './Composer';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './inbox.module.css';
 
 /**
  * Three bubble roles, spelled out rather than nested in the markup: an
@@ -239,8 +241,8 @@ export function ConversationThread({
   const suggestions = conversation.suggestedReplies;
 
   return (
-    <div className={styles.thread}>
-      <div className={styles.threadHeader}>
+    <div className={sharedStyles.thread}>
+      <div className={sharedStyles.threadHeader}>
         {onBack ? (
           <Button
             variant="ghost"
@@ -256,30 +258,35 @@ export function ConversationThread({
           size="lg"
           t={t}
         />
-        <div className={styles.threadTitles}>
-          <span className={styles.threadSubject}>{conversation.subject}</span>
-          <span className={styles.threadSubtitle}>
+        <div className={sharedStyles.threadTitles}>
+          <span className={sharedStyles.threadSubject}>{conversation.subject}</span>
+          <span className={sharedStyles.threadSubtitle}>
             {t('contact_presence', { name: contactName, presence: labelOf(contact?.presence ?? 'offline', t) })}
           </span>
         </div>
-        <span className={styles.spacer} />
-        <div className={styles.threadActions}>
-          <Button
-            variant="ghost"
+        <span className={sharedStyles.spacer} />
+        <div className={sharedStyles.threadActions}>
+          {/* Two-state controls, so the kit's Toggle: the pressed state says
+              whether the conversation is starred or snoozed, and the label
+              names the control rather than the action it would take next. */}
+          <Toggle
             size="sm"
-            icon={<StarIcon />}
-            aria-label={conversation.starred ? t('unstar_conversation') : t('star_conversation')}
-            aria-pressed={conversation.starred}
-            onClick={onToggleStar}
-          />
-          <Button
-            variant="ghost"
+            iconOnly
+            aria-label={t('star_conversation')}
+            pressed={conversation.starred}
+            onPressedChange={onToggleStar}
+          >
+            <StarIcon />
+          </Toggle>
+          <Toggle
             size="sm"
-            icon={<AlarmClockIcon />}
-            aria-label={conversation.snoozed ? t('unsnooze_conversation') : t('snooze_conversation')}
-            aria-pressed={conversation.snoozed}
-            onClick={onToggleSnooze}
-          />
+            iconOnly
+            aria-label={t('snooze_conversation')}
+            pressed={conversation.snoozed}
+            onPressedChange={onToggleSnooze}
+          >
+            <AlarmClockIcon />
+          </Toggle>
           {/*
             Create-ticket and Unassign render disabled, the app's convention
             for a control whose action this template does not ship: Tickets is
@@ -367,7 +374,7 @@ export function ConversationThread({
       */}
       <MessageScrollerProvider key={conversation.id} autoScroll>
         <FollowNewestMessage lastMessageId={messages[messages.length - 1]?.id} />
-        <MessageScroller className={styles.transcript}>
+        <MessageScroller className={sharedStyles.transcript}>
           <MessageScrollerViewport>
             <MessageScrollerContent className={styles.transcriptContent}>
               {messages.map((message, index) => {
@@ -412,8 +419,8 @@ export function ConversationThread({
                             image, or attachment card(s), all inside the bubble.
                           */}
                           {message.kind === 'file' ? (
-                            <Bubble align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
-                              <BubbleContent className={cx(styles.bubbleText, styles.fileBubbleContent)}>
+                            <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
+                              <BubbleContent className={styles.bubbleText}>
                                 {message.attachments.map((file, fileIndex) => (
                                   <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
                                     <AttachmentMedia>
@@ -429,7 +436,7 @@ export function ConversationThread({
                               </BubbleContent>
                             </Bubble>
                           ) : message.kind === 'image' ? (
-                            <Bubble align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
+                            <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
                               <BubbleContent className={cx(styles.bubbleText, styles.imageBubbleContent)}>
                                 {message.body ? (
                                   <>
@@ -473,6 +480,7 @@ export function ConversationThread({
                             </Bubble>
                           ) : (
                             <Bubble
+                              className={styles.bubble}
                               align={outbound ? 'end' : 'start'}
                               variant={bubbleVariantFor(message)}
                             >

@@ -2,7 +2,7 @@ import { CircleAlertIcon } from 'lucide-react';
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, Skeleton } from '@gears-frontx/ui-kit';
 import type { QueryResult } from '../api/queries';
 import type { Translate } from './i18n';
-import styles from '../styles/workspace.module.css';
+import styles from './shared.module.css';
 
 /** The part of a query result a screen's first paint depends on. */
 type GatedQuery = Pick<QueryResult<unknown>, 'isLoading' | 'error' | 'refetch'>;

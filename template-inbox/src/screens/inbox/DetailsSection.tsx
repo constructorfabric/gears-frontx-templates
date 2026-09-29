@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@gears-frontx/ui-kit';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './inbox.module.css';
 
 export type DetailsSectionProps = {
   title: string;
@@ -24,7 +25,7 @@ export function DetailsSection({ title, defaultOpen = true, children }: DetailsS
         {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className={styles.stack}>{children}</div>
+        <div className={sharedStyles.stack}>{children}</div>
       </CollapsibleContent>
     </Collapsible>
   );

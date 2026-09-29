@@ -55,9 +55,9 @@ The kit's overlays - Select, Combobox, Popover, Dialog, DropdownMenu - portal to
 
 ## Styles
 
-Kit component CSS travels with each component the bundler pulls in; there is nothing to import. The app's own layout is CSS Modules over the kit's semantic tokens: `src/styles/workspace.module.css` holds the shared chrome and panes (rail, sidebars, lists, thread, details panel), `src/styles/dashboard.module.css` the dashboard's grid and type scale, and `src/styles/mail.module.css` the mail list and reading pane. Colours come from kit tokens (a tint is a `color-mix` over one); there is no CSS framework and no second component library. `src/styles/app.css` is the document frame alone (full height, no page scroll) and should not grow.
+Kit component CSS travels with each component the bundler pulls in; there is nothing to import. The app's own layout is CSS Modules over the kit's semantic tokens, each beside the components that use it: `src/app/App.module.css` holds the frame and the rail, `src/shared/shared.module.css` what several screens draw (pane chrome, side columns, list rows, the thread and composer frames, field rows, the presence badge), and each screen's folder its own module (`inbox.module.css`, `mail.module.css`, `contacts.module.css`, `dashboard.module.css`). Colours, space steps, radii and type sizes come from kit tokens (a tint is a `color-mix` over one), and a literal is left only where the kit has no token, with a comment saying so; there is no CSS framework and no second component library. `src/styles/app.css` is the document frame alone (full height, no page scroll) and should not grow.
 
-A screen that reuses the existing pane, header and sidebar shapes reads `workspace.module.css`. A screen whose own grid and type scale would only add classes nothing else reads gets its own module in `src/styles/`, the way the dashboard and mail do.
+A screen reads the shared shapes from `src/shared/shared.module.css` and keeps its own classes in its own module. It never imports another screen's module; `arch:deps` rejects that the same way it rejects a cross-screen component import.
 
 ## Chrome as shipped
 

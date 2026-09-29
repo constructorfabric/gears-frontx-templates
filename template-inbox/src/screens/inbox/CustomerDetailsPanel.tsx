@@ -30,7 +30,8 @@ import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { DetailsSection } from './DetailsSection';
 import { TagEditor } from './TagEditor';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './inbox.module.css';
 
 /**
  * The select's own value for "nobody": `Conversation.assignee` says it with
@@ -48,9 +49,9 @@ type FieldRowProps = { label: string; value: string };
 
 function FieldRow({ label, value }: FieldRowProps) {
   return (
-    <div className={styles.fieldRow}>
-      <span className={styles.fieldLabel}>{label}</span>
-      <span className={styles.fieldValue}>{orDash(value)}</span>
+    <div className={sharedStyles.fieldRow}>
+      <span className={sharedStyles.fieldLabel}>{label}</span>
+      <span className={sharedStyles.fieldValue}>{orDash(value)}</span>
     </div>
   );
 }
@@ -117,15 +118,15 @@ export function CustomerDetailsPanel({
 
         <TabsContent value="details">
           <div className={styles.detailsBody}>
-            <div className={styles.contactCard}>
+            <div className={sharedStyles.contactCard}>
               <PresenceAvatar
                 name={contactName}
                 presence={contact?.presence ?? 'offline'}
                 size="lg"
                 t={t}
               />
-              <span className={styles.contactCardName}>{contactName}</span>
-              <span className={styles.identityMeta}>
+              <span className={sharedStyles.contactCardName}>{contactName}</span>
+              <span className={sharedStyles.identityMeta}>
                 {labelOf(contact?.presence ?? 'offline', t)}
               </span>
               <Button variant="outline" size="sm" onClick={onViewContact} disabled={!contact}>
@@ -133,7 +134,7 @@ export function CustomerDetailsPanel({
               </Button>
             </div>
 
-            <div className={styles.stack}>
+            <div className={sharedStyles.stack}>
               <Select
                 value={assigneeValue}
                 onValueChange={(value) => {
@@ -247,19 +248,19 @@ export function CustomerDetailsPanel({
               a feature this template invents.
             */}
             <DetailsSection title={t('links')} defaultOpen={false}>
-              <div className={styles.fieldRow}>
-                <span className={styles.fieldLabel}>{t('tracker_ticket')}</span>
+              <div className={sharedStyles.fieldRow}>
+                <span className={sharedStyles.fieldLabel}>{t('tracker_ticket')}</span>
                 <Button variant="ghost" size="sm" icon={<PlusIcon />} disabled aria-label={t('attach_link')} />
               </div>
-              <div className={styles.fieldRow}>
-                <span className={styles.fieldLabel}>{t('back_office_tickets')}</span>
+              <div className={sharedStyles.fieldRow}>
+                <span className={sharedStyles.fieldLabel}>{t('back_office_tickets')}</span>
                 <Button variant="ghost" size="sm" icon={<PlusIcon />} disabled aria-label={t('attach_link')} />
               </div>
             </DetailsSection>
 
             <DetailsSection title={t('shared_files')}>
               {conversation.sharedFiles.length === 0 ? (
-                <span className={styles.identityMeta}>{t('no_files')}</span>
+                <span className={sharedStyles.identityMeta}>{t('no_files')}</span>
               ) : (
                 <ItemGroup>
                   {conversation.sharedFiles.map((file, fileIndex) => (
@@ -283,11 +284,11 @@ export function CustomerDetailsPanel({
         */}
         <TabsContent value="copilot">
           <div className={styles.detailsBody}>
-            <div className={styles.stack}>
-              <span className={styles.contactCardName}>{t('copilot_title')}</span>
-              <span className={styles.identityMeta}>{t('copilot_subtitle')}</span>
+            <div className={sharedStyles.stack}>
+              <span className={sharedStyles.contactCardName}>{t('copilot_title')}</span>
+              <span className={sharedStyles.identityMeta}>{t('copilot_subtitle')}</span>
             </div>
-            <div className={styles.stack}>
+            <div className={sharedStyles.stack}>
               {COPILOT_PROMPTS.map((prompt) => (
                 <Button key={prompt} variant="outline" size="sm" icon={<SparklesIcon />} disabled>
                   {t(prompt)}

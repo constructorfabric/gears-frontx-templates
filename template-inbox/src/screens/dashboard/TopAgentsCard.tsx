@@ -1,9 +1,9 @@
-import { Avatar, AvatarFallback, Badge, Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
 import type { TopAgent } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
-import { identityToneOf, initialsOf } from '../../shared/format';
+import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { formatCount } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type TopAgentsCardProps = {
   agents: TopAgent[];
@@ -24,11 +24,7 @@ export function TopAgentsCard({ agents, t }: TopAgentsCardProps) {
         {agents.map((agent, index) => (
           <div className={styles.topAgentRow} key={agent.id}>
             <span className={styles.topAgentRank}>{index + 1}</span>
-            <Avatar size="sm">
-              <AvatarFallback tone={identityToneOf(agent.name)} variant="solid">
-                {initialsOf(agent.name)}
-              </AvatarFallback>
-            </Avatar>
+            <IdentityAvatar name={agent.name} size="sm" />
             <span className={styles.topAgentName}>{agent.name}</span>
             <Badge variant="secondary" className={styles.topAgentBadge}>
               {formatCount(agent.resolvedCount)}

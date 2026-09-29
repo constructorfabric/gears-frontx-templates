@@ -14,7 +14,7 @@ import { MailboxSidebar, type ComposedMail } from './MailboxSidebar';
 import { MailList } from './MailList';
 import { MailReadingPane } from './MailReadingPane';
 import { selectMails, type MailTab } from './mailSelectors';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 export type MailScreenProps = {
   t: Translate;
@@ -190,7 +190,7 @@ export function MailScreen({ t }: MailScreenProps) {
         t={t}
       />
 
-      <div className={cx(styles.detailPane, isSinglePane && !showReading && styles.singlePaneHidden)}>
+      <div className={cx(sharedStyles.detailPane, isSinglePane && !showReading && sharedStyles.singlePaneHidden)}>
         {selected ? (
           <MailReadingPane
             mail={selected}
@@ -211,7 +211,7 @@ export function MailScreen({ t }: MailScreenProps) {
             t={t}
           />
         ) : (
-          <div className={styles.emptyPane}>
+          <div className={sharedStyles.emptyPane}>
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">

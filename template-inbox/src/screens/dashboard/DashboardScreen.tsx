@@ -13,8 +13,8 @@ import { StageFunnelCard } from './StageFunnelCard';
 import { SummaryCard } from './SummaryCard';
 import { TopAgentsCard } from './TopAgentsCard';
 import { WorkloadStrip } from './WorkloadStrip';
-import dashboardStyles from '../../styles/dashboard.module.css';
-import layoutStyles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = {
   t: Translate;
@@ -46,41 +46,41 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
   // does not jump when the data arrives.
   if (firstPaint.failed) {
     return (
-      <div className={dashboardStyles.dashboardMain}>
+      <div className={styles.dashboardMain}>
         <LoadErrorPane onRetry={firstPaint.retry} t={t} />
       </div>
     );
   }
   if (firstPaint.loading || data === undefined || contacts === undefined) {
     return (
-      <div className={dashboardStyles.dashboardMain}>
+      <div className={styles.dashboardMain}>
         <LoadingPane />
       </div>
     );
   }
 
   return (
-    <div className={dashboardStyles.dashboardMain}>
-      <div className={layoutStyles.paneHeader}>
-        <ScreenHeading className={layoutStyles.paneTitle}>{t('dashboard')}</ScreenHeading>
+    <div className={styles.dashboardMain}>
+      <div className={sharedStyles.paneHeader}>
+        <ScreenHeading className={sharedStyles.paneTitle}>{t('dashboard')}</ScreenHeading>
       </div>
-      <div className={dashboardStyles.dashboardBody}>
+      <div className={styles.dashboardBody}>
         <KpiRow kpis={data.kpis} contactsByStage={data.contactsByStage} t={t} />
 
-        <div className={dashboardStyles.rowTwo}>
+        <div className={styles.rowTwo}>
           <ResolvedPerDayCard data={data.resolvedPerDay} t={t} />
           <NewContactsCard newContacts={data.newContacts} t={t} />
           <SummaryCard activity={data.activity} trend={data.summaryTrend} t={t} />
         </div>
 
-        <div className={dashboardStyles.rowThree}>
+        <div className={styles.rowThree}>
           <RecordsCreatedCard records={data.recordsCreated} t={t} />
           <TopAgentsCard agents={data.topAgents} t={t} />
         </div>
 
         <WorkloadStrip workload={data.workload} t={t} />
 
-        <div className={dashboardStyles.rowFunnel}>
+        <div className={styles.rowFunnel}>
           <StageFunnelCard stages={data.stageFunnel} t={t} />
           <ConversionBySourceCard sources={data.conversionBySource} t={t} />
         </div>

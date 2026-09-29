@@ -15,7 +15,7 @@ import {
 } from './dashboardSelectors';
 import type { Translate } from '../../shared/i18n';
 import { AreaSparkline, BarSparkline, LineSparkline } from './Sparkline';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 const CHART_CONFIG_BY_ID: Record<string, (t: Translate) => ChartConfig> = {
   'open-conversations': openConversationsChartConfig,

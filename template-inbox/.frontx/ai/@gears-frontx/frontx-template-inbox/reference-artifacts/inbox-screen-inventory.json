@@ -5,10 +5,13 @@
   "app": {
     "entry": "src/main.tsx",
     "root": "src/app/App.tsx",
-    "stylesheet": "src/styles/workspace.module.css",
+    "stylesheet": "src/app/App.module.css",
+    "sharedStylesheet": "src/shared/shared.module.css",
     "screenStylesheets": [
-      "src/styles/dashboard.module.css",
-      "src/styles/mail.module.css"
+      "src/screens/dashboard/dashboard.module.css",
+      "src/screens/inbox/inbox.module.css",
+      "src/screens/mail/mail.module.css",
+      "src/screens/contacts/contacts.module.css"
     ]
   },
   "chrome": [
@@ -804,7 +807,7 @@
             {
               "part": "history cards",
               "kit": [],
-              "note": "Plain elements styled by src/styles/mail.module.css with an IdentityAvatar each, not a kit Card - muted bordered blocks behind the toggle. The newest message renders flat, full width, never card-wrapped.",
+              "note": "Plain elements styled by src/screens/mail/mail.module.css with an IdentityAvatar each, not a kit Card - muted bordered blocks behind the toggle. The newest message renders flat, full width, never card-wrapped.",
               "module": "src/shared/IdentityAvatar.tsx"
             },
             {

@@ -15,7 +15,7 @@ import type { Translate } from '../../shared/i18n';
 import { chartSummary } from './chartSummary';
 import { conversionChartConfig } from './dashboardChartConfig';
 import { conversionWonPercent, formatCount, formatPercent } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type ConversionBySourceCardProps = {
   sources: ConversionSource[];

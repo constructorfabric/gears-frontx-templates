@@ -26,7 +26,7 @@ import { countOpen, selectConversations, type SortOrder } from './conversationOr
 import { CustomerDetailsPanel } from './CustomerDetailsPanel';
 import { FolderSidebar } from './FolderSidebar';
 import { type ComposerTab } from './Composer';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 /**
  * The fields a triaging agent changes from the thread, held client-side.
@@ -301,7 +301,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
         t={t}
       />
 
-      <div className={cx(styles.detailPane, isSinglePane && !showThread && styles.singlePaneHidden)}>
+      <div className={cx(sharedStyles.detailPane, isSinglePane && !showThread && sharedStyles.singlePaneHidden)}>
         {selected ? (
           <>
             <ConversationThread
@@ -386,7 +386,7 @@ export function InboxScreen({ t }: InboxScreenProps) {
             ) : null}
           </>
         ) : (
-          <div className={styles.emptyPane}>
+          <div className={sharedStyles.emptyPane}>
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">

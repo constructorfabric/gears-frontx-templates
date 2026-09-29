@@ -4,7 +4,7 @@ import type { Translate } from '../../shared/i18n';
 import { chartSummary } from './chartSummary';
 import { stageFunnelChartConfig } from './dashboardChartConfig';
 import { formatCount, funnelSegmentGeometry, funnelTotal } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type StageFunnelCardProps = {
   stages: FunnelStage[];

@@ -15,7 +15,7 @@ import {
   countForFilter,
   type ContactFilter,
 } from './contactFilters';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
 
 export type ContactFilterSidebarProps = {
   contacts: Contact[];
@@ -34,21 +34,21 @@ export function ContactFilterSidebar({
 }: ContactFilterSidebarProps) {
   return (
     <aside
-      className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
+      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
       aria-label={t('contact_filters')}
       aria-hidden={collapsed}
       inert={collapsed}
     >
-      <div className={styles.paneHeader}>
-        <span className={styles.paneTitle}>{t('contacts')}</span>
+      <div className={sharedStyles.paneHeader}>
+        <span className={sharedStyles.paneTitle}>{t('contacts')}</span>
       </div>
-      <nav className={styles.sidebarBody}>
+      <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {CONTACT_FILTERS.map((filter) => (
             <Item
               key={filter}
               size="sm"
-              className={styles.folderItem}
+              className={sharedStyles.folderItem}
               variant={filter === selectedFilter ? 'muted' : 'default'}
               render={
                 <button

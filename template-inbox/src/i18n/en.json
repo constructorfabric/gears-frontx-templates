@@ -256,8 +256,6 @@
   "unread_mail_count": "Unread ({count})",
   "unread_messages_count_one": "{count} unread message",
   "unread_messages_count_other": "{count} unread messages",
-  "unsnooze_conversation": "Unsnooze conversation",
-  "unstar_conversation": "Remove star",
   "unstar_mail": "Remove star",
   "view_contact": "View contact",
   "view_report": "View report",

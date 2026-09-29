@@ -40,7 +40,8 @@ import {
   type Route,
 } from './routing';
 import type { Theme } from './theme';
-import styles from '../styles/workspace.module.css';
+import sharedStyles from '../shared/shared.module.css';
+import styles from './App.module.css';
 
 type RailSection = 'dashboard' | 'inbox' | 'mail' | 'contacts';
 
@@ -114,7 +115,7 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
         </TooltipProvider>
       </nav>
 
-      <span className={styles.spacer} />
+      <span className={sharedStyles.spacer} />
 
       <Button
         variant="ghost"
@@ -129,17 +130,17 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
           <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
         </PopoverTrigger>
         <PopoverContent side="right" align="end">
-          <div className={styles.stack}>
+          <div className={sharedStyles.stack}>
             <div className={styles.railIdentityCard}>
               <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
               <span className={styles.identityLines}>
                 <span className={styles.identityName}>{agent?.name ?? t('loading')}</span>
-                <span className={styles.identityMeta}>{agent ? labelOf(agent.presence, t) : ''}</span>
+                <span className={sharedStyles.identityMeta}>{agent ? labelOf(agent.presence, t) : ''}</span>
               </span>
             </div>
-            <div className={styles.fieldRow}>
-              <span className={styles.fieldLabel}>{t('workspace')}</span>
-              <span className={styles.fieldValue}>{agent?.workspace ?? ''}</span>
+            <div className={sharedStyles.fieldRow}>
+              <span className={sharedStyles.fieldLabel}>{t('workspace')}</span>
+              <span className={sharedStyles.fieldValue}>{agent?.workspace ?? ''}</span>
             </div>
             <Separator aria-hidden="true" />
             {/*

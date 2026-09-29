@@ -25,8 +25,8 @@ import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
 import { ScreenHeading } from '../../shared/ScreenHeading';
 import { isMailTab, selectMails, type MailTab } from './mailSelectors';
-import styles from '../../styles/workspace.module.css';
-import mailStyles from '../../styles/mail.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './mail.module.css';
 
 export type MailListProps = {
   mails: Mail[];
@@ -75,9 +75,9 @@ export function MailList({
     <Item
       key={mail.id}
       className={cx(
-        styles.conversationRow,
-        mail.read && mailStyles.mailRowRead,
-        mail.id === selectedMailId && styles.rowSelected
+        sharedStyles.conversationRow,
+        mail.read && styles.mailRowRead,
+        mail.id === selectedMailId && sharedStyles.rowSelected
       )}
       variant={mail.id === selectedMailId ? 'muted' : 'default'}
       render={
@@ -92,24 +92,24 @@ export function MailList({
         <IdentityAvatar name={mail.correspondentName} size="lg" />
       </ItemMedia>
       <ItemContent>
-        <div className={styles.rowLine}>
-          <ItemTitle className={cx(styles.rowText, styles.rowTitleText, mailStyles.correspondentText)}>
+        <div className={sharedStyles.rowLine}>
+          <ItemTitle className={cx(sharedStyles.rowText, sharedStyles.rowTitleText, styles.correspondentText)}>
             {/* Read or unread shows as weight and opacity; this says it in words. */}
-            {mail.read ? null : <span className={styles.visuallyHidden}>{t('unread_mail')}</span>}
+            {mail.read ? null : <span className={sharedStyles.visuallyHidden}>{t('unread_mail')}</span>}
             {mail.correspondentName}
           </ItemTitle>
-          <span className={mailStyles.rowTimeGroup}>
+          <span className={styles.rowTimeGroup}>
             {mail.pinned ? (
-              <PinIcon className={styles.pinIcon} role="img" aria-label={t('pinned_mail')} />
+              <PinIcon className={sharedStyles.pinIcon} role="img" aria-label={t('pinned_mail')} />
             ) : null}
             {mail.starred ? (
-              <StarIcon className={mailStyles.starIcon} role="img" aria-label={t('starred_mail')} />
+              <StarIcon className={styles.starIcon} role="img" aria-label={t('starred_mail')} />
             ) : null}
-            <span className={styles.rowTime}>{shortRelativeTime(mail.receivedAt)}</span>
+            <span className={sharedStyles.rowTime}>{shortRelativeTime(mail.receivedAt)}</span>
           </span>
         </div>
-        <div className={styles.rowLine}>
-          <ItemDescription className={cx(styles.rowText, styles.rowPreviewText, mailStyles.subjectText)}>
+        <div className={sharedStyles.rowLine}>
+          <ItemDescription className={cx(sharedStyles.rowText, sharedStyles.rowPreviewText, styles.subjectText)}>
             {t('mail_preview', { subject: mail.subject, snippet: mail.snippet })}
           </ItemDescription>
         </div>
@@ -123,7 +123,7 @@ export function MailList({
   const renderRows = (rows: Mail[]) => {
     if (rows.length === 0) {
       return (
-        <div className={styles.listBody}>
+        <div className={sharedStyles.listBody}>
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -138,23 +138,23 @@ export function MailList({
     const pinnedMails = rows.filter((mail) => mail.pinned);
     const otherMails = rows.filter((mail) => !mail.pinned);
     return (
-      <div className={styles.listBody}>
+      <div className={sharedStyles.listBody}>
         {pinnedMails.length > 0 ? (
           <>
             <SidebarGroupLabel>{t('pinned')}</SidebarGroupLabel>
-            <ItemGroup className={styles.conversationGroup}>
+            <ItemGroup className={sharedStyles.conversationGroup}>
               {pinnedMails.map(renderRow)}
             </ItemGroup>
           </>
         ) : null}
-        <ItemGroup className={styles.conversationGroup}>{otherMails.map(renderRow)}</ItemGroup>
+        <ItemGroup className={sharedStyles.conversationGroup}>{otherMails.map(renderRow)}</ItemGroup>
       </div>
     );
   };
 
   return (
-    <section className={cx(styles.listPane, hidden && styles.singlePaneHidden)} aria-label={mailboxLabel}>
-      <div className={styles.paneHeader}>
+    <section className={cx(sharedStyles.listPane, hidden && sharedStyles.singlePaneHidden)} aria-label={mailboxLabel}>
+      <div className={sharedStyles.paneHeader}>
         <Button
           variant="ghost"
           size="sm"
@@ -163,13 +163,13 @@ export function MailList({
           aria-expanded={mailboxesOpen}
           onClick={onToggleMailboxes}
         />
-        <ScreenHeading className={styles.paneTitle}>{mailboxLabel}</ScreenHeading>
-        <span className={styles.paneCount}>{allMails.length}</span>
+        <ScreenHeading className={sharedStyles.paneTitle}>{mailboxLabel}</ScreenHeading>
+        <span className={sharedStyles.paneCount}>{allMails.length}</span>
       </div>
 
-      <div className={styles.paneRow}>
+      <div className={sharedStyles.paneRow}>
         <Input
-          className={styles.grow}
+          className={sharedStyles.grow}
           type="search"
           value={search}
           onValueChange={onSearchChange}
@@ -180,22 +180,22 @@ export function MailList({
       </div>
 
       <Tabs
-        className={mailStyles.tabsFill}
+        className={styles.tabsFill}
         value={tab}
         onValueChange={(value) => {
           if (isMailTab(value)) onTabChange(value);
         }}
       >
-        <TabsList variant="line" className={styles.paneRow}>
+        <TabsList variant="line" className={sharedStyles.paneRow}>
           <TabsTrigger value="all">{t('all_mail')}</TabsTrigger>
           <TabsTrigger value="unread">
             {t('unread_mail_count', { count: unreadMails.length })}
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="all" className={mailStyles.tabsPanel}>
+        <TabsContent value="all" className={styles.tabsPanel}>
           {renderRows(allMails)}
         </TabsContent>
-        <TabsContent value="unread" className={mailStyles.tabsPanel}>
+        <TabsContent value="unread" className={styles.tabsPanel}>
           {renderRows(unreadMails)}
         </TabsContent>
       </Tabs>

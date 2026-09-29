@@ -1,7 +1,8 @@
 /*
- * The document's own frame. Everything else is a CSS module in this directory
- * (`workspace.module.css` for the shared chrome and panes, one module per
- * screen that needs its own), imported by the components that use it.
+ * The document's own frame. Everything else is a CSS module beside the
+ * components that use it: `src/app/App.module.css` for the frame and the
+ * rail, `src/shared/shared.module.css` for what several screens draw, and one
+ * module per screen in that screen's folder.
  *
  * The kit's theme.css already paints `body` from `--background`/`--foreground`
  * and supplies every token used here; this file only makes the app fill the

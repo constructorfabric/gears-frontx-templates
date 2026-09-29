@@ -39,7 +39,8 @@ import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { ScreenHeading } from '../../shared/ScreenHeading';
 import { countOpen, isSortOrder, SORT_ORDERS, type SortOrder } from './conversationOrdering';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './inbox.module.css';
 
 const SORT_LABEL_KEY: Record<SortOrder, string> = {
   'last-activity': 'sort_last_activity',
@@ -117,8 +118,8 @@ export function ConversationList({
       <Item
         key={conversation.id}
         className={cx(
-          styles.conversationRow,
-          conversation.id === selectedConversationId && styles.rowSelected
+          sharedStyles.conversationRow,
+          conversation.id === selectedConversationId && sharedStyles.rowSelected
         )}
         variant={conversation.id === selectedConversationId ? 'muted' : 'default'}
         render={
@@ -138,23 +139,23 @@ export function ConversationList({
           />
         </ItemMedia>
         <ItemContent>
-          <div className={styles.rowLine}>
-            <ItemTitle className={cx(styles.rowText, styles.rowTitleText)}>
+          <div className={sharedStyles.rowLine}>
+            <ItemTitle className={cx(sharedStyles.rowText, sharedStyles.rowTitleText)}>
               {conversation.subject}
             </ItemTitle>
-            <span className={styles.rowTime}>{shortRelativeTime(conversation.lastActivityAt)}</span>
+            <span className={sharedStyles.rowTime}>{shortRelativeTime(conversation.lastActivityAt)}</span>
           </div>
-          <div className={styles.rowLine}>
-            <ItemDescription className={cx(styles.rowText, styles.rowPreviewText)}>
+          <div className={sharedStyles.rowLine}>
+            <ItemDescription className={cx(sharedStyles.rowText, sharedStyles.rowPreviewText)}>
               {conversation.snippet}
             </ItemDescription>
             <span className={styles.rowActionsGroup}>
               {conversation.pinned ? (
-                <PinIcon className={styles.pinIcon} role="img" aria-label={t('pinned_conversation')} />
+                <PinIcon className={sharedStyles.pinIcon} role="img" aria-label={t('pinned_conversation')} />
               ) : null}
               {conversation.unreadCount > 0 ? (
                 <Badge
-                  className={styles.unreadBadge}
+                  className={sharedStyles.unreadBadge}
                   aria-label={t('unread_messages_count', { count: conversation.unreadCount })}
                 >
                   {conversation.unreadCount}
@@ -169,10 +170,10 @@ export function ConversationList({
 
   return (
     <section
-      className={cx(styles.listPane, hidden && styles.singlePaneHidden)}
+      className={cx(sharedStyles.listPane, hidden && sharedStyles.singlePaneHidden)}
       aria-label={t('conversations')}
     >
-      <div className={styles.paneHeader}>
+      <div className={sharedStyles.paneHeader}>
         <Button
           variant="ghost"
           size="sm"
@@ -181,10 +182,10 @@ export function ConversationList({
           aria-expanded={channelsOpen}
           onClick={onToggleChannels}
         />
-        <ScreenHeading className={styles.paneTitle}>{channelLabel}</ScreenHeading>
+        <ScreenHeading className={sharedStyles.paneTitle}>{channelLabel}</ScreenHeading>
         {/* The count follows the visible list, so a search moves it with the rows. */}
-        <span className={styles.paneCount}>{conversations.length}</span>
-        <span className={styles.spacer} />
+        <span className={sharedStyles.paneCount}>{conversations.length}</span>
+        <span className={sharedStyles.spacer} />
         <Dialog
           open={newChatOpen}
           onOpenChange={(open) => {
@@ -242,9 +243,9 @@ export function ConversationList({
         </Dialog>
       </div>
 
-      <div className={styles.paneRow}>
+      <div className={sharedStyles.paneRow}>
         <Input
-          className={styles.grow}
+          className={sharedStyles.grow}
           type="search"
           value={search}
           onValueChange={onSearchChange}
@@ -254,7 +255,7 @@ export function ConversationList({
         />
       </div>
 
-      <div className={cx(styles.paneRow, styles.paneToolbar)}>
+      <div className={cx(sharedStyles.paneRow, styles.paneToolbar)}>
         <span className={styles.toolbarCount}>
           {t('open_count', { count: countOpen(conversations) })}
         </span>
@@ -278,16 +279,16 @@ export function ConversationList({
         </Select>
       </div>
 
-      <div className={styles.listBody}>
+      <div className={sharedStyles.listBody}>
         {pinnedConversations.length > 0 ? (
           <>
             <SidebarGroupLabel>{t('pinned')}</SidebarGroupLabel>
-            <ItemGroup className={styles.conversationGroup}>
+            <ItemGroup className={sharedStyles.conversationGroup}>
               {pinnedConversations.map(renderRow)}
             </ItemGroup>
           </>
         ) : null}
-        <ItemGroup className={styles.conversationGroup}>
+        <ItemGroup className={sharedStyles.conversationGroup}>
           {otherConversations.map(renderRow)}
         </ItemGroup>
       </div>

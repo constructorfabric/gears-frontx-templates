@@ -2,7 +2,7 @@ import type { ContactStageSegment, DashboardKpiCard } from '../../api/dashboardT
 import type { Translate } from '../../shared/i18n';
 import { ContactsByStageCard } from './ContactsByStageCard';
 import { KpiCard } from './KpiCard';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type KpiRowProps = {
   kpis: DashboardKpiCard[];

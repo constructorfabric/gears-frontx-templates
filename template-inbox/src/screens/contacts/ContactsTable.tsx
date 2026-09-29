@@ -12,7 +12,8 @@ import type { Contact } from '../../api/types';
 import { emailDomain, labelOf, longRelativeTime, orDash } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './contacts.module.css';
 
 /** 25 rows a page: the 29 seeded contacts span two pages. */
 const ROWS_PER_PAGE = 25;
@@ -44,7 +45,7 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
               t={t}
             />
             <span className={styles.nameCellLines}>
-              <span className={styles.rowText}>{row.original.name}</span>
+              <span className={sharedStyles.rowText}>{row.original.name}</span>
               <span className={styles.nameCellEmail}>{row.original.email}</span>
             </span>
           </div>

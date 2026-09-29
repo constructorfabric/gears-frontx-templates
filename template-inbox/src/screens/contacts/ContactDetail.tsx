@@ -20,6 +20,7 @@ import {
   ItemDescription,
   ItemGroup,
   ItemTitle,
+  StatusDot,
   Textarea,
 } from '@gears-frontx/ui-kit';
 import type { Contact, Conversation, TicketPriority } from '../../api/types';
@@ -28,7 +29,8 @@ import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { ScreenHeading } from '../../shared/ScreenHeading';
 import { buildActivity, type ActivityKind } from './contactActivity';
-import styles from '../../styles/workspace.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './contacts.module.css';
 
 const ACTIVITY_ICON: Record<ActivityKind, ReactElement> = {
   ticket: <TicketIcon />,
@@ -37,11 +39,11 @@ const ACTIVITY_ICON: Record<ActivityKind, ReactElement> = {
   added: <UserPlusIcon />,
 };
 
-const PRIORITY_DOT_CLASS: Record<TicketPriority, string> = {
-  urgent: styles.dotUrgent,
-  high: styles.dotHigh,
-  medium: styles.dotMedium,
-  low: styles.dotLow,
+const PRIORITY_TONE: Record<TicketPriority, 'danger' | 'warning' | 'neutral'> = {
+  urgent: 'danger',
+  high: 'danger',
+  medium: 'warning',
+  low: 'neutral',
 };
 
 type CheckRowProps = { label: string; done: boolean };
@@ -66,9 +68,9 @@ type FieldRowProps = { label: string; value: string };
 
 function FieldRow({ label, value }: FieldRowProps) {
   return (
-    <div className={styles.fieldRow}>
-      <span className={styles.fieldLabel}>{label}</span>
-      <span className={styles.fieldValue}>{orDash(value)}</span>
+    <div className={sharedStyles.fieldRow}>
+      <span className={sharedStyles.fieldLabel}>{label}</span>
+      <span className={sharedStyles.fieldValue}>{orDash(value)}</span>
     </div>
   );
 }
@@ -90,7 +92,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
 
   return (
     <div className={styles.contactsMain}>
-      <div className={styles.paneHeader}>
+      <div className={sharedStyles.paneHeader}>
         <Button
           variant="ghost"
           size="sm"
@@ -99,11 +101,11 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
           onClick={onBack}
         />
         <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" t={t} />
-        <ScreenHeading className={styles.paneTitle}>{contact.name}</ScreenHeading>
+        <ScreenHeading className={sharedStyles.paneTitle}>{contact.name}</ScreenHeading>
         <Badge variant={contact.type === 'lead' ? 'warning' : 'info'}>
           {labelOf(contact.type, t)}
         </Badge>
-        <span className={styles.paneCount}>{labelOf(contact.presence, t)}</span>
+        <span className={sharedStyles.paneCount}>{labelOf(contact.presence, t)}</span>
       </div>
 
       <div className={styles.contactsBody}>
@@ -111,10 +113,10 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
           <div className={styles.detailColumn}>
             <Card size="sm">
               <CardContent>
-                <div className={styles.contactCard}>
+                <div className={sharedStyles.contactCard}>
                   <PresenceAvatar name={contact.name} presence={contact.presence} size="lg" t={t} />
-                  <span className={styles.contactCardName}>{contact.name}</span>
-                  <span className={styles.identityMeta}>{contact.email}</span>
+                  <span className={sharedStyles.contactCardName}>{contact.name}</span>
+                  <span className={sharedStyles.identityMeta}>{contact.email}</span>
                   <Badge variant={contact.type === 'lead' ? 'warning' : 'info'}>
                     {labelOf(contact.type, t)}
                   </Badge>
@@ -127,7 +129,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                 <CardTitle>{t('details')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={styles.stack}>
+                <div className={sharedStyles.stack}>
                   <FieldRow label={t('company')} value={contact.company} />
                   <FieldRow label={t('job_title')} value={contact.jobTitle} />
                   <FieldRow label={t('phone')} value={contact.phone} />
@@ -141,7 +143,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                 <CardTitle>{t('qualification')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={styles.stack}>
+                <div className={sharedStyles.stack}>
                   <CheckRow label={t('name')} done={contact.name !== ''} />
                   <CheckRow label={t('email')} done={contact.email !== ''} />
                   <CheckRow label={t('phone')} done={contact.phone !== ''} />
@@ -157,7 +159,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                 <CardTitle>{t('activity')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={styles.stack}>
+                <div className={sharedStyles.stack}>
                   <FieldRow label={t('signed_up')} value={absoluteDate(contact.signedUpAt)} />
                   <FieldRow label={t('last_seen')} value={longRelativeTime(contact.lastSeenAt, t)} />
                   <FieldRow label={t('added')} value={absoluteDate(contact.addedAt)} />
@@ -171,9 +173,9 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                 <CardTitle>{t('tags')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={styles.chipRow}>
+                <div className={sharedStyles.chipRow}>
                   {contact.tags.length === 0 ? (
-                    <span className={styles.identityMeta}>{t('no_tags')}</span>
+                    <span className={sharedStyles.identityMeta}>{t('no_tags')}</span>
                   ) : (
                     contact.tags.map((tag) => (
                       <Badge key={tag} variant="secondary">
@@ -213,24 +215,21 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
               </CardHeader>
               <CardContent>
                 {contact.tickets.length === 0 ? (
-                  <span className={styles.identityMeta}>{t('no_tickets')}</span>
+                  <span className={sharedStyles.identityMeta}>{t('no_tickets')}</span>
                 ) : (
                   <ItemGroup>
                     {contact.tickets.map((ticket) => (
                       <Item key={ticket.id} size="sm">
                         <ItemContent>
-                          <div className={styles.rowLine}>
-                            <ItemTitle className={styles.lineTitle}>{ticket.subject}</ItemTitle>
+                          <div className={sharedStyles.rowLine}>
+                            <ItemTitle className={sharedStyles.lineTitle}>{ticket.subject}</ItemTitle>
                           </div>
                           <ItemDescription>
                             {t('ticket_meta', { number: ticket.number, date: absoluteDate(ticket.openedAt) })}
                           </ItemDescription>
                         </ItemContent>
                         <div className={styles.ticketRow}>
-                          <span className={PRIORITY_DOT_CLASS[ticket.priority]}>
-                            <CircleIcon />
-                          </span>
-                          <span className={styles.ticketMeta}>{labelOf(ticket.priority, t)}</span>
+                          <StatusDot tone={PRIORITY_TONE[ticket.priority]} label={labelOf(ticket.priority, t)} />
                           <Badge variant="secondary">{labelOf(ticket.status, t)}</Badge>
                         </div>
                       </Item>
@@ -248,24 +247,24 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
               </CardHeader>
               <CardContent>
                 {conversations.length === 0 ? (
-                  <span className={styles.identityMeta}>{t('no_conversations')}</span>
+                  <span className={sharedStyles.identityMeta}>{t('no_conversations')}</span>
                 ) : (
                   <ItemGroup>
                     {conversations.map((conversation) => (
                       <Item key={conversation.id} size="sm">
                         <ItemContent>
-                          <div className={styles.rowLine}>
-                            <ItemTitle className={styles.lineTitle}>
+                          <div className={sharedStyles.rowLine}>
+                            <ItemTitle className={sharedStyles.lineTitle}>
                               {conversation.subject}
                             </ItemTitle>
-                            <span className={styles.rowTime}>
+                            <span className={sharedStyles.rowTime}>
                               {t('conversation_meta', {
                                 channel: labelOf(conversation.channel, t),
                                 time: longRelativeTime(conversation.lastActivityAt, t),
                               })}
                             </span>
                           </div>
-                          <ItemDescription className={styles.rowText}>
+                          <ItemDescription className={sharedStyles.rowText}>
                             {conversation.snippet}
                           </ItemDescription>
                         </ItemContent>
@@ -283,7 +282,7 @@ export function ContactDetail({ contact, conversations, onBack, t }: ContactDeta
                 <CardTitle>{t('recent_activity')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={styles.stack}>
+                <div className={sharedStyles.stack}>
                   {activity.map((entry) => (
                     <div key={entry.id} className={styles.timelineItem}>
                       <span className={styles.timelineIcon}>{ACTIVITY_ICON[entry.kind]}</span>

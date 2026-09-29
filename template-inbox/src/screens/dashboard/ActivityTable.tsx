@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import { CalendarDaysIcon, CircleDotIcon, ContactIcon, SearchIcon, TagIcon, UserRoundIcon } from 'lucide-react';
 import {
-  Avatar,
-  AvatarFallback,
   Badge,
   DataTable,
   DataTableSortButton,
@@ -12,9 +10,10 @@ import {
 import type { ActivityItem, ActivityKind, ActivityStatus, TopAgent } from '../../api/dashboardTypes';
 import type { Contact } from '../../api/types';
 import type { Translate } from '../../shared/i18n';
-import { identityToneOf, initialsOf, labelOf, longRelativeTime, orDash } from '../../shared/format';
+import { labelOf, longRelativeTime, orDash } from '../../shared/format';
+import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type ActivityTableProps = {
   activity: ActivityItem[];
@@ -129,11 +128,7 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
           const name = getValue();
           return (
             <div className={styles.activityOwnerCell}>
-              <Avatar size="sm">
-                <AvatarFallback tone={identityToneOf(name)} variant="solid">
-                  {initialsOf(name)}
-                </AvatarFallback>
-              </Avatar>
+              <IdentityAvatar name={name} size="sm" />
               <span className={styles.cellText}>{name}</span>
             </div>
           );

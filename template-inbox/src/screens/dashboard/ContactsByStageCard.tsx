@@ -12,7 +12,7 @@ import type { ContactStageSegment } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
 import { contactsByStageChartConfig } from './dashboardChartConfig';
 import { contactsByStagePercent, formatCount, formatPercent } from './dashboardSelectors';
-import styles from '../../styles/dashboard.module.css';
+import styles from './dashboard.module.css';
 
 export type ContactsByStageCardProps = {
   segments: ContactStageSegment[];

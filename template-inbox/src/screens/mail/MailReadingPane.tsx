@@ -11,8 +11,8 @@ import type { Translate } from '../../shared/i18n';
 import { dateTime } from '../../shared/format';
 import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { MailComposer } from './MailComposer';
-import styles from '../../styles/workspace.module.css';
-import mailStyles from '../../styles/mail.module.css';
+import sharedStyles from '../../shared/shared.module.css';
+import styles from './mail.module.css';
 
 export type MailReadingPaneProps = {
   mail: Mail;
@@ -49,7 +49,7 @@ export function MailReadingPane({
   t,
 }: MailReadingPaneProps) {
   return (
-    <div className={styles.thread}>
+    <div className={sharedStyles.thread}>
       {/*
         Archive, trash, star and reply render disabled: moving a mail between
         mailboxes and starring it are writes this template's mail service does
@@ -57,7 +57,7 @@ export function MailReadingPane({
         button would have nothing to open. The app's convention for a control
         with no action behind it.
       */}
-      <div className={styles.paneHeader}>
+      <div className={sharedStyles.paneHeader}>
         {onBack ? (
           <Button
             variant="ghost"
@@ -67,7 +67,7 @@ export function MailReadingPane({
             onClick={onBack}
           />
         ) : null}
-        <div className={styles.threadActions}>
+        <div className={sharedStyles.threadActions}>
           <Button variant="ghost" size="sm" icon={<ArchiveIcon />} aria-label={t('archive_mail')} disabled />
           <Button variant="ghost" size="sm" icon={<Trash2Icon />} aria-label={t('trash_mail')} disabled />
           <Button
@@ -78,18 +78,18 @@ export function MailReadingPane({
             disabled
           />
         </div>
-        <span className={styles.spacer} />
-        <div className={styles.threadActions}>
+        <span className={sharedStyles.spacer} />
+        <div className={sharedStyles.threadActions}>
           <Button variant="ghost" size="sm" icon={<ReplyIcon />} aria-label={t('reply_to_mail')} disabled />
         </div>
       </div>
 
-      <div className={styles.threadHeader}>
+      <div className={sharedStyles.threadHeader}>
         <IdentityAvatar name={mail.correspondentName} size="default" />
-        <div className={styles.threadTitles}>
-          <span className={styles.threadSubject}>{mail.subject}</span>
-          <span className={styles.threadSubtitle}>{mail.correspondentName}</span>
-          <span className={mailStyles.replyToLine}>
+        <div className={sharedStyles.threadTitles}>
+          <span className={sharedStyles.threadSubject}>{mail.subject}</span>
+          <span className={sharedStyles.threadSubtitle}>{mail.correspondentName}</span>
+          <span className={styles.replyToLine}>
             {t('reply_to_line', { email: mail.correspondentEmail })}
           </span>
         </div>
@@ -105,13 +105,13 @@ export function MailReadingPane({
         remount per mail.
       */}
       <MessageScrollerProvider key={mail.id}>
-        <MessageScroller className={styles.transcript}>
+        <MessageScroller className={sharedStyles.transcript}>
           <MessageScrollerViewport>
             <MessageScrollerContent>
               {history.length > 0 ? (
                 <Button
                   variant="outline"
-                  className={mailStyles.historyToggle}
+                  className={styles.historyToggle}
                   onClick={onToggleHistory}
                   aria-expanded={historyOpen}
                 >
@@ -123,18 +123,18 @@ export function MailReadingPane({
 
               {historyOpen
                 ? history.map((message) => (
-                    <div key={message.id} className={mailStyles.historyCard}>
-                      <div className={mailStyles.historyCardHeader}>
+                    <div key={message.id} className={styles.historyCard}>
+                      <div className={styles.historyCardHeader}>
                         <IdentityAvatar name={message.correspondentName} size="default" />
-                        <span className={mailStyles.historyCardSender}>{message.correspondentName}</span>
-                        <span className={mailStyles.historyCardDate}>{dateTime(message.sentAt)}</span>
+                        <span className={styles.historyCardSender}>{message.correspondentName}</span>
+                        <span className={styles.historyCardDate}>{dateTime(message.sentAt)}</span>
                       </div>
-                      <div className={mailStyles.historyCardBody}>{message.body}</div>
+                      <div className={styles.historyCardBody}>{message.body}</div>
                     </div>
                   ))
                 : null}
 
-              <div className={mailStyles.focusedMessage}>{mail.body}</div>
+              <div className={styles.focusedMessage}>{mail.body}</div>
             </MessageScrollerContent>
           </MessageScrollerViewport>
         </MessageScroller>
