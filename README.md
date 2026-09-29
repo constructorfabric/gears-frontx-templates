@@ -7,19 +7,26 @@ The FrontX templates, split out of the `gears-frontx` monorepo into their own re
 ```
 template-shell/                 self-contained template: a full FrontX host app, its own toolchain
 template-mfe/                   add-only overlay: MFE example packages composed onto a shell
+template-inbox/                 self-contained template: a workspace app (dashboard, inbox, mail, contacts) on the ui-kit
 template-design-guardrails/     manifest-only overlay: a design-review AI bundle, no runtime screen
 scripts/                        CI guards + the in-monorepo dev loop for developing templates
 ```
 
-Each template directory carries a `frontx-template.json` manifest - that is what makes it a template (ADR-0018: manifest presence, never a `template-*` name guess). `scripts/template-discovery.mjs` is the one place that rule lives; every guard here (`validate-templates.mjs`, `template-pin-drift-check.mjs`, `version-bump-on-change-check.mjs`, ...) discovers templates through it, so a renamed or relocated template, or a fourth template added later, needs no change to any of them.
+Each template directory carries a `frontx-template.json` manifest - that is what makes it a template (ADR-0018: manifest presence, never a `template-*` name guess). `scripts/template-discovery.mjs` is the one place that rule lives; every guard here (`validate-templates.mjs`, `template-pin-drift-check.mjs`, `version-bump-on-change-check.mjs`, ...) discovers templates through it, so a renamed or relocated template, or a fifth template added later, needs no change to any of them.
 
 ## Consuming a template
 
-The FrontX CLI addresses a template here by subtree, not by cloning the whole repo (ADR-0017, subtree addressing):
+The FrontX CLI addresses a template here by subtree, not by cloning the whole repo (ADR-0017, subtree addressing). `frontx install` takes the source-spec; `seed` and `add` then take the name the template's own manifest declares. A self-contained template is seeded into a new directory, an overlay is added to a project that already exists:
 
 ```
-frontx seed shell --source github:constructorfabric/gears-frontx-templates//template-shell@<ref>
-frontx add mfe    --source github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx install github:constructorfabric/gears-frontx-templates//template-shell@<ref>
+frontx seed @gears-frontx/frontx-template-shell ./my-app
+
+frontx install github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx add @gears-frontx/frontx-template-mfe ./my-app
+
+frontx install github:constructorfabric/gears-frontx-templates//template-inbox@<ref>
+frontx seed @gears-frontx/frontx-template-inbox ./my-inbox-app
 ```
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.

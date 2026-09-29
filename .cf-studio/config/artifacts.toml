@@ -144,6 +144,44 @@ pattern = "features/*/FEATURE.md"
 traceability = "DOCS-ONLY"
 required = false
 
+# template-inbox: ids cpt-template-inbox-*.
+[[systems]]
+name = "template-inbox"
+slug = "template-inbox"
+kit = "sdlc"
+artifacts_dir = "template-inbox/architecture"
+
+[[systems.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "template-inbox/architecture"
+
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "DOCS-ONLY"
+required = false
+
 # template-design-guardrails: ids cpt-template-design-guardrails-*. Its
 # top-level DESIGN.md is not an sdlc document, so the system covers
 # template-design-guardrails/architecture only.

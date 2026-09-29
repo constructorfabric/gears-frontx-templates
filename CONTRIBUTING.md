@@ -2,13 +2,14 @@
 
 ## Layout
 
-Every top-level directory carrying `frontx-template.json` is a template (ADR-0018: manifest presence, never a `template-*` name guess - `scripts/template-discovery.mjs` is the one place that rule lives). Today there are three:
+Every top-level directory carrying `frontx-template.json` is a template (ADR-0018: manifest presence, never a `template-*` name guess - `scripts/template-discovery.mjs` is the one place that rule lives). Today there are four:
 
 - **`template-shell/`** - self-contained: a full FrontX host app with its own `package.json`, lockfile, and toolchain (build, lint, type-check, test:unit, arch:deps).
 - **`template-mfe/`** - add-only overlay: example MFE packages meant to be composed onto a shell by `frontx add`. It has no runtime of its own to validate standalone; `template-mfe/package.json` is a monorepo-only dev harness (see its leading `//` comment) that `frontx add` never copies into a seeded project.
 - **`template-design-guardrails/`** - manifest-only overlay: a design-review AI bundle and a verification package, no root `package.json` at all.
+- **`template-inbox/`** - self-contained: a workspace app (dashboard, inbox, mail, contacts) on `@gears-frontx/ui-kit`, with its own `package.json`, lockfile, and toolchain (build, lint, type-check, test:unit, arch:deps).
 
-`scripts/` holds the guards that keep all three consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
+`scripts/` holds the guards that keep all four consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
 
 ## Versioning and publishing
 
