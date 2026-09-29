@@ -1,3 +1,4 @@
+import { useCallback, type KeyboardEvent } from 'react';
 import { Kbd, KbdGroup } from '@gears-frontx/ui-kit';
 import type { Translate } from './i18n';
 
@@ -26,5 +27,22 @@ export function SubmitShortcutHint({ t, className }: { t: Translate; className?:
       </KbdGroup>
       {after}
     </span>
+  );
+}
+
+/**
+ * The key handler both composers put on their textarea: Cmd+Enter or
+ * Ctrl+Enter submits while `enabled`. A keystroke that is still composing
+ * text in an input method (`isComposing`) is the IME's, not a submit.
+ */
+export function useSubmitShortcut(onSubmit: () => void, enabled: boolean) {
+  return useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return;
+      if (event.nativeEvent.isComposing || !enabled) return;
+      event.preventDefault();
+      onSubmit();
+    },
+    [onSubmit, enabled]
   );
 }

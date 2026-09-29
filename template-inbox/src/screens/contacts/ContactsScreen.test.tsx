@@ -56,7 +56,7 @@ describe('ContactsScreen', () => {
     list.unmount();
 
     const detail = renderScreen(<ContactsScreen openContactId="r-1" t={t} />);
-    expect(detail.queryByLabelText(t('contact_filters'))).toBeNull();
+    expect(detail.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
   });
 
   it("lists a contact's conversations from the inbox's own collection", () => {
@@ -73,7 +73,7 @@ describe('ContactsScreen', () => {
     const screen = renderScreen(<ContactsScreen openContactId="r-missing" t={t} />);
 
     expect(screen.getByText(t('contact_not_found_title'))).toBeTruthy();
-    expect(screen.queryByLabelText(t('contact_filters'))).toBeNull();
+    expect(screen.queryByRole('complementary', { name: t('contact_filters') })).toBeNull();
   });
 
   it('shows an error with a retry, rather than an empty directory, when the contacts fail to load', () => {
@@ -119,5 +119,31 @@ describe('ContactsScreen', () => {
 
     expect(headings).toHaveLength(1);
     expect(headings[0].textContent).toBe(t('all_contacts'));
+  });
+
+  it('keeps the directory as it was behind a contact page, and Back steps back through history', () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+    const screen = renderScreen(<ContactsScreen openContactId={null} t={t} />);
+
+    // Page two of the directory, then a contact from it.
+    act(() => {
+      screen.getByText(t('next_page')).click();
+    });
+    expect(screen.getByText('Amara Nwosu')).toBeTruthy();
+    act(() => {
+      screen.getAllByLabelText(t('view_contact'))[0].click();
+    });
+    const openedId = decodeURIComponent(window.location.hash.replace('#/contacts/', ''));
+    screen.rerender(<ContactsScreen openContactId={openedId} t={t} />);
+    expect(screen.getByText(t('qualification'))).toBeTruthy();
+
+    act(() => {
+      screen.getByLabelText(t('back_to_contacts')).click();
+    });
+    expect(back).toHaveBeenCalledTimes(1);
+
+    // The route comes back to the directory: still on page two.
+    screen.rerender(<ContactsScreen openContactId={null} t={t} />);
+    expect(screen.getByText('Amara Nwosu')).toBeTruthy();
   });
 });

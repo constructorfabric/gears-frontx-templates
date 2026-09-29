@@ -4,7 +4,6 @@ import { renderScreen } from '../__test-utils__/renderScreen';
 import { AppErrorBoundary } from './ErrorBoundary';
 import { t } from '../shared/i18n';
 
-
 function Broken(): never {
   throw new Error('render failed');
 }
@@ -36,5 +35,41 @@ describe('AppErrorBoundary', () => {
       screen.getByRole('button', { name: t('reload') }).click();
     });
     expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the subtree again on "try again", and clears the failure when the reset key changes', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let broken = true;
+    function Flaky() {
+      if (broken) throw new Error('render failed');
+      return <p>recovered</p>;
+    }
+    const screen = renderScreen(
+      <AppErrorBoundary t={t} resetKey="#/mail">
+        <Flaky />
+      </AppErrorBoundary>
+    );
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    broken = false;
+    act(() => {
+      screen.getByRole('button', { name: t('retry') }).click();
+    });
+    expect(screen.getByText('recovered')).toBeTruthy();
+
+    broken = true;
+    screen.rerender(
+      <AppErrorBoundary t={t} resetKey="#/mail">
+        <Flaky />
+      </AppErrorBoundary>
+    );
+    expect(screen.getByRole('alert')).toBeTruthy();
+    broken = false;
+    screen.rerender(
+      <AppErrorBoundary t={t} resetKey="#/contacts">
+        <Flaky />
+      </AppErrorBoundary>
+    );
+    expect(screen.getByText('recovered')).toBeTruthy();
   });
 });

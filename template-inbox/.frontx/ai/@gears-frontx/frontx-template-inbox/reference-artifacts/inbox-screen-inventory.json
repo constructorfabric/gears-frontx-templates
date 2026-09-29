@@ -56,7 +56,7 @@
         "Button",
         "lucide-react: CircleAlertIcon"
       ],
-      "note": "Wraps App in src/main.tsx; a render error replaces the app with a destructive Alert and a reload button."
+      "note": "Wraps the screen outlet in App.tsx (reset when the location changes) and App itself in src/main.tsx; a render error replaces the screen with a destructive Alert offering try again and reload, and the rail keeps working."
     }
   ],
   "sharedParts": [

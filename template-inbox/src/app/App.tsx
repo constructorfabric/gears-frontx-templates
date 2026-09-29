@@ -5,6 +5,7 @@ import { ContactsScreen } from '../screens/contacts/ContactsScreen';
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
 import { InboxScreen } from '../screens/inbox/InboxScreen';
 import { MailScreen } from '../screens/mail/MailScreen';
+import { AppErrorBoundary } from './ErrorBoundary';
 import { IconRail, sectionLabelKey } from './IconRail';
 import { t } from '../shared/i18n';
 import { requestScreenHeadingFocus } from '../shared/ScreenHeading';
@@ -54,18 +55,17 @@ export function App() {
         onToggleTheme={toggleTheme}
         t={t}
       />
-      {route.name === 'dashboard' ? (
-        <DashboardScreen t={t} />
-      ) : route.name === 'inbox' ? (
-        <InboxScreen t={t} />
-      ) : route.name === 'mail' ? (
-        <MailScreen t={t} />
-      ) : (
-        <ContactsScreen
-          openContactId={route.name === 'contact' ? route.contactId : null}
-          t={t}
-        />
-      )}
+      <AppErrorBoundary t={t} resetKey={location}>
+        {route.name === 'dashboard' ? (
+          <DashboardScreen t={t} />
+        ) : route.name === 'inbox' ? (
+          <InboxScreen t={t} />
+        ) : route.name === 'mail' ? (
+          <MailScreen t={t} />
+        ) : (
+          <ContactsScreen openContactId={route.name === 'contact' ? route.contactId : null} t={t} />
+        )}
+      </AppErrorBoundary>
     </div>
   );
 }

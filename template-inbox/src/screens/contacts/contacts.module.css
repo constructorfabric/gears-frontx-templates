@@ -125,3 +125,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The directory stays mounted behind a contact page; its own `display`
+ * would otherwise beat the browser's `[hidden]` rule. */
+.contactsMain[hidden] {
+  display: none;
+}

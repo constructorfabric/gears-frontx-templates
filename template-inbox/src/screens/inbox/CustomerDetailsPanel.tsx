@@ -25,8 +25,9 @@ import type {
   ConversationStatus,
 } from '../../api/types';
 import { TEAM_INBOXES } from '../../api/constants';
-import { labelOf, orDash } from '../../shared/format';
+import { labelOf } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
+import { FieldRow } from '../../shared/FieldRow';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { DetailsSection } from './DetailsSection';
 import { TagEditor } from './TagEditor';
@@ -44,17 +45,6 @@ const PRIORITIES: ConversationPriority[] = ['none', 'low', 'medium', 'high'];
 const STATUSES: ConversationStatus[] = ['open', 'snoozed', 'closed'];
 
 const COPILOT_PROMPTS = ['copilot_summarize', 'copilot_draft', 'copilot_asking'];
-
-type FieldRowProps = { label: string; value: string };
-
-function FieldRow({ label, value }: FieldRowProps) {
-  return (
-    <div className={sharedStyles.fieldRow}>
-      <span className={sharedStyles.fieldLabel}>{label}</span>
-      <span className={sharedStyles.fieldValue}>{orDash(value)}</span>
-    </div>
-  );
-}
 
 export type CustomerDetailsPanelProps = {
   conversation: Conversation;

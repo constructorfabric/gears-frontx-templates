@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import {
   AlarmClockIcon,
@@ -49,6 +49,7 @@ import type {
   Conversation,
   Message as ThreadMessage,
   MessageLink,
+  Presence,
 } from '../../api/types';
 import { cx } from '../../shared/cx';
 import { labelOf, messageDayKey, messageDayLabel, messageTimeOfDay } from '../../shared/format';
@@ -199,6 +200,146 @@ function FollowNewestMessage({ lastMessageId }: { lastMessageId: string | undefi
   }, [lastMessageId, scrollToEnd]);
   return null;
 }
+
+/**
+ * One transcript entry: the day divider above it when it starts a new day,
+ * and the message itself. Memoized on props that only change when the
+ * message does, so a re-render of the thread (a send in flight, a toggled
+ * panel) leaves every existing row alone.
+ */
+const TranscriptRow = memo(function TranscriptRow({
+  message,
+  showDivider,
+  isNewest,
+  senderName,
+  senderPresence,
+  t,
+}: {
+  message: ThreadMessage;
+  showDivider: boolean;
+  isNewest: boolean;
+  senderName: string;
+  senderPresence: Presence;
+  t: Translate;
+}) {
+  const outbound = message.direction === 'outbound';
+  return (
+    <>
+      {showDivider ? (
+        <Marker variant="separator">
+          <MarkerContent>{messageDayLabel(message.sentAt)}</MarkerContent>
+        </Marker>
+      ) : null}
+      <MessageScrollerItem messageId={message.id} scrollAnchor={isNewest}>
+        <Message align={outbound ? 'end' : 'start'}>
+          <MessageAvatar>
+            <PresenceAvatar name={senderName} presence={senderPresence} size="sm" t={t} />
+          </MessageAvatar>
+          <MessageContent>
+            {message.internal ? (
+              <MessageHeader>{t('internal_note')}</MessageHeader>
+            ) : null}
+            {/*
+              Every kind shares ONE Bubble, framed the same way as a
+              plain-text message of that direction (same background
+              token, same corner radius including the avatar-side
+              tail, same padding) - `.bubbleText` carries that parity
+              on every BubbleContent below, not just the plain-text
+              one. Only what goes INSIDE differs: text, an inset
+              image, or attachment card(s), all inside the bubble.
+            */}
+            {message.kind === 'file' ? (
+              <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
+                <BubbleContent className={styles.bubbleText}>
+                  {message.attachments.map((file, fileIndex) => (
+                    <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
+                      <AttachmentMedia>
+                        <FileIcon />
+                      </AttachmentMedia>
+                      <AttachmentContent>
+                        <AttachmentTitle>{file.name}</AttachmentTitle>
+                        <AttachmentDescription>{file.size}</AttachmentDescription>
+                      </AttachmentContent>
+                    </Attachment>
+                  ))}
+                  <MessageMeta message={message} t={t} />
+                </BubbleContent>
+              </Bubble>
+            ) : message.kind === 'image' ? (
+              <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
+                <BubbleContent className={cx(styles.bubbleText, styles.imageBubbleContent)}>
+                  {message.body ? (
+                    <>
+                      {message.imageUrl === null ? null : (
+                        <img
+                          src={message.imageUrl}
+                          // The caption right below already says it; repeating it as
+                          // alt text would read it twice.
+                          alt=""
+                          className={cx(styles.messageImageInset, styles.messageImageHasCaption)}
+                        />
+                      )}
+                      {/* Meta trails the caption inline (same technique as the
+                          plain-text bubble below) - only reached for a captioned
+                          image, since it needs the caption's own text flow to
+                          trail into. */}
+                      <span className={styles.imageCaptionRow}>
+                        {message.body}
+                        <MessageMeta message={message} t={t} />
+                      </span>
+                    </>
+                  ) : (
+                    // No caption: nothing for the meta to trail into, so it
+                    // overlays the image's own bottom-right corner instead.
+                    <span className={styles.imageFrame}>
+                      {message.imageUrl === null ? null : (
+                        <img
+                          src={message.imageUrl}
+                          alt={t('shared_image')}
+                          className={styles.messageImageInset}
+                        />
+                      )}
+                      <MessageMeta
+                        message={message}
+                        t={t}
+                        className={styles.imageMetaOverlay}
+                      />
+                    </span>
+                  )}
+                </BubbleContent>
+              </Bubble>
+            ) : (
+              <Bubble
+                className={styles.bubble}
+                align={outbound ? 'end' : 'start'}
+                variant={bubbleVariantFor(message)}
+              >
+                <BubbleContent className={styles.bubbleText}>
+                  {/* A `text`-kind message can still carry files alongside its
+                      own body - distinct from `kind: 'file'` above, which IS the
+                      attachment(s). They sit inside the same bubble. */}
+                  {message.attachments.map((file, fileIndex) => (
+                    <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
+                      <AttachmentMedia>
+                        <PaperclipIcon />
+                      </AttachmentMedia>
+                      <AttachmentContent>
+                        <AttachmentTitle>{file.name}</AttachmentTitle>
+                        <AttachmentDescription>{file.size}</AttachmentDescription>
+                      </AttachmentContent>
+                    </Attachment>
+                  ))}
+                  {renderMessageBody(message.body, message.links)}
+                  <MessageMeta message={message} t={t} />
+                </BubbleContent>
+              </Bubble>
+            )}
+          </MessageContent>
+        </Message>
+      </MessageScrollerItem>
+    </>
+  );
+});
 
 export type ConversationThreadProps = {
   conversation: Conversation;
@@ -379,135 +520,17 @@ export function ConversationThread({
             <MessageScrollerContent className={styles.transcriptContent}>
               {messages.map((message, index) => {
                 const outbound = message.direction === 'outbound';
-                const senderName = outbound ? (agent?.name ?? '') : contactName;
                 const previous = index > 0 ? messages[index - 1] : null;
-                const showDivider =
-                  previous === null || messageDayKey(previous.sentAt) !== messageDayKey(message.sentAt);
                 return (
-                  <Fragment key={message.id}>
-                    {showDivider ? (
-                      <Marker variant="separator">
-                        <MarkerContent>{messageDayLabel(message.sentAt)}</MarkerContent>
-                      </Marker>
-                    ) : null}
-                    <MessageScrollerItem
-                      messageId={message.id}
-                      scrollAnchor={index === messages.length - 1}
-                    >
-                      <Message align={outbound ? 'end' : 'start'}>
-                        <MessageAvatar>
-                          <PresenceAvatar
-                            name={senderName}
-                            presence={
-                              outbound ? (agent?.presence ?? 'online') : (contact?.presence ?? 'offline')
-                            }
-                            size="sm"
-                            t={t}
-                          />
-                        </MessageAvatar>
-                        <MessageContent>
-                          {message.internal ? (
-                            <MessageHeader>{t('internal_note')}</MessageHeader>
-                          ) : null}
-                          {/*
-                            Every kind shares ONE Bubble, framed the same way as a
-                            plain-text message of that direction (same background
-                            token, same corner radius including the avatar-side
-                            tail, same padding) - `.bubbleText` carries that parity
-                            on every BubbleContent below, not just the plain-text
-                            one. Only what goes INSIDE differs: text, an inset
-                            image, or attachment card(s), all inside the bubble.
-                          */}
-                          {message.kind === 'file' ? (
-                            <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
-                              <BubbleContent className={styles.bubbleText}>
-                                {message.attachments.map((file, fileIndex) => (
-                                  <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
-                                    <AttachmentMedia>
-                                      <FileIcon />
-                                    </AttachmentMedia>
-                                    <AttachmentContent>
-                                      <AttachmentTitle>{file.name}</AttachmentTitle>
-                                      <AttachmentDescription>{file.size}</AttachmentDescription>
-                                    </AttachmentContent>
-                                  </Attachment>
-                                ))}
-                                <MessageMeta message={message} t={t} />
-                              </BubbleContent>
-                            </Bubble>
-                          ) : message.kind === 'image' ? (
-                            <Bubble className={styles.bubble} align={outbound ? 'end' : 'start'} variant={bubbleVariantFor(message)}>
-                              <BubbleContent className={cx(styles.bubbleText, styles.imageBubbleContent)}>
-                                {message.body ? (
-                                  <>
-                                    {message.imageUrl === null ? null : (
-                                      <img
-                                        src={message.imageUrl}
-                                        // The caption right below already says it; repeating it as
-                                        // alt text would read it twice.
-                                        alt=""
-                                        className={cx(styles.messageImageInset, styles.messageImageHasCaption)}
-                                      />
-                                    )}
-                                    {/* Meta trails the caption inline (same technique as the
-                                        plain-text bubble below) - only reached for a captioned
-                                        image, since it needs the caption's own text flow to
-                                        trail into. */}
-                                    <span className={styles.imageCaptionRow}>
-                                      {message.body}
-                                      <MessageMeta message={message} t={t} />
-                                    </span>
-                                  </>
-                                ) : (
-                                  // No caption: nothing for the meta to trail into, so it
-                                  // overlays the image's own bottom-right corner instead.
-                                  <span className={styles.imageFrame}>
-                                    {message.imageUrl === null ? null : (
-                                      <img
-                                        src={message.imageUrl}
-                                        alt={t('shared_image')}
-                                        className={styles.messageImageInset}
-                                      />
-                                    )}
-                                    <MessageMeta
-                                      message={message}
-                                      t={t}
-                                      className={styles.imageMetaOverlay}
-                                    />
-                                  </span>
-                                )}
-                              </BubbleContent>
-                            </Bubble>
-                          ) : (
-                            <Bubble
-                              className={styles.bubble}
-                              align={outbound ? 'end' : 'start'}
-                              variant={bubbleVariantFor(message)}
-                            >
-                              <BubbleContent className={styles.bubbleText}>
-                                {/* A `text`-kind message can still carry files alongside its
-                                    own body - distinct from `kind: 'file'` above, which IS the
-                                    attachment(s). They sit inside the same bubble. */}
-                                {message.attachments.map((file, fileIndex) => (
-                                  <Attachment key={`${fileIndex}-${file.name}`} className={styles.attachmentSlot}>
-                                    <AttachmentMedia>
-                                      <PaperclipIcon />
-                                    </AttachmentMedia>
-                                    <AttachmentContent>
-                                      <AttachmentTitle>{file.name}</AttachmentTitle>
-                                      <AttachmentDescription>{file.size}</AttachmentDescription>
-                                    </AttachmentContent>
-                                  </Attachment>
-                                ))}
-                                {renderMessageBody(message.body, message.links)}
-                                <MessageMeta message={message} t={t} />
-                              </BubbleContent>
-                            </Bubble>
-                          )}
-                        </MessageContent>
-                      </Message>
-                    </MessageScrollerItem>
-                  </Fragment>
+                  <TranscriptRow
+                    key={message.id}
+                    message={message}
+                    showDivider={previous === null || messageDayKey(previous.sentAt) !== messageDayKey(message.sentAt)}
+                    isNewest={index === messages.length - 1}
+                    senderName={outbound ? (agent?.name ?? '') : contactName}
+                    senderPresence={outbound ? (agent?.presence ?? 'online') : (contact?.presence ?? 'offline')}
+                    t={t}
+                  />
                 );
               })}
             </MessageScrollerContent>

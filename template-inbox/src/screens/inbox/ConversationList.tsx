@@ -38,6 +38,7 @@ import { shortRelativeTime } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { ScreenHeading } from '../../shared/ScreenHeading';
+import { splitPinned } from '../../shared/splitPinned';
 import { countOpen, isSortOrder, SORT_ORDERS, type SortOrder } from './conversationOrdering';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './inbox.module.css';
@@ -109,8 +110,7 @@ export function ConversationList({
   // `conversations` already sorts pinned rows first (conversationOrdering.ts's
   // comparators do this regardless of `sort`), so splitting it in two here is
   // a plain filter, not a re-sort - each half keeps the order it arrived in.
-  const pinnedConversations = conversations.filter((conversation) => conversation.pinned);
-  const otherConversations = conversations.filter((conversation) => !conversation.pinned);
+  const { pinned: pinnedConversations, others: otherConversations } = splitPinned(conversations);
 
   const renderRow = (conversation: Conversation) => {
     const contact = contactsById.get(conversation.contactId);

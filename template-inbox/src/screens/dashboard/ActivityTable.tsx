@@ -172,7 +172,13 @@ export function ActivityTable({ activity, contacts, agents, t }: ActivityTablePr
           />
         </div>
       </div>
-      <DataTable columns={columns} data={rows} emptyMessage={t('no_activity')} />
+      <DataTable
+        columns={columns}
+        data={rows}
+        emptyMessage={t('no_activity')}
+        previousLabel={t('previous_page')}
+        nextLabel={t('next_page')}
+      />
     </div>
   );
 }

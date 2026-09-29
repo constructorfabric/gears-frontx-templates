@@ -39,7 +39,7 @@ export const firstPaintOf = (queries: readonly GatedQuery[]): FirstPaint => {
 export function LoadingPane({ className }: { className?: string }) {
   return (
     <div className={className ?? styles.emptyPane} role="status" aria-busy="true">
-      <Skeleton style={{ height: '2rem', width: '16rem' }} />
+      <Skeleton className={styles.loadingBlock} />
     </div>
   );
 }

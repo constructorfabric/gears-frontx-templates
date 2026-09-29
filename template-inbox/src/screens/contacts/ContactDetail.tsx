@@ -24,8 +24,9 @@ import {
   Textarea,
 } from '@gears-frontx/ui-kit';
 import type { Contact, Conversation, TicketPriority } from '../../api/types';
-import { absoluteDate, labelOf, longRelativeTime, orDash } from '../../shared/format';
+import { absoluteDate, labelOf, longRelativeTime } from '../../shared/format';
 import type { Translate } from '../../shared/i18n';
+import { FieldRow } from '../../shared/FieldRow';
 import { PresenceAvatar } from '../../shared/PresenceAvatar';
 import { ScreenHeading } from '../../shared/ScreenHeading';
 import { buildActivity, type ActivityKind } from './contactActivity';
@@ -60,17 +61,6 @@ function CheckRow({ label, done }: CheckRowProps) {
         {done ? <CircleCheckIcon /> : <CircleIcon />}
       </span>
       <span>{label}</span>
-    </div>
-  );
-}
-
-type FieldRowProps = { label: string; value: string };
-
-function FieldRow({ label, value }: FieldRowProps) {
-  return (
-    <div className={sharedStyles.fieldRow}>
-      <span className={sharedStyles.fieldLabel}>{label}</span>
-      <span className={sharedStyles.fieldValue}>{orDash(value)}</span>
     </div>
   );
 }

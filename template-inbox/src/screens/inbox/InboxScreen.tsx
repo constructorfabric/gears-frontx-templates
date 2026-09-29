@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { InboxIcon } from 'lucide-react';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@gears-frontx/ui-kit';
 import { useApiMutation, useApiQuery } from '../../api/queries';
 import { getInboxApi } from '../../api/registry';
-import { BRAND, CHANNEL_GENERAL, NO_TEAM_INBOX } from '../../api/constants';
+import { BRAND, NO_TEAM_INBOX } from '../../api/constants';
 import type {
-  Channel,
   Contact,
   Conversation,
   ConversationPriority,
@@ -18,36 +17,33 @@ import type { Translate } from '../../shared/i18n';
 import { contactRoute, navigate } from '../../app/routing';
 import { cx } from '../../shared/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
+import { useAutoSelect } from '../../shared/useAutoSelect';
 import { SINGLE_PANE_QUERY, useMediaQuery } from '../../shared/useMediaQuery';
 import { useSidebarToggle } from '../../shared/useSidebarToggle';
 import { ConversationList } from './ConversationList';
 import { ConversationThread } from './ConversationThread';
-import { countOpen, selectConversations, type SortOrder } from './conversationOrdering';
+import { countOpen, selectConversations } from './conversationOrdering';
 import { CustomerDetailsPanel } from './CustomerDetailsPanel';
 import { FolderSidebar } from './FolderSidebar';
-import { type ComposerTab } from './Composer';
+import { inboxActions, inboxStore, useInbox } from './inboxStore';
 import sharedStyles from '../../shared/shared.module.css';
-
-/**
- * The fields a triaging agent changes from the thread, held client-side.
- *
- * The service's write surface is one endpoint - posting a reply or a note -
- * because that is the only change this app persists. Everything
- * else the details panel offers moves a value that a real backend would own,
- * so it is applied over the fetched conversation rather than pretending to
- * have been saved.
- */
-type ConversationPatch = Partial<
-  Pick<
-    Conversation,
-    'assignee' | 'priority' | 'snoozed' | 'starred' | 'status' | 'tags' | 'teamInbox'
-  >
->;
 
 export type InboxScreenProps = {
   t: Translate;
 };
 
+/**
+ * The chat screen: channels, the conversation list, the open thread and the
+ * customer details panel.
+ *
+ * What the agent selects, types and changes lives in `inboxStore`, outside
+ * this component, so leaving the screen and coming back finds it as it was.
+ * Each pane reads only the slice it shows; in particular the draft is read by
+ * the composer alone, so a keystroke re-renders the composer and nothing
+ * else. What stays here is per mount: posts in flight, a failed post's
+ * error, and the replies this mount has sent (the next mount reads them back
+ * from the service).
+ */
 export function InboxScreen({ t }: InboxScreenProps) {
   const service = getInboxApi();
 
@@ -57,34 +53,50 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const messagesQuery = useApiQuery(service.getMessages);
   const contactsQuery = useApiQuery(service.getContacts);
 
-  const [channelId, setChannelId] = useState<string>(CHANNEL_GENERAL);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The channel still owed an automatic first-conversation pick: set on mount
-  // and on every channel switch, cleared once that pick has happened. Nulled
-  // by closing or backing out of a thread does not touch this, so those stay
-  // on the empty state rather than jumping to another conversation.
-  const [autoSelectChannelId, setAutoSelectChannelId] = useState<string | null>(CHANNEL_GENERAL);
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortOrder>('last-activity');
-  const [detailsVisible, setDetailsVisible] = useState(true);
-  const [patches, setPatches] = useState<Record<string, ConversationPatch>>({});
+  const channelId = useInbox((state) => state.channelId);
+  const [selectedId, setSelectedId] = useState(() => inboxStore.get().selectedId);
+  useEffect(() => inboxActions.rememberSelection(selectedId), [selectedId]);
+  const search = useInbox((state) => state.search);
+  const sort = useInbox((state) => state.sort);
+  const composerTab = useInbox((state) => state.composerTab);
+  const detailsVisible = useInbox((state) => state.detailsVisible);
+  const patches = useInbox((state) => state.patches);
+  const extraChannels = useInbox((state) => state.extraChannels);
+  const extraConversations = useInbox((state) => state.extraConversations);
+
+  // Replies this mount has posted. The service keeps them too, so the next
+  // mount reads them back with the transcript; until then they are appended
+  // here, and a message the transcript already holds is never shown twice.
   const [sentMessages, setSentMessages] = useState<Message[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   // Conversations with a post in flight, so one thread's send never shows
   // another thread's composer as busy.
   const [sendingIds, setSendingIds] = useState<Record<string, number>>({});
-  const [composerTab, setComposerTab] = useState<ComposerTab>('reply');
-  // Client-side only, never round-tripped through RestMockPlugin - a
-  // channel or a chat the agent creates from the "+" dialogs, appended
-  // alongside whatever the mock API answered with.
-  const [extraChannels, setExtraChannels] = useState<Channel[]>([]);
-  const [extraConversations, setExtraConversations] = useState<Conversation[]>([]);
-  // Bumped (any distinct value) right after opening a just-created
-  // conversation, so Composer's own effect knows to focus the reply box.
+  // The conversations whose latest post failed; their draft is kept.
+  const [failedIds, setFailedIds] = useState<Record<string, true>>({});
+  // Bumped right after opening a just-created conversation, so the composer
+  // knows to focus the reply box.
   const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 
   const channelsSidebar = useSidebarToggle();
   const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
+
+  const setFailed = (conversationId: string, failed: boolean) =>
+    setFailedIds((previous) => {
+      if (failed === (conversationId in previous)) return previous;
+      const next = { ...previous };
+      if (failed) next[conversationId] = true;
+      else delete next[conversationId];
+      return next;
+    });
+
+  const finishSending = (conversationId: string) =>
+    setSendingIds((previous) => {
+      const remaining = (previous[conversationId] ?? 1) - 1;
+      const next = { ...previous };
+      if (remaining > 0) next[conversationId] = remaining;
+      else delete next[conversationId];
+      return next;
+    });
 
   const sendMessage = useApiMutation<PostMessageResponse, PostMessageRequest>({
     endpoint: service.postMessage,
@@ -94,28 +106,15 @@ export function InboxScreen({ t }: InboxScreenProps) {
     onSuccess: (response, request) => {
       setSentMessages((previous) => [...previous, response.message]);
       finishSending(request.conversationId);
-      // Cleared per conversation, and only if the box still holds what was
-      // sent: text typed while the post was in flight is a new draft, not
-      // the one that just went out.
-      setDrafts((previous) =>
-        (previous[request.conversationId] ?? '').trim() === request.body
-          ? { ...previous, [request.conversationId]: '' }
-          : previous
-      );
+      inboxActions.clearDraftIfSent(request.conversationId, request.body);
     },
-    // A failed post keeps the draft where it is, so nothing typed is lost.
-    onError: (_error, request) => finishSending(request.conversationId),
+    // A failed post keeps the draft where it is, so nothing typed is lost,
+    // and the composer says the post did not go out.
+    onError: (_error, request) => {
+      finishSending(request.conversationId);
+      setFailed(request.conversationId, true);
+    },
   });
-
-  function finishSending(conversationId: string) {
-    setSendingIds((previous) => {
-      const remaining = (previous[conversationId] ?? 1) - 1;
-      const next = { ...previous };
-      if (remaining > 0) next[conversationId] = remaining;
-      else delete next[conversationId];
-      return next;
-    });
-  }
 
   const conversations: Conversation[] = useMemo(() => {
     const fetched = conversationsQuery.data?.conversations ?? [];
@@ -134,25 +133,13 @@ export function InboxScreen({ t }: InboxScreenProps) {
     [conversations, contactsById, channelId, search, sort]
   );
 
-  // Auto-opens the channel's first conversation - on the initial mount and
-  // again on every channel switch (`selectChannel` re-arms this by setting
-  // `autoSelectChannelId` to the channel just entered). Resolved here,
-  // synchronously during render, rather than in a `useEffect`: this is
-  // derived state (React's own "adjust state when something changes"
-  // pattern - see "You Might Not Need an Effect"), not a synchronization
-  // with anything outside React, so settling it a render early avoids both
-  // the lint rule against setting state from an effect and the one-frame
-  // flash of the empty state an effect-based version would show first.
-  // Guarded by the id match so a click that picks a different conversation,
-  // once consumed, never gets second-guessed while the agent stays in that
-  // channel; an empty channel is simply left on the empty state, still
-  // armed, in case a later fetch surfaces conversations for it.
-  if (autoSelectChannelId === channelId && visibleConversations.length > 0) {
-    setAutoSelectChannelId(null);
-    if (selectedId !== visibleConversations[0].id) {
-      setSelectedId(visibleConversations[0].id);
-    }
-  }
+  const autoSelect = useAutoSelect({
+    scope: channelId,
+    settled: !conversationsQuery.isLoading && !contactsQuery.isLoading,
+    firstId: visibleConversations[0]?.id,
+    selectedId,
+    onSelect: setSelectedId,
+  });
 
   // Selected from the whole collection rather than the visible slice: typing a
   // search narrows the list without closing the thread the agent is reading.
@@ -161,7 +148,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const threadMessages = useMemo(() => {
     if (!selected) return [];
     const fetched = messagesQuery.data?.messages ?? [];
-    return [...fetched, ...sentMessages].filter(
+    const fetchedIds = new Set(fetched.map((message) => message.id));
+    return [...fetched, ...sentMessages.filter((message) => !fetchedIds.has(message.id))].filter(
       (message) => message.conversationId === selected.id
     );
   }, [messagesQuery.data, sentMessages, selected]);
@@ -169,54 +157,41 @@ export function InboxScreen({ t }: InboxScreenProps) {
   const channels = useMemo(() => {
     const rows = [...(channelsQuery.data?.channels ?? []), ...extraChannels];
     return rows.map((channel) => {
-      const inChannel = conversations.filter(
-        (conversation) => conversation.channelId === channel.id
-      );
+      const inChannel = conversations.filter((conversation) => conversation.channelId === channel.id);
       return { ...channel, itemCount: inChannel.length, openCount: countOpen(inChannel) };
     });
   }, [channelsQuery.data, extraChannels, conversations]);
 
-  const patchConversation = (conversationId: string, patch: ConversationPatch) => {
-    setPatches((previous) => ({
-      ...previous,
-      [conversationId]: { ...previous[conversationId], ...patch },
-    }));
-  };
-
   const selectChannel = (nextChannelId: string) => {
-    setChannelId(nextChannelId);
+    inboxActions.selectChannel(nextChannelId);
     setSelectedId(null);
-    setAutoSelectChannelId(nextChannelId);
+    autoSelect.arm(nextChannelId);
   };
 
   /**
-   * A demo-grade channel: appended to `extraChannels` and switched into
-   * immediately - opening it lands on the empty state (the same one any
-   * channel with zero conversations already renders) exactly like a real
-   * one would, since it is a real `Channel` row from here on, not a stub.
+   * A demo-grade channel, switched into immediately - it lands on the same
+   * empty state any channel with no conversations renders, since it is a
+   * real `Channel` row from here on, not a stub.
    */
   const createChannel = (name: string) => {
-    const newChannelId = `channel-${crypto.randomUUID()}`;
-    setExtraChannels((previous) => [
-      ...previous,
-      { id: newChannelId, label: name, icon: 'hash', itemCount: 0, openCount: 0 },
-    ]);
-    selectChannel(newChannelId);
+    const channel = { id: `channel-${crypto.randomUUID()}`, label: name, icon: 'hash' as const, itemCount: 0, openCount: 0 };
+    inboxActions.addChannel(channel);
+    setSelectedId(null);
+    autoSelect.arm(channel.id);
   };
 
   /**
-   * A demo-grade conversation with an existing contact, in the CURRENT
-   * channel, opened immediately with an empty transcript - sending into it
-   * goes through the same `sendMessage` mutation as any other thread: the
-   * mock endpoint stores a post for any `conversationId` it is given (see
-   * `acceptPostedMessage` in `mocks.ts`). The conversation itself is not
-   * posted anywhere, so it lasts as long as this screen does.
+   * A demo-grade conversation with an existing contact, in the current
+   * channel, opened immediately with an empty transcript. Sending into it goes
+   * through the same post as any other thread (the mock endpoint stores a post
+   * for any `conversationId`); the conversation itself is not posted anywhere,
+   * so it lasts for the session.
    */
   const startChat = (contactId: string) => {
-    const newConversationId = `dm-${crypto.randomUUID()}`;
     const contact = contactsById.get(contactId);
-    const newConversation: Conversation = {
-      id: newConversationId,
+    const id = `dm-${crypto.randomUUID()}`;
+    inboxActions.addConversation({
+      id,
       channelId,
       subject: contact?.name ?? '',
       contactId,
@@ -235,14 +210,8 @@ export function InboxScreen({ t }: InboxScreenProps) {
       starred: false,
       snoozed: false,
       pinned: false,
-    };
-    setExtraConversations((previous) => [...previous, newConversation]);
-    // Cleared defensively: without this, a channel with no conversations
-    // yet (just created) would still have its auto-select armed, and the
-    // derived-state block above would immediately overwrite this explicit
-    // selection back to "nothing" once `visibleConversations` updates.
-    setAutoSelectChannelId(null);
-    setSelectedId(newConversationId);
+    });
+    setSelectedId(id);
     setComposerFocusSignal((signal) => signal + 1);
   };
 
@@ -260,15 +229,18 @@ export function InboxScreen({ t }: InboxScreenProps) {
   // details panel both call this.
   const toggleSpam = () => {
     if (!selected) return;
-    patchConversation(selected.id, {
+    inboxActions.patchConversation(selected.id, {
       tags: isSpam ? selected.tags.filter((tag) => tag !== 'spam') : [...selected.tags, 'spam'],
     });
   };
 
+  // The draft is read at send time rather than held here, so typing never
+  // re-renders this component.
   const sendCurrentDraft = () => {
     if (!selected || selected.status === 'closed') return;
-    const body = (drafts[selected.id] ?? '').trim();
+    const body = (inboxStore.get().drafts[selected.id] ?? '').trim();
     if (body === '') return;
+    setFailed(selected.id, false);
     setSendingIds((previous) => ({ ...previous, [selected.id]: (previous[selected.id] ?? 0) + 1 }));
     sendMessage.mutate({ conversationId: selected.id, body, kind: composerTab });
   };
@@ -292,9 +264,9 @@ export function InboxScreen({ t }: InboxScreenProps) {
         onSelectConversation={setSelectedId}
         onStartChat={startChat}
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={inboxActions.setSearch}
         sort={sort}
-        onSortChange={setSort}
+        onSortChange={inboxActions.setSort}
         onToggleChannels={channelsSidebar.toggle}
         channelsOpen={!channelsSidebar.collapsed}
         hidden={isSinglePane && showThread}
@@ -310,10 +282,10 @@ export function InboxScreen({ t }: InboxScreenProps) {
               agent={agentQuery.data?.agent}
               messages={threadMessages}
               detailsVisible={detailsVisible}
-              onToggleDetails={() => setDetailsVisible((visible) => !visible)}
-              onToggleStar={() => patchConversation(selected.id, { starred: !selected.starred })}
+              onToggleDetails={inboxActions.toggleDetails}
+              onToggleStar={() => inboxActions.patchConversation(selected.id, { starred: !selected.starred })}
               onToggleSnooze={() =>
-                patchConversation(selected.id, {
+                inboxActions.patchConversation(selected.id, {
                   snoozed: !selected.snoozed,
                   status: selected.snoozed ? 'open' : 'snoozed',
                 })
@@ -321,32 +293,24 @@ export function InboxScreen({ t }: InboxScreenProps) {
               onToggleSpam={toggleSpam}
               isSpam={isSpam}
               onCloseConversation={() => {
-                patchConversation(selected.id, { status: 'closed' });
+                inboxActions.patchConversation(selected.id, { status: 'closed' });
                 setSelectedId(null);
               }}
               onBack={isSinglePane ? () => setSelectedId(null) : null}
               onUseSuggestedReply={(reply) => {
                 // A suggestion is a draft, not a send: it lands in the reply
-                // box for the agent to edit. Appended rather than assigned so
-                // a half-typed reply survives the click, and the tab is
-                // switched because a suggestion is never an internal note.
-                setComposerTab('reply');
-                setDrafts((previous) => {
-                  const current = previous[selected.id] ?? '';
-                  return {
-                    ...previous,
-                    [selected.id]: current === '' ? reply : `${current} ${reply}`,
-                  };
-                });
+                // box for the agent to edit, and the tab switches because a
+                // suggestion is never an internal note.
+                inboxActions.setComposerTab('reply');
+                inboxActions.appendToDraft(selected.id, reply);
               }}
               composer={{
+                conversationId: selected.id,
                 tab: composerTab,
-                onTabChange: setComposerTab,
-                draft: drafts[selected.id] ?? '',
-                onDraftChange: (draft) =>
-                  setDrafts((previous) => ({ ...previous, [selected.id]: draft })),
+                onTabChange: inboxActions.setComposerTab,
                 onSend: sendCurrentDraft,
                 sending: (sendingIds[selected.id] ?? 0) > 0,
+                failed: selected.id in failedIds,
                 disabled: selected.status === 'closed',
                 focusSignal: composerFocusSignal,
                 t,
@@ -360,24 +324,18 @@ export function InboxScreen({ t }: InboxScreenProps) {
                 agent={agentQuery.data?.agent}
                 isSpam={isSpam}
                 onViewContact={() => navigate(contactRoute(selected.contactId))}
-                onAssigneeChange={(assignee: string) =>
-                  patchConversation(selected.id, { assignee })
-                }
-                onTeamInboxChange={(teamInbox: string) =>
-                  patchConversation(selected.id, { teamInbox })
-                }
+                onAssigneeChange={(assignee: string) => inboxActions.patchConversation(selected.id, { assignee })}
+                onTeamInboxChange={(teamInbox: string) => inboxActions.patchConversation(selected.id, { teamInbox })}
                 onPriorityChange={(priority: ConversationPriority) =>
-                  patchConversation(selected.id, { priority })
+                  inboxActions.patchConversation(selected.id, { priority })
                 }
                 onStatusChange={(status: ConversationStatus) =>
-                  patchConversation(selected.id, { status, snoozed: status === 'snoozed' })
+                  inboxActions.patchConversation(selected.id, { status, snoozed: status === 'snoozed' })
                 }
                 onToggleSpam={toggleSpam}
-                onAddTag={(tag: string) =>
-                  patchConversation(selected.id, { tags: [...selected.tags, tag] })
-                }
+                onAddTag={(tag: string) => inboxActions.patchConversation(selected.id, { tags: [...selected.tags, tag] })}
                 onRemoveTag={(tag: string) =>
-                  patchConversation(selected.id, {
+                  inboxActions.patchConversation(selected.id, {
                     tags: selected.tags.filter((existing) => existing !== tag),
                   })
                 }

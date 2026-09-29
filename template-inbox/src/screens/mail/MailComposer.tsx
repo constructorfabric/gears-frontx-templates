@@ -1,8 +1,7 @@
-import type { KeyboardEvent } from 'react';
 import { SendIcon } from 'lucide-react';
 import { Button, Textarea } from '@gears-frontx/ui-kit';
 import type { Translate } from '../../shared/i18n';
-import { SubmitShortcutHint } from '../../shared/submitShortcut';
+import { SubmitShortcutHint, useSubmitShortcut } from '../../shared/submitShortcut';
 import sharedStyles from '../../shared/shared.module.css';
 
 export type MailComposerProps = {
@@ -29,12 +28,7 @@ export function MailComposer({ correspondentName, draft, onDraftChange, onSend, 
   const canSend = draft.trim() !== '';
   const placeholder = t('reply_to_placeholder', { name: correspondentName });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && canSend) {
-      event.preventDefault();
-      onSend();
-    }
-  };
+  const onKeyDown = useSubmitShortcut(onSend, canSend);
 
   return (
     <div className={sharedStyles.composer}>

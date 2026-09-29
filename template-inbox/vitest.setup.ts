@@ -15,6 +15,7 @@
  */
 import { afterEach, vi } from 'vitest';
 import { cleanupScreens } from './src/__test-utils__/renderScreen';
+import { resetStores } from './src/shared/createStore';
 
 /**
  * jsdom implements no media-query engine, so `window.matchMedia` is simply
@@ -153,6 +154,9 @@ afterEach(() => {
   // Unmounted first, while every mock a screen's cleanup might call is still
   // in place.
   cleanupScreens();
+  // Module-level stores (the inbox's drafts and selection) outlive a mount
+  // by design, so each test starts them from their initial state.
+  resetStores();
 
   vi.clearAllMocks();
   vi.restoreAllMocks();

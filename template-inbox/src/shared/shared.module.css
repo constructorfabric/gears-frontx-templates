@@ -21,6 +21,11 @@
   transition: width 300ms ease;
 }
 
+/* A class's own `display` would beat the browser's `[hidden]` rule. */
+.sidebar[hidden] {
+  display: none;
+}
+
 .sidebarCollapsed {
   width: 0;
   border-right-width: 0;
@@ -420,4 +425,10 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* The placeholder a pane shows until its data arrives (`LoadingPane`). */
+.loadingBlock {
+  width: 16rem;
+  height: var(--space-8);
 }

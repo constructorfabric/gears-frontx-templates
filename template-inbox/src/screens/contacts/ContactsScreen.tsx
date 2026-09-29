@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PanelLeftIcon, SearchIcon, UserXIcon } from 'lucide-react';
 import {
   Button,
@@ -51,10 +51,26 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     [contacts, filter, search]
   );
 
-  const viewContact = useCallback(
-    (contactId: string) => navigate(contactRoute(contactId)),
-    []
-  );
+  // Set when a contact page is opened from this directory, so its Back button
+  // can step back through history - landing on the directory as it was left,
+  // with the entry the browser's own Back would also use - instead of
+  // pushing a second directory entry. A page opened from anywhere else (a
+  // link, the chat's "View contact") goes to the directory by address.
+  const openedFromDirectory = useRef(false);
+
+  const viewContact = useCallback((contactId: string) => {
+    openedFromDirectory.current = true;
+    navigate(contactRoute(contactId));
+  }, []);
+
+  const backToDirectory = () => {
+    if (openedFromDirectory.current) {
+      openedFromDirectory.current = false;
+      window.history.back();
+    } else {
+      navigate(CONTACTS_ROUTE);
+    }
+  };
 
   const firstPaint = firstPaintOf([contactsQuery, conversationsQuery]);
   if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
@@ -62,28 +78,6 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
 
   const openContact = contacts.find((contact) => contact.id === openContactId) ?? null;
 
-  // An address naming a contact the directory does not hold says so, rather
-  // than quietly showing the directory as if no one had been asked for.
-  if (openContactId !== null && openContact === null) {
-    return (
-      <div className={sharedStyles.emptyPane}>
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UserXIcon />
-            </EmptyMedia>
-            <EmptyTitle>{t('contact_not_found_title')}</EmptyTitle>
-            <EmptyDescription>{t('contact_not_found_description')}</EmptyDescription>
-          </EmptyHeader>
-          <EmptyActions>
-            <Button variant="outline" size="sm" onClick={() => navigate(CONTACTS_ROUTE)}>
-              {t('back_to_contacts')}
-            </Button>
-          </EmptyActions>
-        </Empty>
-      </div>
-    );
-  }
   const conversationsById = new Map(
     (conversationsQuery.data?.conversations ?? []).map((conversation) => [conversation.id, conversation])
   );
@@ -92,64 +86,86 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     return conversation ? [conversation] : [];
   });
 
+  const showingDirectory = openContactId === null;
+
   return (
     <>
       {/*
-        The filter list belongs to the directory, not to one person: on a
-        contact's own page it is dropped and the whole pane goes to the
-        record. Keeping it here costs the ticket-subject column most of its
-        width, so it leaves with the list rather than collapsing behind it.
+        The directory stays mounted while a contact page is open, hidden, so
+        Back returns to the same filter, search, sort order and page. The
+        filter column belongs to the directory, not to one person, so it
+        hides with it and the contact page gets the whole width.
       */}
-      {openContact ? null : (
-        <ContactFilterSidebar
-          contacts={contacts}
-          selectedFilter={filter}
-          onSelectFilter={setFilter}
-          collapsed={filterSidebar.collapsed}
-          t={t}
-        />
-      )}
+      <ContactFilterSidebar
+        contacts={contacts}
+        selectedFilter={filter}
+        onSelectFilter={setFilter}
+        collapsed={filterSidebar.collapsed}
+        hidden={!showingDirectory}
+        t={t}
+      />
+      <div className={styles.contactsMain} hidden={!showingDirectory}>
+        <div className={sharedStyles.paneHeader}>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<PanelLeftIcon />}
+            aria-label={t('toggle_contact_filters')}
+            aria-expanded={!filterSidebar.collapsed}
+            onClick={filterSidebar.toggle}
+          />
+          <span className={styles.contactsHeaderText}>
+            <ScreenHeading className={sharedStyles.paneTitle}>{t('all_contacts')}</ScreenHeading>
+            <span className={sharedStyles.paneCount}>
+              {t('people_count', { count: visibleContacts.length })}
+            </span>
+          </span>
+          <span className={sharedStyles.spacer} />
+          <Input
+            className={styles.searchField}
+            type="search"
+            value={search}
+            onValueChange={setSearch}
+            placeholder={t('search_contacts')}
+            icon={<SearchIcon />}
+            aria-label={t('search_contacts')}
+          />
+        </div>
+        <div className={styles.contactsBody}>
+          <ContactsTable contacts={visibleContacts} onViewContact={viewContact} t={t} />
+        </div>
+      </div>
 
       {openContact ? (
         <ContactDetail
           contact={openContact}
           conversations={openContactConversations}
-          onBack={() => navigate(CONTACTS_ROUTE)}
+          onBack={backToDirectory}
           t={t}
         />
-      ) : (
-        <div className={styles.contactsMain}>
-          <div className={sharedStyles.paneHeader}>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<PanelLeftIcon />}
-              aria-label={t('toggle_contact_filters')}
-              aria-expanded={!filterSidebar.collapsed}
-              onClick={filterSidebar.toggle}
-            />
-            <span className={styles.contactsHeaderText}>
-              <ScreenHeading className={sharedStyles.paneTitle}>{t('all_contacts')}</ScreenHeading>
-              <span className={sharedStyles.paneCount}>
-                {t('people_count', { count: visibleContacts.length })}
-              </span>
-            </span>
-            <span className={sharedStyles.spacer} />
-            <Input
-              className={styles.searchField}
-              type="search"
-              value={search}
-              onValueChange={setSearch}
-              placeholder={t('search_contacts')}
-              icon={<SearchIcon />}
-              aria-label={t('search_contacts')}
-            />
-          </div>
-          <div className={styles.contactsBody}>
-            <ContactsTable contacts={visibleContacts} onViewContact={viewContact} t={t} />
-          </div>
+      ) : null}
+
+      {/* An address naming a contact the directory does not hold says so,
+          rather than quietly showing the directory as if no one had been
+          asked for. */}
+      {!showingDirectory && openContact === null ? (
+        <div className={sharedStyles.emptyPane}>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <UserXIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t('contact_not_found_title')}</EmptyTitle>
+              <EmptyDescription>{t('contact_not_found_description')}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyActions>
+              <Button variant="outline" size="sm" onClick={() => navigate(CONTACTS_ROUTE)}>
+                {t('back_to_contacts')}
+              </Button>
+            </EmptyActions>
+          </Empty>
         </div>
-      )}
+      ) : null}
     </>
   );
 }

@@ -1,9 +1,20 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { PaperclipIcon, SendIcon, SmileIcon, ZapIcon } from 'lucide-react';
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from '@gears-frontx/ui-kit';
+import { useEffect, useRef } from 'react';
+import { CircleAlertIcon, PaperclipIcon, SendIcon, SmileIcon, ZapIcon } from 'lucide-react';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+} from '@gears-frontx/ui-kit';
 import { cx } from '../../shared/cx';
 import type { Translate } from '../../shared/i18n';
-import { SubmitShortcutHint } from '../../shared/submitShortcut';
+import { SubmitShortcutHint, useSubmitShortcut } from '../../shared/submitShortcut';
+import { inboxActions, useInbox } from './inboxStore';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './inbox.module.css';
 
@@ -15,13 +26,15 @@ export const isComposerTab = (value: unknown): value is ComposerTab =>
   typeof value === 'string' && COMPOSER_TABS.some((tab) => tab === value);
 
 export type ComposerProps = {
+  /** The conversation the draft belongs to; the draft itself is read from the inbox store. */
+  conversationId: string;
   tab: ComposerTab;
   onTabChange: (tab: ComposerTab) => void;
-  draft: string;
-  onDraftChange: (draft: string) => void;
   onSend: () => void;
   /** A post from this composer is in flight. */
   sending: boolean;
+  /** The latest post from this composer failed; the draft is still in the box. */
+  failed: boolean;
   /** The conversation takes no more replies or notes (it is closed). */
   disabled?: boolean;
   /**
@@ -35,17 +48,23 @@ export type ComposerProps = {
   t: Translate;
 };
 
+/**
+ * The reply and note box. It reads and writes its conversation's draft in
+ * the inbox store itself, so a keystroke re-renders this component and
+ * nothing around it.
+ */
 export function Composer({
+  conversationId,
   tab,
   onTabChange,
-  draft,
-  onDraftChange,
   onSend,
   sending,
+  failed,
   disabled = false,
   focusSignal,
   t,
 }: ComposerProps) {
+  const draft = useInbox((state) => state.drafts[conversationId] ?? '');
   const isNote = tab === 'note';
   const canSend = draft.trim() !== '' && !sending && !disabled;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -54,12 +73,7 @@ export function Composer({
     if (focusSignal) textareaRef.current?.focus();
   }, [focusSignal]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && canSend) {
-      event.preventDefault();
-      onSend();
-    }
-  };
+  const onKeyDown = useSubmitShortcut(onSend, canSend);
 
   // One body for both tabs: the box stays the same and only the placeholder,
   // the submit label and the frame swap. Each tab still owns a panel so the
@@ -73,7 +87,7 @@ export function Composer({
         rows={3}
         value={draft}
         disabled={disabled}
-        onChange={(event) => onDraftChange(event.target.value)}
+        onChange={(event) => inboxActions.setDraft(conversationId, event.target.value)}
         onKeyDown={onKeyDown}
         placeholder={
           disabled
@@ -109,6 +123,13 @@ export function Composer({
 
   return (
     <div className={sharedStyles.composer}>
+      {failed ? (
+        <Alert variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>{t('send_failed_title')}</AlertTitle>
+          <AlertDescription>{t('send_failed_description')}</AlertDescription>
+        </Alert>
+      ) : null}
       <Tabs
         value={tab}
         onValueChange={(value) => {

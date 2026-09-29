@@ -22,6 +22,8 @@ export type ContactFilterSidebarProps = {
   selectedFilter: ContactFilter;
   onSelectFilter: (filter: ContactFilter) => void;
   collapsed: boolean;
+  /** Out of the page entirely (a contact's own page is open), not just folded. */
+  hidden?: boolean;
   t: Translate;
 };
 
@@ -30,6 +32,7 @@ export function ContactFilterSidebar({
   selectedFilter,
   onSelectFilter,
   collapsed,
+  hidden = false,
   t,
 }: ContactFilterSidebarProps) {
   return (
@@ -38,6 +41,7 @@ export function ContactFilterSidebar({
       aria-label={t('contact_filters')}
       aria-hidden={collapsed}
       inert={collapsed}
+      hidden={hidden}
     >
       <div className={sharedStyles.paneHeader}>
         <span className={sharedStyles.paneTitle}>{t('contacts')}</span>

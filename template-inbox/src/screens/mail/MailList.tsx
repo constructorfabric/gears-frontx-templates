@@ -24,6 +24,7 @@ import { IdentityAvatar } from '../../shared/IdentityAvatar';
 import { cx } from '../../shared/cx';
 import { shortRelativeTime } from '../../shared/format';
 import { ScreenHeading } from '../../shared/ScreenHeading';
+import { splitPinned } from '../../shared/splitPinned';
 import { isMailTab, selectMails, type MailTab } from './mailSelectors';
 import sharedStyles from '../../shared/shared.module.css';
 import styles from './mail.module.css';
@@ -135,8 +136,7 @@ export function MailList({
         </div>
       );
     }
-    const pinnedMails = rows.filter((mail) => mail.pinned);
-    const otherMails = rows.filter((mail) => !mail.pinned);
+    const { pinned: pinnedMails, others: otherMails } = splitPinned(rows);
     return (
       <div className={sharedStyles.listBody}>
         {pinnedMails.length > 0 ? (

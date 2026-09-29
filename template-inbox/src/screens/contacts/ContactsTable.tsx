@@ -31,7 +31,7 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
   const columns = useMemo(() => {
     const column = dataTableColumnHelper<Contact>();
     return column.columns([
-      dataTableSelectionColumn<Contact>(),
+      dataTableSelectionColumn<Contact>({ selectAllLabel: t('select_all_rows'), selectRowLabel: t('select_row') }),
       column.accessor('name', {
         header: ({ column: instance }) => (
           <DataTableSortButton column={instance}>{t('name')}</DataTableSortButton>
@@ -113,6 +113,9 @@ export function ContactsTable({ contacts, onViewContact, t }: ContactsTableProps
       pageSize={ROWS_PER_PAGE}
       enableRowSelection
       emptyMessage={t('no_contacts')}
+      previousLabel={t('previous_page')}
+      nextLabel={t('next_page')}
+      selectionSummary={(selected, total) => t('rows_selected', { selected, count: total })}
     />
   );
 }

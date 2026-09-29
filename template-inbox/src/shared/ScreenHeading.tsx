@@ -39,9 +39,11 @@ export function ScreenHeading({ children, className }: ScreenHeadingProps) {
   const request = useSyncExternalStore(subscribe, readRequested, readRequested);
 
   useEffect(() => {
-    if (request === answered) return;
+    // A heading inside a hidden subtree (a screen keeping its list mounted
+    // behind a detail page) leaves the request to the visible one.
+    if (request === answered || ref.current === null || ref.current.closest('[hidden]') !== null) return;
     answered = request;
-    ref.current?.focus();
+    ref.current.focus();
   }, [request]);
 
   return (

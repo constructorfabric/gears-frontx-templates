@@ -510,4 +510,63 @@ describe('InboxScreen', () => {
       expect(receipt.getAttribute('role')).toBe('img');
     }
   });
+
+  it('keeps the channel, the open conversation, drafts and thread changes across a remount', () => {
+    const first = renderScreen(<InboxScreen t={t} />);
+    act(() => {
+      first.getByText('Support').click();
+    });
+    act(() => {
+      first.getAllByText('Dark mode toggle not persisting')[0].click();
+    });
+    act(() => typeInto(first.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Half a reply'));
+    act(() => {
+      first.getByLabelText(t('star_conversation')).click();
+    });
+    first.unmount();
+
+    // What "View contact" and Back do: the screen unmounts and mounts again.
+    const second = renderScreen(<InboxScreen t={t} />);
+    expect(second.getAllByText('Dark mode toggle not persisting').length).toBe(2);
+    expect((second.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Half a reply');
+    expect(second.getByLabelText(t('star_conversation')).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('says a failed send did not go out and keeps the draft, until the next send goes through', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    act(() => typeInto(screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement, 'Lost?'));
+    act(() => {
+      screen.getByText(t('send')).click();
+    });
+    const [request] = mutateMock.mock.calls[mutateMock.mock.calls.length - 1];
+    act(() => {
+      mutationCalls[mutationCalls.length - 1].onError?.(new Error('offline'), request as never);
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(t('send_failed_title'));
+    expect((screen.getByPlaceholderText(t('reply_placeholder')) as HTMLTextAreaElement).value).toBe('Lost?');
+
+    act(() => {
+      screen.getByText(t('send')).click();
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('settles the automatic pick on an empty channel, so a conversation started there stays open', () => {
+    const screen = renderScreen(<InboxScreen t={t} />);
+    act(() => {
+      screen.getByLabelText(t('new_channel')).click();
+    });
+    act(() => typeInto(domScreen.getByLabelText(t('channel_name')) as HTMLInputElement, 'Empty'));
+    act(() => {
+      domScreen.getByText(t('create_channel')).click();
+    });
+    expect(screen.getByText(t('empty_title'))).toBeTruthy();
+
+    // Leaving and re-entering General still opens its first conversation.
+    act(() => {
+      screen.getByText('General').click();
+    });
+    expect(screen.queryByText(t('empty_title'))).toBeNull();
+  });
 });

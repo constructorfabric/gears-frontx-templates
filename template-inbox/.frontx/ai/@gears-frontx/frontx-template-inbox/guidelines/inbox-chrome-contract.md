@@ -33,7 +33,7 @@ Two properties are load-bearing:
 
 ## Errors are caught at the root
 
-`src/app/ErrorBoundary.tsx` wraps `App` in `src/main.tsx`. A render error anywhere replaces the app with a kit `Alert` and a reload button instead of a blank window. A screen's own failed query is not an error for the boundary: it renders `LoadErrorPane` from `src/shared/QueryStates.tsx` (see the `inbox-data-contract` guideline).
+`src/app/ErrorBoundary.tsx` wraps the screen outlet in `App.tsx`, keyed on the location, and `App` as a whole in `src/main.tsx` as the last resort. A render error in a screen replaces that screen with a kit `Alert` offering "try again" and reload, while the rail keeps working; moving to another location clears it. A screen's own failed query is not an error for the boundary: it renders `LoadErrorPane` from `src/shared/QueryStates.tsx` (see the `inbox-data-contract` guideline).
 
 ## Theme follows the system until the visitor chooses
 
@@ -47,7 +47,7 @@ A screen never reads or writes the theme. `useTheme` exists for the one toggle i
 
 ## Shared parts
 
-`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `useSidebarToggle`, `ScreenHeading`, `QueryStates.tsx`, `submitShortcut.tsx`, and `cx`. A new screen reuses these rather than writing its own.
+`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `useSidebarToggle`, `ScreenHeading`, `QueryStates.tsx`, `submitShortcut.tsx`, and `cx`. A new screen reuses these rather than writing its own, together with `useAutoSelect` (open a list's first item once per scope), `splitPinned`, `FieldRow`, `useSubmitShortcut` and `createStore` (state that must survive the screen unmounting, the way `screens/inbox/inboxStore.ts` keeps the chat screen's selection, drafts and thread changes).
 
 ## Kit overlays need nothing
 
