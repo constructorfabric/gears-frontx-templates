@@ -1,10 +1,10 @@
 import { act } from 'react';
 import { apiRegistry } from '@gears-frontx/api';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { resetQueryCache } from '../api/queries';
-import { registerApiServices, resetMockState } from '../api/registry';
+import { getInboxApi, registerApiServices, resetMockState } from '../api/registry';
 import { t } from '../shared/i18n';
 import { App } from './App';
 import { CONTACTS_ROUTE, DASHBOARD_ROUTE, INBOX_ROUTE, MAIL_ROUTE, navigate } from './routing';
@@ -50,12 +50,13 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
     const rail = screen.getByRole('navigation', { name: t('sections') });
+    expect(within(rail).getByRole('link', { name: t('mail') }).getAttribute('href')).toBe(MAIL_ROUTE);
 
-    expect(within(rail).getByRole('button', { name: t('dashboard') }).getAttribute('aria-current')).toBe('page');
-    await user.click(within(rail).getByRole('button', { name: t('mail') }));
+    expect(within(rail).getByRole('link', { name: t('dashboard') }).getAttribute('aria-current')).toBe('page');
+    await user.click(within(rail).getByRole('link', { name: t('mail') }));
     await waitFor(() => expect(window.location.hash).toBe(MAIL_ROUTE));
-    expect(within(rail).getByRole('button', { name: t('mail') }).getAttribute('aria-current')).toBe('page');
-    expect(within(rail).getByRole('button', { name: t('dashboard') }).getAttribute('aria-current')).toBeNull();
+    expect(within(rail).getByRole('link', { name: t('mail') }).getAttribute('aria-current')).toBe('page');
+    expect(within(rail).getByRole('link', { name: t('dashboard') }).getAttribute('aria-current')).toBeNull();
     await screen.findByRole('heading', { level: 1, name: 'Inbox' }, { timeout: 3000 });
   });
 
@@ -119,5 +120,19 @@ describe('App', () => {
 
     act(() => navigate(CONTACTS_ROUTE));
     expect(await screen.findByText(t('people_count', { count: 29 }), undefined, { timeout: 3000 })).toBeTruthy();
+  });
+
+  it('says the profile could not be loaded, claims no presence, and retries from the menu', async () => {
+    const user = userEvent.setup();
+    const service = getInboxApi();
+    const fetchAgent = vi.spyOn(service.getAgent, 'fetch').mockRejectedValueOnce(new Error('down'));
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: t('open_profile_menu') }));
+    expect(await screen.findByText(t('profile_unavailable'), undefined, { timeout: 3000 })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: t('label_offline') })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: t('retry') }));
+    await waitFor(() => expect(fetchAgent).toHaveBeenCalledTimes(2), { timeout: 3000 });
   });
 });

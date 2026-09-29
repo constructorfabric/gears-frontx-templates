@@ -14,12 +14,13 @@
  */
 
 import { useCallback, useState } from 'react';
+import { useMediaQuery } from '../shared/useMediaQuery';
 
 export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'frontx.inbox.theme';
 
-const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
+export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
 
 const isTheme = (value: string | null): value is Theme => value === 'light' || value === 'dark';
 
@@ -50,11 +51,14 @@ const systemTheme = (): Theme =>
     ? 'dark'
     : 'light';
 
-/** The theme on screen: an explicit `data-theme`, or the system theme without one. */
-export const readAppliedTheme = (): Theme => {
+/** The explicit `data-theme` on the root, or `null` while the system theme applies. */
+const readExplicitTheme = (): Theme | null => {
   const applied = document.documentElement.getAttribute('data-theme');
-  return isTheme(applied) ? applied : systemTheme();
+  return isTheme(applied) ? applied : null;
 };
+
+/** The theme on screen: an explicit `data-theme`, or the system theme without one. */
+export const readAppliedTheme = (): Theme => readExplicitTheme() ?? systemTheme();
 
 const applyTheme = (theme: Theme): void => {
   document.documentElement.setAttribute('data-theme', theme);
@@ -71,8 +75,16 @@ export const applyStoredTheme = (): Theme => {
   return stored;
 };
 
+/**
+ * The theme on screen and the toggle. Without an explicit choice it is the
+ * system scheme read through `useMediaQuery`, so an operating-system switch
+ * while the tab is open moves the toggle's icon and label along with the
+ * repaint the kit's CSS already does.
+ */
 export function useTheme(): { theme: Theme; toggleTheme: () => void } {
-  const [theme, setTheme] = useState<Theme>(readAppliedTheme);
+  const systemDark = useMediaQuery(DARK_SCHEME_QUERY);
+  const [explicit, setExplicit] = useState<Theme | null>(readExplicitTheme);
+  const theme: Theme = explicit ?? (systemDark ? 'dark' : 'light');
 
   // The toggle is the only writer: mounting the hook applies and stores
   // nothing, so a visitor who never toggles keeps following the system.
@@ -80,7 +92,7 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
     const next: Theme = readAppliedTheme() === 'dark' ? 'light' : 'dark';
     applyTheme(next);
     writeStoredTheme(next);
-    setTheme(next);
+    setExplicit(next);
   }, []);
 
   return { theme, toggleTheme };

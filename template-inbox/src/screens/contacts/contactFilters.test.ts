@@ -9,7 +9,7 @@ describe('contact filters', () => {
     expect(counts).toEqual([29, 19, 10, 26, 8]);
   });
 
-  it('searches name, email, company and email domain', () => {
+  it('searches name, email (its domain included) and company', () => {
     expect(selectContacts(contacts, 'all', 'lucas')).toHaveLength(1);
     expect(selectContacts(contacts, 'all', 'brightlabs.example')).toHaveLength(1);
     expect(selectContacts(contacts, 'all', 'pixelforge')).toHaveLength(1);

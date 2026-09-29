@@ -1,23 +1,13 @@
 import { act, createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { applyStoredTheme, readAppliedTheme, useTheme, type Theme } from './theme';
+import { stubMatchMedia } from '../__test-utils__/matchMedia';
+import { applyStoredTheme, DARK_SCHEME_QUERY, readAppliedTheme, useTheme, type Theme } from './theme';
 
 const STORAGE_KEY = 'frontx.inbox.theme';
 
 /** Answers the dark-scheme query the way a system set to `scheme` would. */
-const stubSystemScheme = (scheme: Theme): void => {
-  vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
-    matches: scheme === 'dark' && query === '(prefers-color-scheme: dark)',
-    media: query,
-    onchange: null,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    dispatchEvent: () => false,
-  }));
-};
+const stubSystemScheme = (scheme: Theme) => stubMatchMedia(scheme === 'dark' ? [DARK_SCHEME_QUERY] : []);
 
 describe('applyStoredTheme', () => {
   beforeEach(() => {
@@ -77,5 +67,26 @@ describe('useTheme', () => {
     expect(screen.getByRole('button').textContent).toBe('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('light');
+  });
+
+  it('follows a system scheme change while nothing is stored', () => {
+    const system = stubSystemScheme('light');
+    render(createElement(ThemeProbe));
+    expect(screen.getByRole('button').textContent).toBe('light');
+
+    act(() => system.setMatching([DARK_SCHEME_QUERY]));
+    expect(screen.getByRole('button').textContent).toBe('dark');
+  });
+
+  it('keeps an explicit choice when the system scheme changes', () => {
+    const system = stubSystemScheme('light');
+    render(createElement(ThemeProbe));
+    act(() => {
+      screen.getByRole('button').click();
+    });
+    expect(screen.getByRole('button').textContent).toBe('dark');
+
+    act(() => system.setMatching([]));
+    expect(screen.getByRole('button').textContent).toBe('dark');
   });
 });

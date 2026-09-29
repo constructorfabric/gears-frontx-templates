@@ -29,6 +29,7 @@ import {
 import type { ReactElement } from 'react';
 import type { AgentIdentity } from '../api/types';
 import { labelOf } from '../shared/format';
+import { IdentityAvatar } from '../shared/IdentityAvatar';
 import { PresenceAvatar } from '../shared/PresenceAvatar';
 import type { Translate } from '../shared/i18n';
 import {
@@ -36,7 +37,6 @@ import {
   DASHBOARD_ROUTE,
   INBOX_ROUTE,
   MAIL_ROUTE,
-  navigate,
   type Route,
 } from './routing';
 import type { Theme } from './theme';
@@ -68,7 +68,11 @@ export const sectionLabelKey = (route: Route): string =>
 
 export type IconRailProps = {
   route: Route;
+  /** The signed-in agent, once `/me` has answered. */
   agent: AgentIdentity | undefined;
+  /** `/me` failed: the profile menu says so and offers `onRetryAgent`, and no presence is claimed. */
+  agentFailed: boolean;
+  onRetryAgent: () => void;
   theme: Theme;
   onToggleTheme: () => void;
   t: Translate;
@@ -83,9 +87,19 @@ export type IconRailProps = {
  * one is the fixed edge of the window that the rest of the layout is measured
  * from, so it has no collapsed state to be in.
  */
-export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProps) {
+/**
+ * The agent's circle: with a presence badge once the identity is known, and
+ * without one while it loads or after it failed, rather than claiming
+ * "offline" for someone whose presence nobody has read.
+ */
+function AgentAvatar({ agent, t }: { agent: AgentIdentity | undefined; t: Translate }) {
+  return agent ? <PresenceAvatar name={agent.name} presence={agent.presence} t={t} /> : <IdentityAvatar name="" />;
+}
+
+export function IconRail({ route, agent, agentFailed, onRetryAgent, theme, onToggleTheme, t }: IconRailProps) {
   const section = sectionOf(route);
   const isDark = theme === 'dark';
+  const identityName = agent?.name ?? (agentFailed ? t('profile_unavailable') : t('loading'));
 
   return (
     <aside className={styles.rail} aria-label={t('main_navigation')}>
@@ -95,6 +109,11 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
 
       <nav className={styles.railNav} aria-label={t('sections')}>
         <TooltipProvider>
+          {/* Links rather than buttons: each section is an address, so it
+              opens in a new tab or copies like any other link, and the
+              browser's own navigation changes the route. The kit's Button
+              draws it; `role="link"` keeps what Base UI would otherwise
+              announce as a button for a non-button element. */}
           {RAIL_SECTIONS.map((entry) => (
             <Tooltip key={entry.section}>
               <TooltipTrigger
@@ -105,7 +124,8 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
                     icon={entry.icon}
                     aria-label={t(entry.labelKey)}
                     aria-current={section === entry.section ? 'page' : undefined}
-                    onClick={() => navigate(entry.route)}
+                    nativeButton={false}
+                    render={<a href={entry.route} role="link" />}
                   />
                 }
               />
@@ -127,21 +147,27 @@ export function IconRail({ route, agent, theme, onToggleTheme, t }: IconRailProp
 
       <Popover>
         <PopoverTrigger className={styles.railIdentity} aria-label={t('open_profile_menu')}>
-          <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
+          <AgentAvatar agent={agent} t={t} />
         </PopoverTrigger>
         <PopoverContent side="right" align="end">
           <div className={sharedStyles.stack}>
             <div className={styles.railIdentityCard}>
-              <PresenceAvatar name={agent?.name ?? ''} presence={agent?.presence ?? 'offline'} t={t} />
+              <AgentAvatar agent={agent} t={t} />
               <span className={styles.identityLines}>
-                <span className={styles.identityName}>{agent?.name ?? t('loading')}</span>
+                <span className={styles.identityName}>{identityName}</span>
                 <span className={sharedStyles.identityMeta}>{agent ? labelOf(agent.presence, t) : ''}</span>
               </span>
             </div>
-            <div className={sharedStyles.fieldRow}>
-              <span className={sharedStyles.fieldLabel}>{t('workspace')}</span>
-              <span className={sharedStyles.fieldValue}>{agent?.workspace ?? ''}</span>
-            </div>
+            {agentFailed && !agent ? (
+              <Button size="sm" variant="outline" onClick={onRetryAgent}>
+                {t('retry')}
+              </Button>
+            ) : (
+              <div className={sharedStyles.fieldRow}>
+                <span className={sharedStyles.fieldLabel}>{t('workspace')}</span>
+                <span className={sharedStyles.fieldValue}>{agent?.workspace ?? ''}</span>
+              </div>
+            )}
             <Separator aria-hidden="true" />
             {/*
               This template ships no screen behind profile, settings or log

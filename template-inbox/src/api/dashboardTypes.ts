@@ -94,19 +94,21 @@ export type WorkloadMetric = {
 /** One slice of row 1's "Contacts by stage" donut: a contact lifecycle
  * stage and how many contacts currently sit in it. Each segment's share of
  * the ring is computed from `count` at render (see
- * `contactsByStagePercent`), never stored as its own field. */
+ * `contactsByStagePercent`), never stored as its own field. The stage is an
+ * id, not text: its name is the catalogue's (`chart_stage_<id>`), read
+ * through the card's chart config, so the legend, the tooltip and the chart
+ * summary name it the same way in any language. */
 export type ContactStageSegment = {
   id: string;
-  label: string;
   count: number;
 };
 
 /** One stage of the "Stage funnel" card, oldest (widest) first.
  * Each stage's share of the funnel is computed relative to the first
- * stage's own count at render (see `funnelStagePercent`), never stored. */
+ * stage's own count at render (see `funnelStagePercent`), never stored. Named
+ * by the catalogue (`chart_funnel_<id>`), like a contact stage. */
 export type FunnelStage = {
   id: string;
-  label: string;
   count: number;
 };
 

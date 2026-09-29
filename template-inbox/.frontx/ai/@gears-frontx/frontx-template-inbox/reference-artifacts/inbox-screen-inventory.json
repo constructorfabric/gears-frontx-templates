@@ -392,7 +392,7 @@
                 "Input",
                 "lucide-react: PlusIcon"
               ],
-              "note": "Adds a channel for the session and switches into it; the channel lives in screen state."
+              "note": "Adds a channel for the session and switches into it; the channel lives in the screen's store (inboxStore)."
             }
           ],
           "note": "Collapses below the compact width, and from the conversation list's toggle."
@@ -470,7 +470,7 @@
                 "ComboboxItem",
                 "lucide-react: UserRoundPlusIcon"
               ],
-              "note": "Picks an existing contact and opens a new conversation with an empty transcript in the current channel; the conversation lives in screen state, and a reply posted into it goes through the same postMessage endpoint as any other."
+              "note": "Picks an existing contact; createConversation creates an empty conversation in the current channel, which opens with its reply box focused, and a reply posted into it goes through the same postMessage endpoint as any other."
             }
           ]
         },
@@ -594,7 +594,7 @@
           "module": "src/screens/inbox/CustomerDetailsPanel.tsx",
           "parts": [
             {
-              "part": "details and copilot tabs",
+              "part": "details and assistant tabs",
               "kit": [
                 "Tabs",
                 "TabsList",
@@ -642,7 +642,7 @@
               ]
             },
             {
-              "part": "copilot tab",
+              "part": "assistant tab",
               "kit": [
                 "Button",
                 "Input",
@@ -697,7 +697,7 @@
                 "Textarea",
                 "lucide-react: PenSquareIcon"
               ],
-              "note": "Full width, primary style. Opens a dialog with To, Subject and Body; sending needs a recipient plus a subject or a body, and files the mail under Sent in screen state."
+              "note": "Full width, primary style. Opens a dialog with To, Subject and Body; sending needs a recipient plus a subject or a body, and files the mail under Sent in the screen's store (mailStore)."
             },
             {
               "part": "mailbox rows",
@@ -837,7 +837,7 @@
               "kit": [
                 "Button"
               ],
-              "note": "Disabled until the draft is non-empty. Sending files the reply under Sent in screen state and clears the draft - MailApiService has no write endpoint. No reply/note tabs and no attach/emoji/saved-reply row, unlike src/screens/inbox/Composer.tsx: a mail is a single kind of message."
+              "note": "Disabled until the draft is non-empty. Sending files the reply under Sent in the screen's store (mailStore) and clears the draft - MailApiService has no write endpoint. No reply/note tabs and no attach/emoji/saved-reply row, unlike src/screens/inbox/Composer.tsx: a mail is a single kind of message."
             }
           ]
         },

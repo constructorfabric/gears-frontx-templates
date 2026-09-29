@@ -18,6 +18,16 @@
 import type { ChartConfig } from '@gears-frontx/ui-kit';
 import type { Translate } from '../../shared/i18n';
 
+/**
+ * The name a chart's config gives a series id - the one source for a stage's
+ * name in a legend, a tooltip, a label on the drawing and the chart's text
+ * summary. Falls back to the id for a series the config does not list.
+ */
+export const seriesLabel = (config: ChartConfig, id: string): string => {
+  const label = config[id]?.label;
+  return typeof label === 'string' ? label : id;
+};
+
 export const DASHBOARD_PALETTE = {
   violet: 'var(--primary)',
   blue: 'var(--info)',

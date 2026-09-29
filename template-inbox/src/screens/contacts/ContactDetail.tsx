@@ -73,12 +73,14 @@ export type ContactDetailProps = {
    * out rather than rendered.
    */
   conversations: Conversation[];
+  /** When each conversation started, by id (`conversationStarts`). */
+  conversationStartedAt: ReadonlyMap<string, string>;
   onBack: () => void;
   t: Translate;
 };
 
-export function ContactDetail({ contact, conversations, onBack, t }: ContactDetailProps) {
-  const activity = buildActivity(contact, conversations);
+export function ContactDetail({ contact, conversations, conversationStartedAt, onBack, t }: ContactDetailProps) {
+  const activity = buildActivity(contact, conversations, conversationStartedAt);
 
   return (
     <div className={styles.contactsMain}>

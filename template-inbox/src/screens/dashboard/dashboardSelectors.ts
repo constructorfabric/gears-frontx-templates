@@ -31,13 +31,19 @@ export const average = (values: number[]): number =>
 export const kpiValue = (kpi: DashboardKpiCard): number =>
   kpi.valueMode === 'sum' ? sum(kpi.series) : (kpi.series[kpi.series.length - 1] ?? 0);
 
-/** Percent change of the headline value against the card's own prior-period
- * comparison, rounded to one decimal place. */
-export const kpiDeltaPercent = (kpi: DashboardKpiCard): number => {
-  const value = kpiValue(kpi);
-  if (kpi.previousValue === 0) return value === 0 ? 0 : 100;
-  return Math.round(((value - kpi.previousValue) / kpi.previousValue) * 1000) / 10;
+/**
+ * Percent change from `previous` to `current`, rounded to one decimal place.
+ * From a zero base there is no ratio to take, so any change reads as a full
+ * step in its own direction (+100 or -100) and no change as 0.
+ */
+export const percentChange = (current: number, previous: number): number => {
+  if (previous === 0) return Math.sign(current) * 100;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
 };
+
+/** Percent change of the headline value against the card's own prior-period
+ * comparison. */
+export const kpiDeltaPercent = (kpi: DashboardKpiCard): number => percentChange(kpiValue(kpi), kpi.previousValue);
 
 export type DeltaTone = 'success' | 'danger' | 'secondary';
 
@@ -101,11 +107,8 @@ export const formatKpiFooterValue = (kpi: DashboardKpiCard): string =>
 export const newContactsTotal = (series: NewContactsSeries['series']): number =>
   sum(series.map((point) => point.inbound + point.outbound));
 
-export const newContactsDeltaPercent = (newContacts: NewContactsSeries): number => {
-  const total = newContactsTotal(newContacts.series);
-  if (newContacts.previousTotal === 0) return total === 0 ? 0 : 100;
-  return Math.round(((total - newContacts.previousTotal) / newContacts.previousTotal) * 1000) / 10;
-};
+export const newContactsDeltaPercent = (newContacts: NewContactsSeries): number =>
+  percentChange(newContactsTotal(newContacts.series), newContacts.previousTotal);
 
 export const newContactsInboundTotal = (newContacts: NewContactsSeries): number =>
   sum(newContacts.series.map((point) => point.inbound));
@@ -239,9 +242,10 @@ export const conversionWonPercent = (sources: ConversionSource[]): number => {
   return total === 0 ? 0 : Math.round((won / total) * 100);
 };
 
-/** A workload metric's fill percentage for its Progress bar. */
+/** A workload metric's fill percentage for its Progress bar, held to 0-100:
+ * a load past its capacity fills the bar, it does not overflow it. */
 export const workloadPercent = (metric: WorkloadMetric): number =>
-  metric.max === 0 ? 0 : Math.round((metric.value / metric.max) * 100);
+  metric.max === 0 ? 0 : Math.min(100, Math.max(0, Math.round((metric.value / metric.max) * 100)));
 
 /** "Records created"'s headline: every company, opportunity and person
  * across the whole 12-month series, summed - the card's big number is never

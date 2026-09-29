@@ -15,6 +15,7 @@ import {
   newContactsInboundTotal,
   newContactsOutboundTotal,
   newContactsTotal,
+  percentChange,
   recordsCreatedTotal,
   resolvedPerDayTotal,
   resolvedPerDayWeekTotal,
@@ -42,6 +43,19 @@ describe('kpiValue', () => {
 
   it('sums every point for a "sum" card', () => {
     expect(kpiValue({ ...baseKpi, valueMode: 'sum' })).toBe(47);
+  });
+});
+
+describe('percentChange', () => {
+  it('rounds the change to one decimal place', () => {
+    expect(percentChange(14, 10)).toBe(40);
+    expect(percentChange(2, 3)).toBe(-33.3);
+  });
+
+  it('reads a change from a zero base as a full step in its own direction', () => {
+    expect(percentChange(5, 0)).toBe(100);
+    expect(percentChange(-5, 0)).toBe(-100);
+    expect(percentChange(0, 0)).toBe(0);
   });
 });
 
@@ -140,11 +154,11 @@ describe('resolvedPerDayTotal / resolvedPerDayWeekTotal', () => {
 
 describe('contactsByStagePercent', () => {
   const segments = [
-    { id: 'prospect', label: 'Prospect', count: 15 },
-    { id: 'engaged', label: 'Engaged', count: 14 },
-    { id: 'customer', label: 'Customer', count: 20 },
-    { id: 'at-risk', label: 'At risk', count: 7 },
-    { id: 'churned', label: 'Churned', count: 4 },
+    { id: 'prospect', count: 15 },
+    { id: 'engaged', count: 14 },
+    { id: 'customer', count: 20 },
+    { id: 'at-risk', count: 7 },
+    { id: 'churned', count: 4 },
   ];
 
   it('computes each segment share as a rounded whole percent', () => {
@@ -165,17 +179,17 @@ describe('contactsByStagePercent', () => {
   });
 
   it('never divides by zero', () => {
-    expect(contactsByStagePercent({ id: 'x', label: 'X', count: 0 }, [])).toBe(0);
+    expect(contactsByStagePercent({ id: 'x', count: 0 }, [])).toBe(0);
   });
 });
 
 describe('funnelTotal / funnelStagePercent', () => {
   const stages = [
-    { id: 'new', label: 'New', count: 120 },
-    { id: 'screening', label: 'Screening', count: 104 },
-    { id: 'meeting', label: 'Meeting', count: 86 },
-    { id: 'proposal', label: 'Proposal', count: 65 },
-    { id: 'customer', label: 'Customer', count: 46 },
+    { id: 'new', count: 120 },
+    { id: 'screening', count: 104 },
+    { id: 'meeting', count: 86 },
+    { id: 'proposal', count: 65 },
+    { id: 'customer', count: 46 },
   ];
 
   it('reads the first (widest) stage as the funnel total', () => {
@@ -192,7 +206,7 @@ describe('funnelTotal / funnelStagePercent', () => {
 
   it('never divides by zero', () => {
     expect(funnelTotal([])).toBe(0);
-    expect(funnelStagePercent({ id: 'x', label: 'X', count: 0 }, [])).toBe(0);
+    expect(funnelStagePercent({ id: 'x', count: 0 }, [])).toBe(0);
   });
 });
 
@@ -220,19 +234,24 @@ describe('workloadPercent', () => {
   it('never divides by zero', () => {
     expect(workloadPercent({ id: 'w', label: 'W', value: 0, max: 0 })).toBe(0);
   });
+
+  it('holds an over-capacity or negative value inside the bar', () => {
+    expect(workloadPercent({ id: 'w', label: 'W', value: 60, max: 50 })).toBe(100);
+    expect(workloadPercent({ id: 'w', label: 'W', value: -5, max: 50 })).toBe(0);
+  });
 });
 
 describe('funnelSegmentGeometry label fit', () => {
   it('never lets a label claim more width than its segment has, and drops it from a segment too thin for any', () => {
     const stages = [
-      { id: 'wide', label: 'Wide', count: 100 },
-      { id: 'sliver', label: 'Sliver', count: 1 },
+      { id: 'wide', count: 100 },
+      { id: 'sliver', count: 1 },
     ];
     const [wide, sliver] = funnelSegmentGeometry(stages, {
       width: 300,
       height: 200,
       gap: 3,
-      labelOf: (stage, percent) => `${stage.label} · ${percent}`,
+      labelOf: (stage, percent) => `${stage.id} · ${percent}`,
     });
 
     expect(wide.textLength === undefined || wide.textLength <= 300).toBe(true);

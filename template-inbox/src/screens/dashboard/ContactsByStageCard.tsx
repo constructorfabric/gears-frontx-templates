@@ -10,7 +10,7 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { ContactStageSegment } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
-import { contactsByStageChartConfig } from './dashboardChartConfig';
+import { contactsByStageChartConfig, seriesLabel } from './dashboardChartConfig';
 import { contactsByStagePercent, formatCount, formatPercent } from './dashboardSelectors';
 import styles from './dashboard.module.css';
 
@@ -30,6 +30,7 @@ const DONUT_DIMENSION = { width: 160, height: 160 };
  * here is plain markup fed from the same `segments` data instead.
  */
 export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
+  const chartConfig = contactsByStageChartConfig(t);
   return (
     <Card>
       <CardHeader>
@@ -37,7 +38,7 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
       </CardHeader>
       <CardContent className={styles.stageCardContent}>
         <ChartContainer
-          config={contactsByStageChartConfig(t)}
+          config={chartConfig}
           className={styles.stageDonut}
           // The legend below lists every segment's count and share in text,
           // so the donut itself is decoration to assistive technology.
@@ -69,7 +70,7 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
                 style={{ background: `var(--color-${segment.id})` }}
                 aria-hidden="true"
               />
-              <span className={styles.stageLegendLabel}>{segment.label}</span>
+              <span className={styles.stageLegendLabel}>{seriesLabel(chartConfig, segment.id)}</span>
               <span className={styles.stageLegendCount}>{formatCount(segment.count)}</span>
               <span className={styles.stageLegendPercent}>
                 {formatPercent(contactsByStagePercent(segment, segments))}

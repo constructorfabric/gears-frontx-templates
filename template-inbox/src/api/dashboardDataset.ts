@@ -32,10 +32,22 @@ import { ANCHOR_MS, daysAgo, hoursAgo } from './seedClock';
 
 /** The last 7 calendar days including today, oldest first, as ISO instants -
  * every chart on this screen that plots a week shares this set so the x-axes
- * agree. The charts write the weekday names themselves, in the app's locale. */
-export const LAST_7_DAYS: string[] = Array.from({ length: 7 }, (_, index) =>
-  new Date(ANCHOR_MS - (6 - index) * 24 * 3_600_000).toISOString()
-);
+ * agree. The charts write the weekday names themselves, in the app's locale.
+ * Calendar days, not 24-hour steps (the same reasoning as `MONTHS_12`): a
+ * daylight-saving change inside the week makes one day 23 or 25 hours long,
+ * and a fixed step would then skip a day or name one twice. */
+export const LAST_7_DAYS: string[] = (() => {
+  const anchor = new Date(ANCHOR_MS);
+  return Array.from({ length: 7 }, (_, index) =>
+    new Date(
+      anchor.getFullYear(),
+      anchor.getMonth(),
+      anchor.getDate() - (6 - index),
+      anchor.getHours(),
+      anchor.getMinutes()
+    ).toISOString()
+  );
+})();
 
 /**
  * The daily breakdown behind both row 2's "Resolved per day" stacked bar
@@ -110,11 +122,11 @@ export const kpiCards: DashboardKpiCard[] = [
  * `contactsByStagePercent`).
  */
 export const contactsByStage: ContactStageSegment[] = [
-  { id: 'prospect', label: 'Prospect', count: 15 },
-  { id: 'engaged', label: 'Engaged', count: 14 },
-  { id: 'customer', label: 'Customer', count: 20 },
-  { id: 'at-risk', label: 'At risk', count: 7 },
-  { id: 'churned', label: 'Churned', count: 4 },
+  { id: 'prospect', count: 15 },
+  { id: 'engaged', count: 14 },
+  { id: 'customer', count: 20 },
+  { id: 'at-risk', count: 7 },
+  { id: 'churned', count: 4 },
 ];
 
 /**
@@ -178,11 +190,11 @@ export const recordsCreated: RecordsCreatedPoint[] = MONTHS_12.map((month, index
  * `funnelStagePercent`), never stored as its own field.
  */
 export const stageFunnel: FunnelStage[] = [
-  { id: 'new', label: 'New', count: 120 },
-  { id: 'screening', label: 'Screening', count: 104 },
-  { id: 'meeting', label: 'Meeting', count: 86 },
-  { id: 'proposal', label: 'Proposal', count: 65 },
-  { id: 'customer', label: 'Customer', count: 46 },
+  { id: 'new', count: 120 },
+  { id: 'screening', count: 104 },
+  { id: 'meeting', count: 86 },
+  { id: 'proposal', count: 65 },
+  { id: 'customer', count: 46 },
 ];
 
 /**

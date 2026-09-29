@@ -44,7 +44,7 @@ const UNASSIGNED = ' unassigned';
 const PRIORITIES: ConversationPriority[] = ['none', 'low', 'medium', 'high'];
 const STATUSES: ConversationStatus[] = ['open', 'snoozed', 'closed'];
 
-const COPILOT_PROMPTS = ['copilot_summarize', 'copilot_draft', 'copilot_asking'];
+const ASSISTANT_PROMPTS = ['assistant_summarize', 'assistant_draft', 'assistant_asking'];
 
 export type CustomerDetailsPanelProps = {
   conversation: Conversation;
@@ -103,7 +103,7 @@ export function CustomerDetailsPanel({
       <Tabs defaultValue="details">
         <TabsList variant="line">
           <TabsTrigger value="details">{t('details')}</TabsTrigger>
-          <TabsTrigger value="copilot">{t('copilot')}</TabsTrigger>
+          <TabsTrigger value="assistant">{t('assistant')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">
@@ -268,18 +268,18 @@ export function CustomerDetailsPanel({
         </TabsContent>
 
         {/*
-          The Copilot tab is a static surface only. Wiring the
+          The Assistant tab is a static surface only. Wiring the
           prompts to a model is out of this template's scope, so the controls
           are present and inert rather than pretending to answer.
         */}
-        <TabsContent value="copilot">
+        <TabsContent value="assistant">
           <div className={styles.detailsBody}>
             <div className={sharedStyles.stack}>
-              <span className={sharedStyles.contactCardName}>{t('copilot_title')}</span>
-              <span className={sharedStyles.identityMeta}>{t('copilot_subtitle')}</span>
+              <span className={sharedStyles.contactCardName}>{t('assistant_title')}</span>
+              <span className={sharedStyles.identityMeta}>{t('assistant_subtitle')}</span>
             </div>
             <div className={sharedStyles.stack}>
-              {COPILOT_PROMPTS.map((prompt) => (
+              {ASSISTANT_PROMPTS.map((prompt) => (
                 <Button key={prompt} variant="outline" size="sm" icon={<SparklesIcon />} disabled>
                   {t(prompt)}
                 </Button>
@@ -287,8 +287,8 @@ export function CustomerDetailsPanel({
             </div>
             <Input
               disabled
-              placeholder={t('copilot_placeholder')}
-              aria-label={t('copilot_placeholder')}
+              placeholder={t('assistant_placeholder')}
+              aria-label={t('assistant_placeholder')}
               end={<Button variant="ghost" size="sm" icon={<SendIcon />} aria-label={t('send')} disabled />}
             />
           </div>

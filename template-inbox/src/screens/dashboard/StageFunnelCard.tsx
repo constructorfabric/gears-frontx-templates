@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@gears-frontx/ui-kit';
 import type { FunnelStage } from '../../api/dashboardTypes';
 import type { Translate } from '../../shared/i18n';
 import { chartSummary } from './chartSummary';
-import { stageFunnelChartConfig } from './dashboardChartConfig';
+import { seriesLabel, stageFunnelChartConfig } from './dashboardChartConfig';
 import { formatCount, funnelSegmentGeometry, funnelTotal } from './dashboardSelectors';
 import styles from './dashboard.module.css';
 
@@ -35,7 +35,7 @@ export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
     width: FUNNEL_VIEWBOX.width,
     height: FUNNEL_VIEWBOX.height,
     gap: FUNNEL_SEGMENT_GAP,
-    labelOf: (stage, percent) => t('funnel_stage_label', { stage: stage.label, percent }),
+    labelOf: (stage, percent) => t('funnel_stage_label', { stage: seriesLabel(chartConfig, stage.id), percent }),
   });
 
   return (
@@ -58,7 +58,7 @@ export function StageFunnelCard({ stages, t }: StageFunnelCardProps) {
           role="img"
           aria-label={chartSummary(
             t('stage_funnel'),
-            stages.map((stage) => ({ label: stage.label, value: formatCount(stage.count) })),
+            stages.map((stage) => ({ label: seriesLabel(chartConfig, stage.id), value: formatCount(stage.count) })),
             t
           )}
         >

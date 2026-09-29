@@ -7,7 +7,6 @@
  */
 
 import type { Contact } from '../../api/types';
-import { emailDomain } from '../../shared/format';
 
 export const CONTACT_FILTERS = ['all', 'users', 'leads', 'active', 'new'] as const;
 
@@ -32,7 +31,8 @@ const MATCHERS: Record<ContactFilter, (contact: Contact) => boolean> = {
 export const countForFilter = (contacts: Contact[], filter: ContactFilter): number =>
   contacts.filter(MATCHERS[filter]).length;
 
-/** Name, email and company - the three the search placeholder names. */
+/** Name, email and company - the three the search placeholder names. The
+ * email covers its own domain, so a domain typed in finds its people too. */
 export function selectContacts(
   contacts: Contact[],
   filter: ContactFilter,
@@ -45,8 +45,7 @@ export function selectContacts(
     return (
       contact.name.toLowerCase().includes(needle) ||
       contact.email.toLowerCase().includes(needle) ||
-      contact.company.toLowerCase().includes(needle) ||
-      emailDomain(contact.email).toLowerCase().includes(needle)
+      contact.company.toLowerCase().includes(needle)
     );
   });
 }

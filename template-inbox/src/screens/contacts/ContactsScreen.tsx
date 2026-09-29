@@ -17,6 +17,7 @@ import { CONTACTS_ROUTE, contactRoute, navigate } from '../../app/routing';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '../../shared/QueryStates';
 import { ScreenHeading } from '../../shared/ScreenHeading';
 import { useSidebarToggle } from '../../shared/useSidebarToggle';
+import { conversationStarts } from './contactActivity';
 import { ContactDetail } from './ContactDetail';
 import { ContactFilterSidebar } from './ContactFilterSidebar';
 import { ContactsTable } from './ContactsTable';
@@ -40,6 +41,8 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
 
   const contactsQuery = useApiQuery(service.getContacts);
   const conversationsQuery = useApiQuery(service.getConversations);
+  // The transcript dates when each of a contact's conversations started.
+  const messagesQuery = useApiQuery(service.getMessages);
 
   const filter = useContacts((state) => state.filter);
   const search = useContacts((state) => state.search);
@@ -73,7 +76,12 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     }
   };
 
-  const firstPaint = firstPaintOf([contactsQuery, conversationsQuery]);
+  const conversationStartedAt = useMemo(
+    () => conversationStarts(messagesQuery.data?.messages ?? []),
+    [messagesQuery.data]
+  );
+
+  const firstPaint = firstPaintOf([contactsQuery, conversationsQuery, messagesQuery]);
   if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
   if (firstPaint.loading) return <LoadingPane />;
 
@@ -141,6 +149,7 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
         <ContactDetail
           contact={openContact}
           conversations={openContactConversations}
+          conversationStartedAt={conversationStartedAt}
           onBack={backToDirectory}
           t={t}
         />

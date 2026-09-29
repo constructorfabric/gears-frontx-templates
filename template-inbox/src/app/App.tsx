@@ -51,6 +51,8 @@ export function App() {
       <IconRail
         route={route}
         agent={agentQuery.data?.agent}
+        agentFailed={agentQuery.error !== null}
+        onRetryAgent={agentQuery.refetch}
         theme={theme}
         onToggleTheme={toggleTheme}
         t={t}
