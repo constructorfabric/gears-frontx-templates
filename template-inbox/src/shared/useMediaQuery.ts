@@ -46,9 +46,10 @@ export function useMediaQuery(query: string): boolean {
  *   list of any useful width and a 24rem thread do not fit side by side.
  * - Up to 62rem (992px) the folder column starts folded: 4 + 12 + 22 + 24
  *   is 62rem, so below it the column would squeeze the list and the thread.
- *   Between the two the list gives way (`.listPane` shrinks) while the
- *   thread keeps its 24rem (`.detailPane`), so the page never scrolls
- *   sideways, even with the column opened by hand.
+ *   Opened by hand there, it lays over the screen as a sheet
+ *   (`SideColumn`) rather than taking the list's width. Between the two
+ *   widths the list gives way (`.listPane` shrinks) while the thread keeps
+ *   its 24rem (`.detailPane`), so the page never scrolls sideways.
  * - Wider, all three columns show at their full widths.
  *
  * CSS cannot read these constants: `.listPane` in `shared.module.css`

@@ -23,6 +23,8 @@ import {
 import type { Translate } from '../../shared/i18n';
 import type { Channel } from '../../api/types';
 import { cx } from '../../shared/cx';
+import { SideColumn } from '../../shared/SideColumn';
+import type { SidebarToggle } from '../../shared/useSidebarToggle';
 import sharedStyles from '../../shared/shared.module.css';
 
 const CHANNEL_ICON: Record<Channel['icon'], ReactElement> = {
@@ -34,7 +36,7 @@ export type FolderSidebarProps = {
   selectedChannelId: string;
   onSelectChannel: (channelId: string) => void;
   onCreateChannel: (name: string) => void;
-  collapsed: boolean;
+  column: SidebarToggle;
   t: Translate;
 };
 
@@ -43,7 +45,7 @@ export function FolderSidebar({
   selectedChannelId,
   onSelectChannel,
   onCreateChannel,
-  collapsed,
+  column,
   t,
 }: FolderSidebarProps) {
   const nameFieldId = useId();
@@ -60,18 +62,12 @@ export function FolderSidebar({
   };
 
   return (
-    <aside
-      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
-      aria-label={t('channels')}
-      // Kept in the tree while collapsed so the width transition has something
-      // to animate; `inert` takes its controls out of the tab order and
-      // `aria-hidden` keeps a zero-width column from being read out.
-      aria-hidden={collapsed}
-      inert={collapsed}
-    >
-      <div className={sharedStyles.paneHeader}>
-        <span className={sharedStyles.paneTitle}>{t('chat')}</span>
-        <span className={sharedStyles.spacer} />
+    <SideColumn
+      state={column}
+      label={t('channels')}
+      title={t('chat')}
+      closeLabel={t('close')}
+      actions={
         <Dialog
           open={createOpen}
           onOpenChange={(open) => {
@@ -110,7 +106,8 @@ export function FolderSidebar({
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+      }
+    >
       <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {channels.map((channel) => (
@@ -138,6 +135,6 @@ export function FolderSidebar({
           ))}
         </ItemGroup>
       </nav>
-    </aside>
+    </SideColumn>
   );
 }

@@ -27,6 +27,7 @@ import { countOpen, selectConversations } from './conversationOrdering';
 import { CustomerDetailsPanel } from './CustomerDetailsPanel';
 import { FolderSidebar } from './FolderSidebar';
 import { inboxActions, inboxStore, useInbox } from './inboxStore';
+import styles from './inbox.module.css';
 import sharedStyles from '../../shared/shared.module.css';
 
 export type InboxScreenProps = {
@@ -268,9 +269,15 @@ export function InboxScreen({ t }: InboxScreenProps) {
       <FolderSidebar
         channels={channels}
         selectedChannelId={channelId}
-        onSelectChannel={selectChannel}
-        onCreateChannel={createChannel}
-        collapsed={channelsSidebar.collapsed}
+        onSelectChannel={(nextChannelId) => {
+          selectChannel(nextChannelId);
+          channelsSidebar.dismiss();
+        }}
+        onCreateChannel={(name) => {
+          createChannel(name);
+          channelsSidebar.dismiss();
+        }}
+        column={channelsSidebar}
         t={t}
       />
 
@@ -292,7 +299,13 @@ export function InboxScreen({ t }: InboxScreenProps) {
         t={t}
       />
 
-      <div className={cx(sharedStyles.detailPane, isSinglePane && !showThread && sharedStyles.singlePaneHidden)}>
+      <div
+        className={cx(
+          sharedStyles.detailPane,
+          isSinglePane && !showThread && sharedStyles.singlePaneHidden,
+          showThread && detailsVisible && styles.detailPaneWithDetails
+        )}
+      >
         {selected ? (
           <>
             <ConversationThread

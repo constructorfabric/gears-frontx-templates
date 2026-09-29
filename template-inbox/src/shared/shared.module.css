@@ -37,6 +37,20 @@
   }
 }
 
+/*
+ * The same column as a sheet, below the compact width (`SideColumn`). The
+ * kit pads every direct child of a sheet for a form's layout; the frame puts
+ * the column's own header and body back instead, and two classes outrank
+ * the kit's rule whichever stylesheet loads first.
+ */
+.sidebarSheet > .sidebarSheetFrame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  background: var(--sidebar);
+}
+
 .sidebarBody {
   flex: 1;
   min-height: 0;
@@ -128,8 +142,11 @@
 /* --- The conversation list pane --- */
 /*
  * 22rem when there is room; narrower when the thread beside it would
- * otherwise drop under its minimum (see `.detailPane`), down to nothing
- * rather than pushing the page wider than the viewport.
+ * otherwise drop under its minimum (see `.detailPane`). Between the
+ * single-pane and the compact widths the row is the rail, this list and a
+ * 24rem thread, so about 12rem of list just above 40rem; the folder column
+ * never takes from it there, as it opens as a sheet over the screen
+ * (`SideColumn`).
  */
 .listPane {
   display: flex;

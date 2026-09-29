@@ -150,9 +150,12 @@ export function MailScreen({ t }: MailScreenProps) {
         mailboxes={mailboxes}
         mails={mails}
         selectedMailboxId={mailboxId}
-        onSelectMailbox={selectMailbox}
+        onSelectMailbox={(nextMailboxId) => {
+          selectMailbox(nextMailboxId);
+          mailboxesSidebar.dismiss();
+        }}
         onComposeMail={composeMail}
-        collapsed={mailboxesSidebar.collapsed}
+        column={mailboxesSidebar}
         t={t}
       />
 

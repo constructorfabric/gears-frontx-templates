@@ -8,7 +8,8 @@ import {
 } from '@gears-frontx/ui-kit';
 import type { Contact } from '../../api/types';
 import type { Translate } from '../../shared/i18n';
-import { cx } from '../../shared/cx';
+import { SideColumn } from '../../shared/SideColumn';
+import type { SidebarToggle } from '../../shared/useSidebarToggle';
 import {
   CONTACT_FILTERS,
   CONTACT_FILTER_LABEL_KEY,
@@ -21,7 +22,7 @@ export type ContactFilterSidebarProps = {
   contacts: Contact[];
   selectedFilter: ContactFilter;
   onSelectFilter: (filter: ContactFilter) => void;
-  collapsed: boolean;
+  column: SidebarToggle;
   /** Out of the page entirely (a contact's own page is open), not just folded. */
   hidden?: boolean;
   t: Translate;
@@ -31,21 +32,18 @@ export function ContactFilterSidebar({
   contacts,
   selectedFilter,
   onSelectFilter,
-  collapsed,
+  column,
   hidden = false,
   t,
 }: ContactFilterSidebarProps) {
   return (
-    <aside
-      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
-      aria-label={t('contact_filters')}
-      aria-hidden={collapsed}
-      inert={collapsed}
+    <SideColumn
+      state={column}
+      label={t('contact_filters')}
+      title={t('contacts')}
+      closeLabel={t('close')}
       hidden={hidden}
     >
-      <div className={sharedStyles.paneHeader}>
-        <span className={sharedStyles.paneTitle}>{t('contacts')}</span>
-      </div>
       <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {CONTACT_FILTERS.map((filter) => (
@@ -72,6 +70,6 @@ export function ContactFilterSidebar({
           ))}
         </ItemGroup>
       </nav>
-    </aside>
+    </SideColumn>
   );
 }

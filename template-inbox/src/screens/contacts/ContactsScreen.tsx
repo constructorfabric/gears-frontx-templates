@@ -109,8 +109,11 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
       <ContactFilterSidebar
         contacts={contacts}
         selectedFilter={filter}
-        onSelectFilter={contactsActions.setFilter}
-        collapsed={filterSidebar.collapsed}
+        onSelectFilter={(nextFilter) => {
+          contactsActions.setFilter(nextFilter);
+          filterSidebar.dismiss();
+        }}
+        column={filterSidebar}
         hidden={!showingDirectory}
         t={t}
       />

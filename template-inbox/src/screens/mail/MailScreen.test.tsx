@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import {
   endpointTags,
   mutationResult,
@@ -374,23 +374,29 @@ describe('MailScreen', () => {
   });
 
 
-  it('folds the mailbox column between the single-pane and the compact widths, keeps the list and the reading pane side by side, and opens the column from the list header', () => {
+  it('keeps the list and the reading pane side by side between the single-pane and the compact widths, and opens the mailbox column over them as a sheet', async () => {
     stubMatchMedia([COMPACT_QUERY]);
     render(<MailScreen t={t} />);
 
-    const sidebar = screen.getByLabelText(t('mail'), { selector: 'aside' });
     const toggle = screen.getByLabelText(t('toggle_mailboxes'));
     expect(screen.getByLabelText('Inbox', { selector: 'section' }).className).not.toMatch(/singlePaneHidden/);
     expect(screen.queryByLabelText(t('back_to_mail_list'))).toBeNull();
-    expect(sidebar.hasAttribute('inert')).toBe(true);
-    expect(sidebar.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByLabelText(t('mail'), { selector: 'aside' })).toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
     act(() => {
       toggle.click();
     });
-    expect(sidebar.hasAttribute('inert')).toBe(false);
+    const sheet = await screen.findByRole('dialog', { name: t('mail') });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    // A mailbox picked in the sheet opens and folds the sheet.
+    act(() => {
+      within(sheet).getByText('Sent').click();
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByLabelText('Sent', { selector: 'section' })).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('says in words which mails are unread', () => {

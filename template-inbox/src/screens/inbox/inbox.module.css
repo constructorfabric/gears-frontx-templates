@@ -339,3 +339,18 @@
     display: none;
   }
 }
+
+/*
+ * Above that width the panel's 19rem and its border sit inside the detail
+ * pane, beside the thread, so the pane's own minimum (24rem, in
+ * `shared.module.css`) grows by them while the panel is open: the list gives
+ * way first and the thread keeps its 24rem. At 75rem that leaves about 16rem of list with the channel
+ * column open. The class is set only while a conversation and the panel
+ * show; the doubled class outranks the shared rule whichever stylesheet
+ * loads first.
+ */
+@media not all and (max-width: 75rem) {
+  .detailPaneWithDetails.detailPaneWithDetails {
+    min-width: calc(24rem + 19rem + var(--border-width));
+  }
+}

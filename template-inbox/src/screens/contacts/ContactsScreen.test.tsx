@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
@@ -22,6 +22,7 @@ vi.mock('../../api/queries', () => ({
 }));
 
 const { ContactsScreen } = await import('./ContactsScreen');
+const { contactsStore } = await import('./contactsStore');
 
 afterEach(() => {
   resetApiMocks();
@@ -102,16 +103,26 @@ describe('ContactsScreen', () => {
     expect(sidebar.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('starts the filter column folded below the compact width, and the toggle opens it', () => {
+  it('opens the filter column as a sheet over the directory below the compact width, and a pick folds it', async () => {
     stubMatchMedia([COMPACT_QUERY]);
     render(<ContactsScreen openContactId={null} t={t} />);
-    const sidebar = screen.getByLabelText(t('contact_filters'));
+    const toggle = screen.getByLabelText(t('toggle_contact_filters'));
 
-    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(screen.queryByLabelText(t('contact_filters'), { selector: 'aside' })).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
     act(() => {
-      screen.getByLabelText(t('toggle_contact_filters')).click();
+      toggle.click();
     });
-    expect(sidebar.hasAttribute('inert')).toBe(false);
+    const sheet = await screen.findByRole('dialog', { name: t('contacts') });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    act(() => {
+      within(sheet).getByText(t('filter_leads')).click();
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(contactsStore.get().filter).toBe('leads');
+    // The directory heading stays the one screen heading.
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
   it('renders one screen heading, the directory title', () => {

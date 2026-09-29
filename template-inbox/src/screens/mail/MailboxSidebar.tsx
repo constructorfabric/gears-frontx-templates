@@ -25,6 +25,8 @@ import {
 import type { Mail, Mailbox, MailboxId } from '../../api/mailTypes';
 import type { Translate } from '../../shared/i18n';
 import { cx } from '../../shared/cx';
+import { SideColumn } from '../../shared/SideColumn';
+import type { SidebarToggle } from '../../shared/useSidebarToggle';
 import { countInMailbox } from './mailSelectors';
 import sharedStyles from '../../shared/shared.module.css';
 
@@ -48,7 +50,7 @@ export type MailboxSidebarProps = {
   selectedMailboxId: MailboxId;
   onSelectMailbox: (mailboxId: MailboxId) => void;
   onComposeMail: (mail: ComposedMail) => void;
-  collapsed: boolean;
+  column: SidebarToggle;
   t: Translate;
 };
 
@@ -58,8 +60,8 @@ const EMPTY_DRAFT: ComposedMail = { to: '', subject: '', body: '' };
  * Same 12rem sidebar and 36px `.folderItem` Item as `FolderSidebar` and
  * `ContactFilterSidebar`, one nav section and a Compose button above it.
  * Counts render as the kit's own Badge, and every count is read off `mails`,
- * never stored on a mailbox row. Below the compact width the column
- * collapses (`collapsed`), as the inbox's channel column does.
+ * never stored on a mailbox row. The column folds and, below the compact
+ * width, opens as a sheet (`SideColumn`), as the inbox's channel column does.
  */
 export function MailboxSidebar({
   mailboxes,
@@ -67,7 +69,7 @@ export function MailboxSidebar({
   selectedMailboxId,
   onSelectMailbox,
   onComposeMail,
-  collapsed,
+  column,
   t,
 }: MailboxSidebarProps) {
   const toFieldId = useId();
@@ -91,15 +93,12 @@ export function MailboxSidebar({
   };
 
   return (
-    <aside
-      className={cx(sharedStyles.sidebar, collapsed && sharedStyles.sidebarCollapsed)}
-      aria-label={t('mail')}
-      aria-hidden={collapsed}
-      inert={collapsed}
-    >
-      <div className={sharedStyles.paneHeader}>
-        <span className={sharedStyles.paneTitle}>{t('mail')}</span>
-        <span className={sharedStyles.spacer} />
+    <SideColumn
+      state={column}
+      label={t('mail')}
+      title={t('mail')}
+      closeLabel={t('close')}
+      actions={
         <Dialog
           open={composeOpen}
           onOpenChange={(open) => {
@@ -160,7 +159,8 @@ export function MailboxSidebar({
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+      }
+    >
       <nav className={sharedStyles.sidebarBody}>
         <ItemGroup>
           {mailboxes.map((mailbox) => (
@@ -188,6 +188,6 @@ export function MailboxSidebar({
           ))}
         </ItemGroup>
       </nav>
-    </aside>
+    </SideColumn>
   );
 }

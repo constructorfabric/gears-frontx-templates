@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   endpointTags,
@@ -13,7 +13,7 @@ import {
   setQueryState,
   succeedMutation,
 } from '../../__test-utils__/apiMocks';
-import { contacts, conversations, messages } from '../../api/dataset';
+import { channels, contacts, conversations, messages } from '../../api/dataset';
 import type { Conversation, PostMessageRequest } from '../../api/types';
 import { messageDayLabel, messageTimeOfDay } from '../../shared/format';
 import { stubMatchMedia } from '../../__test-utils__/matchMedia';
@@ -528,31 +528,65 @@ describe('InboxScreen', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('starts the channel column folded between the single-pane and the compact widths, with the list and the thread side by side', () => {
+  it('opens the channel column as a sheet over the list below the compact width, and a pick folds it', async () => {
     const media = stubMatchMedia([COMPACT_QUERY]);
     render(<InboxScreen t={t} />);
-    const sidebar = screen.getByLabelText(t('channels'), { selector: 'aside' });
+    const list = screen.getByRole('region', { name: t('conversations') });
     const toggle = screen.getByLabelText(t('toggle_channels'));
 
-    // Both panes show: the list is not taken out, and the thread offers no way back to it.
-    expect(screen.getByRole('region', { name: t('conversations') }).className).not.toMatch(/singlePaneHidden/);
+    // Both panes show: the list is not taken out, and the thread offers no
+    // way back to it. The column is no column beside them here, and folded.
+    expect(list.className).not.toMatch(/singlePaneHidden/);
     expect(screen.queryByRole('button', { name: t('back_to_list') })).toBeNull();
-    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(screen.queryByLabelText(t('channels'), { selector: 'aside' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
+    // Opened, it lies over the screen as a sheet named by its title, and the
+    // list underneath keeps its own layout.
     act(() => {
       toggle.click();
     });
-    expect(sidebar.hasAttribute('inert')).toBe(false);
+    const sheet = await screen.findByRole('dialog', { name: t('chat') });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(list.className).not.toMatch(/singlePaneHidden/);
 
-    // Past the compact width the column is open by default again.
+    // A channel picked in the sheet opens and folds the sheet, so the list
+    // it changed shows.
+    const other = channels.find((channel) => channel.id !== inboxStore.get().channelId);
+    if (!other) throw new Error('the dataset has a single channel');
+    act(() => {
+      within(sheet).getByText(other.label).click();
+    });
+    expect(inboxStore.get().channelId).toBe(other.id);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    // Its close button folds it too.
     act(() => {
       toggle.click();
     });
+    act(() => {
+      within(screen.getByRole('dialog', { name: t('chat') })).getByLabelText(t('close')).click();
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // Past the compact width it is a column beside the list again, open by default.
     act(() => {
       media.setMatching([]);
     });
-    expect(sidebar.hasAttribute('inert')).toBe(false);
+    expect(screen.getByLabelText(t('channels'), { selector: 'aside' }).hasAttribute('inert')).toBe(false);
+  });
+
+  it('gives the detail pane the details panel room only while the panel shows beside a thread', () => {
+    render(<InboxScreen t={t} />);
+    const pane = () => screen.getByPlaceholderText(t('reply_placeholder')).closest('[class*="detailPane"]');
+
+    expect(pane()?.className).toMatch(/detailPaneWithDetails/);
+    act(() => {
+      screen.getByLabelText(t('toggle_details')).click();
+    });
+    expect(pane()?.className).not.toMatch(/detailPaneWithDetails/);
   });
 
   it('names the pinned icon and the read receipts as images', () => {
@@ -670,8 +704,8 @@ describe('InboxScreen', () => {
 
     const list = screen.getByRole('region', { name: t('conversations') });
     expect(list.className).toMatch(/singlePaneHidden/);
-    // Below the compact width the channel column starts folded.
-    expect(screen.getByLabelText(t('channels'), { selector: 'aside' }).hasAttribute('inert')).toBe(true);
+    // Below the compact width the channel column starts folded: its sheet is closed.
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: t('back_to_list') }));
     expect(list.className).not.toMatch(/singlePaneHidden/);
