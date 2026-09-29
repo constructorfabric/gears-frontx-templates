@@ -325,12 +325,3 @@ canonical_source = "github:constructorfabric/studio-kit-sdlc"
 effective_source = "github:constructorfabric/studio-kit-sdlc"
 verified = "verified"
 freshness = "fresh"
-
-[workspace]
-version = "1.0"
-
-[workspace.sources]
-[workspace.sources.gears-frontx]
-path = ".cf-studio/.workspace/gears-frontx"
-role = "artifacts"
-adapter = ".cf-studio"
