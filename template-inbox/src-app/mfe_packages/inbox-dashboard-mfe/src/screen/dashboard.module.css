@@ -587,12 +587,13 @@
 }
 
 /*
- * Responsive, on the same thresholds as the other screens. Above
- * 80rem (1280px, the checked lower bound) every row keeps its full column
- * count; below it the two densest rows step down before anything is forced
- * to overflow.
+ * Responsive, on the screen's own width like the other screens
+ * (`SCREEN_BREAKPOINTS_REM` in `shared/inbox/ui/screenLayout.ts`). From
+ * 76rem every row keeps its full column count; below it the densest rows
+ * step down before anything is forced to overflow, and below 44rem every
+ * row is one column.
  */
-@media (max-width: 80rem) {
+@container inbox-screen (width < 76rem) {
   .kpiRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -614,7 +615,7 @@
   }
 }
 
-@media (max-width: 48rem) {
+@container inbox-screen (width < 44rem) {
   .kpiRow {
     grid-template-columns: minmax(0, 1fr);
   }

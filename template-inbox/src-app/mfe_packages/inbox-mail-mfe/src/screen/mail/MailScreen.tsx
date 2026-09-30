@@ -6,7 +6,7 @@ import type { Translate } from '@inbox-shared/i18n/translate';
 import { cx } from '@inbox-shared/ui/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '@inbox-shared/ui/QueryStates';
 import { useAutoSelect } from '@inbox-shared/ui/useAutoSelect';
-import { SINGLE_PANE_QUERY, useMediaQuery } from '@inbox-shared/ui/useMediaQuery';
+import { useScreenLayout } from '@inbox-shared/ui/screenLayout';
 import { useSidebarToggle } from '@inbox-shared/ui/useSidebarToggle';
 import sharedStyles from '@inbox-shared/ui/shared.module.css';
 import type { Mail, MailboxId, SendMailRequest, SendMailResponse } from '../../api/mailTypes';
@@ -63,7 +63,7 @@ export function MailScreen({ t }: MailScreenProps) {
   });
 
   const mailboxesSidebar = useSidebarToggle();
-  const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
+  const isSinglePane = useScreenLayout() === 'single';
 
   const mailboxes = mailboxesQuery.data?.mailboxes ?? [];
   const mails = useMemo(() => {
@@ -112,10 +112,11 @@ export function MailScreen({ t }: MailScreenProps) {
   /**
    * A reply goes out addressed to the correspondent and titled after the mail
    * it answers; the service files it under Sent, and the draft is cleared once
-   * it did.
+   * it did. The draft stays until then, so while a send is in flight a second
+   * Send (or the shortcut) would file the same reply twice: it waits instead.
    */
   const sendReply = () => {
-    if (!selected) return;
+    if (!selected || sendMail.isPending) return;
     const body = (drafts[selected.id] ?? '').trim();
     if (body === '') return;
     sendMail.mutate({
@@ -177,6 +178,7 @@ export function MailScreen({ t }: MailScreenProps) {
             draft={drafts[selected.id] ?? ''}
             onDraftChange={(draft) => mailActions.setDraft(selected.id, draft)}
             onSend={sendReply}
+            sending={sendMail.isPending}
             onBack={isSinglePane ? () => setSelectedMailId(null) : null}
             t={t}
           />

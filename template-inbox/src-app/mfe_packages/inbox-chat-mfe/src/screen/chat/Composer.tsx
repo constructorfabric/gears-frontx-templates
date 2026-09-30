@@ -133,7 +133,7 @@ export function Composer({
           if (isComposerTab(value)) onTabChange(value);
         }}
       >
-        <TabsList variant="line">
+        <TabsList variant="line" className={styles.composerTabs}>
           <TabsTrigger value="reply">{t('reply')}</TabsTrigger>
           <TabsTrigger value="note">{t('note')}</TabsTrigger>
         </TabsList>

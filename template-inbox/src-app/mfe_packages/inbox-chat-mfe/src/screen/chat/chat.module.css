@@ -256,9 +256,10 @@
   border-end-start-radius: var(--radius-xs);
 }
 
+/* Never wider than the bubble, which a narrow thread makes narrower than 18rem. */
 .attachmentSlot {
   margin-bottom: var(--space-2);
-  max-width: 18rem;
+  max-width: min(18rem, 100%);
 }
 
 /*
@@ -276,8 +277,16 @@
  */
 .composerTools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* The reply and note tabs scroll inside their own line when the composer is
+   narrower than both triggers. */
+.composerTabs {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 /* --- The assistant's suggested replies --- */
@@ -292,6 +301,8 @@
 /* A pill; --radius-xl rounds a chip this short
  * to its own height without reaching for a raw value. */
 .suggestionChip {
+  max-width: 100%;
+  overflow: hidden;
   border-radius: var(--radius-xl);
 }
 
@@ -340,26 +351,27 @@
 }
 
 /*
- * Responsive. Below this width the details panel gives its column back to
- * the thread; the side column and the single-pane layout follow the shared
- * breakpoints in `shared/inbox/ui/shared.module.css` and `useMediaQuery`.
+ * Responsive, on the screen's own width. Below 68rem
+ * (`SCREEN_BREAKPOINTS_REM.chatDetails`) the details panel gives its column
+ * back to the thread; the side column and the single-pane layout follow the
+ * shared breakpoints in `shared/inbox/ui/screenLayout.ts`.
  */
-@media (max-width: 75rem) {
+@container inbox-screen (width < 68rem) {
   .detailsPanel {
     display: none;
   }
 }
 
 /*
- * Above that width the panel's 19rem and its border sit inside the detail
+ * From that width the panel's 19rem and its border sit inside the detail
  * pane, beside the thread, so the pane's own minimum (24rem, in
  * `shared.module.css`) grows by them while the panel is open: the list gives
- * way first and the thread keeps its 24rem. At 75rem that leaves about 16rem of list with the channel
- * column open. The class is set only while a conversation and the panel
- * show; the doubled class outranks the shared rule whichever stylesheet
- * loads first.
+ * way first and the thread keeps its 24rem. At 68rem that leaves about 12rem
+ * of list with the channel column open. The class is set only while a
+ * conversation and the panel show; the doubled class outranks the shared
+ * rule whichever stylesheet loads first.
  */
-@media not all and (max-width: 75rem) {
+@container inbox-screen (width >= 68rem) {
   .detailPaneWithDetails.detailPaneWithDetails {
     min-width: calc(24rem + 19rem + var(--border-width));
   }

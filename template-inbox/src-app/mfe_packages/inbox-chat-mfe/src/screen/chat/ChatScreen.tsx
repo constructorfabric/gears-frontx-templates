@@ -18,7 +18,7 @@ import type { Translate } from '@inbox-shared/i18n/translate';
 import { cx } from '@inbox-shared/ui/cx';
 import { firstPaintOf, LoadErrorPane, LoadingPane } from '@inbox-shared/ui/QueryStates';
 import { useAutoSelect } from '@inbox-shared/ui/useAutoSelect';
-import { SINGLE_PANE_QUERY, useMediaQuery } from '@inbox-shared/ui/useMediaQuery';
+import { useScreenLayout } from '@inbox-shared/ui/screenLayout';
 import { useSidebarToggle } from '@inbox-shared/ui/useSidebarToggle';
 import { uniqueSuffix } from '@inbox-shared/ui/uniqueSuffix';
 import { ConversationList } from './ConversationList';
@@ -85,7 +85,7 @@ export function ChatScreen({ t }: ChatScreenProps) {
   const [startChatFailed, setStartChatFailed] = useState(false);
 
   const channelsSidebar = useSidebarToggle();
-  const isSinglePane = useMediaQuery(SINGLE_PANE_QUERY);
+  const isSinglePane = useScreenLayout() === 'single';
 
   const setFailed = (conversationId: string, failed: boolean) =>
     setFailedIds((previous) => {

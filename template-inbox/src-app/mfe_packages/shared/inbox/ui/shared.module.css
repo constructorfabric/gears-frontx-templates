@@ -144,9 +144,10 @@
 /*
  * 22rem when there is room; narrower when the thread beside it would
  * otherwise drop under its minimum (see `.detailPane`). Between the
- * single-pane and the compact widths the list takes what the screen's area
+ * single-pane and the inline-column widths the list takes what the screen
  * leaves beside a 24rem thread; the folder column never takes from it
- * there, as it opens as a sheet over the screen (`SideColumn`).
+ * there, as it opens as a sheet over the screen (`SideColumn`). The widths
+ * are in `screenLayout.ts`.
  */
 .listPane {
   display: flex;
@@ -272,12 +273,12 @@
 
 /*
  * Beside the list the thread or reading pane never gets narrower than
- * 24rem, the minimum the breakpoints in `useMediaQuery.ts` are built on,
- * and the list gives way instead. Not in the single-pane layout (up to
- * 40rem, `SINGLE_PANE_QUERY`), where the pane is alone and takes just the
- * width there is.
+ * 24rem, the minimum the breakpoints in `screenLayout.ts` are built on,
+ * and the list gives way instead. Not in the single-pane layout (a screen
+ * under 36rem, `SCREEN_BREAKPOINTS_REM.singlePane`), where the pane is
+ * alone and takes just the width there is.
  */
-@media not all and (max-width: 40rem) {
+@container inbox-screen (width >= 36rem) {
   .detailPane {
     min-width: 24rem;
   }
@@ -321,8 +322,11 @@
 }
 
 .threadSubtitle {
+  overflow: hidden;
   font-size: var(--text-meta-size);
   color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .threadActions {
@@ -404,8 +408,47 @@
 
 .composerToolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/*
+ * A thread or reading pane under 20rem: the single-pane layout on a phone
+ * beside the shell's open sidebar, where the screen gets about 6rem. Nothing
+ * there reads well, but nothing may spill past the screen either: the pane
+ * header wraps its actions onto more lines, the composer gives back its
+ * padding, and a control wider than its line is clipped to it rather than
+ * lying across the edge. The query is the pane's own (`.thread` is its
+ * container), so the rule holds wherever the pane is that narrow.
+ */
+@container (max-width: 20rem) {
+  .thread > .paneHeader {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 3.5rem;
+    padding: var(--space-2);
+  }
+
+  .thread > .paneHeader > .threadActions {
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .thread .composer {
+    padding: var(--space-2);
+  }
+
+  .thread .composerBox {
+    padding: 0;
+  }
+
+  .composerToolbar > * {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
 }
 
 .composerHint {
@@ -461,7 +504,7 @@
 }
 
 /*
- * Applied by the screen, not by a breakpoint: below the single-pane width one
+ * Applied by the screen, not by a container query: below the single-pane width one
  * of the list and the thread is shown at a time, and which one depends on
  * whether a conversation is open - state CSS cannot see.
  */
@@ -477,9 +520,9 @@
   padding: var(--space-6);
 }
 
-/* The single-pane width (`SINGLE_PANE_QUERY`): the list, shown alone,
- * fills the mount area. */
-@media (max-width: 40rem) {
+/* The single-pane width (`SCREEN_BREAKPOINTS_REM.singlePane`): the list,
+ * shown alone, fills the screen. */
+@container inbox-screen (width < 36rem) {
   .listPane {
     flex-grow: 1;
   }

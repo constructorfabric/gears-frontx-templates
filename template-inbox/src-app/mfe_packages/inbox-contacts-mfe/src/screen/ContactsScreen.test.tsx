@@ -9,8 +9,7 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../test-support/apiMocks';
-import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
-import { COMPACT_QUERY } from '@inbox-shared/ui/useMediaQuery';
+import { stubScreenLayout } from '@inbox-shared/test-support/screenLayout';
 import { act } from 'react';
 import { contacts, conversations } from '@inbox-shared/api/dataset';
 import { t } from '../test-support/translate';
@@ -106,8 +105,8 @@ describe('ContactsScreen', () => {
   });
 
   it('opens the filter column as a sheet over the directory below the compact width, and a pick folds it', async () => {
-    stubMatchMedia([COMPACT_QUERY]);
-    render(<ContactsScreen openContactId={null} t={t} />);
+    const layout = stubScreenLayout('compact');
+    render(<ContactsScreen openContactId={null} t={t} />, { wrapper: layout.wrapper });
     const toggle = screen.getByLabelText(t('toggle_contact_filters'));
 
     expect(screen.queryByLabelText(t('contact_filters'), { selector: 'aside' })).toBeNull();

@@ -27,8 +27,8 @@ export type SideColumnProps = {
  * A screen's secondary column (channels, mailboxes, contact filters), in the
  * form the width calls for.
  *
- * On a wide viewport it is a column beside the list that folds to zero width.
- * Below the compact width (`state.overlay`) there is no room for it beside the
+ * On a wide screen it is a column beside the list that folds to zero width.
+ * Below the inline-column width (`state.overlay`) there is no room for it beside the
  * list and the thread: a column opened there would squeeze the list to a
  * sliver and its heading to nothing. So there it opens as the kit's `Sheet`
  * over the screen instead, which leaves the list at its own width underneath

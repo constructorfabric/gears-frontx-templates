@@ -16,8 +16,7 @@ import {
 import { channels, contacts, conversations, messages } from '@inbox-shared/api/dataset';
 import type { Conversation, PostMessageRequest } from '@inbox-shared/api/types';
 import { messageDayLabel, messageTimeOfDay } from '@inbox-shared/ui/format';
-import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
-import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '@inbox-shared/ui/useMediaQuery';
+import { stubScreenLayout } from '@inbox-shared/test-support/screenLayout';
 import { t } from '../../test-support/translate';
 
 const navigation = vi.hoisted((): { viewContact: ((contactId: string) => void) | undefined } => ({
@@ -551,8 +550,8 @@ describe('ChatScreen', () => {
   });
 
   it('opens the channel column as a sheet over the list below the compact width, and a pick folds it', async () => {
-    const media = stubMatchMedia([COMPACT_QUERY]);
-    render(<ChatScreen t={t} />);
+    const layout = stubScreenLayout('compact');
+    render(<ChatScreen t={t} />, { wrapper: layout.wrapper });
     const list = screen.getByRole('region', { name: t('conversations') });
     const toggle = screen.getByLabelText(t('toggle_channels'));
 
@@ -595,7 +594,7 @@ describe('ChatScreen', () => {
 
     // Past the compact width it is a column beside the list again, open by default.
     act(() => {
-      media.setMatching([]);
+      layout.setLayout('wide');
     });
     expect(screen.getByLabelText(t('channels'), { selector: 'aside' }).hasAttribute('inert')).toBe(false);
   });
@@ -737,9 +736,9 @@ describe('ChatScreen', () => {
   });
 
   it('gives the list and the thread turns on a narrow screen, with a way back', async () => {
-    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
+    const layout = stubScreenLayout('single');
     const user = userEvent.setup();
-    render(<ChatScreen t={t} />);
+    render(<ChatScreen t={t} />, { wrapper: layout.wrapper });
 
     // Hidden (`display: none` once the CSS modules load), so it has no
     // accessible role to be found by and is looked up by its label instead.
@@ -851,8 +850,8 @@ describe('ChatScreen', () => {
     expect(replyBox().value).toBe('');
   });
   it('gives the open thread the screen heading while the list is hidden on a narrow screen', () => {
-    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
-    render(<ChatScreen t={t} />);
+    const layout = stubScreenLayout('single');
+    render(<ChatScreen t={t} />, { wrapper: layout.wrapper });
     const visible = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.getClientRects().length > 0);
 
     expect(visible).toHaveLength(1);

@@ -64,9 +64,13 @@
 
 /* --- The reading pane header: avatar, subject, sender, reply-to --- */
 
+/* One line, cut with an ellipsis where the pane is narrower than the address. */
 .replyToLine {
+  overflow: hidden;
   font-size: var(--text-meta-size);
   color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- Thread history: the "N earlier messages" toggle and its cards --- */

@@ -22,7 +22,9 @@ The package's `src/lifecycle.tsx` exports a subclass of `InboxScreenLifecycle` (
 - **The router.** `EngineProvider` from `@gears-frontx/routing-tanstack` over the page history, composed into the entry the shell addressed for the screen, so the screen's own paths live in the `route=` parameter of its segment (`/?screen=contacts;route=c-42` opens the contacts route `$contactId`). An address the route tree does not match renders the screen's own not-found page.
 - **Translations.** `useInboxTranslate` merges the package's catalogues over `shared/inbox/i18n/en.json` for the shell's language, falling back to `en`; components read `useInboxT()`.
 
-Layout inside the screen uses the shared pieces in `shared/inbox/ui/` (`SideColumn`, `useSidebarToggle`, `useMediaQuery` with `COMPACT_QUERY` and `SINGLE_PANE_QUERY`, `shared.module.css`), CSS modules on kit tokens, and components from `@gears-frontx/ui-kit` only.
+- **The layout width.** The frame root is the `inbox-screen` size container, and `useContainerWidth` measures it, so the panes follow the room the shell leaves beside its sidebar, never the viewport. JavaScript decisions (single pane, the side column as a sheet) read `useScreenLayout()`; stylesheets use `@container inbox-screen (width < Nrem)` rules on the widths in `SCREEN_BREAKPOINTS_REM` (`shared/inbox/ui/screenLayout.ts`), and no pane rule is a width media query.
+
+Layout inside the screen uses the shared pieces in `shared/inbox/ui/` (`SideColumn`, `useSidebarToggle`, `screenLayout.ts`, `shared.module.css`), CSS modules on kit tokens, and components from `@gears-frontx/ui-kit` only.
 
 ## Opening another screen
 

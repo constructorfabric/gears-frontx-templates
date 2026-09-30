@@ -140,7 +140,8 @@
   flex: none;
 }
 
-@media (max-width: 64rem) {
+/* A contact page narrower than 60rem (`SCREEN_BREAKPOINTS_REM.contactColumns`) stacks its columns. */
+@container inbox-screen (width < 60rem) {
   .detailColumns {
     grid-template-columns: minmax(0, 1fr);
   }

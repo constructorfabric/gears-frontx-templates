@@ -9,6 +9,7 @@ import {
 } from '@gears-frontx/react';
 import { useInboxTranslate, type InboxCatalogues } from '../i18n/useInboxTranslate';
 import { requestScreenHeadingFocus } from '../ui/ScreenHeading';
+import { layoutForWidth, ScreenLayoutContext, useContainerWidth } from '../ui/screenLayout';
 import { kitThemeScopeFor } from './kitThemeScope';
 import { ScreenErrorBoundary } from './ScreenErrorBoundary';
 import { InboxScreenContext, type InboxScreenContextValue } from './screenContext';
@@ -66,6 +67,10 @@ export const resetScreenMountFocus = (): void => {
  *   kit tokens resolve in the light or dark palette instead of inheriting
  *   whatever the shadow host carries.
  * - Direction: `dir` on the frame and on the shadow host, from the language.
+ * - The pane layout: the root is the `inbox-screen` size container the
+ *   stylesheets query, and its measured width picks the layout the screens
+ *   read (`useScreenLayout`), so the panes follow the room the shell leaves
+ *   beside its sidebar rather than the viewport.
  * - The portal node, rendered first, and the translator, both through
  *   `InboxScreenContext`.
  * - The screen's router: `EngineProvider` over the page history, composed
@@ -84,6 +89,7 @@ export function InboxScreenFrame({ bridge, catalogues, routeTree }: InboxScreenF
   const portalContainer = useRef<HTMLDivElement>(null);
   const languageCode = typeof language === 'string' ? language : 'en';
   useHostDirection(frameRef, languageCode);
+  const layout = useContainerWidth(frameRef, layoutForWidth);
 
   // One history per mount: the adapter reads the entry address once, and a
   // new one per render would hand the router a different history each time.
@@ -113,13 +119,16 @@ export function InboxScreenFrame({ bridge, catalogues, routeTree }: InboxScreenF
       ref={frameRef}
       className={styles.frame}
       data-theme={kitThemeScopeFor(typeof theme === 'string' ? theme : 'light')}
+      data-layout={layout}
       dir={directionFor(languageCode)}
     >
       <div ref={portalContainer} className={styles.portal} data-inbox-portal="" />
       <InboxScreenContext.Provider value={context}>
-        <ScreenErrorBoundary t={t} resetKey={pageKey}>
-          <EngineProvider routeTree={routeTree} history={history} />
-        </ScreenErrorBoundary>
+        <ScreenLayoutContext.Provider value={layout}>
+          <ScreenErrorBoundary t={t} resetKey={pageKey}>
+            <EngineProvider routeTree={routeTree} history={history} />
+          </ScreenErrorBoundary>
+        </ScreenLayoutContext.Provider>
       </InboxScreenContext.Provider>
     </div>
   );

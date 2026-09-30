@@ -1,21 +1,22 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
-import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '@inbox-shared/ui/useMediaQuery';
 import { mails } from '../../api/mailDataset';
 import type { Mail, SendMailRequest } from '../../api/mailTypes';
 import {
   endpointTags,
   latestMutation,
   latestVariables,
+  mutateMocks,
   mutationResult,
   queryResultFor,
   refetchCalls,
   resetApiMocks,
+  setMutationPending,
   setQueryState,
   succeedMutation,
 } from '../../test-support/apiMocks';
-import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
+import { stubScreenLayout } from '@inbox-shared/test-support/screenLayout';
 import { t } from '../../test-support/translate';
 
 vi.mock('../../api/registerMailApi', () => ({ getMailApi: () => endpointTags }));
@@ -280,6 +281,42 @@ describe('MailScreen', () => {
     expect(screen.getAllByText(/^Re: /).length).toBeGreaterThan(0);
   });
 
+  it('holds Send and the shortcut while a reply is in flight, so one reply is filed once', () => {
+    setMutationPending('sendMail', true);
+    render(<MailScreen t={t} />);
+    act(() => {
+      screen.getByText('Priya Natarajan').click();
+    });
+    const draft = screen.getByPlaceholderText(/^Reply to /);
+    if (!(draft instanceof HTMLTextAreaElement)) throw new Error('composer is not a textarea');
+    act(() => {
+      typeInto(draft, 'Sounds good, thanks.');
+    });
+    const send = screen.getByText(t('send')).closest('button');
+    if (send === null) throw new Error('send button not found');
+    const isDisabled = () => send.hasAttribute('disabled') || send.getAttribute('aria-disabled') === 'true';
+
+    // The draft is still in the box, but a second click or Ctrl+Enter
+    // sends nothing while the first send is out.
+    expect(isDisabled()).toBe(true);
+    act(() => {
+      send.click();
+      draft.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+    });
+    expect(mutateMocks.sendMail).not.toHaveBeenCalled();
+
+    // Once it settled, Send goes out again, once per click.
+    setMutationPending('sendMail', false);
+    act(() => {
+      typeInto(draft, 'Sounds good, thanks!');
+    });
+    expect(isDisabled()).toBe(false);
+    act(() => {
+      send.click();
+    });
+    expect(mutateMocks.sendMail).toHaveBeenCalledTimes(1);
+  });
+
   it('composes a mail and sends it into the Sent mailbox, gated on To plus (Subject or Body)', async () => {
     render(<MailScreen t={t} />);
 
@@ -405,8 +442,8 @@ describe('MailScreen', () => {
   });
 
   it('gives the list and the reading pane turns on a narrow screen, with a way back', () => {
-    stubMatchMedia([SINGLE_PANE_QUERY]);
-    render(<MailScreen t={t} />);
+    const layout = stubScreenLayout('single');
+    render(<MailScreen t={t} />, { wrapper: layout.wrapper });
 
     // The auto-opened mail has the screen; the list is hidden.
     const list = screen.getByLabelText('Inbox', { selector: 'section' });
@@ -420,8 +457,8 @@ describe('MailScreen', () => {
 
 
   it('keeps the list and the reading pane side by side between the single-pane and the compact widths, and opens the mailbox column over them as a sheet', async () => {
-    stubMatchMedia([COMPACT_QUERY]);
-    render(<MailScreen t={t} />);
+    const layout = stubScreenLayout('compact');
+    render(<MailScreen t={t} />, { wrapper: layout.wrapper });
 
     const toggle = screen.getByLabelText(t('toggle_mailboxes'));
     expect(screen.getByLabelText('Inbox', { selector: 'section' }).className).not.toMatch(/singlePaneHidden/);
@@ -497,20 +534,20 @@ describe('MailScreen', () => {
   });
 
   it('keeps a closed reading pane closed across a remount on a narrow screen', () => {
-    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
-    const first = render(<MailScreen t={t} />);
+    const layout = stubScreenLayout('single');
+    const first = render(<MailScreen t={t} />, { wrapper: layout.wrapper });
     act(() => {
       screen.getByRole('button', { name: t('back_to_mail_list') }).click();
     });
     first.unmount();
 
-    render(<MailScreen t={t} />);
+    render(<MailScreen t={t} />, { wrapper: layout.wrapper });
     expect(screen.queryByRole('button', { name: t('back_to_mail_list') })).toBeNull();
   });
 
   it('gives the open mail the screen heading while the list is hidden on a narrow screen', () => {
-    stubMatchMedia([SINGLE_PANE_QUERY, COMPACT_QUERY]);
-    render(<MailScreen t={t} />);
+    const layout = stubScreenLayout('single');
+    render(<MailScreen t={t} />, { wrapper: layout.wrapper });
     const headings = screen.getAllByRole('heading', { level: 1 }).filter((heading) => heading.getClientRects().length > 0);
 
     expect(headings).toHaveLength(1);

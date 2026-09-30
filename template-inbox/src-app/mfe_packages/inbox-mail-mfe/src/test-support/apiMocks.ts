@@ -103,11 +103,20 @@ export const mutateMocks: Record<MutationTag, ReturnType<typeof vi.fn>> = {
 /** The options of every `useApiMutation` call, latest last - one per hook per render. */
 const mutationCalls: { tag: MutationTag; options: MutationOptions }[] = [];
 
+/** The write endpoints a test reports as in flight (`setMutationPending`). */
+const pendingTags = new Set<MutationTag>();
+
 export const mutationResult = (options: MutationOptions) => {
   const tag = rawTagOf(options.endpoint);
   if (!isMutationTag(tag)) throw new Error(`apiMocks: no write endpoint "${tag}"`);
   mutationCalls.push({ tag, options });
-  return { mutate: mutateMocks[tag], isPending: false, error: null };
+  return { mutate: mutateMocks[tag], isPending: pendingTags.has(tag), error: null };
+};
+
+/** Reports a write on `tag` as in flight, or settled, from the next render on. */
+export const setMutationPending = (tag: MutationTag, pending: boolean): void => {
+  if (pending) pendingTags.add(tag);
+  else pendingTags.delete(tag);
 };
 
 /** The options the latest render gave the mutation on `tag`. */
@@ -135,5 +144,6 @@ export const resetApiMocks = (): void => {
   queryStates.clear();
   refetchCalls.length = 0;
   mutationCalls.length = 0;
+  pendingTags.clear();
   for (const mutate of Object.values(mutateMocks)) mutate.mockClear();
 };

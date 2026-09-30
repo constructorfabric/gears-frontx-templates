@@ -9,6 +9,8 @@ export type MailComposerProps = {
   draft: string;
   onDraftChange: (draft: string) => void;
   onSend: () => void;
+  /** A send is in flight: Send and the shortcut wait for it, so one reply is never filed twice. */
+  sending: boolean;
   t: Translate;
 };
 
@@ -24,8 +26,8 @@ export type MailComposerProps = {
  * service (filed under Sent) and clears the box once it went out; the open
  * mail's own thread is not appended to.
  */
-export function MailComposer({ correspondentName, draft, onDraftChange, onSend, t }: MailComposerProps) {
-  const canSend = draft.trim() !== '';
+export function MailComposer({ correspondentName, draft, onDraftChange, onSend, sending, t }: MailComposerProps) {
+  const canSend = draft.trim() !== '' && !sending;
   const placeholder = t('reply_to_placeholder', { name: correspondentName });
 
   const onKeyDown = useSubmitShortcut(onSend, canSend);
@@ -44,7 +46,7 @@ export function MailComposer({ correspondentName, draft, onDraftChange, onSend, 
         <div className={sharedStyles.composerToolbar}>
           <span className={sharedStyles.spacer} />
           <SubmitShortcutHint t={t} className={sharedStyles.composerHint} />
-          <Button icon={<SendIcon />} disabled={!canSend} onClick={onSend}>
+          <Button icon={<SendIcon />} disabled={!canSend} loading={sending} onClick={onSend}>
             {t('send')}
           </Button>
         </div>

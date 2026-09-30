@@ -24,6 +24,8 @@ export type MailReadingPaneProps = {
   draft: string;
   onDraftChange: (draft: string) => void;
   onSend: () => void;
+  /** A send is in flight (`MailComposer`). */
+  sending: boolean;
   /** Back to the list, where the list and the reading pane take turns; `null` beside it. */
   onBack: (() => void) | null;
   t: Translate;
@@ -46,6 +48,7 @@ export function MailReadingPane({
   draft,
   onDraftChange,
   onSend,
+  sending,
   onBack,
   t,
 }: MailReadingPaneProps) {
@@ -152,6 +155,7 @@ export function MailReadingPane({
         draft={draft}
         onDraftChange={onDraftChange}
         onSend={onSend}
+        sending={sending}
         t={t}
       />
     </div>

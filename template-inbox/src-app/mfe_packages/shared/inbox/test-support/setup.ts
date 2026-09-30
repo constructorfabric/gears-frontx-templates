@@ -35,11 +35,10 @@ export type InboxTestHooks = {
 
 /**
  * jsdom implements no media-query engine, so `window.matchMedia` is simply
- * absent and the screens' breakpoint hook would read every query as "no
- * match" without being able to subscribe. The stub answers "no match" for
- * every query - the desktop layout the screen suites assert against - and a
- * suite that needs a narrow layout replaces it (`stubMatchMedia`), which the
- * reset after each test undoes.
+ * absent, and a kit component that reads one would throw. The stub answers
+ * "no match" for every query. The screens themselves read no media query:
+ * their layout follows the frame's width (`ui/screenLayout.ts`), which a
+ * suite sets with `stubScreenLayout`.
  */
 const matchMediaStub = (query: string): MediaQueryList => ({
   matches: false,
@@ -223,7 +222,6 @@ export function registerInboxTestSetup({ afterEach, vi, cleanup, resetMockState 
     vi.unstubAllGlobals();
     vi.useRealTimers();
     restoreFetch();
-    installMatchMediaStub();
 
     ensureUsableWebStorage();
     window.localStorage.clear();
