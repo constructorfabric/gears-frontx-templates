@@ -299,8 +299,11 @@
 }
 
 /* A pill; --radius-xl rounds a chip this short
- * to its own height without reaching for a raw value. */
+ * to its own height without reaching for a raw value. Never wider than its
+ * line: a chip longer than a narrow thread keeps its start and is cut at the
+ * end. */
 .suggestionChip {
+  justify-content: flex-start;
   max-width: 100%;
   overflow: hidden;
   border-radius: var(--radius-xl);
