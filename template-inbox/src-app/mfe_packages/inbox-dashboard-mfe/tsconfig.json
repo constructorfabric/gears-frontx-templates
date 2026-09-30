@@ -31,6 +31,8 @@
       "@gears-frontx/ui-kit": ["./node_modules/@gears-frontx/ui-kit"],
       "@gears-frontx/ui-kit/*": ["./node_modules/@gears-frontx/ui-kit/*"],
       "lucide-react": ["./node_modules/lucide-react"],
+      "@gears-frontx/routing": ["./node_modules/@gears-frontx/routing"],
+      "@gears-frontx/routing-tanstack": ["./node_modules/@gears-frontx/routing-tanstack"],
       "recharts": ["./node_modules/recharts"]
     }
   },

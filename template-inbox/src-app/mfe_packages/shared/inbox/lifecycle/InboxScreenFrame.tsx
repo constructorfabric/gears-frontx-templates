@@ -9,7 +9,7 @@ import {
 } from '@gears-frontx/react';
 import { useInboxTranslate, type InboxCatalogues } from '../i18n/useInboxTranslate';
 import { requestScreenHeadingFocus } from '../ui/ScreenHeading';
-import { layoutForWidth, ScreenLayoutContext, useContainerWidth } from '../ui/screenLayout';
+import { layoutForWidth, ScreenLayoutContext, useContainerMeasure } from '../ui/screenLayout';
 import { kitThemeScopeFor } from './kitThemeScope';
 import { ScreenErrorBoundary } from './ScreenErrorBoundary';
 import { InboxScreenContext, type InboxScreenContextValue } from './screenContext';
@@ -70,7 +70,10 @@ export const resetScreenMountFocus = (): void => {
  * - The pane layout: the root is the `inbox-screen` size container the
  *   stylesheets query, and its measured width picks the layout the screens
  *   read (`useScreenLayout`), so the panes follow the room the shell leaves
- *   beside its sidebar rather than the viewport.
+ *   beside its sidebar rather than the viewport. The routes render only once
+ *   that width has been read, in the layout effect before the first paint:
+ *   a screen never mounts in a layout its width does not have, so no pane of
+ *   another layout runs its effects or its requests and unmounts again.
  * - The portal node, rendered first, and the translator, both through
  *   `InboxScreenContext`.
  * - The screen's router: `EngineProvider` over the page history, composed
@@ -89,7 +92,7 @@ export function InboxScreenFrame({ bridge, catalogues, routeTree }: InboxScreenF
   const portalContainer = useRef<HTMLDivElement>(null);
   const languageCode = typeof language === 'string' ? language : 'en';
   useHostDirection(frameRef, languageCode);
-  const layout = useContainerWidth(frameRef, layoutForWidth);
+  const { value: layout, measured } = useContainerMeasure(frameRef, layoutForWidth);
 
   // One history per mount: the adapter reads the entry address once, and a
   // new one per render would hand the router a different history each time.
@@ -119,14 +122,13 @@ export function InboxScreenFrame({ bridge, catalogues, routeTree }: InboxScreenF
       ref={frameRef}
       className={styles.frame}
       data-theme={kitThemeScopeFor(typeof theme === 'string' ? theme : 'light')}
-      data-layout={layout}
       dir={directionFor(languageCode)}
     >
       <div ref={portalContainer} className={styles.portal} data-inbox-portal="" />
       <InboxScreenContext.Provider value={context}>
         <ScreenLayoutContext.Provider value={layout}>
           <ScreenErrorBoundary t={t} resetKey={pageKey}>
-            <EngineProvider routeTree={routeTree} history={history} />
+            {measured ? <EngineProvider routeTree={routeTree} history={history} /> : null}
           </ScreenErrorBoundary>
         </ScreenLayoutContext.Provider>
       </InboxScreenContext.Provider>

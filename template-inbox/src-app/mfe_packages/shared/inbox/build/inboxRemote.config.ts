@@ -31,11 +31,16 @@ export const INBOX_EXTERNAL_DEPS = [
 /*
  * Mandatory, not a tidy-up: the shared folder sits outside the package, so
  * without dedupe its imports resolve upward from its own directory and land
- * on whatever copy the application root hoisted - the shell's kit and icon
- * versions rather than the ones the package pins. Dedupe makes every
- * importer take the package's copy.
+ * on whatever copy the application root hoisted - the shell's kit, icon and
+ * routing versions rather than the ones the package pins. Dedupe makes every
+ * importer take the package's copy. It covers every package the shared folder
+ * imports that the build bundles rather than leaves external: two copies of
+ * the routing packages would be two routers, with the shared frame's
+ * `EngineProvider` and a screen's `useNavigate` reading different contexts.
+ * Each package's `tsconfig.json` `paths` names the same packages, so the type
+ * check reads the copy the build takes.
  */
-const BASE_DEDUPE = ['@gears-frontx/ui-kit', 'lucide-react'];
+const BASE_DEDUPE = ['@gears-frontx/ui-kit', 'lucide-react', '@gears-frontx/routing', '@gears-frontx/routing-tanstack'];
 
 type FederationOptions = {
   name: string;
@@ -50,7 +55,7 @@ export type InboxRemoteOptions<TPlugin> = {
   federationName: string;
   /** Absolute path of `shared/inbox`, resolved by the calling config. */
   sharedDir: string;
-  /** Packages besides the kit and the icons this package must take its own copy of. */
+  /** Packages besides the kit, the icons and the routing packages this package must take its own copy of. */
   dedupe?: readonly string[];
   plugins: {
     react: () => TPlugin;

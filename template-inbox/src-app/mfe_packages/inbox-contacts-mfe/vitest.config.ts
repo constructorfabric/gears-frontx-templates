@@ -9,5 +9,5 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default mergeConfig(
   defineMfeProject(__dirname),
-  defineConfig(inboxTestConfig({ sharedDir: path.resolve(__dirname, '../shared/inbox'), dedupe: ['recharts'] }))
+  defineConfig(inboxTestConfig({ sharedDir: path.resolve(__dirname, '../shared/inbox') }))
 );

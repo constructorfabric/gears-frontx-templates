@@ -5,6 +5,7 @@ import {
   layoutForWidth,
   SCREEN_BREAKPOINTS_REM,
   SCREEN_CONTAINER_NAME,
+  useContainerMeasure,
   useContainerWidth,
 } from '@inbox-shared/ui/screenLayout';
 
@@ -92,6 +93,27 @@ describe('useContainerWidth', () => {
   });
 });
 
+describe('useContainerMeasure', () => {
+  it('says the element is not measured on the render before the first read, and measured from then on', () => {
+    const element = sizedElement(102);
+    const seen: { value: string; measured: boolean }[] = [];
+    function MeasureProbe() {
+      const ref = useRef<HTMLOutputElement>(null);
+      const measure = useContainerMeasure(ref, layoutForWidth);
+      seen.push(measure);
+      return <output ref={ref}>{measure.value}</output>;
+    }
+    render(<MeasureProbe />);
+
+    expect(seen[0]).toEqual({ value: 'wide', measured: false });
+    expect(seen[seen.length - 1]).toEqual({ value: 'single', measured: true });
+    const settled = seen[seen.length - 1];
+    // A resize inside the same layout keeps the answer it had, the same object.
+    act(() => element.resize(120));
+    expect(seen[seen.length - 1]).toBe(settled);
+  });
+});
+
 describe('the container rules', () => {
   const rules = Object.entries(stylesheets).flatMap(([file, text]) =>
     [...text.matchAll(/@container\s+([\w-]*)\s*\(([^)]*)\)/g)].map((match) => ({ file, name: match[1], query: match[2] }))
@@ -112,7 +134,7 @@ describe('the container rules', () => {
     for (const [name, rem] of Object.entries(SCREEN_BREAKPOINTS_REM)) {
       if (name === 'inlineColumn') continue;
       expect(
-        named.some((rule) => rule.query.includes(`${rem}rem`)),
+        named.some((rule) => Number(/([\d.]+)rem/.exec(rule.query)?.[1]) === rem),
         name
       ).toBe(true);
     }

@@ -12,7 +12,6 @@ export default defineConfig(
   inboxRemoteConfig({
     federationName: 'inboxContactsMfe',
     sharedDir: path.resolve(here, '../shared/inbox'),
-    dedupe: ['recharts'],
     plugins: { react, federation, frontxMfGts },
   })
 );

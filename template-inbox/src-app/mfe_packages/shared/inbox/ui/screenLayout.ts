@@ -13,8 +13,8 @@ import { createContext, useContext, useLayoutEffect, useState, type RefObject } 
  * details panel 19.
  *
  * CSS cannot read these constants. The stylesheets repeat them in
- * `@container inbox-screen (...)` rules, and `screenLayout.test.ts` fails
- * when a rule uses a width this table does not name.
+ * `@container inbox-screen (...)` rules, and `inbox-contacts-mfe/src/shared-inbox/screenLayout.test.tsx`
+ * fails when a rule uses a width this table does not name.
  */
 export const SCREEN_BREAKPOINTS_REM = {
   /** Below it the list and the thread take turns: 12 of list and 24 of thread do not fit side by side. */
@@ -56,27 +56,43 @@ const remInPx = (): number => {
   return Number.isFinite(size) && size > 0 ? size : 16;
 };
 
+/** What `useContainerMeasure` answers: the selected value, and whether the element has been measured yet. */
+export type ContainerMeasure<T> = {
+  value: T;
+  /** False only before the first read, on the render that has not reached the layout effect yet. */
+  measured: boolean;
+};
+
 /**
  * The width of `ref`'s element in rem, passed through `select`, re-read by a
- * `ResizeObserver` whenever the element changes size.
+ * `ResizeObserver` whenever the element changes size, together with whether
+ * the first read has happened.
  *
  * `select` is what keeps this cheap: a screen needs to know which layout a
  * width falls in, not every pixel of a resize, so the caller hands a function
  * returning a primitive (`layoutForWidth`) and the hook only re-renders when
  * that answer changes. Pass a stable function. A zero width is an element
  * not laid out (hidden, or a test's DOM without layout) and reads as `null`.
- * The first read runs in a layout effect, so a narrow screen never paints a
- * frame of the wide layout.
+ *
+ * The first read runs in a layout effect, so the answer is corrected before
+ * the browser paints; but the render before it has already committed with
+ * `select(null)`, and the effects of whatever that render mounted have run.
+ * `measured` is what lets a caller render nothing that depends on the answer
+ * until then (`InboxScreenFrame` holds back its routes).
  */
-export function useContainerWidth<T>(ref: RefObject<Element | null>, select: (widthRem: number | null) => T): T {
-  const [value, setValue] = useState(() => select(null));
+export function useContainerMeasure<T>(
+  ref: RefObject<Element | null>,
+  select: (widthRem: number | null) => T
+): ContainerMeasure<T> {
+  const [state, setState] = useState<ContainerMeasure<T>>(() => ({ value: select(null), measured: false }));
 
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null) return;
     const read = () => {
       const width = element.getBoundingClientRect().width;
-      setValue(select(width > 0 ? width / remInPx() : null));
+      const value = select(width > 0 ? width / remInPx() : null);
+      setState((previous) => (previous.measured && Object.is(previous.value, value) ? previous : { value, measured: true }));
     };
     read();
     if (typeof ResizeObserver === 'undefined') return;
@@ -85,7 +101,12 @@ export function useContainerWidth<T>(ref: RefObject<Element | null>, select: (wi
     return () => observer.disconnect();
   }, [ref, select]);
 
-  return value;
+  return state;
+}
+
+/** `useContainerMeasure`'s value alone, for a caller that renders the same tree before and after the first read. */
+export function useContainerWidth<T>(ref: RefObject<Element | null>, select: (widthRem: number | null) => T): T {
+  return useContainerMeasure(ref, select).value;
 }
 
 /** The frame's layout, for everything rendered inside it. */
