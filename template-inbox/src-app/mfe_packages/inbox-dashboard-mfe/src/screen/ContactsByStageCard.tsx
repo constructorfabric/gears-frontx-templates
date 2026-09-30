@@ -41,13 +41,16 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
           config={chartConfig}
           className={styles.stageDonut}
           // The legend below lists every segment's count and share in text,
-          // so the donut itself is decoration to assistive technology.
+          // so the donut itself is decoration to assistive technology - and
+          // holds no tab stop either: Recharts' keyboard layer is off and the
+          // pie's own root leaves the tab order.
           aria-hidden="true"
           initialDimension={DONUT_DIMENSION}
         >
-          <PieChart>
+          <PieChart accessibilityLayer={false}>
             <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="id" />} />
             <Pie
+              rootTabIndex={-1}
               data={segments}
               dataKey="count"
               nameKey="id"

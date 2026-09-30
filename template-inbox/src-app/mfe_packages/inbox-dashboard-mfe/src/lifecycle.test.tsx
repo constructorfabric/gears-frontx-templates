@@ -104,6 +104,20 @@ describe('DashboardLifecycle', () => {
     for (const name of names) expect(name).not.toMatch(/[{}]|chart_/);
   });
 
+  it('leaves no tab stop inside the charts it hides from assistive technology', async () => {
+    const { shadowRoot, screen } = mountAt(undefined);
+    await screen.findByRole('heading', { level: 1, name: t('dashboard') });
+
+    const hidden = Array.from(shadowRoot.querySelectorAll('[aria-hidden="true"]'));
+    expect(hidden.some((node) => node.querySelector('svg') !== null)).toBe(true);
+    const focusable = hidden.flatMap((node) =>
+      Array.from(node.querySelectorAll<HTMLElement | SVGElement>('[tabindex]'))
+        .filter((element) => element.tabIndex >= 0)
+        .map((element) => `${element.tagName}.${element.getAttribute('class') ?? ''}`)
+    );
+    expect(focusable).toEqual([]);
+  });
+
   it('keeps the portal node inside the shadow root, ahead of the screen', async () => {
     const { shadowRoot, screen } = mountAt(undefined);
     await screen.findByRole('heading', { level: 1, name: t('dashboard') });
