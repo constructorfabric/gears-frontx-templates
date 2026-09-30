@@ -112,7 +112,7 @@ jobs:
   # hand, and they rot (#483).
   #
   # Two kinds of template, both need covering:
-  #   - self-contained (template-shell): root package.json and lockfile of
+  #   - self-contained (template-shell, template-calendar): root package.json and lockfile of
   #     its own, validated standalone by the glob loop below, which
   #     deliberately avoids hardcoding template names;
   #   - add-only overlay (template-mfe): no root package.json, no tooling of
@@ -146,13 +146,16 @@ jobs:
     # to sit on disk. A template that declares "package.json" among its
     # ownership boundaries owns its own tooling and is validated standalone;
     # one that does not is an add-only overlay and is only meaningful
-    # composed onto a shell.
+    # composed onto a shell. A shell is the self-contained template that also
+    # claims the host app ("src-app/app/") the overlays mount into; a
+    # self-contained feature template such as template-calendar claims none
+    # and is validated standalone only.
     - name: Classify templates
       run: |
         set -euo pipefail
         node -e '
           const fs = require("fs");
-          const selfContained = [], overlays = [];
+          const selfContained = [], shells = [], overlays = [];
           for (const dir of fs.readdirSync(".").filter((d) => d.startsWith("template-")).sort()) {
             if (!fs.existsSync(dir + "/frontx-template.json")) continue;
             const b = JSON.parse(fs.readFileSync(dir + "/frontx-template.json", "utf8")).ownershipBoundaries || {};
@@ -161,12 +164,15 @@ jobs:
             }
             const claims = b.exclusiveSubtrees || [];
             (claims.includes("package.json") ? selfContained : overlays).push(dir);
+            if (claims.includes("package.json") && claims.includes("src-app/app/")) shells.push(dir);
           }
           if (!selfContained.length) throw new Error("no self-contained template found");
           console.log("self-contained: " + selfContained.join(" "));
+          console.log("shells: " + (shells.join(" ") || "(none)"));
           console.log("overlays: " + (overlays.join(" ") || "(none)"));
           fs.appendFileSync(process.env.GITHUB_ENV,
             `SELF_CONTAINED_TEMPLATES=${selfContained.join(" ")}\n` +
+            `SHELL_TEMPLATES=${shells.join(" ")}\n` +
             `OVERLAY_TEMPLATES=${overlays.join(" ")}\n`);
         '
 
@@ -191,6 +197,10 @@ jobs:
             npm run arch:deps
             npm run lint
             npm run test:unit
+            # Package gates only some templates define (calendar-kit's built
+            # entries and its clean-consumer install).
+            npm run --if-present test:dist
+            npm run --if-present test:consumer
           )
         done
 
@@ -205,9 +215,9 @@ jobs:
         set -euo pipefail
 
         # shellcheck disable=SC2086
-        set -- $SELF_CONTAINED_TEMPLATES
+        set -- $SHELL_TEMPLATES
         if [ "$#" -ne 1 ]; then
-          echo "::error::composition needs exactly one self-contained template, got: $*"
+          echo "::error::composition needs exactly one shell template, got: $*"
           exit 1
         fi
         shell="$1"
