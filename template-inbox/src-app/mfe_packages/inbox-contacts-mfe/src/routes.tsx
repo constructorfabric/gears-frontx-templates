@@ -20,8 +20,8 @@ import { ContactsScreen } from './screen/ContactsScreen';
  */
 function ContactsRoot() {
   const t = useInboxT();
-  useRouteFocus();
   const { contactId } = useParams({ strict: false });
+  useRouteFocus(contactId ?? '');
   return (
     <>
       <ContactsScreen openContactId={contactId ?? null} t={t} />

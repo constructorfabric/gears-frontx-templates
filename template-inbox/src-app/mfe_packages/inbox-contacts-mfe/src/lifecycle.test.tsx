@@ -130,6 +130,19 @@ describe('ContactsLifecycle', () => {
     expect(await screen.findByRole('heading', { level: 1, name: t('all_contacts') })).toBeTruthy();
   });
 
+  it("moves focus to the new page's heading when the screen's route changes", async () => {
+    const { shadowRoot, screen } = mountAt(undefined);
+    await screen.findByRole('heading', { level: 1, name: t('all_contacts') });
+
+    act(() => screen.getAllByLabelText(t('view_contact'))[0].click());
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Grace Park' });
+    await waitFor(() => expect(shadowRoot.activeElement).toBe(heading));
+
+    act(() => screen.getByLabelText(t('back_to_contacts')).click());
+    const directory = await screen.findByRole('heading', { level: 1, name: t('all_contacts') });
+    await waitFor(() => expect(shadowRoot.activeElement).toBe(directory));
+  });
+
   it('names the document after the section', async () => {
     const { screen } = mountAt(undefined);
     await screen.findByRole('heading', { level: 1, name: t('all_contacts') });
