@@ -256,30 +256,6 @@ describe('planPinLocalization', () => {
   });
 });
 
-describe('planPinLocalization for a template other than the shell', () => {
-  it('rewrites the pins of the named template and leaves the shell alone', async () => {
-    const root = await makeRoot();
-    await writePinnedPackage(root);
-    await writeJson(path.join(root, 'template-shell', 'package.json'), {
-      name: '@gears-frontx/frontx-template-shell',
-      dependencies: { '@gears-frontx/mfes': '0.3.0-alpha.3' },
-    });
-    await writeJson(path.join(root, 'template-inbox', 'package.json'), {
-      name: '@gears-frontx/frontx-template-inbox',
-      dependencies: { '@gears-frontx/mfes': '0.3.0-alpha.3' },
-    });
-
-    const plan = planPinLocalization({ repoRoot: root, templateDir: 'template-inbox' });
-    expect(plan.ok).toBe(true);
-    if (!plan.ok) return;
-
-    expect(plan.templateDirName).toBe('template-inbox');
-    expect(plan.manifestEdits.map(({ manifestPath }) => path.relative(root, manifestPath))).toEqual([
-      path.join('template-inbox', 'package.json'),
-    ]);
-  });
-});
-
 describe('applyPinLocalization log lines', () => {
   it('reports the root manifest path exactly once, for both the dependency rewrite and the overrides merge', async () => {
     const root = await makeRoot();

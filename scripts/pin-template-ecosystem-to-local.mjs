@@ -1,7 +1,6 @@
 /**
  * CI-runtime-only fix for a `npm ci` that cannot possibly succeed on a feature
- * branch: a self-contained template (`template-shell` by default, or the
- * template directory named as the first argument) pins the FrontX ecosystem packages it consumes
+ * branch: `template-shell` pins the FrontX ecosystem packages it consumes
  * (`@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry
  * versions, and `policy:version-bump-on-change` requires that pin to move the
  * moment a package's `src/` changes substantively. Publishing, though, is
@@ -49,16 +48,15 @@
  *
  * Core logic is exported for unit tests; only `runCli` touches the process.
  *
- * CLI entry: `node scripts/pin-template-ecosystem-to-local.mjs [template-dir]`
- * (exit 0 on success, non-zero if there is nothing to substitute or an
- * `overrides` conflict is found). The template directory is read the same way
- * `dev:template:link` reads it (`templateDirFromArgv`).
+ * CLI entry: `node scripts/pin-template-ecosystem-to-local.mjs` (exit 0 on
+ * success, non-zero if there is nothing to substitute or an `overrides`
+ * conflict is found).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { templateDirFromArgv, templateDirName } from './link-template-ecosystem.mjs';
+import { templateDirName } from './link-template-ecosystem.mjs';
 import {
   ecosystemScopeMatcher,
   readEcosystemPackages,
@@ -154,19 +152,16 @@ export const INSTALLED_DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependen
  * (`resolveEcosystemDir`); defaults to `repoRoot` for a caller that still
  * has both trees under one root.
  *
- * `templateDir` is the template directory at `repoRoot` whose pins are
- * rewritten; it defaults to `templateDirName` (`template-shell`).
- *
- * @param {{ repoRoot: string, ecosystemRoot?: string, templateDir?: string }} options
+ * @param {{ repoRoot: string, ecosystemRoot?: string }} options
  * @returns {PlanResult}
  */
-export function planPinLocalization({ repoRoot, ecosystemRoot = repoRoot, templateDir = templateDirName }) {
+export function planPinLocalization({ repoRoot, ecosystemRoot = repoRoot }) {
   const ecosystem = readEcosystemPackages(ecosystemRoot);
   const localDirByName = new Map(ecosystem.map((pkg) => [pkg.name, pkg.dir]));
   const isEcosystemScopeName = ecosystemScopeMatcher(ecosystem.map((pkg) => pkg.name));
 
-  const templatePath = path.join(repoRoot, templateDir);
-  const { sites } = scanTreePins(templatePath, isEcosystemScopeName);
+  const templateDir = path.join(repoRoot, templateDirName);
+  const { sites } = scanTreePins(templateDir, isEcosystemScopeName);
 
   /** @type {Substitution[]} */
   const substitutions = [];
@@ -182,7 +177,7 @@ export function planPinLocalization({ repoRoot, ecosystemRoot = repoRoot, templa
       ok: false,
       reason: 'nothing-to-substitute',
       message:
-        `Cannot localize: no pin site under ${templateDir} names a package/* this repo builds.\n` +
+        `Cannot localize: no pin site under ${templateDirName} names a package/* this repo builds.\n` +
         'Either the template stopped pinning any ecosystem package to an exact registry version ' +
         '(in which case this step is obsolete), or the derivation broke - either way, silently ' +
         'exiting 0 here would leave npm install to fail with no signal pointing back at this step.',
@@ -200,7 +195,7 @@ export function planPinLocalization({ repoRoot, ecosystemRoot = repoRoot, templa
   /** @type {ManifestEdit[]} */
   const manifestEdits = [];
   for (const [relFile, subs] of byFile) {
-    const manifestPath = path.join(templatePath, relFile);
+    const manifestPath = path.join(templateDir, relFile);
     const manifestDir = path.dirname(manifestPath);
     // Read ONCE here, fail-closed, and carry the parsed object all the way
     // through to `applyPinLocalization` rather than re-reading the file a
@@ -247,7 +242,7 @@ export function planPinLocalization({ repoRoot, ecosystemRoot = repoRoot, templa
     manifestEdits.push({ manifestPath, relFile, manifest, edits, overrides });
   }
 
-  return { ok: true, templateDirName: templateDir, manifestEdits };
+  return { ok: true, templateDirName, manifestEdits };
 }
 
 /**
@@ -349,7 +344,6 @@ export function applyPinLocalization(manifestEdits, repoRoot) {
  * @param {{
  *   repoRoot?: string;
  *   ecosystemRoot?: string;
- *   templateDir?: string;
  *   log?: (message: string) => void;
  *   error?: (message: string) => void;
  * }} [options]
@@ -358,12 +352,11 @@ export function applyPinLocalization(manifestEdits, repoRoot) {
 export function runCli({
   repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
   ecosystemRoot,
-  templateDir = templateDirName,
   log = console.log,
   error = console.error,
 } = {}) {
   const resolvedEcosystemRoot = ecosystemRoot ?? resolveEcosystemDir(repoRoot);
-  const plan = planPinLocalization({ repoRoot, ecosystemRoot: resolvedEcosystemRoot, templateDir });
+  const plan = planPinLocalization({ repoRoot, ecosystemRoot: resolvedEcosystemRoot });
 
   if (!plan.ok) {
     error(plan.message);
@@ -381,10 +374,5 @@ const isEntryPoint =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isEntryPoint) {
-  try {
-    process.exitCode = runCli({ templateDir: templateDirFromArgv(process.argv.slice(2)) });
-  } catch (cause) {
-    console.error(`Cannot localize: ${cause instanceof Error ? cause.message : String(cause)}`);
-    process.exitCode = 1;
-  }
+  process.exitCode = runCli();
 }

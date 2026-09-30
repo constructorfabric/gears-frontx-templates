@@ -24,12 +24,6 @@
 # is invisible to any push or PR made here. The daily schedule is what
 # actually catches that; push/PR here still runs it for template-side changes,
 # and workflow_dispatch covers an on-demand check.
-#
-# It runs once per self-contained template (a template directory carrying its
-# own package.json and lockfile): the matrix below lists them, and every step
-# that installs, relinks, builds or type-checks passes the matrix entry to the
-# scripts as their template argument. The repository-wide pin-drift step at
-# the end is template-independent, so it runs in the shell's leg only.
 name: Template Drift
 
 on:
@@ -46,14 +40,8 @@ permissions:
 
 jobs:
   template-drift:
-    name: Template vs gears-frontx develop (${{ matrix.template }})
+    name: Template vs gears-frontx develop
     runs-on: ubuntu-latest
-
-    strategy:
-      # One template drifting must not hide whether the other still builds.
-      fail-fast: false
-      matrix:
-        template: [ template-shell, template-inbox ]
 
     steps:
     - name: Checkout templates repo
@@ -81,7 +69,7 @@ jobs:
         cache: 'npm'
         cache-dependency-path: |
           gears-frontx/package-lock.json
-          gears-frontx-templates/${{ matrix.template }}/package-lock.json
+          gears-frontx-templates/template-shell/package-lock.json
 
     - name: Enable Corepack
       run: corepack enable
@@ -99,12 +87,12 @@ jobs:
       working-directory: gears-frontx-templates
       env:
         FRONTX_ECOSYSTEM_DIR: ${{ github.workspace }}/gears-frontx
-      run: node scripts/pin-template-ecosystem-to-local.mjs ${{ matrix.template }}
+      run: node scripts/pin-template-ecosystem-to-local.mjs
 
     # `npm install`, not `npm ci` (the rewrite above desyncs the lockfile), and
     # `--no-package-lock` avoids npm/cli#524. See CONTRIBUTING.md.
     - name: Install template with the gears-frontx checkout's ecosystem packages
-      working-directory: gears-frontx-templates/${{ matrix.template }}
+      working-directory: gears-frontx-templates/template-shell
       run: npm install --no-audit --no-fund --no-package-lock
 
     # The rewrite is an install-time device and nothing more: the committed
@@ -114,24 +102,24 @@ jobs:
     # survives.
     - name: Restore the committed template manifests
       working-directory: gears-frontx-templates
-      run: git checkout -- ${{ matrix.template }}
+      run: git checkout -- template-shell
 
     - name: Relink template at the gears-frontx checkout
       working-directory: gears-frontx-templates
       env:
         FRONTX_ECOSYSTEM_DIR: ${{ github.workspace }}/gears-frontx
-      run: npm run dev:template:link -- ${{ matrix.template }}
+      run: npm run dev:template:link
 
     # Full `build`, not just the compile steps: vite bundling resolves the
-    # linked dist/ too, and the shell's type-check:app expects the generated
-    # MFE manifests. `build` does not type-check the app (vite strips types),
-    # so the explicit type-check after it is not redundant.
+    # linked dist/ too, and type-check:app expects the generated MFE
+    # manifests. `build` does not type-check the app (vite strips types), so
+    # the explicit type-check after it is not redundant.
     - name: Build template against the gears-frontx checkout
-      working-directory: gears-frontx-templates/${{ matrix.template }}
+      working-directory: gears-frontx-templates/template-shell
       run: npm run build
 
     - name: Type-check template against the gears-frontx checkout
-      working-directory: gears-frontx-templates/${{ matrix.template }}
+      working-directory: gears-frontx-templates/template-shell
       run: npm run type-check
 
     # Sibling mode (main.yml's own pin-drift step runs registry mode instead,
@@ -149,7 +137,6 @@ jobs:
     # surface drift as a visible (non-blocking) signal on this workflow's
     # daily schedule.
     - name: Check template ecosystem pin-drift (sibling mode)
-      if: matrix.template == 'template-shell'
       working-directory: gears-frontx-templates
       continue-on-error: true
       env:

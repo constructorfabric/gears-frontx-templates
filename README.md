@@ -7,7 +7,7 @@ The FrontX templates, split out of the `gears-frontx` monorepo into their own re
 ```
 template-shell/                 self-contained template: a full FrontX host app, its own toolchain
 template-mfe/                   add-only overlay: MFE example packages composed onto a shell
-template-inbox/                 self-contained template: a workspace app (dashboard, inbox, mail, contacts) on the ui-kit
+template-inbox/                 add-only overlay: four microfrontend screens (contacts, dashboard, chat, mail) on the ui-kit
 template-design-guardrails/     manifest-only overlay: a design-review AI bundle, no runtime screen
 scripts/                        CI guards + the in-monorepo dev loop for developing templates
 ```
@@ -26,14 +26,24 @@ frontx install github:constructorfabric/gears-frontx-templates//template-mfe@<re
 frontx add @gears-frontx/frontx-template-mfe ./my-app
 
 frontx install github:constructorfabric/gears-frontx-templates//template-inbox@<ref>
-frontx seed @gears-frontx/frontx-template-inbox ./my-inbox-app
+frontx add @gears-frontx/frontx-template-inbox ./my-app
 ```
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.
 
+`template-inbox` is applied onto a project seeded from `template-shell`; it contributes these packages under `src-app/mfe_packages/`, each previewed on its own port by the shell's `npm run dev:all` (the shell itself runs on 5173):
+
+| Package | Screen | Address | Port |
+|---|---|---|---|
+| `inbox-contacts-mfe` | Contacts | `/?screen=contacts` | 3010 |
+| `inbox-dashboard-mfe` | Dashboard | `/?screen=dashboard` | 3020 |
+| `inbox-chat-mfe` | Chat | `/?screen=chat` | 3030 |
+| `inbox-mail-mfe` | Mail | `/?screen=mail` | 3040 |
+| `shared/inbox` | the code the four share, bundled into each | - | - |
+
 ## Relationship to the FrontX ecosystem
 
-The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). `template-mfe`'s six overrides into `../template-shell` are the one exception: `template-shell` lives in this same repo, one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.
+The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). The dev harnesses of `template-mfe` and `template-inbox` are the one exception: their overrides point into `../template-shell`, which lives in this same repo one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.
 
 ## Validating locally
 

@@ -9,7 +9,6 @@ import {
   linkEcosystemPackages,
   runCli,
   symlinkSpecFor,
-  templateDirFromArgv,
   templateDirName,
 } from './link-template-ecosystem.mjs';
 
@@ -587,67 +586,5 @@ describe('runCli', () => {
 
     expect(exitCode).toBe(1);
     expect(error.mock.calls.flat().join('\n')).toContain('EPERM');
-  });
-});
-
-describe('templateDirFromArgv', () => {
-  it('defaults to the shell when the command names no template', () => {
-    expect(templateDirFromArgv([])).toBe('template-shell');
-    expect(templateDirName).toBe('template-shell');
-  });
-
-  it('reads the first positional argument as the template directory, skipping flags', () => {
-    expect(templateDirFromArgv(['template-inbox'])).toBe('template-inbox');
-    expect(templateDirFromArgv(['--verbose', 'template-inbox'])).toBe('template-inbox');
-  });
-
-  it('refuses a name that could reach outside the repository root', () => {
-    for (const named of ['..', '.', '../elsewhere', 'template-inbox/node_modules', 'a\\b']) {
-      expect(() => templateDirFromArgv([named])).toThrow(/not a template directory name/);
-    }
-  });
-});
-
-describe('linkEcosystemPackages for a template other than the shell', () => {
-  it('links into the named template and names it in its messages', () => {
-    const inboxScope = path.join(repoRoot, 'template-inbox', 'node_modules', '@gears-frontx');
-    const { fs, calls } = fakeFs({
-      [inboxScope]: { kind: 'dir' },
-      [path.join(inboxScope, 'api')]: installedDir,
-      [path.join(repoRoot, 'packages', 'api', 'package.json')]: {
-        kind: 'file',
-        json: { name: '@gears-frontx/api', exports: { '.': { import: './dist/index.js' } } },
-      },
-      [path.join(repoRoot, 'packages', 'api', 'dist/index.js')]: builtArtifact,
-    });
-
-    const result = linkEcosystemPackages({
-      repoRoot,
-      templateDir: 'template-inbox',
-      packageDirs: ['api'],
-      fs,
-      platform: 'linux',
-    });
-
-    expect(result.ok).toBe(true);
-    expect(calls.links.map(({ linkPath }) => linkPath)).toEqual([path.join(inboxScope, 'api')]);
-    if (result.ok) expect(result.warning).toContain('inside template-inbox');
-  });
-
-  it('refuses an uninstalled named template with an instruction naming that template', () => {
-    const { fs } = fakeFs({});
-    const result = linkEcosystemPackages({
-      repoRoot,
-      templateDir: 'template-inbox',
-      packageDirs: ['api'],
-      fs,
-      platform: 'linux',
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe('template-not-installed');
-      expect(result.message).toContain('inside template-inbox');
-    }
   });
 });

@@ -337,11 +337,11 @@ jobs:
         npm install
 
         # FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 on both commands below, because
-        # every MFE package this job composes is one the template ships as an
-        # example and declares "templateExample": true. Without the opt-in the
-        # package scanners skip all of them and this job - the only CI path
-        # that compiles the overlaid MFEs at all - passes having compiled
-        # nothing.
+        # template-mfe's packages are examples it ships and declare
+        # "templateExample": true. Without the opt-in the package scanners
+        # skip them and this job - the only CI path that compiles the overlaid
+        # MFEs at all - passes having compiled none of them. The other
+        # overlays' packages declare no such flag and are compiled either way.
         FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run build
         FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run type-check
         npm run arch:deps
