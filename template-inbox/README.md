@@ -40,22 +40,22 @@ find "$COMPOSED/src-app/mfe_packages" -not -path '*/node_modules/*' -name packag
 cd "$COMPOSED" && npm install && npm run dev:all
 ```
 
-The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010, the dashboard remote on 3020 and the chat remote on 3030. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
+The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010, the dashboard remote on 3020, the chat remote on 3030 and the mail remote on 3040. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
 
 The former standalone application runs beside it for side-by-side checks: `npm run dev:reference` in this directory.
 
 ## Screens
 
-In the shell menu the screens take the orders 100 (contacts), 200 (dashboard), 300 (chat) and 400 (mail); only screens that have landed as packages appear there. The others are listed with the address the reference application gives them.
+In the shell menu the screens take the orders 100 (contacts), 200 (dashboard), 300 (chat) and 400 (mail).
 
-- **Mail** (`#/mail` in the reference application) - mailboxes, an all-mail and unread list with instant search, and a reading pane with collapsible history and a reply composer.
 - **Contacts** (`inbox-contacts-mfe`, `/?screen=contacts`) - a filterable, sortable directory and a contact page at an address you can reload or share (`/?screen=contacts;route=<id>`).
 - **Dashboard** (`inbox-dashboard-mfe`, `/?screen=dashboard`) - KPI cards, charts with text alternatives, team workload, a stage funnel and a sortable, paginated recent-activity table whose rows name the directory's contacts.
 - **Chat** (`inbox-chat-mfe`, `/?screen=chat`) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel. Its "View contact" opens the person's page in the contacts screen in the chat's place (`/?screen=contacts;route=<id>`), and Back returns to the chat with the same channel, conversation and drafts; outside a shell domain the button is not offered.
+- **Mail** (`inbox-mail-mfe`, `/?screen=mail`) - mailboxes, an all-mail and unread list with instant search, a reading pane with collapsible history and a reply composer, and a compose dialog; sent mail is filed under Sent by `MailApiService`, whose seed and page-wide mock state (`Symbol.for('@gears-frontx/frontx-template-inbox/mail-mock-state/v1')`) live in the package.
 
 ## Data and mocks
 
-Every conversation, message, contact and identity comes from the seed dataset in `shared/inbox/api/`, served by `InboxApiService` through the template's own `RestMockPlugin`. The dashboard's overview comes from `DashboardApiService` and its seed in `inbox-dashboard-mfe/src/api/`, which no other screen reads (the reference application still serves mail data from `src/api/`). Each package registers only the services it reads and switches their mock plugins on with the framework's `mock({ enabledByDefault: true })` in its `init.ts`. Passing `false` there sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
+Every conversation, message, contact and identity comes from the seed dataset in `shared/inbox/api/`, served by `InboxApiService` through the template's own `RestMockPlugin`. The dashboard's overview comes from `DashboardApiService` and its seed in `inbox-dashboard-mfe/src/api/`, which no other screen reads; mail works the same way from `inbox-mail-mfe/src/api/`. Each package registers only the services it reads and switches their mock plugins on with the framework's `mock({ enabledByDefault: true })` in its `init.ts`. Passing `false` there sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
 
 Each screen is its own module graph, so the state screens share lives once per page instead of once per package: a realm-global store (`shared/inbox/api/mockStore.ts`, under `Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v1')`) that every screen reads, with a revision every accepted write moves. It holds the contacts, the conversations and the transcript; the dashboard's activity rows are built from the store's contacts on each request, so every row names a person the directory lists. A screen whose query cache is older than the revision reads again.
 
