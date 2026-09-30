@@ -1,73 +1,44 @@
-# Guideline: The App's Chrome, and What a New Screen Plugs Into
+# Guideline: What the Shell Owns and What Each Inbox Screen Keeps
 
-This application owns its whole document. It is a plain Vite + React app on `@gears-frontx/ui-kit` without the FrontX runtime: there is no host to ask for anything, so every mechanism below is a module in `src/app/` or `src/shared/` that a screen simply calls. Reuse them; do not write a second copy of any of them.
+Each inbox screen is a microfrontend package the application shell mounts into a shadow root in its screen domain. The shell draws the chrome; the screen keeps everything a page would otherwise get from its own document. Paths below are relative to `src-app/mfe_packages/`.
 
-## The icon rail is the navigation
+## The shell owns
 
-`src/app/IconRail.tsx` is the app's fixed narrow left edge: the product mark at the top, one button per section (Dashboard, Chat, Mail, Contacts) with the section's name as its accessible label and its tooltip, a flexible spacer, then the theme toggle and the profile-menu popover at the bottom. Adding a section means adding an entry to its `RAIL_SECTIONS`, extending its `sectionOf`, and adding a branch in `src/app/App.tsx` - there is no manifest, no extension declaration and no id taxonomy.
+- **The menu.** A screen appears there through the screen extension in its package's `mfe.json` (`presentation.label`, `icon`, `route`, `order`); there is no menu list to edit. The label in `mfe.json` is the menu's; the screen's own name for itself is `nav_label` in its catalogue.
+- **The page address.** The shell writes a screen's token into the URL (`/?screen=contacts`) and resolves it back on load, Back and Forward. The token equals `presentation.route` without its slash and is listed in `shared/inbox/navigation/screens.ts` (`INBOX_SCREENS`); `inbox-contacts-mfe/src/shared-inbox/screens.test.ts` holds every package's manifest to that list.
+- **Layout, theme and language.** The sidebar, header and the area a screen fills are the shell's. The theme and the language reach a screen as shared properties on its bridge (`FRONTX_SHARED_PROPERTY_THEME`, `FRONTX_SHARED_PROPERTY_LANGUAGE`).
+- **The host stylesheets.** `ThemeAwareReactLifecycle` adopts them into the shadow root and paints `:host` from `var(--foreground)` and `var(--background)`.
 
-The rail never collapses. It is the edge the rest of the layout is measured from; the channel, mailbox and filter columns beside it are the ones that collapse. Each of those takes its open state from `useSidebarToggle` in `src/shared/`, which starts it open on a wide viewport and folded below the compact width, and a `PanelLeftIcon` toggle with `aria-expanded` in the screen's list header flips it. A folded column stays in the tree for its width transition, with `inert` and `aria-hidden` so nothing in it is focusable or read.
+## Each screen keeps
 
-Every screen renders exactly one `h1`, through `ScreenHeading` in `src/shared/`, in the place its pane header puts its title. On a route change `App.tsx` names the document after the section (`document_title`) and asks the new screen's heading to take focus; the first load moves no focus.
+The package's `src/lifecycle.tsx` exports a subclass of `InboxScreenLifecycle` (`shared/inbox/lifecycle/InboxScreenLifecycle.tsx`) passing its app, catalogues and route tree. The base class puts the kit's tokens on the shadow host once per shadow root (`anchorKitThemeOnShadowHost`, a style node marked `data-inbox-kit-theme`) and renders the screen inside `InboxScreenFrame` (`shared/inbox/lifecycle/InboxScreenFrame.tsx`), which keeps:
 
-The dashboard is the one screen with no folder or filter column at all - a single full-width, scrollable pane straight after the rail. Not every screen needs a secondary sidebar; add one only when the screen has a folder or filter concept to hold, the way chat, mail and contacts do.
+- **`data-theme`** on the frame, from the shell's theme through `kitThemeScopeFor` (`kitThemeScope.ts`). Without it kit tokens inherit the shell's `:host` colours or the system scheme. A dark host theme the shell adds must join `DARK_HOST_THEMES` there.
+- **`dir`** on the frame and on the shadow host, from the language (`useHostDirection.ts`). Package CSS uses logical properties only (`inset-inline-end`, `margin-inline-start`, `border-inline-end`, `text-align: end`).
+- **The portal container**, the frame's first child (`data-inbox-portal`), handed out by `usePortalContainer()` from `screenContext.ts`. Every popup (sheet, dialog, select, menu, combobox) passes it as `container`, so it renders inside the shadow root, styled and focus-trapped.
+- **`document.title`**, set on mount to `document_title` from the shared catalogue (`{section} - Workspace`) with the screen's `nav_label`. The shell never sets it.
+- **Heading focus.** Every screen renders exactly one `h1` through `ScreenHeading` (`shared/inbox/ui/ScreenHeading.tsx`). A mount after a navigation (a menu click, another screen before it) asks that heading to take focus; the first screen of a page load moves nothing. Inside a screen, the root route component calls `useRouteFocus(pageKey)` so a change of page (directory to a person and back) moves focus too.
+- **The error boundary.** `ScreenErrorBoundary` wraps the route tree, keyed on the path inside the screen: a render failure shows a kit `Alert` with "try again" and reload while the shell and its menu keep working, and leaving the broken page clears it. A failed query is not an error for it; the screen shows `LoadErrorPane`.
+- **The router.** `EngineProvider` from `@gears-frontx/routing-tanstack` over the page history, composed into the entry the shell addressed for the screen, so the screen's own paths live in the `route=` parameter of its segment (`/?screen=contacts;route=c-42` opens the contacts route `$contactId`). An address the route tree does not match renders the screen's own not-found page.
+- **Translations.** `useInboxTranslate` merges the package's catalogues over `shared/inbox/i18n/en.json` for the shell's language, falling back to `en`; components read `useInboxT()`.
 
-## Routing is the URL fragment
+Layout inside the screen uses the shared pieces in `shared/inbox/ui/` (`SideColumn`, `useSidebarToggle`, `useMediaQuery` with `COMPACT_QUERY` and `SINGLE_PANE_QUERY`, `shared.module.css`), CSS modules on kit tokens, and components from `@gears-frontx/ui-kit` only.
 
-`src/app/routing.ts` owns five routes, their constants and the parser for them:
+## Opening another screen
 
-| Route | Constant or builder | Screen |
-|---|---|---|
-| `#/dashboard` | `DASHBOARD_ROUTE` | the dashboard, and the fallback for any unrecognised address |
-| `#/chat` | `INBOX_ROUTE` | the chat screen; `#/inbox` opens it too |
-| `#/mail` | `MAIL_ROUTE` | the mail screen |
-| `#/contacts` | `CONTACTS_ROUTE` | the contacts directory, and the fallback for a contact id that does not decode |
-| `#/contacts/{id}` | `contactRoute(id)` | one contact's page |
+`openScreen(bridge, { screen, route })` in `shared/inbox/navigation/openScreen.ts` replaces the caller's entry in its domain with the target screen and its route and pushes one history entry; the shell mounts the target and Back returns to the caller as it was. Chat's "View contact" is `openScreen(bridge, { screen: INBOX_SCREENS.contacts, route: contactId })` (`inbox-chat-mfe/src/screen/chat/chatNavigation.ts`). It returns `undefined` when the caller has no entry address (not composed into a shell domain), and the caller then does not offer the link. Screens never import each other's code; only `shared/inbox/` is shared.
 
-`useRoute()` reads the fragment and corrects the address bar to the canonical fragment of what it opened (an unknown path, `#/inbox`, an undecodable contact id) with `history.replaceState`, so the address a visitor copies always opens what they see and no history entry is added. `hashOf(route)` is the inverse of `parseRoute`; `navigate(fragment)` is how a screen moves.
+## Menu order bands
 
-Two properties are load-bearing:
+| Screen | Package | Token | Order |
+|---|---|---|---|
+| Contacts | `inbox-contacts-mfe` | `contacts` | 100 |
+| Dashboard | `inbox-dashboard-mfe` | `dashboard` | 200 |
+| Chat | `inbox-chat-mfe` | `chat` | 300 |
+| Mail | `inbox-mail-mfe` | `mail` | 400 |
 
-- **A section's own sub-state that a visitor could want to return to belongs in the route, not in screen state.** A contact's page is a route for exactly that reason: "View contact" in a thread is `navigate(contactRoute(id))`, and the address it produces reloads, bookmarks and shares.
-- **The fragment, not the path.** A fragment needs no server rewrite, so the built `index.html` deep-links correctly from any static host, including one serving it from a sub-path (`VITE_BASE`). Adding a route means extending `Route`, `parseRoute`, `hashOf` and `routing.test.ts`, not adding a router.
+The inbox takes the hundreds. A screen added beside them takes a free hundred (500 and up) or a value between two neighbours; packages from other templates may use the same values, and a tie orders by the shell's own rule, which is harmless but worth avoiding in a product menu.
 
-## Errors are caught at the root
+## Adding a screen
 
-`src/app/ErrorBoundary.tsx` wraps the screen outlet in `App.tsx`, keyed on the location, and `App` as a whole in `src/main.tsx` as the last resort. A render error in a screen replaces that screen with a kit `Alert` offering "try again" and reload, while the rail keeps working; moving to another location clears it. A screen's own failed query is not an error for the boundary: it renders `LoadErrorPane` from `src/shared/QueryStates.tsx` (see the `inbox-data-contract` guideline).
-
-## Theme follows the system until the visitor chooses
-
-`@gears-frontx/ui-kit/theme.css` paints every token from `data-theme` on the document root, and with no attribute it follows the system's `prefers-color-scheme`. `index.html` sets no `data-theme`, so the first paint is already in the visitor's system theme. `src/app/theme.ts` is the one writer: `applyStoredTheme()` in `src/main.tsx` restores a choice stored on an earlier visit before the first render, and `useTheme().toggleTheme` sets and stores a new one. A visitor who never toggles keeps following the system.
-
-A screen never reads or writes the theme. `useTheme` exists for the one toggle in the rail.
-
-## Copy
-
-`src/shared/i18n.ts` exports `t`, the `Translate` type and `locale`, reading `src/i18n/en.json` (in `shared/` because the formatters read `locale` and the layer rules keep `shared/` below `app/`). `t(key, params)` fills `{name}` parameters and picks a plural form (`<key>_one`, `<key>_other`, by `Intl.PluralRules`) from a numeric `count`. Screens take `t` as a prop rather than importing it, and their tests pass the real `t` and query by `t(key)`. Add a screen's strings, separators and sentence templates included, to that one file; every `Intl` formatter reads `locale`, and a number, a percent or a unit is written by `Intl`, never spelled out. A missing key returns the key itself and logs one console warning per key.
-
-## Shared parts
-
-`src/shared/` holds what more than one screen uses: `PresenceAvatar` and `IdentityAvatar` (initials and a tone hashed from the name, so one person keeps one circle everywhere), the formatters in `format.ts` (relative times, initials, email domain, `labelOf` for the fixed vocabularies), `useMediaQuery` with the `COMPACT_QUERY` and `SINGLE_PANE_QUERY` breakpoints, `useSidebarToggle`, `ScreenHeading`, `QueryStates.tsx`, `submitShortcut.tsx`, and `cx`. A new screen reuses these rather than writing its own, together with `useAutoSelect` (open a list's first item once per scope), `splitPinned`, `FieldRow`, `useSubmitShortcut` and `createStore` (state that must survive the screen unmounting, the way `screens/inbox/inboxStore.ts`, `screens/mail/mailStore.ts` and `screens/contacts/contactsStore.ts` keep each data screen's selection, search, drafts and changes).
-
-## Kit overlays need nothing
-
-The kit's overlays - Select, Combobox, Popover, Dialog, DropdownMenu - portal to `<body>`, which is this app's own document. Pass no `container`.
-
-## Styles
-
-Kit component CSS travels with each component the bundler pulls in; there is nothing to import. The app's own layout is CSS Modules over the kit's semantic tokens, each beside the components that use it: `src/app/App.module.css` holds the frame and the rail, `src/shared/shared.module.css` what several screens draw (pane chrome, side columns, list rows, the thread and composer frames, field rows, the presence badge), and each screen's folder its own module (`inbox.module.css`, `mail.module.css`, `contacts.module.css`, `dashboard.module.css`). Colours, space steps, radii and type sizes come from kit tokens (a tint is a `color-mix` over one), and a literal is left only where the kit has no token, with a comment saying so; there is no CSS framework and no second component library. `src/styles/app.css` is the document frame alone (full height, no page scroll) and should not grow.
-
-A screen reads the shared shapes from `src/shared/shared.module.css` and keeps its own classes in its own module. It never imports another screen's module; `arch:deps` rejects that the same way it rejects a cross-screen component import.
-
-## Chrome as shipped
-
-A screen added later should keep these as they are.
-
-1. The rail's mark is a neutral glyph.
-2. Only the sections this app ships appear in the rail; the out-of-scope ones are absent (see the `inbox-scope-inventory` guideline).
-3. The palette is the kit's tokens.
-4. The rail's bottom cluster is the theme toggle and the profile menu, nothing else: no command palette, messenger settings, settings or theme customiser.
-5. Profile, Settings and Log out in the profile menu render as disabled buttons.
-6. A control whose action this template does not ship renders disabled, never enabled with no handler.
-7. The side columns start folded at the compact width and open from their toggle, and below the single-pane width a list and its detail take turns; the rail keeps its shape at every width.
-8. A chart carries `role="img"` and a `chartSummary` label that lists what it plots; a sparkline or a donut whose numbers the card already prints in text is `aria-hidden`.
+Scaffold the package with the MFE template's `add-mfe-package` skill, then make it an inbox screen: a lifecycle subclass of `InboxScreenLifecycle`, the `@inbox-shared` alias and dedupe through `shared/inbox/build/inboxRemote.config.ts` in its `vite.config.ts` and `vitest.config.ts`, its token in `INBOX_SCREENS`, its registrars in `src/init.ts` (see the inbox data contract guideline), and the setup in `src/test-support/setup.ts` calling `registerInboxTestSetup` from `shared/inbox/test-support/setup.ts`.

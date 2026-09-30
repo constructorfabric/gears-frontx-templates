@@ -1,36 +1,36 @@
 # FrontX Inbox Template
 
-A workspace product for a FrontX application: helpdesk-style screens (contacts, dashboard, chat and mail) built from `@gears-frontx/ui-kit`, each its own microfrontend package with its own Module Federation build, its own routes inside the shell's screen domain, its own UI strings, and mocked `@gears-frontx/api` services that share one mock dataset across the screens. Applied onto a shell, the screens appear in the shell's menu without further wiring.
+Four helpdesk-style screens for a FrontX application - contacts, dashboard, chat and mail - each a microfrontend package the shell mounts in its screen domain, built from `@gears-frontx/ui-kit` with mocked `@gears-frontx/api` services. This template is an overlay onto [`template-shell`](../template-shell/README.md): it claims no root `package.json`, no host and no tooling, only what `frontx-template.json` lists.
 
-## Add-only - requires `template-shell`
+## Packages
 
-This template is an overlay, like `template-mfe`. It claims no root `package.json`, no build, test or lint tooling and no host: those belong to [`frontx-template-shell`](../template-shell/README.md), which mounts the screens. It contributes only what `frontx-template.json` claims:
+All paths are under `src-app/mfe_packages/`. The shell runs on `http://localhost:5173`; `npm run dev:all` previews each package on its port.
 
-| Path | What it holds |
-|------|---------------|
-| `src-app/mfe_packages/inbox-contacts-mfe/` | The contacts screen: a filterable, sortable directory and each person's page (`?screen=contacts;route=<id>`) |
-| `src-app/mfe_packages/inbox-dashboard-mfe/` | The dashboard screen: KPI cards, charts, team workload, a stage funnel and the recent-activity table, with its own overview service and seed (`src/api/`) |
-| `src-app/mfe_packages/inbox-chat-mfe/` | The chat screen: channels, the conversation list, the thread with its composer and the customer-details panel, with the link to a contact's page in the contacts screen |
-| `src-app/mfe_packages/inbox-mail-mfe/` | The mail screen: mailboxes, the mail list, the reading pane and the compose dialog, with its own mail service, seed and mock state (`src/api/`) |
-| `src-app/mfe_packages/shared/inbox/` | What every inbox screen shares, imported as `@inbox-shared/*` and bundled into each package: the API services, the page-wide mock store and the query hooks (`api/`), the UI-string rules and shared catalogue (`i18n/`), the screen lifecycle and frame (`lifecycle/`), cross-screen navigation (`navigation/`) and shared components (`ui/`) |
-| `.frontx/ai/@gears-frontx/frontx-template-inbox/` | The AI bundle |
+| Package | Screen | Address | Menu order | Port |
+|---|---|---|---|---|
+| `inbox-contacts-mfe` | a filterable, sortable directory and each person's page | `/?screen=contacts`, `/?screen=contacts;route=<id>` | 100 | 3010 |
+| `inbox-dashboard-mfe` | KPI cards, charts, team workload, a stage funnel, conversion by source and the recent-activity table | `/?screen=dashboard` | 200 | 3020 |
+| `inbox-chat-mfe` | channels, the conversation list, the thread with a reply-and-note composer, the customer-details panel and "View contact" | `/?screen=chat` | 300 | 3030 |
+| `inbox-mail-mfe` | mailboxes, the mail list with search, the reading pane with history and reply, and compose | `/?screen=mail` | 400 | 3040 |
 
-All four screens are packages.
+`shared/inbox/` holds what the four share, imported as `@inbox-shared/*` and bundled into each package: the API services, mock store and query hooks (`api/`), the shared catalogue (`i18n/`), the screen lifecycle and frame (`lifecycle/`), cross-screen navigation (`navigation/`), shared components (`ui/`), the common build and test configuration (`build/`) and test platform (`test-support/`). It has no `package.json` and is not a workspace. Packages never import one another.
 
-The `package.json` next to this README is not part of the template: it is the in-repository dev harness, as in `template-mfe`, deliberately absent from the manifest's boundaries so `frontx add` never copies it. Its workspaces are this template's packages, and its `overrides` point the shell's own packages at `../template-shell`.
+## Data and mocks
 
-## Working on it in this repository
+Contacts, dashboard and chat read `InboxApiService` (`/api/inbox`) from the page-wide inbox mock store in `shared/inbox/api/mockStore.ts`, so a reply posted in chat shows in the contact's activity. The dashboard's overview service (`/api/dashboard`) and the mail service (`/api/mail`, with its own page-wide mock state) live in their packages. Each package switches its mocks on with `mock({ enabledByDefault: true })` in `src/init.ts`; `false` sends every request to a real backend with the endpoints and screens unchanged. The AI bundle's `inbox-data-contract` guideline has the endpoints, the cache epoch and the backend switch; `inbox-chrome-contract` has what the shell owns and what each screen keeps.
 
-Unit tests run in place, from the harness. Build the shell first, because the packages' vite and vitest configs load its build plugin and test utilities:
+## Running it in this repository
+
+Unit tests and type-check run in place from the harness (`package.json` here is a monorepo-only harness, never copied by `frontx add`). Build the shell first; the packages' configs load its build plugin and test utilities:
 
 ```bash
 cd template-shell && npm ci && npm run build
 cd ../template-inbox && npm ci
-npm test                   # every package's unit tests
-npm run type-check         # every package's type-check
+npm test
+npm run type-check
 ```
 
-To see the screens in the shell, compose the shell with both overlays the way CI does and run it (`live-run/README.md` step L0, with one more `tar` for this template):
+To see the screens in the shell, compose the overlays onto the shell as CI does and run the dev loop:
 
 ```bash
 export COMPOSED="${TMPDIR:-/tmp}/frontx-inbox-composed"
@@ -42,41 +42,43 @@ find "$COMPOSED/src-app/mfe_packages" -not -path '*/node_modules/*' -name packag
 cd "$COMPOSED" && npm install && npm run dev:all
 ```
 
-The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010, the dashboard remote on 3020, the chat remote on 3030 and the mail remote on 3040. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
+After editing a package, re-sync it, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
 
-## Screens
+## Kit gaps
 
-In the shell menu the screens take the orders 100 (contacts), 200 (dashboard), 300 (chat) and 400 (mail).
+- The packages pin `@gears-frontx/ui-kit` 0.4.0-alpha.6 (they need `StatusDot`, `EmptyActions`, `Toggle` with `iconOnly`, `--radius-full` and `--overlay-modal`), while the shell's chrome renders from 0.4.0-alpha.3; each package's `resolve.dedupe` keeps its own kit copy.
+- In the light theme the `success` (3.43:1) and `danger` (4.28:1) badge tones stay under the 4.5:1 text contrast the design guardrails ask for; the badge text carries the meaning.
+- The design guardrails report `aria-required-children` on the kit's `ItemGroup` and a control-height mismatch (36 px controls beside 65 px rows) on the mail lists.
+- `Bubble` has no variant with the tail corner at the bottom; chat overrides its corner radii.
+- No tokens for the dashboard's big-number type scale and icon-chip size, or for a softer border and muted fill (mail's history cards mix `--border` and `--muted` into transparency).
 
-- **Contacts** (`inbox-contacts-mfe`, `/?screen=contacts`) - a filterable, sortable directory and a contact page at an address you can reload or share (`/?screen=contacts;route=<id>`).
-- **Dashboard** (`inbox-dashboard-mfe`, `/?screen=dashboard`) - KPI cards, charts with text alternatives, team workload, a stage funnel and a sortable, paginated recent-activity table whose rows name the directory's contacts.
-- **Chat** (`inbox-chat-mfe`, `/?screen=chat`) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel. Its "View contact" opens the person's page in the contacts screen in the chat's place (`/?screen=contacts;route=<id>`), and Back returns to the chat with the same channel, conversation and drafts; outside a shell domain the button is not offered.
-- **Mail** (`inbox-mail-mfe`, `/?screen=mail`) - mailboxes, an all-mail and unread list with instant search, a reading pane with collapsible history and a reply composer, and a compose dialog; sent mail is filed under Sent by `MailApiService`, whose seed and page-wide mock state (`Symbol.for('@gears-frontx/frontx-template-inbox/mail-mock-state/v1')`) live in the package.
+## Moving into a project repository
 
-## Data and mocks
+The four packages and the shared folder are product code; a product repository takes them as its own:
 
-Every conversation, message, contact and identity comes from the seed dataset in `shared/inbox/api/`, served by `InboxApiService` through the template's own `RestMockPlugin`. The dashboard's overview comes from `DashboardApiService` and its seed in `inbox-dashboard-mfe/src/api/`, which no other screen reads; mail works the same way from `inbox-mail-mfe/src/api/`. Each package registers only the services it reads and switches their mock plugins on with the framework's `mock({ enabledByDefault: true })` in its `init.ts`. Passing `false` there sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
+1. Seed the shell and add the MFE and guardrails templates:
 
-Each screen is its own module graph, so the state screens share lives once per page instead of once per package: a realm-global store (`shared/inbox/api/mockStore.ts`, under `Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v2')`) that every screen reads, with a revision every accepted write moves. It holds the contacts, the conversations and the transcript; the dashboard's activity rows are built from the store's contacts on each request, so every row names a person the directory lists. A screen whose query cache is older than the revision reads again.
+   ```bash
+   frontx install github:constructorfabric/gears-frontx-templates//template-shell@<ref>
+   frontx seed @gears-frontx/frontx-template-shell ./my-product
+   frontx install github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+   frontx add @gears-frontx/frontx-template-mfe ./my-product
+   frontx install github:constructorfabric/gears-frontx-templates//template-design-guardrails@<ref>
+   frontx add @gears-frontx/template-design-guardrails ./my-product
+   ```
 
-While mocks are on, a route the mock map does not know answers 404 instead of reaching the network. `POST /api/inbox/messages` answers 400 to a body without a conversation, text or a `reply`/`note` kind and 404 for a conversation that does not exist; `POST /api/inbox/conversations` starts a conversation with an existing contact. A posted reply or note and a started conversation are kept in the mock store, so they are still there after the screen remounts, until the page reloads. What the user selects, types and changes on a screen is kept in that screen's store, so leaving a section and coming back finds it as it was. All seed email addresses use reserved example domains, and all seed phone numbers use the fictional `555 01xx` range.
+2. Copy the code, without `node_modules` or `dist`, from the root of this repository:
 
-## Theming
+   ```bash
+   for dir in shared/inbox inbox-contacts-mfe inbox-dashboard-mfe inbox-chat-mfe inbox-mail-mfe; do
+     mkdir -p "my-product/src-app/mfe_packages/$dir"
+     tar -C "template-inbox/src-app/mfe_packages/$dir" --exclude=node_modules --exclude=dist -cf - . \
+       | tar -C "my-product/src-app/mfe_packages/$dir" -xf -
+   done
+   ```
 
-Layout is CSS Modules over the kit's semantic tokens; there is no CSS framework and no second component library. Each screen renders in a shadow root: its lifecycle anchors the kit's tokens on the shadow host, and its frame sets `data-theme` from the shell's theme property, so a theme switch in the shell repaints every screen. Popups (sheets, dialogs, selects) portal into a node inside the shadow root.
+3. The project's root `package.json` already lists `src-app/mfe_packages/*` in `workspaces`, which picks up the four packages; `shared/` has no `package.json` and needs no entry. Each package declares its own dependencies, so `npm install` at the project root is the whole install. The project's `.frontx/` provenance records the shell and the two added templates only: the inbox is the project's own code, not a template it tracks.
+4. Copy the two guidelines under `.frontx/ai/@gears-frontx/frontx-template-inbox/guidelines/` into the project's own AI bundle and list them in its `extension.json`; they cite only paths under `src-app/mfe_packages/`.
+5. Leave behind what only serves this repository: this README, `frontx-template.json`, the harness `package.json` and `package-lock.json`, and `src-app/vitest.mfe.base.ts` and `src-app/__test-utils__/`, whose forwarders the shell's own files replace in a project.
 
-## AI bundle
-
-The template installs an AI bundle at `.frontx/ai/@gears-frontx/frontx-template-inbox/`:
-
-- the `add-inbox-screen` skill and its workflow, which carry adding a further screen to the app (not applying this template again);
-- guidelines for the scope (what the app deliberately does not ship), the chrome (rail, panes and shared layout) and the data contract (services, mocks and datasets);
-- a reference artifact mapping each pane of the shipped screens to the kit component that renders it.
-
-## Upgrading
-
-This project records its template provenance under `.frontx/`. When a newer template version is released, upgrade with the FrontX CLI - changes are shown as a reviewable change set before anything is written:
-
-```bash
-frontx upgrade . <targetVersion>
-```
+Then `npm run build`, `npm run type-check`, `npm run lint`, `npm run arch:deps` and `npm run test:unit` at the project root check the screens with the rest of the application.

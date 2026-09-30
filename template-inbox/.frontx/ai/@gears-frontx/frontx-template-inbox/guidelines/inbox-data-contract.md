@@ -1,109 +1,94 @@
-# Guideline: The Inbox App's Data
+# Guideline: The Inbox Screens' Data
 
-`src/api/` holds the app's data, and nothing else does. One service per domain: `InboxApiService` backs the chat screen and the contacts directory, which share one dataset (a contact is a conversation's contact, a thread header and a table row at once); `MailApiService` backs the mail screen with its own, unrelated dataset; `DashboardApiService` backs the dashboard with a third dataset of its own. The dashboard still reads `InboxApiService.getContacts` for the recent-activity table's contact cells, and its activity rows point at those contacts by id rather than inventing a second set of people. A new screen reads from whichever service already owns its domain; add a sibling service only when the domain does not overlap with any of the three, the way mail did not overlap with chat and contacts. Do not put content anywhere else.
+The four inbox screens are separate microfrontend packages under `src-app/mfe_packages/`, and every MFE load evaluates its own copy of each module it bundles. This guideline covers how their data stays one set of facts anyway: where the services and seeds live, how the mock backend is shared across the packages, how each package's query cache learns about writes made elsewhere, and how a real backend replaces the mocks. Paths below are relative to `src-app/mfe_packages/`.
+
+## Where the data lives
 
 ```
-src/api/
-  InboxApiService.ts      BaseApiService + RestProtocol + RestEndpointProtocol, declares a RestMockPlugin over mocks.ts
-  MailApiService.ts       the mail domain's sibling service, same primitives, its own baseURL
-  DashboardApiService.ts  the dashboard domain's sibling service, same primitives, one endpoint
-  RestMockPlugin.ts       the app's own mock plugin, built on @gears-frontx/api primitives, shared by every service
-  queries.ts              useApiQuery / useApiMutation over the endpoint descriptors, shared by every service
-  registry.ts             registerApiServices() and setMockMode() at boot, getInboxApi() / getMailApi() / getDashboardApi() everywhere else
-  constants.ts            ids and fixed values the screens share with the API (CHANNEL_GENERAL, MAILBOX_SENT, BRAND, NO_TEAM_INBOX)
-  seedClock.ts            the one load-time anchor every seed instant is measured from, and the transcript's calendar-text formatter
-  types.ts                the inbox/contacts response contracts
-  mailTypes.ts            the mail response contracts
-  dashboardTypes.ts       the dashboard response contract
-  mocks.ts                the inbox/contacts mock map and its mock store, keys prefixed with the /api/inbox baseURL
-  mailMocks.ts            the mail mock map, keys prefixed with the /api/mail baseURL
-  dashboardMocks.ts       the dashboard mock map, keys prefixed with the /api/dashboard baseURL
-  dataset.ts              the inbox/contacts seed content
-  mailDataset.ts          the mail seed content
-  dashboardDataset.ts     the dashboard seed content
+shared/inbox/api/                 imported as @inbox-shared/api/*, bundled into each package that imports it
+  InboxApiService.ts              conversations, transcript, contacts and agent, baseURL /api/inbox
+  mocks.ts                        inboxMockMap, keys prefixed with /api/inbox
+  dataset.ts                      the inbox seed: agent, channels, conversations, messages, contacts
+  mockStore.ts                    the page-wide inbox mock state (readInboxMockState, inboxMockRevision)
+  queries.ts                      useApiQuery / useApiMutation and the cache epoch (setQueryCacheEpoch)
+  registry.ts                     registerInboxApi, getInboxApi
+  RestMockPlugin.ts               the mock plugin every service registers, mockReply, MockResponseError
+  seedClock.ts                    the page-wide anchor every seed instant is measured from
+  constants.ts                    ids the screens share with the API (CHANNEL_GENERAL, BRAND, NO_TEAM_INBOX, TEAM_INBOXES)
+  types.ts, dashboardTypes.ts     response contracts
+inbox-dashboard-mfe/src/api/      DashboardApiService (/api/dashboard), dashboardMocks.ts, dashboardDataset.ts, registerDashboardApi
+inbox-mail-mfe/src/api/           MailApiService (/api/mail), mailMocks.ts, mailDataset.ts, mailMockStore.ts, registerMailApi, constants.ts (MAILBOX_*)
 ```
 
-The seed datasets are imported by the mock maps and by the test utilities, never by a screen. A screen that needs a fixed id or value the API also knows (the channel it opens on, the mailbox a sent mail is filed under) imports it from `constants.ts`.
+A service and its seed live in the package that reads them unless another screen reads them too: contacts, dashboard and chat share `InboxApiService` from `shared/inbox/api/`; the dashboard overview and mail each stay in their own package, so mail never bundles the inbox seed and contacts never bundles the mail one. Seed datasets are imported by mock maps and tests, never by a screen.
 
-## Reading from a component
+## Registration, one registrar per service
+
+Each package calls the registrars of the services its screen reads in its `src/init.ts`, before `createFrontX().build()`:
+
+| Package | Registrars |
+|---|---|
+| `inbox-contacts-mfe` | `registerInboxApi` |
+| `inbox-dashboard-mfe` | `registerInboxApi`, `registerDashboardApi` |
+| `inbox-chat-mfe` | `registerInboxApi` |
+| `inbox-mail-mfe` | `registerMailApi` |
+
+A registrar registers its service with `apiRegistry` (idempotent) and, for a service with a page-wide mock state, names that state's revision as the package's cache epoch (`setQueryCacheEpoch(inboxMockRevision)`, `setQueryCacheEpoch(mailMockRevision)`). Each MFE load has its own `apiRegistry`, so each package registers for itself. A screen reads through the getter, never through `new`:
 
 ```ts
-const service = getInboxApi();
-const contactsQuery = useApiQuery(service.getContacts);
+const contactsQuery = useApiQuery(getInboxApi().getContacts);
 ```
 
-The mail screen reads the same way, off its own service:
+## One mock state per page
 
-```ts
-const service = getMailApi();
-const mailsQuery = useApiQuery(service.getMails);
-```
+`shared/inbox/api/mockStore.ts` keeps the inbox mock state on `globalThis` under `Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v2')`. Every package's copy of the module resolves the same key, so a reply posted in chat is in the contact's activity in contacts. The state is created from the seed by the first reader, holds `contacts`, `conversations`, `messages` and a `revision` every accepted write increments, and lasts until the page reloads. Mail keeps its own state the same way under `Symbol.for('@gears-frontx/frontx-template-inbox/mail-mock-state/v1')` in `inbox-mail-mfe/src/api/mailMockStore.ts`. The seed anchor in `seedClock.ts` is page-wide too (`Symbol.for('@gears-frontx/frontx-template-inbox/seed-anchor/v1')`), so every package measures "an hour ago" from the same instant.
 
-`@gears-frontx/api` hands out endpoint *descriptors* - a stable key plus a `fetch` - and leaves caching to the consumer. `queries.ts` is that consumer: two hooks that dedupe by descriptor key, so the same endpoint read from two screens and mounted twice by StrictMode makes one request. A query result carries `data`, `error`, `isLoading` and `refetch`. A mutation names the reads it changes in `invalidates`, and those cache entries are forgotten once it succeeds, so the next screen to mount reads what the server now holds. Swapping the file for a server-state library is a change to that one file; the screens only ever see `useApiQuery` and `useApiMutation`.
+Bump a key's version suffix whenever the shape of what it holds changes: a state left in the page by a build with another shape is otherwise read as if it matched. The dashboard's activity rows are built from the inbox state's contacts on each request (`dashboardMocks.ts`), so every row names a person the directory lists.
 
-A screen gates its first paint on every query that paint needs, through `firstPaintOf` in `src/shared/QueryStates.tsx`: a failed query shows `LoadErrorPane` (a kit `Alert` with a retry) and a pending one shows `LoadingPane`. A new screen does the same rather than rendering an empty state for data that never arrived.
+## The query cache and its epoch
 
-## The mock plugin belongs to the app
+`queries.ts` is the whole server-state layer: `useApiQuery(descriptor)` dedupes by the descriptor's key and keeps an answer for the page's lifetime; `useApiMutation({ endpoint, invalidates, onSuccess, onError, afterSuccess })` forgets the reads named in `invalidates` once the write succeeds. Each package bundles its own copy, so each has its own cache over the one shared state. The epoch keeps them honest:
 
-`RestMockPlugin` is `src/api/RestMockPlugin.ts`, not an import from `@gears-frontx/api`: the ecosystem package publishes the plugin primitives and the `MOCK_PLUGIN` marker, and leaves the mock to whoever owns the project's data. It is shared, not per-service: `InboxApiService`, `MailApiService` and `DashboardApiService` each register their own instance over their own mock map. Registering only declares the plugin.
+- a read under a revision other than the cache's drops every settled answer and asks again;
+- a request still running from before the revision moved answers whoever waits for it, is not kept, and is not joined by a later mount;
+- a package's own write moves its cache past its own revision, keeping other answers, only when the revision moved by exactly one from the epoch the write started under; any other move is treated as a write from another screen.
 
-`setMockMode(enabled)` in `src/api/registry.ts` is the one switch. It walks every registered service's plugins (`apiRegistry.getAll()`, `getPlugins()`, `isMockPlugin`) and adds each mock plugin to its protocol or takes it off. `registerApiServices()` calls `setMockMode(true)` at boot. Passing `false` there, or dropping the call, sends every request to the backend at its service's base URL; the endpoints, the types and every screen stay as they are. A new service that registers a `RestMockPlugin` is covered by the same switch with no change to `registry.ts` beyond registering the service.
+A screen gates its first paint on the queries it needs with `firstPaintOf` from `shared/inbox/ui/QueryStates.tsx` (`LoadErrorPane` on failure, `LoadingPane` while pending).
 
-While a mock plugin is on it answers every request its protocol sends:
+## The mock switch
 
-- a mapped `METHOD /path` answers with its factory's value as a 200, or with the status and body of a `mockReply(status, data)` the factory returns;
-- an unmapped route answers 404, rather than leaking to a network the mock mode says is not there;
-- a status of 400 or above rejects the call with a `MockResponseError` carrying `status` and `body`, the way an HTTP error rejects a real request;
-- the configured delay (100 ms for every service here) is cut short when the request's signal aborts.
+Each `init.ts` adds the framework's `mock({ enabledByDefault: true })`, which switches on the `RestMockPlugin` of every service registered before `build()`. While on, the plugin answers every request of its protocol: a mapped `METHOD /path` with its factory's value (or the status of a `mockReply(status, data)`), an unmapped route with 404, a status of 400 or above as a rejected `MockResponseError`, after a 100 ms delay that an aborted signal cuts short. Factories answer with clones, so nothing a screen does to a response reaches the state.
 
-## The endpoint surface
+## The endpoints
 
-| Endpoint | Returns |
+| Endpoint | Answers |
 |---|---|
-| `GET /api/inbox/me` | the agent identity: name, presence, workspace |
-| `GET /api/inbox/channels` | the three seeded channels with id, label, icon name, item count, open count |
-| `GET /api/inbox/conversations` | every conversation across all channels, including the ones created this session |
-| `GET /api/inbox/messages` | every message across every conversation, including the ones posted this session |
-| `GET /api/inbox/contacts` | all 29 contacts with their full detail payload |
-| `POST /api/inbox/messages` | stores a posted reply or note and answers with it, with a server-assigned id and timestamp, and moves the conversation's snippet and last activity to it; 400 when the body has no `conversationId`, no non-blank `body` or a `kind` other than `reply` or `note`, 404 when the conversation does not exist |
-| `POST /api/inbox/conversations` | creates an empty conversation with an existing contact in a channel and answers with it, with a server-assigned id and timestamp; 400 when the body has no `channelId` or no `contactId`, 404 when the contact does not exist |
+| `GET /api/inbox/me` | the agent: name, presence, workspace |
+| `GET /api/inbox/channels` | the seeded channels |
+| `GET /api/inbox/conversations` | every conversation, including those started this page |
+| `GET /api/inbox/messages` | every message, including those posted this page |
+| `GET /api/inbox/contacts` | every contact with its detail payload |
+| `POST /api/inbox/messages` | stores a reply or note (400 without a conversation, text or a `reply`/`note` kind, 404 for an unknown conversation) |
+| `POST /api/inbox/conversations` | starts a conversation with an existing contact (400 without a channel or contact, 404 for an unknown contact) |
+| `GET /api/dashboard/overview` | the whole dashboard in one response: KPI cards, charts, workload, funnel, conversion by source, top agents, activity rows |
+| `GET /api/mail/mailboxes` | the mailboxes |
+| `GET /api/mail/mails` | every mail, including those sent this page |
+| `GET /api/mail/messages` | the earlier messages behind a mail's history toggle |
+| `POST /api/mail/mails` | files a sent mail under Sent (400 without a recipient, or without both subject and body) |
 
-`MailApiService` answers the mail screen the same read-only-collections way, off its own baseURL:
+Every read returns a whole collection: `RestMockPlugin` matches exact keys and passes a factory the request body only, so selection happens in the screen over a collection it holds. A new slice is a new collection endpoint, not a parameterised one. What the details panels change (assignee, priority, status, tags, spam, a new channel) lives in each screen's store, not in the services; a new persisted change is a new mutation on the service and its mock map.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /api/mail/mailboxes` | the five mailboxes (Inbox, Drafts, Sent, Archive, Trash - no Spam) with id and label |
-| `GET /api/mail/mails` | every mail across every mailbox |
-| `GET /api/mail/messages` | every earlier message behind a mail's "N earlier messages" toggle |
+## Replacing the mocks with a real backend
 
-The mail service has no write endpoint. A reply sent from the reading pane and a mail written in the Compose dialog are both kept in the mail screen's store (`mailStore`) under Sent (`MAILBOX_SENT`), so they last until the page reloads. Adding a real send is adding a `POST /api/mail/...` mutation to `MailApiService` and its mock map, the way `postMessage` exists on `InboxApiService`.
+1. Serve the endpoints above, with the response types in `types.ts`, `dashboardTypes.ts` and `inbox-mail-mfe/src/api/mailTypes.ts`, at the services' base URLs (or change `baseURL` in each service's constructor).
+2. In each package's `src/init.ts` pass `mock({ enabledByDefault: false })`, or `mock()` to keep mocks on localhost only.
+3. Keep the registrars. Without a mock state the revision stays 0 and the epoch never moves; a backend that pushes changes can call `setQueryCacheEpoch` with its own counter, or `queries.ts` can be replaced by a server-state library, since the screens only see `useApiQuery` and `useApiMutation`.
 
-`DashboardApiService` answers the dashboard with a single response rather than one endpoint per section, because the dashboard is one coherent view, not a set of independently browsable lists the way mailboxes, mails and messages are:
+## Content rules
 
-| Endpoint | Returns |
-|---|---|
-| `GET /api/dashboard/overview` | the KPI cards, resolved per day, new contacts, the summary trend, records created, contacts by stage, workload, the stage funnel, conversion by source, top agents and the recent-activity rows, all together |
-
-Splitting it into several endpoints is the right move only once some part of the dashboard needs to load or refresh on its own - see `InboxApiService`'s doc comment for the same call made the other way.
-
-## Every read returns a whole collection, on purpose
-
-`RestMockPlugin` matches exact `METHOD /path` keys and calls a factory with the request body and nothing else, so a per-id endpoint could not tell which id it was asked for. Selection therefore happens client-side, in the screen, over a collection it already holds, which also keeps search live and counters recomputing without a round trip.
-
-A new screen follows the same rule. If it needs a slice nobody fetches today, add a collection endpoint and select from it; do not add a parameterised one.
-
-## The mock store
-
-The inbox conversations and transcript are the collections a request changes. `POST /api/inbox/messages` appends the posted reply or note (`seen: null`, `internal: true` for a note) to a mock store in `mocks.ts` and moves its conversation's snippet and last activity, `POST /api/inbox/conversations` adds a conversation to the same store, and the two `GET`s serve that store, so a sent message and a started conversation are still there after the screen remounts, until the page reloads. Every factory, in all three mock maps, answers with a `structuredClone` of its data, so nothing a screen does to a response reaches the store or the seed. `resetMockState()` in `registry.ts` puts every mock store back to its seed; tests call it between cases together with `apiRegistry.reset()`.
-
-## Rules for content
-
-- **Seed data is TypeScript, not fixture files.** Mock data is application code registered per service through `RestMockPlugin`, which is what keeps switching to a real backend a one-line change rather than a build-time choice.
-- **No content baked into markup.** A subject, a name, a snippet or a count in JSX is content that cannot be changed without editing a screen. It belongs in the dataset of the service that owns the domain: `dataset.ts`, `mailDataset.ts` or `dashboardDataset.ts`.
-- **Dates are offsets from one clock.** Every seed instant is measured back from `ANCHOR_MS` in `seedClock.ts` (`minutesAgo`, `hoursAgo`, `daysAgo`), so a conversation still reads "1h" and "4d" on any run day and the three datasets agree about what "an hour ago" was. Every instant in the data is an ISO string, a message's `sentAt`, a mail history entry's `sentAt` and a chart's day or month included; relative and absolute text is written at render by `src/shared/format.ts` in the app's locale. Each thread's newest message sits exactly at its conversation's last activity.
-- **Derive what can be derived.** Initials, the email domain column, the qualification checklist, the filter counts, the dashboard's totals, deltas and percents, and the contact activity timeline are all computed from the records. A stored copy would be a second thing to keep in step, and the one that drifts is the one on screen.
-- **Relations are ids.** A contact lists its conversations as `{ id }` references joined on the client, and a dashboard activity row names its owner by `ownerAgentId`. A reference that points at nothing is a defect; `dataset.test.ts` checks the seed's referential integrity.
-- **Suggested replies are content, not a model call.** A conversation's `suggestedReplies` are authored in `dataset.ts` alongside its transcript. An empty array is the way to say a thread gets none - every spam and every snoozed conversation carries one - and the chip row disappears rather than emptying.
-- **Writes.** Posting a reply or a note and starting a conversation are the changes the services persist. Everything the details panel moves - assignee, team inbox, priority, status, tags, spam - and a channel created from the channel column are applied in the screen's store (`inboxStore`), because a real backend would own those. Keep that split: adding a write means adding an endpoint to the service and its mock map, not pretending in a component.
-- **Fictional contact data.** Seed email addresses use reserved example domains and seed phone numbers use the `555 01xx` range. Keep it that way for any record added.
-- **A mail's history is a separate collection, like a conversation's messages.** `Mail.body` is the newest message only, and `mailDataset.ts`'s `mailMessages` holds only the earlier ones, oldest first, keyed by `mailId`. Most mails have none, which is what keeps the reading pane's history toggle off their pane entirely - the same "empty is meaningful" rule `suggestedReplies` follows above.
+- Seed data is TypeScript registered through the mock maps; no fixture files, no content in markup.
+- Seed instants are offsets from `ANCHOR_MS` (`minutesAgo`, `hoursAgo`, `daysAgo`) and are ISO strings; text is formatted at render by `shared/inbox/ui/format.ts`.
+- Relations are ids (a contact's conversations as `{ id }`, an activity row's `ownerAgentId`); `inbox-contacts-mfe/src/shared-inbox/dataset.test.ts` checks the seed's referential integrity.
+- Labels are ids resolved through the package catalogue (the dashboard's `screen/datasetLabels.ts`, chart configs), so every screen reads in its language.
+- Derive what can be derived (counts, totals, deltas, percents, initials) instead of storing it.
+- Seed email addresses use reserved example domains and phone numbers the `555 01xx` range.

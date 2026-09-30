@@ -24,7 +24,7 @@ import type {
 import type { Contact } from '@inbox-shared/api/types';
 import { locale } from '@inbox-shared/i18n/translate';
 
-/** An activity row with the contact and the owner it names resolved. */
+/** An activity row with its contact and its owning agent resolved. */
 export type ActivityRow = ActivityItem & { contact: Contact; ownerName: string };
 
 /**
