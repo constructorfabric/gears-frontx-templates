@@ -8,12 +8,12 @@ import {
   refetchCalls,
   resetApiMocks,
   setQueryState,
-} from '../__test-utils__/apiMocks';
-import { stubMatchMedia } from '../__test-utils__/matchMedia';
+} from '../test-support/apiMocks';
+import { stubMatchMedia } from '../test-support/matchMedia';
 import { COMPACT_QUERY } from '@inbox-shared/ui/useMediaQuery';
 import { act } from 'react';
 import { contacts, conversations } from '@inbox-shared/api/dataset';
-import { t } from '../__test-utils__/translate';
+import { t } from '../test-support/translate';
 
 const navigation = vi.hoisted(() => ({ openContact: vi.fn(), openDirectory: vi.fn() }));
 

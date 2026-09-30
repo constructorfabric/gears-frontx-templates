@@ -3,7 +3,7 @@ import sharedEn from '@inbox-shared/i18n/en.json';
 import { createTranslate } from '@inbox-shared/i18n/translate';
 import { catalogueFor } from '@inbox-shared/i18n/useInboxTranslate';
 import en from '../i18n/en.json';
-import { t } from '../__test-utils__/translate';
+import { t } from '../test-support/translate';
 
 const catalogue = {
   greeting: 'Hello, {name}',

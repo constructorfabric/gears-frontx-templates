@@ -11,7 +11,7 @@ import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixtur
 import { InboxScreenLifecycle } from '@inbox-shared/lifecycle/InboxScreenLifecycle';
 import { INBOX_SCREENS } from '@inbox-shared/navigation/screens';
 import lifecycle, { ContactsLifecycle } from './lifecycle';
-import { t } from './__test-utils__/translate';
+import { t } from './test-support/translate';
 
 const EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.inbox_contacts.screens.contacts.v1';
 

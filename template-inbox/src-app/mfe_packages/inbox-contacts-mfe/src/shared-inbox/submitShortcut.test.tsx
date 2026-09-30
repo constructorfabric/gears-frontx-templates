@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
-import { t } from '../__test-utils__/translate';
+import { t } from '../test-support/translate';
 import { isApplePlatform, SubmitShortcutHint } from '@inbox-shared/ui/submitShortcut';
 
 describe('SubmitShortcutHint', () => {

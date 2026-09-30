@@ -10,7 +10,7 @@ import {
   shortRelativeTime,
   weekdayLabel,
 } from '@inbox-shared/ui/format';
-import { t } from '../__test-utils__/translate';
+import { t } from '../test-support/translate';
 
 /** A local wall-clock instant as the ISO string the data carries. */
 const at = (year: number, month: number, day: number, hour = 0, minute = 0): string =>

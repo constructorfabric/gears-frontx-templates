@@ -19,7 +19,10 @@ export default mergeConfig(
     },
     test: {
       // The inbox's own browser surface and per-test resets, after the shell's.
-      setupFiles: ['./src/__test-utils__/setup.ts'],
+      // `test-support/` rather than `__test-utils__/`: the shell's lint reads
+      // an import of `../_*` from inside an MFE package as one into a sibling
+      // package.
+      setupFiles: ['./src/test-support/setup.ts'],
       /*
        * Without CSS processing a stylesheet import resolves to an empty
        * string, and the tests that read the kit's real theme.css (the token
