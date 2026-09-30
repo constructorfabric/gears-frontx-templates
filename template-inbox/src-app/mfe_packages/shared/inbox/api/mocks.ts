@@ -14,11 +14,14 @@
  * remounts, and visible to every other inbox screen in the page, the way a
  * backend would keep it. Every factory answers with a copy, so nothing a
  * screen does to a response reaches the store, and every accepted write
- * moves the store's revision.
+ * moves the store's revision. The contacts live there too, though no request
+ * here changes them: other screens' mocks (the dashboard's activity rows)
+ * point at them by id, and one list in the page keeps those ids in step with
+ * the directory.
  */
 
 import { BRAND, NO_TEAM_INBOX } from './constants';
-import { agent, channels, contacts } from './dataset';
+import { agent, channels } from './dataset';
 import { bumpInboxMockRevision, readInboxMockState } from './mockStore';
 import { isMockReply, mockReply, type MockReply, type RestMockMap } from './RestMockPlugin';
 import type { JsonValue } from '@gears-frontx/react';
@@ -112,7 +115,7 @@ const readCreatedConversation = (body: JsonValue | undefined): CreateConversatio
   if (channelId === null || channelId === '' || contactId === null || contactId === '') {
     return badRequest('A conversation needs a channelId and a contactId.');
   }
-  if (!contacts.some((contact) => contact.id === contactId)) {
+  if (!readInboxMockState().contacts.some((contact) => contact.id === contactId)) {
     return mockReply(404, { error: `No contact ${contactId}.` });
   }
   return { channelId, contactId, assignee: readString(body, 'assignee') ?? '' };
@@ -125,7 +128,7 @@ const acceptCreatedConversation = (request: CreateConversationRequest): Conversa
   const conversation: Conversation = {
     id: `c-new-${state.createdConversationCount}`,
     channelId: request.channelId,
-    subject: contacts.find((contact) => contact.id === request.contactId)?.name ?? '',
+    subject: state.contacts.find((contact) => contact.id === request.contactId)?.name ?? '',
     contactId: request.contactId,
     snippet: '',
     lastActivityAt: new Date().toISOString(),
@@ -154,7 +157,7 @@ export const inboxMockMap: RestMockMap = {
   'GET /api/inbox/conversations': (): GetConversationsResponse =>
     structuredClone({ conversations: readInboxMockState().conversations }),
   'GET /api/inbox/messages': (): GetMessagesResponse => structuredClone({ messages: readInboxMockState().messages }),
-  'GET /api/inbox/contacts': (): GetContactsResponse => structuredClone({ contacts }),
+  'GET /api/inbox/contacts': (): GetContactsResponse => structuredClone({ contacts: readInboxMockState().contacts }),
   'POST /api/inbox/messages': (body) => {
     const request = readPostedMessage(body);
     if (isMockReply(request)) return request;

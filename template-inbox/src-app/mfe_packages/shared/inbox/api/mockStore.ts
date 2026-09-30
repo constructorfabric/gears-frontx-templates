@@ -19,8 +19,8 @@
  * seed, as a reload of the standalone app did.
  */
 
-import { conversations as seedConversations, messages as seedMessages } from './dataset';
-import type { Conversation, Message } from './types';
+import { contacts as seedContacts, conversations as seedConversations, messages as seedMessages } from './dataset';
+import type { Contact, Conversation, Message } from './types';
 
 /** The registry key every inbox package shares. Bump the suffix when the state's shape changes. */
 export const INBOX_MOCK_STATE_KEY = Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v1');
@@ -37,6 +37,13 @@ export type InboxMockState = {
   readonly seedVersion: string;
   /** Incremented on every accepted write. */
   revision: number;
+  /**
+   * The people every screen refers to: the contacts directory lists them, and
+   * the dashboard's activity rows and the conversations point at them by id.
+   * Held here, not read from each package's bundled seed, so every screen
+   * answers from one list of people.
+   */
+  contacts: Contact[];
   conversations: Conversation[];
   messages: Message[];
   /** Server-side id sequences for what this page created. */
@@ -51,6 +58,7 @@ const realm = (): Realm => globalThis as Realm;
 const createInboxMockState = (): InboxMockState => ({
   seedVersion: INBOX_SEED_VERSION,
   revision: 0,
+  contacts: structuredClone(seedContacts),
   conversations: structuredClone(seedConversations),
   messages: structuredClone(seedMessages),
   postedMessageCount: 0,

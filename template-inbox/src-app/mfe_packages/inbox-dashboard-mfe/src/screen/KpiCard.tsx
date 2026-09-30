@@ -1,0 +1,77 @@
+import { Badge, Card, CardContent, CardFooter, type ChartConfig } from '@gears-frontx/ui-kit';
+import type { DashboardKpiCard } from '@inbox-shared/api/dashboardTypes';
+import {
+  avgFirstResponseChartConfig,
+  openConversationsChartConfig,
+  resolvedThisWeekChartConfig,
+} from './dashboardChartConfig';
+import {
+  deltaTone,
+  formatDeltaPercent,
+  formatKpiFooterValue,
+  formatKpiValue,
+  kpiDeltaPercent,
+  kpiValue,
+} from './dashboardSelectors';
+import type { Translate } from '@inbox-shared/i18n/translate';
+import { AreaSparkline, BarSparkline, LineSparkline } from './Sparkline';
+import styles from './dashboard.module.css';
+
+const CHART_CONFIG_BY_ID: Record<string, (t: Translate) => ChartConfig> = {
+  'open-conversations': openConversationsChartConfig,
+  'resolved-this-week': resolvedThisWeekChartConfig,
+  'avg-first-response': avgFirstResponseChartConfig,
+};
+
+export type KpiCardProps = {
+  kpi: DashboardKpiCard;
+  t: Translate;
+};
+
+/**
+ * Row 1's own card shape for its three generic KPIs: a big number, a delta
+ * badge toned by whether the move is good news for this particular metric,
+ * a label, a small inline chart whose type varies card to card, and a
+ * footer stat. The chart type switch below keeps the row varied rather
+ * than four identical widgets. Row 1's
+ * fourth card, "Contacts by stage", is its own bespoke component
+ * (`ContactsByStageCard`) rather than a fourth branch here - a donut with a
+ * count+percent legend needs its own shape, not a `series`/`value` pair.
+ */
+export function KpiCard({ kpi, t }: KpiCardProps) {
+  const value = kpiValue(kpi);
+  const delta = kpiDeltaPercent(kpi);
+  const tone = deltaTone(delta, kpi.goodWhenPositive);
+  const config = (CHART_CONFIG_BY_ID[kpi.id] ?? openConversationsChartConfig)(t);
+
+  return (
+    <Card>
+      <CardContent className={styles.kpiCardContent}>
+        <div className={styles.kpiCardTop}>
+          <div className={styles.kpiHeadline}>
+            <span className={styles.kpiValue}>{formatKpiValue(kpi, value)}</span>
+            <Badge variant={tone}>{formatDeltaPercent(delta)}</Badge>
+          </div>
+          <span className={styles.kpiLabel}>{kpi.label}</span>
+        </div>
+        {/* The value, the delta and the label above already say what the
+            sparkline draws, so it is decoration to assistive technology. */}
+        <div className={styles.kpiChart} aria-hidden="true">
+          {kpi.chartType === 'area' && (
+            <AreaSparkline data={kpi.series} config={config} className={styles.sparkline} />
+          )}
+          {kpi.chartType === 'bar' && (
+            <BarSparkline data={kpi.series} config={config} className={styles.sparkline} />
+          )}
+          {kpi.chartType === 'line' && (
+            <LineSparkline data={kpi.series} config={config} className={styles.sparkline} />
+          )}
+        </div>
+      </CardContent>
+      <CardFooter className={styles.kpiCardFooter}>
+        <span className={styles.kpiFooterLabel}>{kpi.footerLabel}</span>
+        <span className={styles.kpiFooterValue}>{formatKpiFooterValue(kpi)}</span>
+      </CardFooter>
+    </Card>
+  );
+}

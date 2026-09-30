@@ -7,6 +7,7 @@
     "exclusiveSubtrees": [
       "src-app/mfe_packages/shared/inbox/",
       "src-app/mfe_packages/inbox-contacts-mfe/",
+      "src-app/mfe_packages/inbox-dashboard-mfe/",
       ".frontx/ai/@gears-frontx/frontx-template-inbox/"
     ],
     "sharedFiles": []
