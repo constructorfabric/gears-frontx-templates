@@ -88,6 +88,20 @@ cd template-shell && npm ci && npm run build && npm run type-check && npm run li
 
 `template-mfe` cannot be validated in place - its packages' `file:` links resolve into `template-mfe/../template-shell`, and its own root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes it onto `template-shell` (the way `frontx add` does) and validates the result; there is no equivalent single local command today.
 
+### Architecture documents
+
+`main.yml`'s `studio-validate` job runs Constructor Studio over the documents registered in `.cf-studio/config/artifacts.toml`: the catalogue's own under `architecture/` and each template's under `<template>/architecture`, documents only, no code paths. It installs the CLI at the pinned release, bootstraps the runtime and the sdlc kit (pinned to `v1.2.1` in `core.toml`) with `cfs update`, which also validates the installed kit, then runs `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate`. The bootstrap step carries `GITHUB_TOKEN` because cfs resolves and downloads the pinned core and kit through the GitHub API. The same check locally:
+
+```bash
+pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
+cfs update -y --no-interactive --with-kits yes --version v1.6.2
+cfs validate
+```
+
+Pass `--version v1.6.2` to every `cfs update`: without it the CLI resolves its latest release, which may differ from the version CI pins. Export `GITHUB_TOKEN` locally if the anonymous GitHub API limit is hit. On a fresh clone the first `cfs update` regenerates agent files before the kit exists and temporarily rewrites `.gitignore` and `core.toml`; a second run restores them, so run it twice before committing.
+
+The catalogue root system, prefix `cpt-templates-*`, describes this repository as a collection of templates. Each template, a top-level directory with a `frontx-template.json` manifest, registers its own system over `<template>/architecture`, and its ids carry the template's own prefix `cpt-template-<name>-`. Each template's `[[systems]]` block is added to `.cf-studio/config/artifacts.toml` by hand; a template without one is skipped silently. This repository shares no ids with gears-frontx: gears-frontx ids are internal to it and may change, so a gears-frontx decision is cited as a link to its file and never as a backticked `cpt-frontx-*` id. cfs flags neither another system's prefix in a template's documents nor a backticked `cpt-frontx-*` reference; review checks both. Every registered kind is `required = false` while its directory holds no documents; the PR that adds a template's PRD and DESIGN sets those two kinds of its system to `required = true`.
+
 ## Known follow-ups
 
 Flagged in review and deliberately left alone for now, rather than folded into an unrelated fix:
