@@ -1,5 +1,5 @@
 {
-  "//": "MONOREPO DEV HARNESS - NOT PART OF THIS TEMPLATE. This file is deliberately absent from frontx-template.json's ownershipBoundaries, so `frontx add` never copies it into a project and this template claims no root package.json anywhere. It follows template-mfe/package.json: the workspaces are this template's MFE packages, and the overrides redirect the pins this repository can offer a local source for (template-shell and its packages/*) to that source, so the packages' tests run in place against the shell they are written for. Every other pin, @gears-frontx/ui-kit and @gears-frontx/api included, resolves from the registry exactly as in a project. template-shell must be built first (`npm ci && npm run build` inside template-shell), because an MFE's vite and vitest configs load the shell's build plugin and test utilities from its build output. The devDependencies serve `dev:reference` only: until the last screen has moved into a package, the former standalone application under src/ stays on disk, unclaimed, and `npm run dev:reference` runs it next to the composed shell for side-by-side checks. They leave together with src/. The nwsapi override carries template-mfe's reason: jsdom's CSS-matching engine regressed in 2.2.26 and 2.2.27, and this harness shares the same jsdom chain.",
+  "//": "MONOREPO DEV HARNESS - NOT PART OF THIS TEMPLATE. This file is deliberately absent from frontx-template.json's ownershipBoundaries, so `frontx add` never copies it into a project and this template claims no root package.json anywhere. It follows template-mfe/package.json: the workspaces are this template's MFE packages, and the overrides redirect the pins this repository can offer a local source for (template-shell and its packages/*) to that source, so the packages' tests run in place against the shell they are written for. Every other pin, @gears-frontx/ui-kit and @gears-frontx/api included, resolves from the registry exactly as in a project. template-shell must be built first (`npm ci && npm run build` inside template-shell), because an MFE's vite and vitest configs load the shell's build plugin and test utilities from its build output. The nwsapi override carries template-mfe's reason: jsdom's CSS-matching engine regressed in 2.2.26 and 2.2.27, and this harness shares the same jsdom chain.",
   "name": "frontx-template-inbox-monorepo-harness",
   "private": true,
   "type": "module",
@@ -8,18 +8,7 @@
   ],
   "scripts": {
     "test": "npm run test:unit --workspaces --if-present",
-    "type-check": "npm run type-check --workspaces --if-present",
-    "dev:reference": "vite --config vite.config.ts"
-  },
-  "devDependencies": {
-    "@gears-frontx/api": "0.3.0-alpha.3",
-    "@gears-frontx/ui-kit": "0.4.0-alpha.6",
-    "@vitejs/plugin-react": "4.3.4",
-    "lucide-react": "1.33.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "recharts": "3.10.1",
-    "vite": "6.4.3"
+    "type-check": "npm run type-check --workspaces --if-present"
   },
   "overrides": {
     "@gears-frontx/frontx-template-shell": "file:../template-shell",

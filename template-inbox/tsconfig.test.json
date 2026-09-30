@@ -1,9 +1,0 @@
-{
-  "//": "The test program: the colocated tests, the test utilities and vitest.setup.ts, checked against the same compiler options as the app plus the Vitest globals the runner installs (`globals: true` in vitest.config.ts). The app program in tsconfig.json excludes all of these.",
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "types": ["vitest/globals"]
-  },
-  "include": ["src", "vitest.setup.ts"],
-  "exclude": ["node_modules", "dist"]
-}

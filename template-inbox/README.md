@@ -15,7 +15,7 @@ This template is an overlay, like `template-mfe`. It claims no root `package.jso
 | `src-app/mfe_packages/shared/inbox/` | What every inbox screen shares, imported as `@inbox-shared/*` and bundled into each package: the API services, the page-wide mock store and the query hooks (`api/`), the UI-string rules and shared catalogue (`i18n/`), the screen lifecycle and frame (`lifecycle/`), cross-screen navigation (`navigation/`) and shared components (`ui/`) |
 | `.frontx/ai/@gears-frontx/frontx-template-inbox/` | The AI bundle |
 
-All four screens are packages. The former standalone application in this directory (`src/`, `public/`, `index.html` and its configs) is unclaimed and serves only as the reference the packages are checked against.
+All four screens are packages.
 
 The `package.json` next to this README is not part of the template: it is the in-repository dev harness, as in `template-mfe`, deliberately absent from the manifest's boundaries so `frontx add` never copies it. Its workspaces are this template's packages, and its `overrides` point the shell's own packages at `../template-shell`.
 
@@ -43,8 +43,6 @@ cd "$COMPOSED" && npm install && npm run dev:all
 ```
 
 The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010, the dashboard remote on 3020, the chat remote on 3030 and the mail remote on 3040. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
-
-The former standalone application runs beside it for side-by-side checks: `npm run dev:reference` in this directory.
 
 ## Screens
 
