@@ -1,11 +1,12 @@
 /**
  * Inbox domain - API service.
  *
- * One service backs both screens. They share a dataset - a contact is a list
- * row, a thread header, a details-panel lead and a table row at the same time -
- * so splitting the surface in two would mean two copies of that dataset kept in
- * step by hand. If the two ever need separate surfaces, keep this one data
- * module and put two thin services over it.
+ * One service backs every screen that reads conversations or people: chat,
+ * contacts, and the dashboard's activity rows. They share one dataset - a
+ * contact is a list row, a thread header, a details-panel lead and a table
+ * row at the same time - so splitting the surface per screen would mean
+ * copies of that dataset kept in step by hand. If the screens ever need
+ * separate surfaces, keep this one data module and put thin services over it.
  */
 
 import { BaseApiService, RestEndpointProtocol, RestProtocol } from '@gears-frontx/react';

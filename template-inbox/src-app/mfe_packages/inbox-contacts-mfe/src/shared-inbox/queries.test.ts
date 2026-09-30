@@ -2,6 +2,7 @@ import { act, createElement } from 'react';
 import type { EndpointDescriptor, MutationDescriptor } from '@gears-frontx/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import {
   resetQueryCache,
   setQueryCacheEpoch,
@@ -434,5 +435,74 @@ describe('the cache epoch', () => {
     const again = mountQuery(read.descriptor);
     expect(read.calls).toHaveLength(1);
     expect(again.latest()).toMatchObject({ data: 'kept', isLoading: false });
+  });
+  it('drops the cache after its own write when another screen wrote meanwhile', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const read = controlledEndpoint<string>('dropped');
+    const reader = mountQuery(read.descriptor);
+    read.calls[0].response.resolve('before');
+    await flush();
+    reader.view.unmount();
+
+    const endpoint: MutationDescriptor<string, string> = {
+      key: ['/api', 'POST', 'raced-write'],
+      fetch: async () => {
+        // Another screen's write lands while this one runs, then this one.
+        epoch += 2;
+        return 'written';
+      },
+    };
+    const results: MutationResult<string>[] = [];
+    render(createElement(MutationProbe<string, string>, { options: { endpoint }, onResult: (result) => results.push(result) }));
+    act(() => results[results.length - 1].mutate('x'));
+    await flush();
+
+    const again = mountQuery(read.descriptor);
+    expect(again.latest()).toMatchObject({ data: undefined, isLoading: true });
+    expect(read.calls).toHaveLength(2);
+  });
+
+  it('answers a request the epoch moved under, but does not keep the answer', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const read = controlledEndpoint<string>('raced-read');
+    const other = controlledEndpoint<string>('other-read');
+    const reader = mountQuery(read.descriptor);
+
+    // Another screen writes while the request runs, and a read of another
+    // key moves this cache onto the new epoch before the answer arrives.
+    epoch = 1;
+    mountQuery(other.descriptor);
+    read.calls[0].response.resolve('from before the write');
+    await flush();
+    expect(reader.latest()).toMatchObject({ data: 'from before the write', isLoading: false });
+    reader.view.unmount();
+
+    const again = mountQuery(read.descriptor);
+    expect(again.latest()).toMatchObject({ data: undefined, isLoading: true });
+    expect(read.calls).toHaveLength(2);
+  });
+
+  it('evicts nothing during render: a render React throws away leaves the cache as it was', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const read = controlledEndpoint<string>('render-only');
+    const reader = mountQuery(read.descriptor);
+    read.calls[0].response.resolve('kept');
+    await flush();
+    reader.view.unmount();
+
+    // A render under a moved epoch that never commits (no effect runs).
+    epoch = 1;
+    const results: QueryResult<string>[] = [];
+    renderToString(createElement(QueryProbe<string>, { descriptor: read.descriptor, onResult: (result) => results.push(result) }));
+    expect(results[0]).toMatchObject({ data: undefined, isLoading: true });
+
+    // Back on the epoch the answer was cached under, it is still there.
+    epoch = 0;
+    const again = mountQuery(read.descriptor);
+    expect(again.latest()).toMatchObject({ data: 'kept', isLoading: false });
+    expect(read.calls).toHaveLength(1);
   });
 });

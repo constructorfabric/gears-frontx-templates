@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useHostDirection } from '@inbox-shared/lifecycle/useHostDirection';
+import { directionFor, useHostDirection } from '@inbox-shared/lifecycle/useHostDirection';
 
 function DirectionProbe({ language }: { language: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,5 +52,16 @@ describe('useHostDirection', () => {
 
     // The document root has no `host`, so no direction is written anywhere.
     expect(document.documentElement.dir).toBe('');
+  });
+});
+
+describe('directionFor', () => {
+  it('reads the direction from the primary subtag of a regional tag', () => {
+    expect(directionFor('ar')).toBe('rtl');
+    expect(directionFor('ar-SA')).toBe('rtl');
+    expect(directionFor('he_IL')).toBe('rtl');
+    expect(directionFor('FA')).toBe('rtl');
+    expect(directionFor('en-GB')).toBe('ltr');
+    expect(directionFor('')).toBe('ltr');
   });
 });

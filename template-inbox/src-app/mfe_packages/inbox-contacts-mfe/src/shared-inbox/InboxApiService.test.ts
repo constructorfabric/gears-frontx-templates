@@ -136,6 +136,18 @@ describe('InboxApiService', () => {
     expect(message.conversationId).toBe('c-new-1');
   });
 
+  it("adds a created conversation to its contact's own conversations, and to nobody else's", async () => {
+    const service = getInboxApi();
+    const before = (await service.getContacts.fetch()).contacts;
+    const { conversation } = await service.createConversation.fetch({ channelId: 'general', contactId: 'r-3', assignee: '' });
+
+    const { contacts } = await service.getContacts.fetch();
+    const refsOf = (list: typeof contacts, id: string) => list.find((contact) => contact.id === id)?.conversations ?? [];
+    expect(refsOf(contacts, 'r-3')).toEqual([...refsOf(before, 'r-3'), { id: conversation.id }]);
+    const others = contacts.filter((contact) => contact.id !== 'r-3');
+    expect(others.some((contact) => contact.conversations.some((ref) => ref.id === conversation.id))).toBe(false);
+  });
+
   it('answers 400 to a create without a channel or a contact, and 404 for an unknown contact', async () => {
     const service = getInboxApi();
 

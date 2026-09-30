@@ -8,9 +8,9 @@ export type ScreenErrorBoundaryProps = {
   children: ReactNode;
   t: Translate;
   /**
-   * Clears a caught failure when it changes - the frame passes the inner
-   * location, so leaving the broken page for another one renders it
-   * normally instead of keeping the alert.
+   * Clears a caught failure when it changes - the frame passes the path
+   * inside the screen, so leaving the broken page for another one renders
+   * that page normally instead of keeping the alert.
    */
   resetKey?: string;
   /** What the reload button does; the page reload unless a test says otherwise. */

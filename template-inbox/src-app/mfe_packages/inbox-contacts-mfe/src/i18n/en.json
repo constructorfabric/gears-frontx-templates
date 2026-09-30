@@ -54,7 +54,6 @@
   "type": "Type",
   "view_contact": "View contact",
   "nav_label": "Contacts",
-  "document_title": "{section} - Workspace",
   "page_not_found_title": "No such page",
   "page_not_found_description": "This address names no page of the contacts screen."
 }

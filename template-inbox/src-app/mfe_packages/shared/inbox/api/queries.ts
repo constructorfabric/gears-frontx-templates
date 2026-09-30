@@ -32,7 +32,11 @@
  * outside it (the mock store's revision), and the cache drops its settled
  * answers the next time it is read under a different value. A write this
  * cache made itself is already accounted for by `invalidates`, so its own
- * success adopts the new value instead of dropping everything.
+ * success moves the cache past its own revision instead of dropping
+ * everything - but only past its own: a write another screen made meanwhile
+ * still drops the lot. A request that was running when the epoch moved
+ * answers whoever waited for it and is not kept, since it may predate the
+ * write.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -92,6 +96,21 @@ const syncEpoch = (): void => {
 };
 
 /**
+ * Accounts for a write this cache made itself, before its `invalidates` run.
+ * One revision past the cache's epoch is that write alone, and the cache
+ * moves past it keeping every other answer; more than one means another
+ * screen wrote too, and everything settled is dropped as for any foreign
+ * write.
+ */
+const adoptOwnWrite = (): void => {
+  if (readEpoch() === cacheEpoch + 1) {
+    cacheEpoch += 1;
+    return;
+  }
+  syncEpoch();
+};
+
+/**
  * The request for a descriptor, started at most once per key until it is
  * invalidated, and the release its consumer calls on unmount.
  *
@@ -109,6 +128,7 @@ const subscribe = <TData>(
 
   if (entry === undefined) {
     const controller = new AbortController();
+    const startedAt = readEpoch();
     const created: CacheEntry = {
       controller,
       consumers: 0,
@@ -116,6 +136,12 @@ const subscribe = <TData>(
       promise: descriptor.fetch({ signal: controller.signal }).then(
         (data) => {
           created.settled = true;
+          // Answered after the data behind it changed: whoever waited gets
+          // what they asked for, but the next reader asks again.
+          if (readEpoch() !== startedAt) {
+            if (cache.get(cacheKey) === created) cache.delete(cacheKey);
+            return data;
+          }
           created.resolved = { data };
           return data;
         },
@@ -183,8 +209,10 @@ type QueryState<TData> = {
  * otherwise.
  */
 const initialState = <TData>(cacheKey: string, attempt: number): QueryState<TData> => {
-  syncEpoch();
-  const resolved = cache.get(cacheKey)?.resolved;
+  // Read-only, because it runs during render, which React may throw away: a
+  // cached answer from before the epoch moved is simply not used here, and
+  // `subscribe` in the effect is what evicts it.
+  const resolved = readEpoch() === cacheEpoch ? cache.get(cacheKey)?.resolved : undefined;
   return resolved === undefined
     ? { cacheKey, attempt, data: undefined, error: null, isLoading: true }
     : // The descriptor's own type is the only thing that ever wrote this key.
@@ -303,10 +331,11 @@ export function useApiMutation<TData, TVariables>(options: {
 
     latestOptions.current.endpoint.fetch(variables).then(
       (data) => {
+        // This write moved the epoch and `invalidates` forgets what it
+        // changed, so the rest of the cache stays valid - unless another
+        // screen wrote meanwhile, which `adoptOwnWrite` tells apart.
+        adoptOwnWrite();
         for (const read of latestOptions.current.invalidates ?? []) invalidateQuery(read.key);
-        // This write moved the epoch and `invalidates` already forgot what it
-        // changed, so the rest of the cache stays valid.
-        cacheEpoch = readEpoch();
         // A throwing afterSuccess must neither leave the call pending nor
         // escape as an unhandled rejection: this handler is the promise's
         // last one. It is reported like a failed call; once the caller has

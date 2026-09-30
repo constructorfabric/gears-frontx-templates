@@ -10,6 +10,11 @@ import { ChartContainer, type ChartConfig } from '@gears-frontx/ui-kit';
  * composes). Three distinct presentations - area, bar, line - so the row
  * reads as four different instruments, not one chart type repeated with a
  * different color.
+ *
+ * Each chart turns Recharts' keyboard layer off (`accessibilityLayer`): the
+ * card hides the sparkline from assistive technology, and a focusable chart
+ * surface inside an `aria-hidden` wrapper would be a tab stop that announces
+ * nothing.
  */
 export type SparklineProps = {
   /** Oldest to newest. */
@@ -36,7 +41,7 @@ export function AreaSparkline({ data, config, className }: SparklineProps) {
       className={className}
       initialDimension={SPARKLINE_DIMENSION}
     >
-      <AreaChart data={toPoints(data)} margin={SPARKLINE_MARGIN}>
+      <AreaChart data={toPoints(data)} margin={SPARKLINE_MARGIN} accessibilityLayer={false}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.45} />
@@ -62,7 +67,7 @@ export function BarSparkline({ data, config, className }: SparklineProps) {
       className={className}
       initialDimension={SPARKLINE_DIMENSION}
     >
-      <BarChart data={toPoints(data)} margin={SPARKLINE_MARGIN} barCategoryGap="28%">
+      <BarChart data={toPoints(data)} margin={SPARKLINE_MARGIN} barCategoryGap="28%" accessibilityLayer={false}>
         <Bar dataKey="value" fill="var(--color-value)" radius={[6, 6, 2, 2]} />
       </BarChart>
     </ChartContainer>
@@ -76,7 +81,7 @@ export function LineSparkline({ data, config, className }: SparklineProps) {
       className={className}
       initialDimension={SPARKLINE_DIMENSION}
     >
-      <LineChart data={toPoints(data)} margin={SPARKLINE_MARGIN}>
+      <LineChart data={toPoints(data)} margin={SPARKLINE_MARGIN} accessibilityLayer={false}>
         <Line
           type="monotone"
           dataKey="value"

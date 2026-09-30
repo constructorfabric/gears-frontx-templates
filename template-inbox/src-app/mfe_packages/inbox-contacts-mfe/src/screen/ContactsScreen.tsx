@@ -58,24 +58,27 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     [contacts, filter, search]
   );
 
-  // Set when a contact page is opened from this directory, so its Back button
-  // can step back through history - landing on the directory as it was left,
-  // with the entry the browser's own Back would also use - instead of
-  // pushing a second directory entry. A page opened from anywhere else (a
-  // link, the chat's "View contact") goes to the directory by address.
-  const openedFromDirectory = useRef(false);
+  // The contact whose page this directory opened last, so that page's Back
+  // button can step back through history - landing on the directory as it
+  // was left, with the entry the browser's own Back would also use - instead
+  // of pushing a second directory entry. Only while that same page is the
+  // one open: a page the address opened otherwise (a link, the chat's "View
+  // contact", the browser's Back and Forward to another person) goes to the
+  // directory by address, since the entry behind it is not the directory.
+  const openedFromDirectory = useRef<string | null>(null);
 
   const viewContact = useCallback(
     (contactId: string) => {
-      openedFromDirectory.current = true;
+      openedFromDirectory.current = contactId;
       navigation.openContact(contactId);
     },
     [navigation]
   );
 
   const backToDirectory = () => {
-    if (openedFromDirectory.current) {
-      openedFromDirectory.current = false;
+    const stepBack = openedFromDirectory.current !== null && openedFromDirectory.current === openContactId;
+    openedFromDirectory.current = null;
+    if (stepBack) {
       window.history.back();
     } else {
       navigation.openDirectory();
@@ -87,7 +90,10 @@ export function ContactsScreen({ openContactId, t }: ContactsScreenProps) {
     [messagesQuery.data]
   );
 
-  const firstPaint = firstPaintOf([contactsQuery, conversationsQuery, messagesQuery]);
+  // The transcript only dates the timeline, which falls back to each
+  // conversation's last activity without it, so a failed or slow transcript
+  // never holds the directory back.
+  const firstPaint = firstPaintOf([contactsQuery, conversationsQuery]);
   if (firstPaint.failed) return <LoadErrorPane onRetry={firstPaint.retry} t={t} />;
   if (firstPaint.loading) return <LoadingPane />;
 

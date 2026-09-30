@@ -16,6 +16,9 @@ import { InboxScreenFrame, type InboxRouteTree } from './InboxScreenFrame';
  */
 const kitThemeCssForShadowRoot = anchorKitThemeOnShadowHost(kitThemeCss);
 
+/** Marks the style node that carries the kit's tokens in a shadow root. */
+export const KIT_THEME_STYLE_ATTRIBUTE = 'data-inbox-kit-theme';
+
 export type InboxScreenDefinition = {
   /** The package's own catalogues, by language code. */
   catalogues: InboxCatalogues;
@@ -43,8 +46,19 @@ export abstract class InboxScreenLifecycle extends ThemeAwareReactLifecycle {
     super(app);
   }
 
+  /**
+   * The shell keeps a screen's shadow root across unmount and mount, and
+   * calls this on every mount; the tokens go in once, into the one style node
+   * they own, rather than one more copy per visit.
+   */
   protected override initializeStyles(container: Element | ShadowRoot): void {
+    const existing = container.querySelector(`style[${KIT_THEME_STYLE_ATTRIBUTE}]`);
+    if (existing !== null) {
+      existing.textContent = kitThemeCssForShadowRoot;
+      return;
+    }
     const style = document.createElement('style');
+    style.setAttribute(KIT_THEME_STYLE_ATTRIBUTE, '');
     style.textContent = kitThemeCssForShadowRoot;
     container.appendChild(style);
   }

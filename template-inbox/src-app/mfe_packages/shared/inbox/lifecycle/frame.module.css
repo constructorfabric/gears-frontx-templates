@@ -1,6 +1,5 @@
 /*
- * The root every inbox screen renders into, inside its shadow root. It takes
- * the place the standalone app's frame had beside the rail: a row the
+ * The root every inbox screen renders into, inside its shadow root: a row the
  * screen's panes sit in, filling the area the shell gives the screen and
  * scrolling nowhere itself, because each pane scrolls on its own. Colours and
  * the typeface are the kit's tokens, which the frame's `data-theme` selects.

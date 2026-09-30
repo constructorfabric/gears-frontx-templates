@@ -14,10 +14,10 @@
  * remounts, and visible to every other inbox screen in the page, the way a
  * backend would keep it. Every factory answers with a copy, so nothing a
  * screen does to a response reaches the store, and every accepted write
- * moves the store's revision. The contacts live there too, though no request
- * here changes them: other screens' mocks (the dashboard's activity rows)
- * point at them by id, and one list in the page keeps those ids in step with
- * the directory.
+ * moves the store's revision. The contacts live there too: a created
+ * conversation joins its contact's own list of conversations, and other
+ * screens' mocks (the dashboard's activity rows) point at them by id, so one
+ * list in the page keeps those ids in step with the directory.
  */
 
 import { BRAND, NO_TEAM_INBOX } from './constants';
@@ -121,7 +121,11 @@ const readCreatedConversation = (body: JsonValue | undefined): CreateConversatio
   return { channelId, contactId, assignee: readString(body, 'assignee') ?? '' };
 };
 
-/** Stores a new, empty conversation with the contact and answers with it. */
+/**
+ * Stores a new, empty conversation with the contact and answers with it. The
+ * contact's own record gains a ref to it, as a backend's join would, so the
+ * contact's page lists the conversation next to the ones the seed gave them.
+ */
 const acceptCreatedConversation = (request: CreateConversationRequest): Conversation => {
   const state = readInboxMockState();
   state.createdConversationCount += 1;
@@ -147,6 +151,11 @@ const acceptCreatedConversation = (request: CreateConversationRequest): Conversa
     pinned: false,
   };
   state.conversations.push(conversation);
+  state.contacts = state.contacts.map((contact) =>
+    contact.id === request.contactId
+      ? { ...contact, conversations: [...contact.conversations, { id: conversation.id }] }
+      : contact
+  );
   bumpInboxMockRevision(state);
   return conversation;
 };

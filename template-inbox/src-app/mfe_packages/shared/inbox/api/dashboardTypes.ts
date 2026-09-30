@@ -1,11 +1,12 @@
 /**
  * Dashboard domain - API response contracts.
  *
- * A sibling of `mailTypes.ts`: its own domain, its own dataset, its own
- * service (`DashboardApiService`). One screen shows one coherent picture, so
- * unlike the mail/inbox split this domain answers through a single endpoint
- * (`getDashboard`) rather than one per section - see `DashboardApiService`'s
- * own doc comment.
+ * A sibling of `types.ts`: its own domain, with its dataset and its service
+ * (`DashboardApiService`) in the dashboard package. It lives in the shared
+ * folder because the shared formatters (`ui/format.ts`) name its activity
+ * kinds and statuses. One screen shows one coherent picture, so this domain
+ * answers through a single endpoint (`getDashboard`) rather than one per
+ * section - see `DashboardApiService`'s own doc comment.
  *
  * Every shape here crosses the mock boundary as JSON, same constraint as
  * `types.ts`: no `Date`, no `Map`, no method on any field. Every number a

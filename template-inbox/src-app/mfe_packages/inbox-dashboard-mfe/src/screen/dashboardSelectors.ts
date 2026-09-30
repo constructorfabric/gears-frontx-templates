@@ -52,6 +52,14 @@ export type DeltaTone = 'success' | 'danger' | 'secondary';
  * direction. A rising "Resolved this week" is good news (`goodWhenPositive`
  * true); a rising "Open conversations" is a growing backlog, so the same
  * positive sign reads as `danger` there instead.
+ *
+ * A known kit gap: in the light theme the kit's `success` (3.43:1) and
+ * `danger` (4.28:1) badge tones stay under the 4.5:1 the design guardrails
+ * ask of text this size, which the kit's own Badge doc records as a design
+ * finding. No compliant variant carries a good or bad tone (`secondary`,
+ * `info` and `accent` clear the floor but say neither), so the tones stay
+ * and the badge text keeps the signed value, which carries the meaning on
+ * its own. The fix belongs in the kit's tokens.
  */
 export const deltaTone = (deltaPercent: number, goodWhenPositive: boolean): DeltaTone => {
   if (deltaPercent === 0) return 'secondary';

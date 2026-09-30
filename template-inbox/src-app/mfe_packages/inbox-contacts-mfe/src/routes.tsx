@@ -13,12 +13,14 @@ import { ContactsScreen } from './screen/ContactsScreen';
  * - `/$contactId` - a person's page, `?screen=contacts;route=r-42` in the
  *   page address.
  *
- * Both render one `ContactsScreen`, from the root route, and the two child
- * routes only name the address. That is what keeps the directory mounted
- * behind a person's page: its filter, search, sort order and table page are
- * still there on the way back, as they were in the standalone app.
+ * Both render one `ContactsScreen`, from a pathless layout route above them,
+ * and the two child routes only name the address. That is what keeps the
+ * directory mounted behind a person's page: its filter, search, sort order
+ * and table page are still there on the way back. An address neither child
+ * matches never reaches the layout, so the not-found page stands alone
+ * rather than under the directory.
  */
-function ContactsRoot() {
+function ContactsLayout() {
   const t = useInboxT();
   const { contactId } = useParams({ strict: false });
   useRouteFocus(contactId ?? '');
@@ -47,10 +49,12 @@ function ContactsNotFound() {
   );
 }
 
-const rootRoute = createRootRoute({ component: ContactsRoot, notFoundComponent: ContactsNotFound });
+const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: ContactsNotFound });
 
-const directoryRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: () => null });
+const layoutRoute = createRoute({ getParentRoute: () => rootRoute, id: 'contacts', component: ContactsLayout });
 
-const contactRoute = createRoute({ getParentRoute: () => rootRoute, path: '$contactId', component: () => null });
+const directoryRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: () => null });
 
-export const contactsRouteTree = rootRoute.addChildren([directoryRoute, contactRoute]);
+const contactRoute = createRoute({ getParentRoute: () => layoutRoute, path: '$contactId', component: () => null });
+
+export const contactsRouteTree = rootRoute.addChildren([layoutRoute.addChildren([directoryRoute, contactRoute])]);

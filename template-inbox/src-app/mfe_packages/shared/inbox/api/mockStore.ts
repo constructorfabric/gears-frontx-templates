@@ -16,7 +16,7 @@
  * which clone on the way out). `revision` counts accepted writes, so a screen
  * whose query cache was filled before another screen wrote knows to drop it
  * (`queries.ts`, `setQueryCacheEpoch`). A page reload starts over from the
- * seed, as a reload of the standalone app did.
+ * seed.
  */
 
 import { contacts as seedContacts, conversations as seedConversations, messages as seedMessages } from './dataset';

@@ -4,10 +4,13 @@
  * Subscribes a screen to one of the host's shared bridge properties
  * (e.g. theme or language) and keeps the returned value in sync:
  *
- * 1. Reads the initial value lazily during the first render, so the first
- *    paint already reflects the host's current property (no extra render
- *    from a mount effect).
+ * 1. Reads the current value during render, so the first paint already
+ *    reflects the host's current property (no extra render from a mount
+ *    effect).
  * 2. Subscribes to subsequent property changes and unsubscribes on unmount.
+ *    `useSyncExternalStore` reads the value once more after subscribing, so
+ *    a change published between the first render and the subscription is
+ *    not lost either.
  *
  * The bridge instance is stable for the component's whole lifetime: the
  * runtime retains one bridge per extension across every mount/unmount cycle
@@ -31,7 +34,7 @@
  * ```
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
 
 /**
@@ -43,20 +46,15 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
  * @returns The current value of the property
  */
 export function useBridgeProperty<T>(bridge: ChildMfeBridge, propertyId: string, fallback: T): T {
-  const [value, setValue] = useState<T>(() => readBridgeProperty(bridge, propertyId, fallback));
-
-  useEffect(() => {
-    return bridge.subscribeToProperty(propertyId, (property) => {
-      setValue(property.value as T);
-    });
-  }, [bridge, propertyId]);
-
-  return value;
-}
-
-function readBridgeProperty<T>(bridge: ChildMfeBridge, propertyId: string, fallback: T): T {
-  const current = bridge.getProperty(propertyId);
+  const subscribe = useCallback(
+    (onChange: () => void) => bridge.subscribeToProperty(propertyId, onChange),
+    [bridge, propertyId]
+  );
+  // The value, not the property object, is the snapshot: the value is what
+  // the host published, and it stays the same reference until it changes.
+  const read = () => bridge.getProperty(propertyId)?.value;
+  const value = useSyncExternalStore(subscribe, read, read);
   // SharedProperty.value is `unknown`; the schema check already happened in
   // the type-system plugin, so the caller's T is the only narrowing left.
-  return current ? (current.value as T) : fallback;
+  return value === undefined ? fallback : (value as T);
 }

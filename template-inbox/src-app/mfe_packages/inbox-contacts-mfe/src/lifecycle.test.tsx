@@ -8,14 +8,19 @@ import {
   FRONTX_SHARED_PROPERTY_THEME,
 } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
-import { InboxScreenLifecycle } from '@inbox-shared/lifecycle/InboxScreenLifecycle';
+import { InboxScreenLifecycle, KIT_THEME_STYLE_ATTRIBUTE } from '@inbox-shared/lifecycle/InboxScreenLifecycle';
 import { INBOX_SCREENS } from '@inbox-shared/navigation/screens';
 import lifecycle, { ContactsLifecycle } from './lifecycle';
 import { t } from './test-support/translate';
 
 const EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.inbox_contacts.screens.contacts.v1';
 
-type Mounted = { shadowRoot: ShadowRoot; screen: ReturnType<typeof within>; setTheme: (theme: string) => void };
+type Mounted = {
+  shadowRoot: ShadowRoot;
+  screen: ReturnType<typeof within>;
+  setTheme: (theme: string) => void;
+  setLanguage: (language: string) => void;
+};
 
 type LifecycleHooks = {
   initializeStyles: (container: ShadowRoot) => void;
@@ -57,6 +62,7 @@ function mountAt(route: string | undefined, composed = true): Mounted {
     shadowRoot,
     screen: within(container),
     setTheme: (theme) => act(() => fixture.setProperty(FRONTX_SHARED_PROPERTY_THEME, theme)),
+    setLanguage: (language) => act(() => fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, language)),
   };
 }
 
@@ -94,6 +100,26 @@ describe('ContactsLifecycle', () => {
     expect(frame?.getAttribute('data-theme')).toBe('dark');
   });
 
+  it('puts the kit tokens into a shadow root once, however often the screen mounts into it', () => {
+    const { shadowRoot } = mountAt(undefined);
+    // The shell keeps the shadow root across unmount and mount and styles it
+    // on every mount.
+    hooks.initializeStyles.call(lifecycle, shadowRoot);
+    hooks.initializeStyles.call(lifecycle, shadowRoot);
+
+    expect(shadowRoot.querySelectorAll(`style[${KIT_THEME_STYLE_ATTRIBUTE}]`)).toHaveLength(1);
+  });
+
+  it('turns the frame and the shadow host right to left for a regional right-to-left language', async () => {
+    const { shadowRoot, screen, setLanguage } = mountAt(undefined);
+    await screen.findByRole('heading', { level: 1, name: t('all_contacts') });
+
+    setLanguage('ar-SA');
+
+    expect(shadowRoot.querySelector('[data-theme]')?.getAttribute('dir')).toBe('rtl');
+    expect((shadowRoot.host as HTMLElement).dir).toBe('rtl');
+  });
+
   it('keeps the portal node inside the shadow root, ahead of the screen', async () => {
     const { shadowRoot, screen } = mountAt(undefined);
     await screen.findByRole('heading', { level: 1, name: t('all_contacts') });
@@ -119,9 +145,12 @@ describe('ContactsLifecycle', () => {
   });
 
   it("answers an address that names no page of the screen with the screen's own not-found", async () => {
-    const { shadowRoot } = mountAt('r-1/extra');
+    const { shadowRoot, screen } = mountAt('r-1/extra');
 
     await waitFor(() => expect(shadowRoot.querySelector('[data-testid="contacts-route-not-found"]')).not.toBeNull());
+    // The not-found page stands alone: no directory, and one screen heading.
+    expect(screen.queryByRole('heading', { level: 1, hidden: true, name: t('all_contacts') })).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 1, hidden: true })).toHaveLength(1);
   });
 
   it('matches the real URL when the shell broadcast no entry address', async () => {

@@ -31,6 +31,11 @@ const KIND_TONE: Record<ActivityKind, 'info' | 'accent' | 'secondary'> = {
   task: 'secondary',
 };
 
+/*
+ * `warning`, `success` and `danger` stay under the guardrails' 4.5:1 text
+ * contrast in the light theme, a kit gap `deltaTone` describes; the label
+ * spells the status out, so the tone is never the only signal.
+ */
 const STATUS_TONE: Record<ActivityStatus, 'info' | 'warning' | 'success' | 'danger'> = {
   open: 'info',
   pending: 'warning',

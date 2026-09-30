@@ -2,9 +2,9 @@
  * Inbox domain - the seeded content, and the only module that holds any.
  *
  * Imported by the mock layer alone (`mockStore.ts` seeds the page's state
- * from it, `mocks.ts` serves it, the dashboard's mocks read the contact ids
- * its activity rows point at); screens and services never import it, so replacing the mocks with a real backend leaves nothing
- * here reachable. Nothing is a fixture file: the dataset is application code
+ * from it, `mocks.ts` serves what the page's state does not hold); screens
+ * and services never import it, so replacing the mocks with a real backend
+ * leaves nothing here reachable. Nothing is a fixture file: the dataset is application code
  * behind the service's own mock plugin, which is what lets mock mode stay a
  * runtime switch rather than a build-time one.
  *
@@ -328,7 +328,7 @@ export const messages: Message[] = [
     conversationId: 'c-9',
     direction: 'inbound',
     kind: 'text',
-    body: 'Chrome 121 on Windows 11.',
+    body: 'The latest desktop browser, on the office laptop.',
     links: [],
     imageUrl: null,
     sentAt: minutesAgo(153),

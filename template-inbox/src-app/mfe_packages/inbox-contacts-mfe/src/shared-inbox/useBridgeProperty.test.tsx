@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_THEME, type ChildMfeBridge } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { describe, expect, it } from 'vitest';
 import { useBridgeProperty } from '@inbox-shared/lifecycle/useBridgeProperty';
@@ -90,5 +90,22 @@ describe('useBridgeProperty', () => {
     for (const { unsubscribe } of fixture.unsubscriptions) {
       expect(unsubscribe).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it('picks up a change published between the first render and the subscription', () => {
+    // The host publishes a new value at the moment the hook subscribes, and
+    // tells no subscriber: nothing but a read after subscribing can see it.
+    let current = 'before';
+    const bridge = {
+      getProperty: (id: string) => ({ id, value: current }),
+      subscribeToProperty: () => {
+        current = 'after';
+        return () => undefined;
+      },
+    } as unknown as ChildMfeBridge;
+
+    const { result } = renderHook(() => useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'fallback'));
+
+    expect(result.current).toBe('after');
   });
 });

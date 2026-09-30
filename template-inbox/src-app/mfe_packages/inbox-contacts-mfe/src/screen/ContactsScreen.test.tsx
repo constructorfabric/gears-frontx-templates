@@ -174,6 +174,36 @@ describe('ContactsScreen', () => {
     expect(navigation.openDirectory).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the directory by address once the page the directory opened is no longer the one shown", () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+    const view = render(<ContactsScreen openContactId={null} t={t} />);
+
+    act(() => {
+      screen.getAllByLabelText(t('view_contact'))[0].click();
+    });
+    const openedId = String(navigation.openContact.mock.calls[0][0]);
+    view.rerender(<ContactsScreen openContactId={openedId} t={t} />);
+    // The browser's own Back to the directory, then its Forward - or any
+    // address - to another person's page: the entry behind that page is not
+    // the directory this screen left.
+    view.rerender(<ContactsScreen openContactId={null} t={t} />);
+    view.rerender(<ContactsScreen openContactId="r-26" t={t} />);
+
+    act(() => {
+      screen.getByLabelText(t('back_to_contacts')).click();
+    });
+    expect(back).not.toHaveBeenCalled();
+    expect(navigation.openDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the directory while the transcript, which only dates the timeline, failed to load', () => {
+    setQueryState('messages', { error: new Error('offline') });
+    render(<ContactsScreen openContactId={null} t={t} />);
+
+    expect(screen.getByText('Grace Park')).toBeTruthy();
+    expect(screen.queryByText(t('load_error_title'))).toBeNull();
+  });
+
   it('narrows the directory by search and by filter, and counts what is left', async () => {
     const user = userEvent.setup();
     render(<ContactsScreen openContactId={null} t={t} />);

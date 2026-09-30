@@ -1,6 +1,7 @@
 {
   "app_error_description": "Something went wrong while showing this screen. Try again, or reload the page to start over.",
   "app_error_title": "This screen stopped working",
+  "document_title": "{section} - Workspace",
   "just_now": "just now",
   "key_combination": "{modifier}+{key}",
   "key_command": "Cmd",
