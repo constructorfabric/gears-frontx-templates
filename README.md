@@ -7,26 +7,43 @@ The FrontX templates, split out of the `gears-frontx` monorepo into their own re
 ```
 template-shell/                 self-contained template: a full FrontX host app, its own toolchain
 template-mfe/                   add-only overlay: MFE example packages composed onto a shell
+template-inbox/                 add-only overlay: four microfrontend screens (contacts, dashboard, chat, mail) on the ui-kit
 template-design-guardrails/     manifest-only overlay: a design-review AI bundle, no runtime screen
 scripts/                        CI guards + the in-monorepo dev loop for developing templates
 ```
 
-Each template directory carries a `frontx-template.json` manifest - that is what makes it a template (ADR-0018: manifest presence, never a `template-*` name guess). `scripts/template-discovery.mjs` is the one place that rule lives; every guard here (`validate-templates.mjs`, `template-pin-drift-check.mjs`, `version-bump-on-change-check.mjs`, ...) discovers templates through it, so a renamed or relocated template, or a fourth template added later, needs no change to any of them.
+Each template directory carries a `frontx-template.json` manifest - that is what makes it a template (ADR-0018: manifest presence, never a `template-*` name guess). `scripts/template-discovery.mjs` is the one place that rule lives; every guard here (`validate-templates.mjs`, `template-pin-drift-check.mjs`, `version-bump-on-change-check.mjs`, ...) discovers templates through it, so a renamed or relocated template, or a fifth template added later, needs no change to any of them.
 
 ## Consuming a template
 
-The FrontX CLI addresses a template here by subtree, not by cloning the whole repo (ADR-0017, subtree addressing):
+The FrontX CLI addresses a template here by subtree, not by cloning the whole repo (ADR-0017, subtree addressing). `frontx install` takes the source-spec; `seed` and `add` then take the name the template's own manifest declares. A self-contained template is seeded into a new directory, an overlay is added to a project that already exists:
 
 ```
-frontx seed shell --source github:constructorfabric/gears-frontx-templates//template-shell@<ref>
-frontx add mfe    --source github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx install github:constructorfabric/gears-frontx-templates//template-shell@<ref>
+frontx seed @gears-frontx/frontx-template-shell ./my-app
+
+frontx install github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx add @gears-frontx/frontx-template-mfe ./my-app
+
+frontx install github:constructorfabric/gears-frontx-templates//template-inbox@<ref>
+frontx add @gears-frontx/frontx-template-inbox ./my-app
 ```
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.
 
+`template-inbox` is applied onto a project seeded from `template-shell`; it contributes these packages under `src-app/mfe_packages/`, each previewed on its own port by the shell's `npm run dev:all` (the shell itself runs on 5173):
+
+| Package | Screen | Address | Port |
+|---|---|---|---|
+| `inbox-contacts-mfe` | Contacts | `/?screen=contacts` | 3010 |
+| `inbox-dashboard-mfe` | Dashboard | `/?screen=dashboard` | 3020 |
+| `inbox-chat-mfe` | Chat | `/?screen=chat` | 3030 |
+| `inbox-mail-mfe` | Mail | `/?screen=mail` | 3040 |
+| `shared/inbox` | the code the four share, bundled into each | - | - |
+
 ## Relationship to the FrontX ecosystem
 
-The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). `template-mfe`'s six overrides into `../template-shell` are the one exception: `template-shell` lives in this same repo, one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.
+The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). The dev harnesses of `template-mfe` and `template-inbox` are the one exception: their overrides point into `../template-shell`, which lives in this same repo one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.
 
 ## Validating locally
 
@@ -80,7 +97,7 @@ cd template-shell && npm run dev
 
 ## CI
 
-- **`main.yml`** - the guards above (`validate:templates`, `policy:template-pin-drift` in registry mode, `policy:template-lockfile-selflink`, `policy:token-format`, `policy:template-mfes-import-boundary`, `policy:guideline-index`, `policy:version-bump-on-change` on pull requests) plus the `template-validate` job (each self-contained template installed and checked standalone; overlays composed onto `template-shell` and checked as a seeded project would see them).
+- **`main.yml`** - the guards above (`validate:templates`, `policy:template-pin-drift` in registry mode, `policy:template-lockfile-selflink`, `policy:token-format`, `policy:template-mfes-import-boundary`, `policy:guideline-index`, `policy:version-bump-on-change` on pull requests) plus two jobs: `template-validate` (each self-contained template installed and checked standalone; overlays composed onto `template-shell` and checked as a seeded project would see them) and `studio-validate` (Studio Validate Artifacts: `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate` over the catalogue's `architecture/` and each template's `<template>/architecture`, after a bootstrap that also validates the installed sdlc kit).
 - **`template-drift.yml`** - checks out `gears-frontx`'s `develop` branch into a sibling path, builds its packages, runs `policy:template-pin-drift` in sibling mode against that checkout (registry mode is what `main.yml` runs instead, with no sibling checkout available there), then runs the same pin-to-local + install + link + build/type-check sequence a developer runs locally. Push/PR to this repo can't see a `gears-frontx` change, so this also runs on a daily schedule and via `workflow_dispatch`.
 - **`publish-packages.yml`** - publishes the six `template-shell/packages/*` workspace subpackages, version-gated, in dependency order. `template-shell` itself is `"private": true` and is never published. Must run after the ecosystem packages a version bump here pins are themselves published on `gears-frontx` - a template publish that races ahead installs nothing until that lands.
 

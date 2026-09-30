@@ -1,0 +1,172 @@
+/**
+ * Dashboard domain - API response contracts.
+ *
+ * A sibling of `types.ts`: its own domain, with its dataset and its service
+ * (`DashboardApiService`) in the dashboard package. It lives in the shared
+ * folder because the shared formatters (`ui/format.ts`) name its activity
+ * kinds and statuses. One screen shows one coherent picture, so this domain
+ * answers through a single endpoint (`getDashboard`) rather than one per
+ * section - see `DashboardApiService`'s own doc comment.
+ *
+ * Every shape here crosses the mock boundary as JSON, same constraint as
+ * `types.ts`: no `Date`, no `Map`, no method on any field. Every number a
+ * screen displays is either a field here or an arithmetic result computed
+ * from one at render - nothing is hardcoded in a component.
+ */
+
+/** What kind of value a KPI card's `series` and `value` are measured in. */
+export type DashboardKpiUnit = 'count' | 'minutes' | 'percent';
+
+/** How a card's headline `value` is derived from its `series`: the latest
+ * point (a live snapshot, e.g. "conversations open right now") or the sum of
+ * every point (a period total, e.g. "resolved this week"). */
+export type DashboardKpiValueMode = 'last' | 'sum';
+
+export type DashboardChartType = 'area' | 'bar' | 'line';
+
+export type DashboardKpiCard = {
+  /** Names the card through the dashboard's catalogue, like its footer stat. */
+  id: string;
+  unit: DashboardKpiUnit;
+  chartType: DashboardChartType;
+  valueMode: DashboardKpiValueMode;
+  /** Oldest to newest, one point per day. */
+  series: number[];
+  /** The same aggregate (last point or sum, per `valueMode`) for the prior
+   * comparable period - what the delta badge is computed against. */
+  previousValue: number;
+  /** Whether a rising value is the good direction. `false` for a metric
+   * where lower is better (open conversations, response time) flips which
+   * delta sign reads as `success` versus `danger`. */
+  goodWhenPositive: boolean;
+  footerValue: number;
+  /** The footer stat's own unit - independent of the card's headline
+   * `unit`, since a count-headline card can still footer a duration (e.g.
+   * "Avg first response"'s "Fastest reply" stays in minutes either way). */
+  footerUnit: 'count' | 'minutes';
+};
+
+/** One day of row 2's stacked bar chart: resolutions split by source. The
+ * day's total is never stored - it is `chat + mail + tasks`, computed at
+ * render (see `resolvedPerDayTotal`), the same number the "Resolved this
+ * week" KPI card sums across the whole week. */
+export type ResolvedPerDayPoint = {
+  /** ISO instant within the day; the chart writes the weekday name. */
+  day: string;
+  chat: number;
+  mail: number;
+  tasks: number;
+};
+
+/** One month of "Records created": how many of each record type this
+ * screen's world creates that month. The card's headline total is never
+ * stored - it is the sum of all three fields across every point, computed
+ * at render (see `recordsCreatedTotal`). */
+export type RecordsCreatedPoint = {
+  /** ISO instant the month starts; the chart writes the month name. */
+  month: string;
+  companies: number;
+  opportunities: number;
+  people: number;
+};
+
+export type NewContactsPoint = {
+  /** ISO instant within the day, as in `ResolvedPerDayPoint`. */
+  day: string;
+  inbound: number;
+  outbound: number;
+};
+
+export type NewContactsSeries = {
+  series: NewContactsPoint[];
+  /** Prior period's combined (inbound + outbound) total, for the hero
+   * card's delta badge. */
+  previousTotal: number;
+};
+
+export type WorkloadMetric = {
+  /** Names the metric through the dashboard's catalogue. */
+  id: string;
+  value: number;
+  max: number;
+};
+
+/** One slice of row 1's "Contacts by stage" donut: a contact lifecycle
+ * stage and how many contacts currently sit in it. Each segment's share of
+ * the ring is computed from `count` at render (see
+ * `contactsByStagePercent`), never stored as its own field. The stage is an
+ * id, not text: its name is the catalogue's (`chart_stage_<id>`), read
+ * through the card's chart config, so the legend, the tooltip and the chart
+ * summary name it the same way in any language. */
+export type ContactStageSegment = {
+  id: string;
+  count: number;
+};
+
+/** One stage of the "Stage funnel" card, oldest (widest) first.
+ * Each stage's share of the funnel is computed relative to the first
+ * stage's own count at render (see `funnelStagePercent`), never stored. Named
+ * by the catalogue (`chart_funnel_<id>`), like a contact stage. */
+export type FunnelStage = {
+  id: string;
+  count: number;
+};
+
+/** One row of the "Conversion by source" horizontal stacked bar:
+ * a lead source and how many of its leads were won versus lost. The card's
+ * headline percent is `won / (won + lost)` across every source, computed at
+ * render (see `conversionWonPercent`), never stored. */
+export type ConversionSource = {
+  /** Names the lead source through the dashboard's catalogue. */
+  id: string;
+  won: number;
+  lost: number;
+};
+
+export type TopAgent = {
+  id: string;
+  name: string;
+  resolvedCount: number;
+};
+
+export type ActivityKind = 'chat' | 'mail' | 'task';
+export type ActivityStatus = 'open' | 'pending' | 'resolved' | 'escalated';
+
+/**
+ * One row of the "Recent activity" table. `contactId` points into the
+ * existing inbox dataset's `contacts` collection (see `dataset.ts`) rather
+ * than duplicating a name/company pair here - the same continuity reasoning
+ * `Conversation.contactId` already follows.
+ */
+export type ActivityItem = {
+  id: string;
+  contactId: string;
+  kind: ActivityKind;
+  status: ActivityStatus;
+  /** The `TopAgent.id` of the agent who owns the row. */
+  ownerAgentId: string;
+  /** ISO instant, resolved from the same load-time-anchor convention every
+   * other dataset in this app uses. */
+  occurredAt: string;
+};
+
+export type GetDashboardResponse = {
+  kpis: DashboardKpiCard[];
+  resolvedPerDay: ResolvedPerDayPoint[];
+  newContacts: NewContactsSeries;
+  /** The Summary card's small trend line - a 7-point volume trend distinct
+   * from `resolvedPerDay` (this one tracks total activity, not just
+   * resolutions). */
+  summaryTrend: number[];
+  /** Row 3's "Records created" line chart - 12 months, oldest first. */
+  recordsCreated: RecordsCreatedPoint[];
+  /** Row 1's "Contacts by stage" donut - five contact lifecycle stages. */
+  contactsByStage: ContactStageSegment[];
+  workload: WorkloadMetric[];
+  /** The "Stage funnel" card, oldest (widest) stage first. */
+  stageFunnel: FunnelStage[];
+  /** The "Conversion by source" card. */
+  conversionBySource: ConversionSource[];
+  topAgents: TopAgent[];
+  activity: ActivityItem[];
+};

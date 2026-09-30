@@ -16,5 +16,6 @@
 /template-shell/              @gs-layer @itechmeat @tscbmstubp
 /template-mfe/                @gs-layer @itechmeat @tscbmstubp
 /template-design-guardrails/  @gs-layer @itechmeat @tscbmstubp
+/template-inbox/              @gs-layer @itechmeat @tscbmstubp
 /scripts/                     @gs-layer @itechmeat @tscbmstubp
 /.github/                     @gs-layer @itechmeat @tscbmstubp

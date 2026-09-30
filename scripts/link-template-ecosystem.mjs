@@ -26,7 +26,7 @@
  * tree.
  *
  * A `npm install --no-save --no-package-lock <paths>` would do the linking too,
- * but npm rebuilds the whole ideal tree for it — pruning unrelated packages and
+ * but npm rebuilds the whole ideal tree for it - pruning unrelated packages and
  * replacing the template's `file:.` self-link with a packed snapshot of
  * `dist-lib`, which breaks the template's own rebuild-on-change loop.
  *
@@ -496,7 +496,7 @@ export function linkEcosystemPackages({
         ok: false,
         reason: 'build-missing',
         message:
-          `Cannot link: packages/${name} is not built — ${path.join(`packages/${name}`, entryPoint)} is missing.\n` +
+          `Cannot link: packages/${name} is not built - ${path.join(`packages/${name}`, entryPoint)} is missing.\n` +
           'Run `npm run build:packages` first.',
       };
     }

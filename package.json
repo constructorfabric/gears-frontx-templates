@@ -1,7 +1,7 @@
 {
   "name": "gears-frontx-templates",
   "version": "0.1.0",
-  "description": "FrontX templates (template-shell, template-mfe, template-design-guardrails) consumed by the FrontX CLI via github:constructorfabric/gears-frontx-templates//<template>@<ref> - see README.md.",
+  "description": "FrontX templates (template-shell, template-mfe, template-design-guardrails, template-inbox) consumed by the FrontX CLI via github:constructorfabric/gears-frontx-templates//<template>@<ref> - see README.md.",
   "private": true,
   "type": "module",
   "engines": {
