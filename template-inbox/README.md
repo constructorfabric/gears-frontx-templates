@@ -17,7 +17,7 @@ All paths are under `src-app/mfe_packages/`. The shell runs on `http://localhost
 
 ## Data and mocks
 
-Contacts, dashboard and chat read `InboxApiService` (`/api/inbox`) from the page-wide inbox mock store in `shared/inbox/api/mockStore.ts`, so a reply posted in chat shows in the contact's activity. The dashboard's overview service (`/api/dashboard`) and the mail service (`/api/mail`, with its own page-wide mock state) live in their packages. Each package switches its mocks on with `mock({ enabledByDefault: true })` in `src/init.ts`; `false` sends every request to a real backend with the endpoints and screens unchanged. The AI bundle's `inbox-data-contract` guideline has the endpoints, the cache epoch and the backend switch; `inbox-chrome-contract` has what the shell owns and what each screen keeps.
+Contacts, dashboard and chat read `InboxApiService` (`/api/inbox`) from the page-wide inbox mock store in `shared/inbox/api/mockStore.ts`, so a reply posted in chat shows on the contact's page, with its conversation's latest message and time. The dashboard's overview service (`/api/dashboard`) and the mail service (`/api/mail`, with its own page-wide mock state) live in their packages. Each package switches its mocks on with `mock({ enabledByDefault: true })` in `src/init.ts`; `false` sends every request to a real backend with the endpoints and screens unchanged. The AI bundle's `inbox-data-contract` guideline has the endpoints, the cache epoch and the backend switch; `inbox-chrome-contract` has what the shell owns and what each screen keeps.
 
 ## Running it in this repository
 

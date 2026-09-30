@@ -52,6 +52,7 @@ Bump a key's version suffix whenever the shape of what it holds changes: a state
 - a read under a revision other than the cache's drops every settled answer and asks again;
 - a request still running from before the revision moved answers whoever waits for it, is not kept, and is not joined by a later mount;
 - a package's own write moves its cache past its own revision, keeping other answers, only when the revision moved by exactly one from the epoch the write started under; any other move is treated as a write from another screen.
+- every request the cache makes passes `staleTime: 0` to the descriptor's `fetch`, so it reaches the service past the page-wide fetch cache the shell retains (`frontx:fetch-cache`), which every package shares and none of these invalidations reach.
 
 A screen gates its first paint on the queries it needs with `firstPaintOf` from `shared/inbox/ui/QueryStates.tsx` (`LoadErrorPane` on failure, `LoadingPane` while pending).
 
