@@ -16,7 +16,8 @@
  * three without a component knowing about it.
  *
  * The package also ships a shared fetch cache (`retainSharedFetchCache`, read
- * through `getOrFetch`). It is not used here, for two behaviours this app
+ * through `getOrFetch`). It is not relied on here (every request below asks
+ * it for a fresh answer, `staleTime: 0`), for two behaviours this app
  * relies on: it aborts a pending request the moment its last consumer
  * detaches, which StrictMode's mount-unmount-mount turns into an AbortError
  * for the remount, and its entries go stale after a fixed time instead of
@@ -150,7 +151,13 @@ const subscribe = <TData>(
       consumers: 0,
       settled: false,
       startedAt,
-      promise: descriptor.fetch({ signal: controller.signal }).then(
+      // `staleTime: 0`: under the shell, `@gears-frontx/api` answers a GET
+      // from the page-wide fetch cache the host retains (`frontx:fetch-cache`,
+      // 30 s by default), which every screen package shares and none of this
+      // cache's invalidations reach. A request this cache decided to make
+      // must reach the service, or a screen mounted after another screen's
+      // write would read the answer from before it.
+      promise: descriptor.fetch({ signal: controller.signal, staleTime: 0 }).then(
         (data) => {
           created.settled = true;
           // Answered after the data behind it changed: whoever waited gets

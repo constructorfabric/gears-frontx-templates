@@ -26,12 +26,12 @@ const deferred = <T,>(): Deferred<T> => {
 
 /** A descriptor whose every fetch is recorded and settled by the test. */
 const controlledEndpoint = <T,>(key: string) => {
-  const calls: { signal: AbortSignal | undefined; response: Deferred<T> }[] = [];
+  const calls: { signal: AbortSignal | undefined; staleTime: number | undefined; response: Deferred<T> }[] = [];
   const descriptor: EndpointDescriptor<T> = {
     key: ['/api', 'GET', key],
     fetch: (options) => {
       const response = deferred<T>();
-      calls.push({ signal: options?.signal, response });
+      calls.push({ signal: options?.signal, staleTime: options?.staleTime, response });
       return response.promise;
     },
   };
@@ -70,6 +70,9 @@ describe('useApiQuery', () => {
     const second = mountQuery(descriptor);
 
     expect(calls).toHaveLength(1);
+    // Past the page-wide fetch cache the shell retains: that cache is shared
+    // by every screen package and outlives another screen's write.
+    expect(calls[0].staleTime).toBe(0);
     calls[0].response.resolve('answer');
     await flush();
 
