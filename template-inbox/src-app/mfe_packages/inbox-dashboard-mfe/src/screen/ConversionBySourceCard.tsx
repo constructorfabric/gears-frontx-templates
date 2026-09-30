@@ -16,6 +16,7 @@ import { chartSummary } from './chartSummary';
 import { conversionChartConfig } from './dashboardChartConfig';
 import { conversionWonPercent, formatCount, formatPercent } from './dashboardSelectors';
 import styles from './dashboard.module.css';
+import { leadSourceLabel } from './datasetLabels';
 
 export type ConversionBySourceCardProps = {
   sources: ConversionSource[];
@@ -33,6 +34,9 @@ const CHART_MARGIN = { top: 8, right: 16, bottom: 0, left: 0 };
  */
 export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardProps) {
   const wonPercent = conversionWonPercent(sources);
+  // The bars' category axis reads a row's `label`, named here in the
+  // screen's language.
+  const rows = sources.map((source) => ({ ...source, label: leadSourceLabel(source.id, t) }));
 
   return (
     <Card className={styles.conversionCard}>
@@ -50,7 +54,7 @@ export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardPro
           role="img"
           aria-label={chartSummary(
             t('conversion_by_source'),
-            sources.map((source) => ({
+            rows.map((source) => ({
               label: source.label,
               value: t('chart_won_lost', { won: formatCount(source.won), lost: formatCount(source.lost) }),
             })),
@@ -58,7 +62,7 @@ export function ConversionBySourceCard({ sources, t }: ConversionBySourceCardPro
           )}
           initialDimension={CHART_DIMENSION}
         >
-          <BarChart data={sources} layout="vertical" margin={CHART_MARGIN}>
+          <BarChart data={rows} layout="vertical" margin={CHART_MARGIN}>
             <CartesianGrid horizontal={false} vertical strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
               type="number"

@@ -22,11 +22,11 @@ import type { ComposerTab } from './Composer';
 import type { SortOrder } from './conversationOrdering';
 
 /**
- * The fields a triaging agent changes from the thread. The service's write
- * surface is one endpoint - posting a reply or a note - so everything else
- * the details panel offers moves a value a real backend would own; it is
- * applied over the fetched conversation rather than pretending to have been
- * saved.
+ * The fields a triaging agent changes from the thread. The service writes
+ * only messages (a reply or a note) and new conversations, so everything
+ * else the details panel offers moves a value a real backend would own; it
+ * is applied over the fetched conversation rather than pretending to have
+ * been saved.
  */
 export type ConversationPatch = Partial<
   Pick<Conversation, 'assignee' | 'priority' | 'snoozed' | 'starred' | 'status' | 'tags' | 'teamInbox'>

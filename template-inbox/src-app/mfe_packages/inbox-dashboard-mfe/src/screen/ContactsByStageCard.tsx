@@ -70,7 +70,10 @@ export function ContactsByStageCard({ segments, t }: ContactsByStageCardProps) {
             <li className={styles.stageLegendRow} key={segment.id}>
               <span
                 className={styles.stageLegendDot}
-                style={{ background: `var(--color-${segment.id})` }}
+                // The legend sits beside the chart container, outside the
+                // scope its `--color-<id>` variables are defined in, so it
+                // takes the resolved colour from the same config.
+                style={{ background: chartConfig[segment.id]?.color }}
                 aria-hidden="true"
               />
               <span className={styles.stageLegendLabel}>{seriesLabel(chartConfig, segment.id)}</span>

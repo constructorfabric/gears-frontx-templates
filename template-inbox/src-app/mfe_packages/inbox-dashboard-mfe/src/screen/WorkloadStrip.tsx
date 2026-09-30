@@ -5,6 +5,7 @@ import type { WorkloadMetric } from '@inbox-shared/api/dashboardTypes';
 import type { Translate } from '@inbox-shared/i18n/translate';
 import { formatCount, workloadPercent } from './dashboardSelectors';
 import styles from './dashboard.module.css';
+import { workloadLabel } from './datasetLabels';
 
 export type WorkloadStripProps = {
   workload: WorkloadMetric[];
@@ -33,6 +34,7 @@ export function WorkloadStrip({ workload, t }: WorkloadStripProps) {
         {workload.map((metric) => {
           const Icon = ICON_BY_METRIC_ID[metric.id] ?? FolderKanbanIcon;
           const percent = workloadPercent(metric);
+          const label = workloadLabel(metric.id, t);
           return (
             <div className={styles.workloadItem} key={metric.id}>
               <span className={styles.workloadIconChip} aria-hidden="true">
@@ -40,12 +42,12 @@ export function WorkloadStrip({ workload, t }: WorkloadStripProps) {
               </span>
               <div className={styles.workloadItemBody}>
                 <div className={styles.workloadItemHead}>
-                  <span className={styles.workloadLabel}>{metric.label}</span>
+                  <span className={styles.workloadLabel}>{label}</span>
                   <span className={styles.workloadValue}>
                     {t('workload_value', { value: formatCount(metric.value), max: formatCount(metric.max) })}
                   </span>
                 </div>
-                <Progress value={percent} aria-label={metric.label} className={styles.workloadProgress} />
+                <Progress value={percent} aria-label={label} className={styles.workloadProgress} />
               </div>
             </div>
           );

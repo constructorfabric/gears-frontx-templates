@@ -1,5 +1,3 @@
-import { vi } from 'vitest';
-
 export type MatchMediaStub = {
   /** Changes which queries match, and fires `change` on every list whose answer changed. */
   setMatching: (matching: readonly string[]) => void;
@@ -7,18 +5,18 @@ export type MatchMediaStub = {
 
 /**
  * A media-query engine that matches exactly the queries a test names, for
- * the layouts the default stub in `setup.ts` (nothing matches, the
+ * the layouts the default stub in `test-support/setup.ts` (nothing matches, the
  * desktop layout) never reaches. Pass the query constants the app reads
  * (`COMPACT_QUERY`, `SINGLE_PANE_QUERY`) rather than
  * their text. Unlike the default stub its lists deliver `change`, so a test
  * can cross a breakpoint or switch the system scheme after the first render.
- * `setup.ts` restores the default after each test.
+ * The shared setup restores the default after each test.
  */
 export function stubMatchMedia(initial: readonly string[]): MatchMediaStub {
   let matching = new Set(initial);
   const lists: { query: string; matched: boolean; listeners: Set<(event: MediaQueryListEvent) => void> }[] = [];
 
-  vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+  const engine = (query: string): MediaQueryList => {
     const entry = { query, matched: matching.has(query), listeners: new Set<(event: MediaQueryListEvent) => void>() };
     lists.push(entry);
     const list: MediaQueryList = {
@@ -38,7 +36,8 @@ export function stubMatchMedia(initial: readonly string[]): MatchMediaStub {
       dispatchEvent: () => false,
     };
     return list;
-  });
+  };
+  Object.defineProperty(window, 'matchMedia', { writable: true, configurable: true, value: engine });
 
   return {
     setMatching: (next) => {

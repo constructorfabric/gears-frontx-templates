@@ -7,23 +7,19 @@ import {
   dataTableColumnHelper,
   Input,
 } from '@gears-frontx/ui-kit';
-import type { ActivityItem, ActivityKind, ActivityStatus, TopAgent } from '@inbox-shared/api/dashboardTypes';
-import type { Contact } from '@inbox-shared/api/types';
+import type { ActivityKind, ActivityStatus } from '@inbox-shared/api/dashboardTypes';
 import type { Translate } from '@inbox-shared/i18n/translate';
 import { labelOf, longRelativeTime, orDash } from '@inbox-shared/ui/format';
 import { IdentityAvatar } from '@inbox-shared/ui/IdentityAvatar';
 import { PresenceAvatar } from '@inbox-shared/ui/PresenceAvatar';
+import type { ActivityRow } from './dashboardSelectors';
 import styles from './dashboard.module.css';
 
 export type ActivityTableProps = {
-  activity: ActivityItem[];
-  contacts: Contact[];
-  /** The roster `ActivityItem.ownerAgentId` points into. */
-  agents: TopAgent[];
+  /** The rows `resolvedActivity` keeps, the same list the summary counts. */
+  rows: ActivityRow[];
   t: Translate;
 };
-
-type ActivityRow = ActivityItem & { contact: Contact; ownerName: string };
 
 const KIND_TONE: Record<ActivityKind, 'info' | 'accent' | 'secondary'> = {
   chat: 'info',
@@ -59,22 +55,7 @@ const STATUS_TONE: Record<ActivityStatus, 'info' | 'warning' | 'success' | 'dang
  * nothing - the app's convention for a control with no action behind it
  * (the rail's profile entries, the thread header's create-ticket button).
  */
-export function ActivityTable({ activity, contacts, agents, t }: ActivityTableProps) {
-  const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
-  const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent.name])), [agents]);
-
-  // A row whose contact or owner the client does not hold is left out rather
-  // than rendered half-empty.
-  const rows = useMemo<ActivityRow[]>(
-    () =>
-      activity.flatMap((item) => {
-        const contact = contactById.get(item.contactId);
-        const ownerName = agentNameById.get(item.ownerAgentId);
-        return contact && ownerName !== undefined ? [{ ...item, contact, ownerName }] : [];
-      }),
-    [activity, contactById, agentNameById]
-  );
-
+export function ActivityTable({ rows, t }: ActivityTableProps) {
   const columns = useMemo(() => {
     const column = dataTableColumnHelper<ActivityRow>();
     return column.columns([

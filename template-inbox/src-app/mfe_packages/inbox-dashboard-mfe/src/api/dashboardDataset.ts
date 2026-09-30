@@ -67,7 +67,6 @@ const RESOLVED_PER_DAY_TOTAL = RESOLVED_PER_DAY_CHAT.map(
 export const kpiCards: DashboardKpiCard[] = [
   {
     id: 'open-conversations',
-    label: 'Open conversations',
     unit: 'count',
     chartType: 'area',
     valueMode: 'last',
@@ -76,13 +75,11 @@ export const kpiCards: DashboardKpiCard[] = [
     series: [34, 32, 33, 29, 27, 26, 24],
     previousValue: 33,
     goodWhenPositive: false,
-    footerLabel: 'Unassigned',
     footerValue: 3,
     footerUnit: 'count',
   },
   {
     id: 'resolved-this-week',
-    label: 'Resolved this week',
     unit: 'count',
     chartType: 'bar',
     valueMode: 'sum',
@@ -91,13 +88,11 @@ export const kpiCards: DashboardKpiCard[] = [
     // row's badges are not four identical greens.
     previousValue: 165,
     goodWhenPositive: true,
-    footerLabel: 'Reopened',
     footerValue: 2,
     footerUnit: 'count',
   },
   {
     id: 'avg-first-response',
-    label: 'Avg first response',
     unit: 'minutes',
     chartType: 'line',
     valueMode: 'last',
@@ -106,7 +101,6 @@ export const kpiCards: DashboardKpiCard[] = [
     series: [14, 13, 15, 12, 11, 10, 9],
     previousValue: 13,
     goodWhenPositive: false,
-    footerLabel: 'Fastest reply',
     footerValue: 4,
     footerUnit: 'minutes',
   },
@@ -204,18 +198,18 @@ export const stageFunnel: FunnelStage[] = [
  * never stored as its own field.
  */
 export const conversionBySource: ConversionSource[] = [
-  { id: 'inbound', label: 'Inbound', won: 45, lost: 15 },
-  { id: 'outbound', label: 'Outbound', won: 28, lost: 32 },
-  { id: 'referral', label: 'Referral', won: 32, lost: 8 },
-  { id: 'event', label: 'Event', won: 20, lost: 20 },
-  { id: 'partner', label: 'Partner', won: 15, lost: 5 },
+  { id: 'inbound', won: 45, lost: 15 },
+  { id: 'outbound', won: 28, lost: 32 },
+  { id: 'referral', won: 32, lost: 8 },
+  { id: 'event', won: 20, lost: 20 },
+  { id: 'partner', won: 15, lost: 5 },
 ];
 
 export const workload: WorkloadMetric[] = [
-  { id: 'support-load', label: 'Support load', value: 34, max: 50 },
-  { id: 'dev-backlog', label: 'Dev backlog', value: 18, max: 40 },
-  { id: 'crm-tasks', label: 'CRM tasks', value: 26, max: 35 },
-  { id: 'qa-reviews', label: 'QA reviews', value: 12, max: 20 },
+  { id: 'support-load', value: 34, max: 50 },
+  { id: 'dev-backlog', value: 18, max: 40 },
+  { id: 'crm-tasks', value: 26, max: 35 },
+  { id: 'qa-reviews', value: 12, max: 20 },
 ];
 
 /**

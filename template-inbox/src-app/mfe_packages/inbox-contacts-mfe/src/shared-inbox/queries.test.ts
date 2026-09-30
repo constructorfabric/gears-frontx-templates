@@ -463,6 +463,57 @@ describe('the cache epoch', () => {
     expect(read.calls).toHaveLength(2);
   });
 
+  it('drops the cache after its own write when another screen wrote after a read already moved it', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const read = controlledEndpoint<string>('moved-mid-write');
+    const response = deferred<string>();
+    const endpoint: MutationDescriptor<string, string> = {
+      key: ['/api', 'POST', 'slow-write'],
+      fetch: () => response.promise,
+    };
+    const results: MutationResult<string>[] = [];
+    render(createElement(MutationProbe<string, string>, { options: { endpoint }, onResult: (result) => results.push(result) }));
+    act(() => results[results.length - 1].mutate('x'));
+
+    // This write lands in the store, a read moves the cache onto it and keeps
+    // its answer, then another screen writes before this write's answer arrives.
+    epoch = 1;
+    const reader = mountQuery(read.descriptor);
+    read.calls[0].response.resolve('between the writes');
+    await flush();
+    reader.view.unmount();
+    epoch = 2;
+    response.resolve('written');
+    await flush();
+
+    const again = mountQuery(read.descriptor);
+    expect(again.latest()).toMatchObject({ data: undefined, isLoading: true });
+    expect(read.calls).toHaveLength(2);
+  });
+
+  it('starts its own request after the epoch moved instead of joining one from before the write', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const read = controlledEndpoint<string>('joined');
+    const early = mountQuery(read.descriptor);
+
+    epoch = 1;
+    const late = mountQuery(read.descriptor);
+    expect(read.calls).toHaveLength(2);
+    read.calls[1].response.resolve('after the write');
+    read.calls[0].response.resolve('before the write');
+    await flush();
+    expect(late.latest()).toMatchObject({ data: 'after the write', isLoading: false });
+    expect(early.latest()).toMatchObject({ data: 'before the write', isLoading: false });
+    early.view.unmount();
+    late.view.unmount();
+
+    const again = mountQuery(read.descriptor);
+    expect(read.calls).toHaveLength(2);
+    expect(again.latest()).toMatchObject({ data: 'after the write', isLoading: false });
+  });
+
   it('answers a request the epoch moved under, but does not keep the answer', async () => {
     let epoch = 0;
     setQueryCacheEpoch(() => epoch);

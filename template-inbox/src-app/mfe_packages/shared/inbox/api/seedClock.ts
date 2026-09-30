@@ -12,8 +12,28 @@
  * screens' locale, never the data's.
  */
 
-/** Resolved once per page load; every offset below is measured back from it. */
-export const ANCHOR_MS = Date.now();
+/**
+ * The registry key the anchor lives under. Each screen package bundles its
+ * own copy of this module and evaluates it at its own load time, so a
+ * module-level `Date.now()` would give every screen a different "now"; the
+ * first package to load writes the anchor on `globalThis`, as the mock store
+ * does, and every later one reads it.
+ */
+export const SEED_ANCHOR_KEY = Symbol.for('@gears-frontx/frontx-template-inbox/seed-anchor/v1');
+
+type AnchorRealm = typeof globalThis & { [SEED_ANCHOR_KEY]?: number };
+
+const readAnchor = (): number => {
+  const page = globalThis as AnchorRealm;
+  const existing = page[SEED_ANCHOR_KEY];
+  if (typeof existing === 'number') return existing;
+  const created = Date.now();
+  page[SEED_ANCHOR_KEY] = created;
+  return created;
+};
+
+/** Resolved once per page load, whichever package loads first; every offset below is measured back from it. */
+export const ANCHOR_MS = readAnchor();
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;

@@ -1,7 +1,7 @@
 import { act, createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { stubMatchMedia } from '../test-support/matchMedia';
+import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY, useMediaQuery } from '@inbox-shared/ui/useMediaQuery';
 
 function Probe({ query }: { query: string }) {

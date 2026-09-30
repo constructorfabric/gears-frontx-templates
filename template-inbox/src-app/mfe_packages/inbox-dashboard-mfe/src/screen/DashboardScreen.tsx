@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useApiQuery } from '@inbox-shared/api/queries';
 import { getInboxApi } from '@inbox-shared/api/registry';
 import { getDashboardApi } from '../api/registerDashboardApi';
@@ -14,6 +15,7 @@ import { StageFunnelCard } from './StageFunnelCard';
 import { SummaryCard } from './SummaryCard';
 import { TopAgentsCard } from './TopAgentsCard';
 import { WorkloadStrip } from './WorkloadStrip';
+import { resolvedActivity } from './dashboardSelectors';
 import sharedStyles from '@inbox-shared/ui/shared.module.css';
 import styles from './dashboard.module.css';
 
@@ -41,6 +43,11 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
   const firstPaint = firstPaintOf([dashboardQuery, contactsQuery]);
   const data = dashboardQuery.data;
   const contacts = contactsQuery.data?.contacts;
+  // One list for the summary counts and the table, so they never disagree.
+  const activity = useMemo(
+    () => (data === undefined || contacts === undefined ? [] : resolvedActivity(data.activity, contacts, data.topAgents)),
+    [data, contacts]
+  );
 
   // The same gate and the same panes as the other three screens: each pane
   // fills the section on its own (`emptyPane` is `flex: 1`), so the rail's
@@ -59,7 +66,7 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
         <div className={styles.rowTwo}>
           <ResolvedPerDayCard data={data.resolvedPerDay} t={t} />
           <NewContactsCard newContacts={data.newContacts} t={t} />
-          <SummaryCard activity={data.activity} trend={data.summaryTrend} t={t} />
+          <SummaryCard activity={activity} trend={data.summaryTrend} t={t} />
         </div>
 
         <div className={styles.rowThree}>
@@ -74,7 +81,7 @@ export function DashboardScreen({ t }: DashboardScreenProps) {
           <ConversionBySourceCard sources={data.conversionBySource} t={t} />
         </div>
 
-        <ActivityTable activity={data.activity} contacts={contacts} agents={data.topAgents} t={t} />
+        <ActivityTable rows={activity} t={t} />
       </div>
     </div>
   );

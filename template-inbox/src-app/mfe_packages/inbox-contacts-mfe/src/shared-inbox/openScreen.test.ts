@@ -5,44 +5,13 @@ import {
   type DomainKey,
   type Entry,
   type ExtensionToken,
-  type Location,
-  type NavigationHistory,
 } from '@gears-frontx/routing';
 import { ROUTE_PARAM_NAME } from '@gears-frontx/routing-tanstack';
 import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { openScreen } from '@inbox-shared/navigation/openScreen';
 import { INBOX_SCREENS } from '@inbox-shared/navigation/screens';
-
-/**
- * A `NavigationHistory` that records every write and answers `location` from
- * the last one, the part of template-shell's `fakeNavigation`
- * (`src-app/app/mfe/__tests__/fake-navigation.ts`) `openScreen` touches: it
- * reads the location and pushes once, and subscribes to nothing.
- */
-function recordingHistory(initial: string): NavigationHistory & { writes: string[] } {
-  let path = initial;
-  const writes: string[] = [];
-  const location = (): Location => {
-    const url = new URL(path, 'http://shell.test');
-    return { path: url.pathname, search: url.search.replace(/^\?/, ''), hash: url.hash.replace(/^#/, ''), position: writes.length };
-  };
-  return {
-    writes,
-    get location() {
-      return location();
-    },
-    subscribe: () => () => undefined,
-    push: (next) => {
-      writes.push(next);
-      path = next;
-    },
-    replace: (next) => {
-      path = next;
-    },
-    go: () => undefined,
-  };
-}
+import { recordingHistory } from '@inbox-shared/test-support/recordingHistory';
 
 const CHAT_EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.inbox_chat.screens.chat.v1';
 

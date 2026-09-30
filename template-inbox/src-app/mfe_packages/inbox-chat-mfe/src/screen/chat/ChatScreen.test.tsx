@@ -16,7 +16,7 @@ import {
 import { channels, contacts, conversations, messages } from '@inbox-shared/api/dataset';
 import type { Conversation, PostMessageRequest } from '@inbox-shared/api/types';
 import { messageDayLabel, messageTimeOfDay } from '@inbox-shared/ui/format';
-import { stubMatchMedia } from '../../test-support/matchMedia';
+import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
 import { COMPACT_QUERY, SINGLE_PANE_QUERY } from '@inbox-shared/ui/useMediaQuery';
 import { t } from '../../test-support/translate';
 
@@ -350,10 +350,10 @@ describe('ChatScreen', () => {
     act(() => {
       screen.getByLabelText(t('new_chat')).click();
     });
-    // Base UI's Combobox popup needs real layout (ResizeObserver-driven
+    // The kit's Combobox popup needs real layout (ResizeObserver-driven
     // positioning) to open, which jsdom does not provide - the filtered
-    // contact list itself is exercised in the live app instead (see the
-    // final report), not in this suite. What IS reliably testable here:
+    // contact list itself is exercised in a browser, not in this suite.
+    // What IS reliably testable here:
     // the dialog opens with focus already on the contact field, and Start
     // stays gated with nothing picked yet.
     // The dialog moves focus once it has opened, not in the click's own task.
@@ -702,6 +702,23 @@ describe('ChatScreen', () => {
     await user.click(snooze);
     expect(snooze.getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByRole('combobox', { name: t('status') }).textContent).toContain(t('label_open'));
+  });
+
+  it('unsnoozes a conversation it closes, and offers no snooze on a closed one', async () => {
+    const user = userEvent.setup();
+    render(<ChatScreen t={t} />);
+    await user.click(screen.getByRole('button', { name: t('snooze_conversation') }));
+    act(() => {
+      screen.getByText(t('close')).click();
+    });
+    act(() => {
+      screen.getAllByText('Design feedback on dashboard')[0].click();
+    });
+
+    const snooze = screen.getByRole('button', { name: t('snooze_conversation') });
+    expect(snooze.getAttribute('aria-pressed')).toBe('false');
+    expect(snooze.hasAttribute('disabled') || snooze.getAttribute('aria-disabled') === 'true').toBe(true);
+    expect(screen.getByRole('combobox', { name: t('status') }).textContent).toContain(t('label_closed'));
   });
 
   it('changes the priority and the team inbox from the details panel selects', async () => {

@@ -36,7 +36,8 @@
  * everything - but only past its own: a write another screen made meanwhile
  * still drops the lot. A request that was running when the epoch moved
  * answers whoever waited for it and is not kept, since it may predate the
- * write.
+ * write; a mount after the move starts a request of its own instead of
+ * joining it.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -60,6 +61,8 @@ type CacheEntry = {
   controller: AbortController;
   consumers: number;
   settled: boolean;
+  /** The epoch the request started under; a mount under another epoch does not attach to it. */
+  startedAt: number;
   /** The answer, once the request succeeded, so a later mount can paint it without waiting a tick. */
   resolved?: { data: unknown };
 };
@@ -96,15 +99,25 @@ const syncEpoch = (): void => {
 };
 
 /**
- * Accounts for a write this cache made itself, before its `invalidates` run.
- * One revision past the cache's epoch is that write alone, and the cache
- * moves past it keeping every other answer; more than one means another
- * screen wrote too, and everything settled is dropped as for any foreign
- * write.
+ * The epoch a write starts under, with the cache brought onto it first, so
+ * `adoptOwnWrite` can later tell this write's revision from anyone else's.
  */
-const adoptOwnWrite = (): void => {
-  if (readEpoch() === cacheEpoch + 1) {
-    cacheEpoch += 1;
+const beginOwnWrite = (): number => {
+  syncEpoch();
+  return cacheEpoch;
+};
+
+/**
+ * Accounts for a write this cache made itself, before its `invalidates` run.
+ * Exactly one revision past the epoch the write started under, with the cache
+ * still on that epoch, is that write alone: the cache moves past it keeping
+ * every other answer. Anything else - another screen wrote too, or a read
+ * meanwhile already moved the cache - drops everything settled as for any
+ * foreign write.
+ */
+const adoptOwnWrite = (startedAt: number): void => {
+  if (readEpoch() === startedAt + 1 && cacheEpoch === startedAt) {
+    cacheEpoch = startedAt + 1;
     return;
   }
   syncEpoch();
@@ -118,6 +131,9 @@ const adoptOwnWrite = (): void => {
  * replaying the same failure forever. A pending request nobody is waiting for
  * any more is aborted and evicted - but only after the current task, since
  * StrictMode's remount attaches again synchronously and must find it running.
+ * A request still running from before the epoch moved is not joined: it may
+ * answer with data from before a write, so the mount starts its own request
+ * and the older one answers only whoever already waits for it.
  */
 const subscribe = <TData>(
   descriptor: EndpointDescriptor<TData>
@@ -126,13 +142,14 @@ const subscribe = <TData>(
   const cacheKey = cacheKeyOf(descriptor.key);
   let entry = cache.get(cacheKey);
 
-  if (entry === undefined) {
+  if (entry === undefined || (!entry.settled && entry.startedAt !== cacheEpoch)) {
     const controller = new AbortController();
-    const startedAt = readEpoch();
+    const startedAt = cacheEpoch;
     const created: CacheEntry = {
       controller,
       consumers: 0,
       settled: false,
+      startedAt,
       promise: descriptor.fetch({ signal: controller.signal }).then(
         (data) => {
           created.settled = true;
@@ -328,13 +345,14 @@ export function useApiMutation<TData, TVariables>(options: {
     const call = latestCall.current;
     setPendingCount((count) => count + 1);
     setError(null);
+    const startedAt = beginOwnWrite();
 
     latestOptions.current.endpoint.fetch(variables).then(
       (data) => {
         // This write moved the epoch and `invalidates` forgets what it
         // changed, so the rest of the cache stays valid - unless another
         // screen wrote meanwhile, which `adoptOwnWrite` tells apart.
-        adoptOwnWrite();
+        adoptOwnWrite(startedAt);
         for (const read of latestOptions.current.invalidates ?? []) invalidateQuery(read.key);
         // A throwing afterSuccess must neither leave the call pending nor
         // escape as an unhandled rejection: this handler is the promise's

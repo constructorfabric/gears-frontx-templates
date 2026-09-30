@@ -25,8 +25,8 @@ export type DashboardKpiValueMode = 'last' | 'sum';
 export type DashboardChartType = 'area' | 'bar' | 'line';
 
 export type DashboardKpiCard = {
+  /** Names the card through the dashboard's catalogue, like its footer stat. */
   id: string;
-  label: string;
   unit: DashboardKpiUnit;
   chartType: DashboardChartType;
   valueMode: DashboardKpiValueMode;
@@ -39,7 +39,6 @@ export type DashboardKpiCard = {
    * where lower is better (open conversations, response time) flips which
    * delta sign reads as `success` versus `danger`. */
   goodWhenPositive: boolean;
-  footerLabel: string;
   footerValue: number;
   /** The footer stat's own unit - independent of the card's headline
    * `unit`, since a count-headline card can still footer a duration (e.g.
@@ -86,8 +85,8 @@ export type NewContactsSeries = {
 };
 
 export type WorkloadMetric = {
+  /** Names the metric through the dashboard's catalogue. */
   id: string;
-  label: string;
   value: number;
   max: number;
 };
@@ -118,8 +117,8 @@ export type FunnelStage = {
  * headline percent is `won / (won + lost)` across every source, computed at
  * render (see `conversionWonPercent`), never stored. */
 export type ConversionSource = {
+  /** Names the lead source through the dashboard's catalogue. */
   id: string;
-  label: string;
   won: number;
   lost: number;
 };

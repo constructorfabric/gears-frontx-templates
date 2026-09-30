@@ -20,6 +20,7 @@ import { firstPaintOf, LoadErrorPane, LoadingPane } from '@inbox-shared/ui/Query
 import { useAutoSelect } from '@inbox-shared/ui/useAutoSelect';
 import { SINGLE_PANE_QUERY, useMediaQuery } from '@inbox-shared/ui/useMediaQuery';
 import { useSidebarToggle } from '@inbox-shared/ui/useSidebarToggle';
+import { uniqueSuffix } from '@inbox-shared/ui/uniqueSuffix';
 import { ConversationList } from './ConversationList';
 import { ConversationThread } from './ConversationThread';
 import { countOpen, selectConversations } from './conversationOrdering';
@@ -218,7 +219,7 @@ export function ChatScreen({ t }: ChatScreenProps) {
    * real `Channel` row from here on, not a stub.
    */
   const createChannel = (name: string) => {
-    const channel = { id: `channel-${crypto.randomUUID()}`, label: name, icon: 'hash' as const, itemCount: 0, openCount: 0 };
+    const channel = { id: `channel-${uniqueSuffix()}`, label: name, icon: 'hash' as const, itemCount: 0, openCount: 0 };
     chatActions.addChannel(channel);
     setSelectedId(null);
     autoSelect.arm(channel.id);
@@ -326,7 +327,9 @@ export function ChatScreen({ t }: ChatScreenProps) {
               onToggleSpam={toggleSpam}
               isSpam={isSpam}
               onCloseConversation={() => {
-                chatActions.patchConversation(selected.id, { status: 'closed' });
+                // A closed conversation is no longer snoozed: the flag would
+                // otherwise keep the alarm pressed and reopen it on a click.
+                chatActions.patchConversation(selected.id, { status: 'closed', snoozed: false });
                 setSelectedId(null);
               }}
               onBack={isSinglePane ? () => setSelectedId(null) : null}

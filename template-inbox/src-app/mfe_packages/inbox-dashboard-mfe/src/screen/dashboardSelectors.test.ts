@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { DashboardKpiCard } from '@inbox-shared/api/dashboardTypes';
+import type { ActivityItem, DashboardKpiCard, TopAgent } from '@inbox-shared/api/dashboardTypes';
+import type { Contact } from '@inbox-shared/api/types';
 import {
   contactsByStagePercent,
   conversionWonPercent,
@@ -17,6 +18,7 @@ import {
   newContactsTotal,
   percentChange,
   recordsCreatedTotal,
+  resolvedActivity,
   resolvedPerDayTotal,
   resolvedPerDayWeekTotal,
   workloadPercent,
@@ -24,14 +26,12 @@ import {
 
 const baseKpi: DashboardKpiCard = {
   id: 'test',
-  label: 'Test metric',
   unit: 'count',
   chartType: 'bar',
   valueMode: 'last',
   series: [10, 12, 11, 14],
   previousValue: 10,
   goodWhenPositive: true,
-  footerLabel: 'Footer',
   footerValue: 1,
   footerUnit: 'count',
 };
@@ -228,16 +228,16 @@ describe('conversionWonPercent', () => {
 
 describe('workloadPercent', () => {
   it('computes a fill percentage from value over max', () => {
-    expect(workloadPercent({ id: 'w', label: 'W', value: 34, max: 50 })).toBe(68);
+    expect(workloadPercent({ id: 'w', value: 34, max: 50 })).toBe(68);
   });
 
   it('never divides by zero', () => {
-    expect(workloadPercent({ id: 'w', label: 'W', value: 0, max: 0 })).toBe(0);
+    expect(workloadPercent({ id: 'w', value: 0, max: 0 })).toBe(0);
   });
 
   it('holds an over-capacity or negative value inside the bar', () => {
-    expect(workloadPercent({ id: 'w', label: 'W', value: 60, max: 50 })).toBe(100);
-    expect(workloadPercent({ id: 'w', label: 'W', value: -5, max: 50 })).toBe(0);
+    expect(workloadPercent({ id: 'w', value: 60, max: 50 })).toBe(100);
+    expect(workloadPercent({ id: 'w', value: -5, max: 50 })).toBe(0);
   });
 });
 
@@ -254,7 +254,10 @@ describe('funnelSegmentGeometry label fit', () => {
       labelOf: (stage, percent) => `${stage.id} · ${percent}`,
     });
 
-    expect(wide.textLength === undefined || wide.textLength <= 300).toBe(true);
+    // The wide band narrows to the sliver below it, but at the label's height
+    // it is still about half its top edge wide: the label keeps its room.
+    expect(wide.textLength === undefined || wide.textLength > 0).toBe(true);
+    expect(wide.fontSize).toBeGreaterThan(8);
     // 1% of 300 is 3 units, less than the label padding on either side.
     expect(sliver.textLength).toBe(0);
   });
@@ -265,5 +268,29 @@ describe('kpiValue on an empty series', () => {
     expect(
       kpiValue({ ...baseKpi, series: [] })
     ).toBe(0);
+  });
+});
+
+describe('resolvedActivity', () => {
+  it('keeps only the rows whose contact and owner the client holds, for the summary and the table alike', () => {
+    const contact = { id: 'c-1', name: 'Ada' } as unknown as Contact;
+    const agents = [{ id: 'a-1', name: 'Agent One', resolvedCount: 1 }] as unknown as TopAgent[];
+    const item = (id: string, contactId: string, ownerAgentId: string): ActivityItem => ({
+      id,
+      contactId,
+      ownerAgentId,
+      kind: 'chat',
+      status: 'open',
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const rows = resolvedActivity(
+      [item('kept', 'c-1', 'a-1'), item('no-contact', 'c-404', 'a-1'), item('no-owner', 'c-1', 'a-404')],
+      [contact],
+      agents
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(['kept']);
+    expect(rows[0]).toMatchObject({ contact, ownerName: 'Agent One' });
   });
 });

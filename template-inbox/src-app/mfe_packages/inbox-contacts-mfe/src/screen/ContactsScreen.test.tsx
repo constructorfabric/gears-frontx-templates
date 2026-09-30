@@ -9,7 +9,7 @@ import {
   resetApiMocks,
   setQueryState,
 } from '../test-support/apiMocks';
-import { stubMatchMedia } from '../test-support/matchMedia';
+import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
 import { COMPACT_QUERY } from '@inbox-shared/ui/useMediaQuery';
 import { act } from 'react';
 import { contacts, conversations } from '@inbox-shared/api/dataset';

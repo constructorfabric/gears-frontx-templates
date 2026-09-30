@@ -1,5 +1,5 @@
 /*
- * The dashboard screen's own layout: a four-row composition on top of the
+ * The dashboard screen's own layout: a stack of rows on top of the
  * kit's Card/Badge/Progress/DataTable/chart chrome as-is. Every colour,
  * space and radius is a kit token; the literal values left are what the
  * kit has no token for - the big-number type scale, two icon sizes, and the
@@ -83,7 +83,7 @@
  * `ChartContainer`'s own root carries a fixed `aspect-ratio: 16 / 9` (see
  * the `chart` component's own CSS), which would otherwise force a sparkline
  * exactly this wide to grow far taller than the 120px (7.5rem) box it sits in. This
- * override - the same load-order-independent reasoning `src/shared/shared.module.css`
+ * override - the same load-order-independent reasoning `shared/inbox/ui/shared.module.css`
  * uses throughout - is what makes an explicit size win regardless of which
  * stylesheet the bundler places first.
  */
@@ -143,13 +143,13 @@
 .stageLegendCount {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: end;
 }
 
 .stageLegendPercent {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: end;
 }
 
 .kpiCardFooter {
@@ -527,7 +527,7 @@
 }
 
 .activitySearch {
-  margin-left: auto;
+  margin-inline-start: auto;
   width: 14rem; /* 224px */
 }
 
@@ -632,7 +632,7 @@
   }
 
   .activitySearch {
-    margin-left: 0;
+    margin-inline-start: 0;
     width: 100%;
   }
 }

@@ -5,7 +5,7 @@ import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { InboxScreenContext } from '@inbox-shared/lifecycle/screenContext';
 import { INBOX_SCREENS } from '@inbox-shared/navigation/screens';
-import { recordingHistory } from '../../test-support/recordingHistory';
+import { recordingHistory } from '@inbox-shared/test-support/recordingHistory';
 import { t } from '../../test-support/translate';
 
 const page = vi.hoisted(() => ({ history: undefined as ReturnType<typeof recordingHistory> | undefined }));

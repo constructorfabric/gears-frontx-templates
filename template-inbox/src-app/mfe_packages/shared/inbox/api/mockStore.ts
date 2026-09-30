@@ -23,7 +23,7 @@ import { contacts as seedContacts, conversations as seedConversations, messages 
 import type { Contact, Conversation, Message } from './types';
 
 /** The registry key every inbox package shares. Bump the suffix when the state's shape changes. */
-export const INBOX_MOCK_STATE_KEY = Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v1');
+export const INBOX_MOCK_STATE_KEY = Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v2');
 
 /**
  * Names the seed this build carries. The packages ship together from one

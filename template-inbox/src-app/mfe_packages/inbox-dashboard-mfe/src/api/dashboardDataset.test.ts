@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { LAST_7_DAYS } from './dashboardDataset';
+import { conversionBySource, kpiCards, LAST_7_DAYS, workload } from './dashboardDataset';
+import catalogue from '../i18n/en.json';
+import {
+  KPI_FOOTER_LABEL_KEYS,
+  KPI_LABEL_KEYS,
+  LEAD_SOURCE_LABEL_KEYS,
+  WORKLOAD_LABEL_KEYS,
+} from '../screen/datasetLabels';
 import { ANCHOR_MS } from '@inbox-shared/api/seedClock';
 
 describe('dashboard seed dataset', () => {
@@ -17,5 +24,18 @@ describe('dashboard seed dataset', () => {
       const expected = new Date(previous.getFullYear(), previous.getMonth(), previous.getDate() + 1).getTime();
       expect(days[index]).toBe(expected);
     }
+  });
+
+  it('names every KPI card, workload metric and lead source through the catalogue', () => {
+    const named = (keys: Readonly<Record<string, string>>, id: string) => {
+      const key = keys[id];
+      return key !== undefined && key in catalogue;
+    };
+    for (const kpi of kpiCards) {
+      expect(named(KPI_LABEL_KEYS, kpi.id), kpi.id).toBe(true);
+      expect(named(KPI_FOOTER_LABEL_KEYS, kpi.id), kpi.id).toBe(true);
+    }
+    for (const metric of workload) expect(named(WORKLOAD_LABEL_KEYS, metric.id), metric.id).toBe(true);
+    for (const source of conversionBySource) expect(named(LEAD_SOURCE_LABEL_KEYS, source.id), source.id).toBe(true);
   });
 });

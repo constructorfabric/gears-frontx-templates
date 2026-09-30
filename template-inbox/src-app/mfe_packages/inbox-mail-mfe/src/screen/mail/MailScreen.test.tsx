@@ -15,7 +15,7 @@ import {
   setQueryState,
   succeedMutation,
 } from '../../test-support/apiMocks';
-import { stubMatchMedia } from '../../test-support/matchMedia';
+import { stubMatchMedia } from '@inbox-shared/test-support/matchMedia';
 import { t } from '../../test-support/translate';
 
 vi.mock('../../api/registerMailApi', () => ({ getMailApi: () => endpointTags }));

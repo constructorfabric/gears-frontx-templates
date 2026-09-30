@@ -433,6 +433,7 @@ export function ConversationThread({
             iconOnly
             aria-label={t('snooze_conversation')}
             pressed={conversation.snoozed}
+            disabled={conversation.status === 'closed'}
             onPressedChange={onToggleSnooze}
           >
             <AlarmClockIcon />

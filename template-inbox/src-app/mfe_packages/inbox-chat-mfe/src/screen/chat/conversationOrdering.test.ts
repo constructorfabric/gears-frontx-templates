@@ -63,12 +63,13 @@ describe('selectConversations', () => {
     expect(select(CHANNEL_SUPPORT, '', 'last-activity')[0].id).toBe('c-1');
     expect(select(CHANNEL_SUPPORT, '', 'oldest')[0].id).toBe('c-1');
 
-    expect(select(CHANNEL_SALES, '', 'priority')[0].priority).toBe('high');
-
-    const byUnread = select(CHANNEL_SALES, '', 'unread');
-    expect(byUnread[0].unreadCount).toBe(2);
-    // The refund thread carries two unread messages, ahead of the license one
-    // - and is pinned, so it leads even under the other sort orders too.
-    expect(byUnread[0].id).toBe('c-2');
+    // Priority and unread are asserted on Support's unpinned rows, whose
+    // priorities (medium, low, none) and unread counts (1, 0, 1) all differ
+    // from their recency order: a broken comparator reorders them.
+    const unpinned = (order: 'priority' | 'unread') =>
+      select(CHANNEL_SUPPORT, '', order).filter((conversation) => !conversation.pinned);
+    expect(unpinned('priority').map((conversation) => conversation.priority)).toEqual(['medium', 'low', 'none']);
+    expect(unpinned('unread').map((conversation) => conversation.unreadCount)).toEqual([1, 1, 0]);
+    expect(unpinned('unread')[2]?.id).toBe('c-4');
   });
 });

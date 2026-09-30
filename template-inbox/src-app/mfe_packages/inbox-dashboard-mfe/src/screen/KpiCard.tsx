@@ -16,6 +16,7 @@ import {
 import type { Translate } from '@inbox-shared/i18n/translate';
 import { AreaSparkline, BarSparkline, LineSparkline } from './Sparkline';
 import styles from './dashboard.module.css';
+import { kpiFooterLabel, kpiLabel } from './datasetLabels';
 
 const CHART_CONFIG_BY_ID: Record<string, (t: Translate) => ChartConfig> = {
   'open-conversations': openConversationsChartConfig,
@@ -52,7 +53,7 @@ export function KpiCard({ kpi, t }: KpiCardProps) {
             <span className={styles.kpiValue}>{formatKpiValue(kpi, value)}</span>
             <Badge variant={tone}>{formatDeltaPercent(delta)}</Badge>
           </div>
-          <span className={styles.kpiLabel}>{kpi.label}</span>
+          <span className={styles.kpiLabel}>{kpiLabel(kpi.id, t)}</span>
         </div>
         {/* The value, the delta and the label above already say what the
             sparkline draws, so it is decoration to assistive technology. */}
@@ -69,7 +70,7 @@ export function KpiCard({ kpi, t }: KpiCardProps) {
         </div>
       </CardContent>
       <CardFooter className={styles.kpiCardFooter}>
-        <span className={styles.kpiFooterLabel}>{kpi.footerLabel}</span>
+        <span className={styles.kpiFooterLabel}>{kpiFooterLabel(kpi.id, t)}</span>
         <span className={styles.kpiFooterValue}>{formatKpiFooterValue(kpi)}</span>
       </CardFooter>
     </Card>

@@ -10,6 +10,7 @@
  */
 
 import type {
+  ActivityItem,
   ContactStageSegment,
   ConversionSource,
   DashboardKpiCard,
@@ -17,9 +18,34 @@ import type {
   NewContactsSeries,
   RecordsCreatedPoint,
   ResolvedPerDayPoint,
+  TopAgent,
   WorkloadMetric,
 } from '@inbox-shared/api/dashboardTypes';
+import type { Contact } from '@inbox-shared/api/types';
 import { locale } from '@inbox-shared/i18n/translate';
+
+/** An activity row with the contact and the owner it names resolved. */
+export type ActivityRow = ActivityItem & { contact: Contact; ownerName: string };
+
+/**
+ * The activity rows the screen shows: a row whose contact or owner the
+ * client does not hold is left out rather than rendered half-empty. The
+ * summary counts and the activity table both read this one list, so the
+ * counts never include a row the table leaves out.
+ */
+export const resolvedActivity = (
+  activity: readonly ActivityItem[],
+  contacts: readonly Contact[],
+  agents: readonly TopAgent[]
+): ActivityRow[] => {
+  const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
+  const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
+  return activity.flatMap((item) => {
+    const contact = contactById.get(item.contactId);
+    const ownerName = agentNameById.get(item.ownerAgentId);
+    return contact && ownerName !== undefined ? [{ ...item, contact, ownerName }] : [];
+  });
+};
 
 export const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 
@@ -184,9 +210,9 @@ const FUNNEL_LABEL_PADDING = 10;
  *
  * Each segment's label also gets its own fit here: a shrunk `fontSize` (down
  * to `FUNNEL_LABEL_MIN_FONT_SIZE`) when the label's estimated natural width
- * would overflow the narrower of its top/bottom edges, plus a `textLength`
- * clamp to that edge's real inner width for when even the minimum size would
- * still overflow - so a label never wraps or spills past its own segment. A
+ * would overflow the segment's width where the label sits - halfway down,
+ * the mean of its top and bottom edges - plus a `textLength` clamp to that
+ * inner width for when even the minimum size would still overflow - so a label never wraps or spills past its own segment. A
  * segment too thin to hold any label gets `textLength: 0`, which the card
  * reads as "no label".
  */
@@ -220,7 +246,7 @@ export const funnelSegmentGeometry = (
       .join(' ');
 
     const text = labelOf(stage, formatPercent(funnelStagePercent(stage, stages)));
-    const availableWidth = Math.max(0, Math.min(topWidth, bottomWidth) - FUNNEL_LABEL_PADDING * 2);
+    const availableWidth = Math.max(0, (topWidth + bottomWidth) / 2 - FUNNEL_LABEL_PADDING * 2);
     const naturalWidth = text.length * FUNNEL_LABEL_FONT_SIZE * FUNNEL_LABEL_CHAR_WIDTH_RATIO;
     const fontSize =
       naturalWidth <= availableWidth
