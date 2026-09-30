@@ -40,7 +40,7 @@ find "$COMPOSED/src-app/mfe_packages" -not -path '*/node_modules/*' -name packag
 cd "$COMPOSED" && npm install && npm run dev:all
 ```
 
-The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010 and the dashboard remote on 3020. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
+The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010, the dashboard remote on 3020 and the chat remote on 3030. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
 
 The former standalone application runs beside it for side-by-side checks: `npm run dev:reference` in this directory.
 
@@ -48,10 +48,10 @@ The former standalone application runs beside it for side-by-side checks: `npm r
 
 In the shell menu the screens take the orders 100 (contacts), 200 (dashboard), 300 (chat) and 400 (mail); only screens that have landed as packages appear there. The others are listed with the address the reference application gives them.
 
-- **Inbox** (`#/chat` in the reference application) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel.
 - **Mail** (`#/mail` in the reference application) - mailboxes, an all-mail and unread list with instant search, and a reading pane with collapsible history and a reply composer.
 - **Contacts** (`inbox-contacts-mfe`, `/?screen=contacts`) - a filterable, sortable directory and a contact page at an address you can reload or share (`/?screen=contacts;route=<id>`).
 - **Dashboard** (`inbox-dashboard-mfe`, `/?screen=dashboard`) - KPI cards, charts with text alternatives, team workload, a stage funnel and a sortable, paginated recent-activity table whose rows name the directory's contacts.
+- **Chat** (`inbox-chat-mfe`, `/?screen=chat`) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel. Its "View contact" opens the person's page in the contacts screen in the chat's place (`/?screen=contacts;route=<id>`), and Back returns to the chat with the same channel, conversation and drafts; outside a shell domain the button is not offered.
 
 ## Data and mocks
 

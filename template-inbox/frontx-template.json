@@ -2,12 +2,13 @@
   "schemaVersion": "1.0",
   "name": "@gears-frontx/frontx-template-inbox",
   "version": "0.2.0-alpha.0",
-  "description": "Contributes a workspace product to a repository that already has an application shell: two microfrontend screens (contacts and a metrics dashboard) built from @gears-frontx/ui-kit, each with its own Module Federation build, route tree inside the shell's screen domain, UI strings, and mocked @gears-frontx/api services that share one mock dataset across the screens. Apply this onto template-shell to start a contacts or metrics product; the screens appear in the shell's menu without further wiring.",
+  "description": "Contributes a workspace product to a repository that already has an application shell: three microfrontend screens (contacts, a metrics dashboard and a chat inbox) built from @gears-frontx/ui-kit, each with its own Module Federation build, route tree inside the shell's screen domain, UI strings, and mocked @gears-frontx/api services that share one mock dataset across the screens. Apply this onto template-shell to start a helpdesk, contacts or metrics product; the screens appear in the shell's menu without further wiring.",
   "ownershipBoundaries": {
     "exclusiveSubtrees": [
       "src-app/mfe_packages/shared/inbox/",
       "src-app/mfe_packages/inbox-contacts-mfe/",
       "src-app/mfe_packages/inbox-dashboard-mfe/",
+      "src-app/mfe_packages/inbox-chat-mfe/",
       ".frontx/ai/@gears-frontx/frontx-template-inbox/"
     ],
     "sharedFiles": []

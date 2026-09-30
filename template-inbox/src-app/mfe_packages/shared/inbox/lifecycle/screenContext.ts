@@ -36,6 +36,13 @@ export const useInboxT = (): Translate => useInboxScreenContext().t;
 export const useInboxBridge = (): ChildMfeBridge => useInboxScreenContext().bridge;
 
 /**
+ * The bridge of the frame the caller renders in, or `undefined` outside a
+ * frame (a component test rendering one screen alone), for a screen that
+ * offers what needs the bridge only when there is one.
+ */
+export const useOptionalInboxBridge = (): ChildMfeBridge | undefined => useContext(InboxScreenContext)?.bridge;
+
+/**
  * The node a portalling kit component takes as its `container`, or
  * `undefined` outside a frame (a component test rendering one component
  * alone), where the kit's default target is the only one there is.

@@ -1,8 +1,10 @@
 /*
  * The pieces more than one screen draws: the pane chrome (headers, side
- * columns), the list row's text lines, the details field rows, and the
- * avatar presence badge. A class only one screen uses lives in that screen's
- * own module instead, and no screen imports another screen's module. Every
+ * columns, lists, the detail pane), the list row, the thread and composer
+ * frames (the chat's, and the mail screen's once it lands, which draws the
+ * same ones), the details field rows, and the avatar presence badge. A class
+ * only one screen uses lives in that screen's own module instead, and no
+ * screen imports another screen's module. Every
  * colour, size and space step is a kit token from
  * `@gears-frontx/ui-kit/theme.css`, except where a comment names the gap.
  */
@@ -130,7 +132,42 @@
   font-variant-numeric: tabular-nums;
 }
 
+.paneRow {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
 
+/* --- The conversation list pane --- */
+/*
+ * 22rem when there is room; narrower when the thread beside it would
+ * otherwise drop under its minimum (see `.detailPane`). Between the
+ * single-pane and the compact widths the list takes what the screen's area
+ * leaves beside a 24rem thread; the folder column never takes from it
+ * there, as it opens as a sheet over the screen (`SideColumn`).
+ */
+.listPane {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 22rem;
+  min-width: 0;
+  min-height: 0;
+  border-right: var(--border-width) solid var(--border);
+}
+
+.listBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
 
 .rowLine {
   display: flex;
@@ -171,7 +208,211 @@
   width: auto;
 }
 
+/*
+ * Conversation row density and type scale. The rows sit a step tighter
+ * than the kit's own Item/ItemGroup defaults on every axis (padding, row
+ * gap, title/preview sizes) - none of the kit's discrete size steps (xs/sm/
+ * default) land on these exact numbers, so the values are set directly
+ * rather than picked from the space/text scale. Both selectors use two
+ * classes so they outrank the kit's own single-class rules regardless of
+ * which stylesheet the bundler places first (same reasoning as the
+ * `.rowLine .lineTitle` fix above).
+ */
+.listBody .conversationRow {
+  padding: 0.625rem; /* 10px: no space step between --space-2 and --space-3 */
+}
 
+/*
+ * Active-row treatment: background alone (the kit's own `variant="muted"`)
+ * reads as barely-there once a dozen rows share the same list, so the
+ * selected row also gets a real border - the same `--border-strong` idiom
+ * the kit's Toggle already uses for its pressed state. Two classes
+ * on the element plus an ancestor (`.listBody` for the conversation/mail
+ * rows, `.sidebarBody` for the channel/mailbox rows below) outrank the
+ * kit's single-class `.variantMuted` rule (which sets `border-color:
+ * transparent`) regardless of stylesheet load order, same reasoning as
+ * `.rowLine .lineTitle` above. One selector for every row kind - the
+ * same token, not just a similar-looking value, wherever "selected" shows
+ * up in these screens.
+ */
+.listBody .conversationRow.rowSelected,
+.sidebarBody .folderItem.rowSelected {
+  border-color: var(--border-strong);
+}
+
+.listBody .conversationGroup {
+  gap: var(--space-1); /* 4px row-to-row gap */
+}
+
+.rowLine .rowTitleText {
+  font-size: var(--text-body-size);
+  font-weight: 600;
+}
+
+.rowLine .rowPreviewText {
+  font-size: var(--text-meta-size); /* 12px, matches the kit's meta step */
+  line-height: var(--text-meta-line-height);
+}
+
+
+.pinIcon {
+  flex: none;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  color: var(--muted-foreground);
+}
+
+/* --- The detail pane: thread plus the customer panel --- */
+.detailPane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Beside the list the thread or reading pane never gets narrower than
+ * 24rem, the minimum the breakpoints in `useMediaQuery.ts` are built on,
+ * and the list gives way instead. Not in the single-pane layout (up to
+ * 40rem, `SINGLE_PANE_QUERY`), where the pane is alone and takes just the
+ * width there is.
+ */
+@media not all and (max-width: 40rem) {
+  .detailPane {
+    min-width: 24rem;
+  }
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* The header below lays itself out by the pane's own width, not the
+     viewport's: the pane is narrow both in the single-pane layout and
+     beside the list with the details panel open. */
+  container-type: inline-size;
+}
+
+.threadHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: var(--border-width) solid var(--border);
+}
+
+.threadTitles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.threadSubject {
+  margin: 0;
+  font-size: var(--text-heading-2-size);
+  font-weight: var(--text-heading-2-weight);
+  line-height: var(--text-heading-2-line-height);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.threadSubtitle {
+  font-size: var(--text-meta-size);
+  color: var(--muted-foreground);
+}
+
+.threadActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/*
+ * A pane too narrow for the title and the actions on one line puts the
+ * actions on a line of their own under the title. Without it the actions,
+ * which never shrink, take the whole line: the title is squeezed to a
+ * zero-width box and the last buttons end up past the viewport edge. The
+ * title then takes what the back button and the avatar leave (a zero basis,
+ * so it never pushes itself onto a line of its own) and truncates with an
+ * ellipsis. 32rem is about what the chat header's back button, avatar, a
+ * title of a few words and its seven actions need side by side; the chat
+ * pane beside the list and the details panel at 1440px is wider than that
+ * and keeps one line.
+ */
+@container (max-width: 32rem) {
+  .threadHeader {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+
+  .threadHeader > .threadTitles {
+    flex: 1 1 0;
+  }
+
+  .threadHeader > .spacer {
+    display: none;
+  }
+
+  .threadHeader > .threadActions {
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+/*
+ * `box-sizing: border-box` is load-bearing, not tidiness. This class lands on
+ * the kit's `MessageScroller` root, which sizes itself `width: 100%` /
+ * `height: 100%`, and the kit deliberately ships no preflight reset - so the
+ * padding added here piles on top of that 100% instead of fitting inside it.
+ * Without the border-box the scroller renders `--space-4` * 2 wider than
+ * `.thread`, whose `overflow` is visible, and the end-aligned avatars - which
+ * sit flush against the message row's right edge - spill out over the details
+ * panel. Same per-part fix the kit makes on its own full-width padded classes
+ * (see sidebar.module.css / tabs.module.css).
+ */
+.transcript {
+  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4);
+}
+
+/* --- The composer --- */
+.composer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: var(--border-width) solid var(--border);
+}
+
+.composerBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.composerToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.composerHint {
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-line-height);
+  color: var(--muted-foreground);
+}
 
 .contactCard {
   display: flex;
@@ -219,6 +460,14 @@
   gap: var(--space-1);
 }
 
+/*
+ * Applied by the screen, not by a breakpoint: below the single-pane width one
+ * of the list and the thread is shown at a time, and which one depends on
+ * whether a conversation is open - state CSS cannot see.
+ */
+.singlePaneHidden {
+  display: none;
+}
 
 .emptyPane {
   display: flex;
@@ -228,6 +477,13 @@
   padding: var(--space-6);
 }
 
+/* The single-pane width (`SINGLE_PANE_QUERY`): the list, shown alone,
+ * fills the mount area. */
+@media (max-width: 40rem) {
+  .listPane {
+    flex-grow: 1;
+  }
+}
 
 
 /* The placeholder a pane shows until its data arrives (`LoadingPane`). */
