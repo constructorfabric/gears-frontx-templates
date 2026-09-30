@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "ES2021.Intl", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "stripInternal": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "alwaysStrict": true,
+    "noImplicitThis": true,
+    "baseUrl": ".",
+    "paths": {
+      "@frontx-test-utils/*": ["../../__test-utils__/*"],
+      "@inbox-shared/*": ["../shared/inbox/*"],
+      "@gears-frontx/ui-kit": ["./node_modules/@gears-frontx/ui-kit"],
+      "@gears-frontx/ui-kit/*": ["./node_modules/@gears-frontx/ui-kit/*"],
+      "lucide-react": ["./node_modules/lucide-react"]
+    }
+  },
+  "include": ["src", "../shared/inbox"],
+  "exclude": ["node_modules", "dist"]
+}

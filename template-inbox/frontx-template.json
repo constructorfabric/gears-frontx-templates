@@ -6,6 +6,7 @@
   "ownershipBoundaries": {
     "exclusiveSubtrees": [
       "src-app/mfe_packages/shared/inbox/",
+      "src-app/mfe_packages/inbox-contacts-mfe/",
       ".frontx/ai/@gears-frontx/frontx-template-inbox/"
     ],
     "sharedFiles": []
