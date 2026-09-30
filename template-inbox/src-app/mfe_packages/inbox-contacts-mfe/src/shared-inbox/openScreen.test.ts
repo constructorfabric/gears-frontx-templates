@@ -56,6 +56,17 @@ describe('openScreen', () => {
     expect(parsed.entries).toEqual([entry('screen', INBOX_SCREENS.contacts, 'r-1'), entry('screen.chat.side', 'details')]);
   });
 
+  it('carries an encoded route segment through the address unchanged, slash and question mark included', () => {
+    const history = recordingHistory(`/?screen=${INBOX_SCREENS.chat}`);
+    const route = encodeURIComponent('team/a?b');
+
+    const pushed = openScreen(chatBridge(true), { screen: INBOX_SCREENS.contacts, route }, history) ?? '';
+    const url = new URL(pushed, 'http://shell.test');
+    const parsed = parseGrammar({ shellSubroute: url.pathname, search: url.search.replace(/^\?/, ''), hash: undefined });
+
+    expect(parsed.entries).toEqual([entry('screen', INBOX_SCREENS.contacts, route)]);
+  });
+
   it("opens the target's root when no route is named", () => {
     const history = recordingHistory(`/?screen=${INBOX_SCREENS.chat}`);
 

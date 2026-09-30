@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MailIcon } from 'lucide-react';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@gears-frontx/ui-kit';
 import { useApiMutation, useApiQuery } from '@inbox-shared/api/queries';
@@ -29,7 +29,8 @@ export type MailScreenProps = {
  * here is fetched per mailbox or per mail; the mock API answers with the
  * whole collection, same as the chat domain, and `mailSelectors.ts` is what
  * narrows it. A reply and a composed mail go out through the service's one
- * write, which files them under Sent.
+ * write, which files them under Sent; a reply holds only its own mail's Send
+ * while it is out.
  */
 export function MailScreen({ t }: MailScreenProps) {
   const service = getMailApi();
@@ -50,6 +51,19 @@ export function MailScreen({ t }: MailScreenProps) {
   // way the chat folds a posted reply over its transcript: the write
   // invalidates the list, so the next mount reads it back from the service.
   const [sentMails, setSentMails] = useState<readonly Mail[]>([]);
+  // The mails a reply is out for. One write sends replies and composed mail
+  // alike, so its pending state says nothing about the mail on screen: a
+  // composed mail or a reply to another mail in flight leaves this one's
+  // Send free. The ref is what the handler checks, so a second Send in the
+  // same tick as the first is refused before a render could disable it; the
+  // state is what the reading pane renders from.
+  const replyingNow = useRef(new Set<string>());
+  const [replying, setReplying] = useState<ReadonlySet<string>>(() => new Set());
+  const settleReply = (request: SendMailRequest) => {
+    if (request.inReplyTo === null) return;
+    replyingNow.current.delete(request.inReplyTo);
+    setReplying(new Set(replyingNow.current));
+  };
 
   const sendMail = useApiMutation<SendMailResponse, SendMailRequest>({
     endpoint: service.sendMail,
@@ -59,7 +73,11 @@ export function MailScreen({ t }: MailScreenProps) {
     afterSuccess: (_response, request) => {
       if (request.inReplyTo !== null) mailActions.clearDraftIfSent(request.inReplyTo, request.body);
     },
-    onSuccess: (response) => setSentMails((previous) => [...previous, response.mail]),
+    onSuccess: (response, request) => {
+      setSentMails((previous) => [...previous, response.mail]);
+      settleReply(request);
+    },
+    onError: (_error, request) => settleReply(request),
   });
 
   const mailboxesSidebar = useSidebarToggle();
@@ -112,13 +130,16 @@ export function MailScreen({ t }: MailScreenProps) {
   /**
    * A reply goes out addressed to the correspondent and titled after the mail
    * it answers; the service files it under Sent, and the draft is cleared once
-   * it did. The draft stays until then, so while a send is in flight a second
-   * Send (or the shortcut) would file the same reply twice: it waits instead.
+   * it did. The draft stays until then, so while a reply to this mail is in
+   * flight a second Send (or the shortcut) would file the same reply twice:
+   * it waits instead.
    */
   const sendReply = () => {
-    if (!selected || sendMail.isPending) return;
+    if (!selected || replyingNow.current.has(selected.id)) return;
     const body = (drafts[selected.id] ?? '').trim();
     if (body === '') return;
+    replyingNow.current.add(selected.id);
+    setReplying(new Set(replyingNow.current));
     sendMail.mutate({
       correspondentName: selected.correspondentName,
       correspondentEmail: selected.correspondentEmail,
@@ -178,7 +199,7 @@ export function MailScreen({ t }: MailScreenProps) {
             draft={drafts[selected.id] ?? ''}
             onDraftChange={(draft) => mailActions.setDraft(selected.id, draft)}
             onSend={sendReply}
-            sending={sendMail.isPending}
+            sending={replying.has(selected.id)}
             onBack={isSinglePane ? () => setSelectedMailId(null) : null}
             t={t}
           />

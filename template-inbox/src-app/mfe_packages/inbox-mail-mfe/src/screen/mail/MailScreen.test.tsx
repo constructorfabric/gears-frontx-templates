@@ -12,7 +12,6 @@ import {
   queryResultFor,
   refetchCalls,
   resetApiMocks,
-  setMutationPending,
   setQueryState,
   succeedMutation,
 } from '../../test-support/apiMocks';
@@ -282,7 +281,6 @@ describe('MailScreen', () => {
   });
 
   it('holds Send and the shortcut while a reply is in flight, so one reply is filed once', () => {
-    setMutationPending('sendMail', true);
     render(<MailScreen t={t} />);
     act(() => {
       screen.getByText('Priya Natarajan').click();
@@ -296,25 +294,62 @@ describe('MailScreen', () => {
     if (send === null) throw new Error('send button not found');
     const isDisabled = () => send.hasAttribute('disabled') || send.getAttribute('aria-disabled') === 'true';
 
-    // The draft is still in the box, but a second click or Ctrl+Enter
+    // Two clicks in one tick: the second reaches the handler before any
+    // render could disable the button, and the handler refuses it.
+    act(() => {
+      send.click();
+      send.click();
+    });
+    expect(mutateMocks.sendMail).toHaveBeenCalledTimes(1);
+
+    // The draft is still in the box, but a further click or Ctrl+Enter
     // sends nothing while the first send is out.
     expect(isDisabled()).toBe(true);
     act(() => {
       send.click();
       draft.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
     });
-    expect(mutateMocks.sendMail).not.toHaveBeenCalled();
+    expect(mutateMocks.sendMail).toHaveBeenCalledTimes(1);
 
-    // Once it settled, Send goes out again, once per click.
-    setMutationPending('sendMail', false);
-    act(() => {
-      typeInto(draft, 'Sounds good, thanks!');
-    });
+    // Once it failed, Send goes out again, once per click.
+    const request = latestVariables('sendMail') as SendMailRequest;
+    act(() => latestMutation('sendMail').onError?.(new Error('offline'), request as never));
     expect(isDisabled()).toBe(false);
     act(() => {
       send.click();
     });
+    expect(mutateMocks.sendMail).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds only the Send of the mail a reply is out for, not another mail's", () => {
+    render(<MailScreen t={t} />);
+    act(() => {
+      screen.getByText('Priya Natarajan').click();
+    });
+    act(() => {
+      typeInto(screen.getByPlaceholderText(/^Reply to /) as HTMLTextAreaElement, 'Sounds good, thanks.');
+    });
+    act(() => {
+      screen.getByText(t('send')).click();
+    });
     expect(mutateMocks.sendMail).toHaveBeenCalledTimes(1);
+
+    // Another mail, while the reply to the first is still out: its own Send
+    // is free.
+    act(() => {
+      screen.getByText('Devon Ashworth').click();
+    });
+    act(() => {
+      typeInto(screen.getByPlaceholderText(/^Reply to /) as HTMLTextAreaElement, 'On it.');
+    });
+    const send = screen.getByText(t('send')).closest('button');
+    if (send === null) throw new Error('send button not found');
+    expect(send.hasAttribute('disabled') || send.getAttribute('aria-disabled') === 'true').toBe(false);
+    act(() => {
+      send.click();
+    });
+    expect(mutateMocks.sendMail).toHaveBeenCalledTimes(2);
+    expect(latestVariables('sendMail')).toMatchObject({ body: 'On it.' });
   });
 
   it('composes a mail and sends it into the Sent mailbox, gated on To plus (Subject or Body)', async () => {
@@ -330,8 +365,8 @@ describe('MailScreen', () => {
     await waitFor(() => expect(document.activeElement).toBe(toField));
 
     // The reading pane's own reply composer has a "send" button of its own,
-    // still in the document (Base UI leaves the underlying page mounted,
-    // just `aria-hidden`, while a dialog is open) - `within` the dialog is
+    // still in the document (the kit's primitives leave the underlying page
+    // mounted, just `aria-hidden`, while a dialog is open) - `within` the dialog is
     // what keeps this query pointed at the compose dialog's Send instead of
     // colliding with that one.
     const dialog = within(screen.getByRole('dialog'));
@@ -363,6 +398,12 @@ describe('MailScreen', () => {
       body: '',
       inReplyTo: null,
     });
+    // A composed mail in flight holds no reply's Send.
+    act(() => {
+      typeInto(screen.getByPlaceholderText(/^Reply to /) as HTMLTextAreaElement, 'Sounds good, thanks.');
+    });
+    const replySend = screen.getByText(t('send')).closest('button');
+    expect(replySend?.hasAttribute('disabled') || replySend?.getAttribute('aria-disabled') === 'true').toBe(false);
     settleLatestSend();
     act(() => {
       screen.getByText('Sent').click();

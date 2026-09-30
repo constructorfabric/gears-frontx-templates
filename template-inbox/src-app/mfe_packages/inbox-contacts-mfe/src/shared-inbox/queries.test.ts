@@ -1,5 +1,5 @@
 import { act, createElement } from 'react';
-import type { EndpointDescriptor, MutationDescriptor } from '@gears-frontx/api';
+import { resetSharedFetchCache, retainSharedFetchCache, type EndpointDescriptor, type MutationDescriptor } from '@gears-frontx/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
@@ -558,5 +558,87 @@ describe('the cache epoch', () => {
     const again = mountQuery(read.descriptor);
     expect(again.latest()).toMatchObject({ data: 'kept', isLoading: false });
     expect(read.calls).toHaveLength(1);
+  });
+});
+
+describe('the page-wide fetch cache', () => {
+  afterEach(() => {
+    setQueryCacheEpoch(() => 0);
+    resetSharedFetchCache();
+  });
+
+  /**
+   * A descriptor that reads through the shared fetch cache the way the REST
+   * protocol does under the shell (the descriptor's key as an alias, the
+   * caller's `staleTime`), over a backend whose every request the test
+   * settles and which gives up a request whose signal aborts.
+   */
+  const sharedEndpoint = (key: string) => {
+    const shared = retainSharedFetchCache();
+    const requests: Deferred<string>[] = [];
+    const descriptorKey = ['/api', 'GET', key];
+    const descriptor: EndpointDescriptor<string> = {
+      key: descriptorKey,
+      fetch: (options) =>
+        shared.getOrFetch(
+          ['rest', ...descriptorKey],
+          ({ signal }) => {
+            const request = deferred<string>();
+            signal?.addEventListener('abort', () => request.reject(new DOMException('Aborted', 'AbortError')));
+            requests.push(request);
+            return request.promise;
+          },
+          { signal: options?.signal, aliases: [descriptorKey], staleTime: options?.staleTime }
+        ),
+    };
+    return { descriptor, requests };
+  };
+
+  it('keeps a read after the epoch moved from joining a shared request from before, and answers both readers with the newer result', async () => {
+    let epoch = 0;
+    setQueryCacheEpoch(() => epoch);
+    const { descriptor, requests } = sharedEndpoint('shared-epoch');
+    const early = mountQuery(descriptor);
+    await flush();
+    expect(requests).toHaveLength(1);
+
+    epoch = 1;
+    const late = mountQuery(descriptor);
+    await flush();
+    expect(requests).toHaveLength(2);
+    requests[1].resolve('after the write');
+    await flush();
+
+    expect(late.latest()).toMatchObject({ data: 'after the write', isLoading: false, error: null });
+    expect(early.latest()).toMatchObject({ data: 'after the write', isLoading: false, error: null });
+    early.view.unmount();
+    late.view.unmount();
+  });
+
+  it('keeps a read after its own write from joining a shared request from before it', async () => {
+    const { descriptor, requests } = sharedEndpoint('shared-write');
+    const early = mountQuery(descriptor);
+    await flush();
+
+    const endpoint: MutationDescriptor<string, string> = { key: ['/api', 'POST', 'shared-write'], fetch: async () => 'written' };
+    const results: MutationResult<string>[] = [];
+    render(
+      createElement(MutationProbe<string, string>, {
+        options: { endpoint, invalidates: [descriptor] },
+        onResult: (result) => results.push(result),
+      })
+    );
+    act(() => results[results.length - 1].mutate('x'));
+    await flush();
+
+    const late = mountQuery(descriptor);
+    await flush();
+    expect(requests).toHaveLength(2);
+    requests[1].resolve('after the write');
+    await flush();
+    expect(late.latest()).toMatchObject({ data: 'after the write', isLoading: false });
+    expect(early.latest()).toMatchObject({ data: 'after the write', isLoading: false });
+    early.view.unmount();
+    late.view.unmount();
   });
 });

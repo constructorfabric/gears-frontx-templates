@@ -32,9 +32,6 @@ function useInboxScreenContext(): InboxScreenContextValue {
 /** The translator of the frame the caller renders in. */
 export const useInboxT = (): Translate => useInboxScreenContext().t;
 
-/** The bridge of the frame the caller renders in. */
-export const useInboxBridge = (): ChildMfeBridge => useInboxScreenContext().bridge;
-
 /**
  * The bridge of the frame the caller renders in, or `undefined` outside a
  * frame (a component test rendering one screen alone), for a screen that

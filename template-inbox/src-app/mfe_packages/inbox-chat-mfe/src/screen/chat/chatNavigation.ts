@@ -7,7 +7,7 @@ import { INBOX_SCREENS } from '@inbox-shared/navigation/screens';
 export type ChatNavigation = {
   /**
    * Opens a contact's page in the contacts screen, in the chat's own place:
-   * `?screen=contacts;route=<contactId>`, one history entry, so Back returns
+   * `?screen=contacts;route=<contactId>` (the id URI-encoded), one history entry, so Back returns
    * to the chat as it was left. `undefined` when the chat runs without an
    * entry address - outside a shell domain there is no screen to open, and
    * the chat offers no link to one.
@@ -21,7 +21,10 @@ export function useChatNavigation(): ChatNavigation {
   return useMemo(() => {
     if (bridge === undefined || readEntryAddress(bridge) === undefined) return { viewContact: undefined };
     return {
-      viewContact: (contactId: string) => void openScreen(bridge, { screen: INBOX_SCREENS.contacts, route: contactId }),
+      // The id is one path segment of the contacts router: encoded, so an id
+      // carrying `/` or `?` still names one person's page.
+      viewContact: (contactId: string) =>
+        void openScreen(bridge, { screen: INBOX_SCREENS.contacts, route: encodeURIComponent(contactId) }),
     };
   }, [bridge]);
 }

@@ -4,7 +4,7 @@
  * `@gears-frontx/api` hands out endpoint *descriptors* - a stable cache key
  * plus a `fetch` - and leaves the caching to whoever consumes them. A server-
  * state library is one answer; for an app whose whole dataset is a handful of
- * reads and two writes, it would be a dependency carrying an invalidation model
+ * reads and three writes, it would be a dependency carrying an invalidation model
  * nothing here has an opinion about. So the two hooks below are the whole
  * answer instead, and a project that grows past them replaces this file with
  * its library of choice: the screens only ever see these two signatures.
@@ -16,14 +16,19 @@
  * three without a component knowing about it.
  *
  * The package also ships a shared fetch cache (`retainSharedFetchCache`, read
- * through `getOrFetch`). It is not relied on here (every request below asks
- * it for a fresh answer, `staleTime: 0`), for two behaviours this app
- * relies on: it aborts a pending request the moment its last consumer
- * detaches, which StrictMode's mount-unmount-mount turns into an AbortError
- * for the remount, and its entries go stale after a fixed time instead of
- * living until a write invalidates them. The map below keeps a result for
- * the page's lifetime, aborts a request only once nobody has come back for it,
- * and forgets an entry when a mutation says so (`invalidates`).
+ * through `getOrFetch`), which the shell retains page-wide and every screen
+ * package's GET goes through. This cache does not keep answers in it: every
+ * request below asks for `staleTime: 0`, so a settled answer is never served
+ * from it, for two behaviours of its own: it aborts a pending request the
+ * moment its last consumer detaches, which StrictMode's mount-unmount-mount
+ * turns into an AbortError for the remount, and its entries go stale after a
+ * fixed time instead of living until a write invalidates them. The map below
+ * keeps a result for the page's lifetime, aborts a request only once nobody
+ * has come back for it, and forgets an entry when a mutation says so
+ * (`invalidates`). A request still pending in the shared cache is joined
+ * whatever `staleTime` asks, so when this cache replaces one of its own
+ * requests that predates a write, it also evicts the key there
+ * (`invalidate`), and the older request's waiters take the newer answer.
  *
  * Each screen package bundles its own copy of this module, so each has its
  * own cache, while the mock backend behind them is one per page
@@ -38,10 +43,11 @@
  * still drops the lot. A request that was running when the epoch moved
  * answers whoever waited for it and is not kept, since it may predate the
  * write; a mount after the move starts a request of its own instead of
- * joining it.
+ * joining it, here or in the shared fetch cache.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { peekSharedFetchCache } from '@gears-frontx/api';
 import type { EndpointDescriptor, MutationDescriptor } from '@gears-frontx/react';
 
 export type QueryResult<TData> = {
@@ -66,9 +72,18 @@ type CacheEntry = {
   startedAt: number;
   /** The answer, once the request succeeded, so a later mount can paint it without waiting a tick. */
   resolved?: { data: unknown };
+  /** The request that replaced this one while it ran; a failure here answers with that one's result. */
+  supersededBy?: Promise<unknown>;
 };
 
 const cache = new Map<string, CacheEntry>();
+
+/**
+ * Every request still running, by key, including one `cache` no longer hands
+ * out (evicted by an epoch move or by `invalidates`): the one a new request
+ * for the key replaces.
+ */
+const inFlight = new Map<string, CacheEntry>();
 
 let readEpoch: () => number = () => 0;
 let cacheEpoch = 0;
@@ -134,7 +149,11 @@ const adoptOwnWrite = (startedAt: number): void => {
  * StrictMode's remount attaches again synchronously and must find it running.
  * A request still running from before the epoch moved is not joined: it may
  * answer with data from before a write, so the mount starts its own request
- * and the older one answers only whoever already waits for it.
+ * and the older one answers only whoever already waits for it. The same goes
+ * for the shared fetch cache below: the older request is evicted there
+ * before the new one starts, so the new one does not attach to it. Eviction
+ * aborts the older request, and a request that fails once replaced answers
+ * its waiters with the newer request's result instead.
  */
 const subscribe = <TData>(
   descriptor: EndpointDescriptor<TData>
@@ -144,6 +163,8 @@ const subscribe = <TData>(
   let entry = cache.get(cacheKey);
 
   if (entry === undefined || (!entry.settled && entry.startedAt !== cacheEpoch)) {
+    const replaced = inFlight.get(cacheKey);
+    if (replaced !== undefined) peekSharedFetchCache()?.invalidate(descriptor.key);
     const controller = new AbortController();
     const startedAt = cacheEpoch;
     const created: CacheEntry = {
@@ -153,13 +174,14 @@ const subscribe = <TData>(
       startedAt,
       // `staleTime: 0`: under the shell, `@gears-frontx/api` answers a GET
       // from the page-wide fetch cache the host retains (`frontx:fetch-cache`,
-      // 30 s by default), which every screen package shares and none of this
-      // cache's invalidations reach. A request this cache decided to make
-      // must reach the service, or a screen mounted after another screen's
-      // write would read the answer from before it.
+      // 30 s by default), which every screen package shares. A settled
+      // answer kept there would survive another screen's write, so none is
+      // served; a pending one is still joined, which the eviction above
+      // covers for this cache's own requests.
       promise: descriptor.fetch({ signal: controller.signal, staleTime: 0 }).then(
         (data) => {
           created.settled = true;
+          if (inFlight.get(cacheKey) === created) inFlight.delete(cacheKey);
           // Answered after the data behind it changed: whoever waited gets
           // what they asked for, but the next reader asks again.
           if (readEpoch() !== startedAt) {
@@ -171,11 +193,15 @@ const subscribe = <TData>(
         },
         (cause: unknown) => {
           created.settled = true;
+          if (inFlight.get(cacheKey) === created) inFlight.delete(cacheKey);
           if (cache.get(cacheKey) === created) cache.delete(cacheKey);
+          if (created.supersededBy !== undefined) return created.supersededBy;
           throw asError(cause);
         }
       ),
     };
+    if (replaced !== undefined) replaced.supersededBy = created.promise;
+    inFlight.set(cacheKey, created);
     cache.set(cacheKey, created);
     entry = created;
   }
@@ -215,6 +241,7 @@ export const resetQueryCache = (): void => {
     if (!entry.settled) entry.controller.abort();
   }
   cache.clear();
+  inFlight.clear();
   cacheEpoch = readEpoch();
 };
 

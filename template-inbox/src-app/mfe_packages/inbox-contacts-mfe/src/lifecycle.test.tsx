@@ -139,9 +139,18 @@ describe('ContactsLifecycle', () => {
   });
 
   it('says a contact was not found for a route naming no contact', async () => {
-    const { screen } = mountAt('c-42');
+    const { screen } = mountAt('r-9999');
 
     expect(await screen.findByRole('heading', { level: 1, name: t('contact_not_found_title') })).toBeTruthy();
+  });
+
+  it('opens the person page for an encoded id carrying a slash, rather than the not-found page', async () => {
+    const { shadowRoot, screen } = mountAt(encodeURIComponent(encodeURIComponent('r/1')));
+
+    // The grammar writes the encoded segment's `%` as `%25`, as `openScreen`'s
+    // push does; the router decodes the segment into one id, which names nobody.
+    expect(await screen.findByRole('heading', { level: 1, name: t('contact_not_found_title') })).toBeTruthy();
+    expect(shadowRoot.querySelector('[data-testid="contacts-route-not-found"]')).toBeNull();
   });
 
   it("answers an address that names no page of the screen with the screen's own not-found", async () => {

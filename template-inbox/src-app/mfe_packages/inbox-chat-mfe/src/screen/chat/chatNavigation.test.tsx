@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { parseGrammar } from '@gears-frontx/routing';
+import { ROUTE_PARAM_NAME } from '@gears-frontx/routing-tanstack';
 import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { InboxScreenContext } from '@inbox-shared/lifecycle/screenContext';
@@ -47,6 +49,18 @@ describe('useChatNavigation', () => {
     result.current.viewContact?.('r-3');
 
     expect(page.history.writes).toEqual([`/?screen=${INBOX_SCREENS.contacts};route=r-3`]);
+  });
+
+  it('encodes the contact id, so an id carrying a slash or a question mark stays one route segment', () => {
+    page.history = recordingHistory(`/?screen=${INBOX_SCREENS.chat}`);
+    const { result } = renderHook(() => useChatNavigation(), { wrapper: frameWith(true) });
+
+    result.current.viewContact?.('team/a?b');
+
+    const url = new URL(page.history.writes[0] ?? '', 'http://shell.test');
+    const parsed = parseGrammar({ shellSubroute: url.pathname, search: url.search.replace(/^\?/, ''), hash: undefined });
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]?.params).toEqual([{ name: ROUTE_PARAM_NAME, value: encodeURIComponent('team/a?b') }]);
   });
 
   it('offers no contact link without an entry address, nor outside a frame', () => {
