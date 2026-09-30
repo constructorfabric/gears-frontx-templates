@@ -1,86 +1,68 @@
 # FrontX Inbox Template
 
-A complete, runnable **workspace application**: a plain Vite + React single-page app built on `@gears-frontx/ui-kit`, with its own navigation rail and four screens (dashboard, chat inbox, mail and contacts). Seed it into an empty repository, install, and `npm run dev` gives you a running product.
+A workspace product for a FrontX application: helpdesk-style screens (contacts, dashboard, chat and mail) built from `@gears-frontx/ui-kit`, each its own microfrontend package with its own Module Federation build, its own routes inside the shell's screen domain, its own UI strings, and mocked `@gears-frontx/api` services that share one mock dataset across the screens. Applied onto a shell, the screens appear in the shell's menu without further wiring.
 
-It does not use the FrontX runtime. There is no `@gears-frontx/react`, no microfrontend and no shell: the app has its own hash router, its own UI-string catalogue and its own theme switch, and reads its data through `@gears-frontx/api` services directly. It is a separate starting point, not a variant of the shell template.
+## Add-only - requires `template-shell`
 
-From here on, the seeded repository is **your application**.
-
-## Requirements
-
-- Node.js 24+
-- npm 10+
-
-## Getting it
-
-This template establishes a whole repository on its own: the app entry, the Vite build, the TypeScript, lint and test configuration, and the dependency set. There is no shell to apply first. The FrontX CLI addresses it as a subtree of the `constructorfabric/gears-frontx-templates` repository, and seeds it by the name its manifest declares:
-
-```bash
-frontx install github:constructorfabric/gears-frontx-templates//template-inbox@<ref>
-frontx seed @gears-frontx/frontx-template-inbox ./my-app
-cd my-app
-npm ci
-npm run dev
-```
-
-`<ref>` is a tag, branch or commit; pin it in anything meant to be reproducible.
-
-## Running it
-
-The app is a self-contained npm project, whether this directory is the template itself or a project seeded from it. It installs its `@gears-frontx` dependencies from the npm registry at the exact versions its `package.json` pins, so nothing needs building underneath it. The committed `package-lock.json` makes `npm ci` reproducible in CI and in a freshly seeded project alike. From this directory:
-
-```bash
-npm ci
-npm run dev
-```
-
-The dev server prints the local address. To serve a production build from a sub-path, set `VITE_BASE` for the build (`VITE_BASE=/previews/inbox/ npm run build`); routing lives in the URL fragment, so any static host serves every deep link.
-
-## Scripts
-
-| Script | What it does |
-|--------|--------------|
-| `npm run dev` | Vite dev server |
-| `npm run build` | Production build into `dist/` |
-| `npm run preview` | Serve the production build locally |
-| `npm run type-check` | Type-check the app, the tests and the build config (three programs) |
-| `npm run lint` | ESLint across the project, zero warnings allowed |
-| `npm run arch:deps` | Dependency-boundary rules over `src/` |
-| `npm test` | Unit tests (Vitest, jsdom) |
-| `npm run test:unit:watch` | Unit tests in watch mode |
-
-`arch:deps` is a dependency-cruiser check: no runtime import cycles, no screen importing another screen, no import from `src/api/`, `src/shared/` or the test utilities up into a screen or into `src/app/`, and no import of the test utilities from code that ships.
-
-## Project structure
+This template is an overlay, like `template-mfe`. It claims no root `package.json`, no build, test or lint tooling and no host: those belong to [`frontx-template-shell`](../template-shell/README.md), which mounts the screens. It contributes only what `frontx-template.json` claims:
 
 | Path | What it holds |
 |------|---------------|
-| `src/main.tsx` | Entry: kit theme CSS, API registration, stored theme, first render |
-| `src/app/` | The chrome: `App`, the icon rail (`IconRail`), the hash router (`routing.ts`), the theme switch (`theme.ts`) and the error boundary |
-| `src/screens/<screen>/` | One vertical slice per screen (`dashboard`, `inbox`, `mail`, `contacts`): its components, its selectors, its CSS module and, for the three data screens, its store (`inboxStore`, `mailStore`, `contactsStore`) |
-| `src/api/` | The API services, their mock maps and seed datasets, the response types and the query hooks (`queries.ts`) |
-| `src/shared/` | What more than one screen uses: the UI-string lookup (`i18n.ts`), the store primitive (`createStore.ts`), the loading and error panes (`QueryStates.tsx`), the screen heading (`ScreenHeading.tsx`), the hooks (`useMediaQuery`, `useSidebarToggle`, `useAutoSelect`), the submit shortcut, formatting helpers and avatars |
-| `src/i18n/en.json` | The UI-string catalogue |
-| `src/styles/app.css` | The document frame; every other stylesheet is a CSS module beside the components that use it |
-| `src/__test-utils__/` | The query-layer stand-in the screen tests use (`apiMocks.ts`) and a media-query engine they can drive (`matchMedia.ts`) |
-| `public/` | Static assets served as they are |
+| `src-app/mfe_packages/inbox-contacts-mfe/` | The contacts screen: a filterable, sortable directory and each person's page (`?screen=contacts;route=<id>`) |
+| `src-app/mfe_packages/shared/inbox/` | What every inbox screen shares, imported as `@inbox-shared/*` and bundled into each package: the API services, the page-wide mock store and the query hooks (`api/`), the UI-string rules and shared catalogue (`i18n/`), the screen lifecycle and frame (`lifecycle/`), cross-screen navigation (`navigation/`) and shared components (`ui/`) |
+| `.frontx/ai/@gears-frontx/frontx-template-inbox/` | The AI bundle |
+
+The screens move into packages one at a time; contacts is the first that has landed. Until the last one has, the former standalone application stays in this directory (`src/`, `public/`, `index.html` and its configs), unclaimed, as the reference the packages are checked against.
+
+The `package.json` next to this README is not part of the template: it is the in-repository dev harness, as in `template-mfe`, deliberately absent from the manifest's boundaries so `frontx add` never copies it. Its workspaces are this template's packages, and its `overrides` point the shell's own packages at `../template-shell`.
+
+## Working on it in this repository
+
+Unit tests run in place, from the harness. Build the shell first, because the packages' vite and vitest configs load its build plugin and test utilities:
+
+```bash
+cd template-shell && npm ci && npm run build
+cd ../template-inbox && npm ci
+npm test                   # every package's unit tests
+npm run type-check         # every package's type-check
+```
+
+To see the screens in the shell, compose the shell with both overlays the way CI does and run it (`live-run/README.md` step L0, with one more `tar` for this template):
+
+```bash
+export COMPOSED="${TMPDIR:-/tmp}/frontx-inbox-composed"
+rm -rf "$COMPOSED" && mkdir -p "$COMPOSED/src-app/mfe_packages"
+tar -C template-shell --exclude=node_modules -cf - . | tar -C "$COMPOSED" -xf -
+tar -C template-mfe/src-app/mfe_packages --exclude=node_modules -cf - . | tar -C "$COMPOSED/src-app/mfe_packages" -xf -
+tar -C template-inbox/src-app/mfe_packages --exclude=node_modules -cf - . | tar -C "$COMPOSED/src-app/mfe_packages" -xf -
+find "$COMPOSED/src-app/mfe_packages" -not -path '*/node_modules/*' -name package-lock.json -delete
+cd "$COMPOSED" && npm install && npm run dev:all
+```
+
+The shell runs on `http://localhost:5173`; the contacts remote previews on port 3010. After editing a package, rebuild it and regenerate the manifests in the composed tree (`npm run build --workspace=@gears-frontx/inbox-contacts-mfe && npm run generate:mfe-manifests`); a package rebuilt without the second step fails to mount.
+
+The former standalone application runs beside it for side-by-side checks: `npm run dev:reference` in this directory.
 
 ## Screens
 
-- **Dashboard** (`#/dashboard`, the default landing screen) - KPI cards, charts, team workload, a stage funnel and a sortable, paginated recent-activity table.
-- **Inbox** (`#/chat`) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel.
-- **Mail** (`#/mail`) - mailboxes, an all-mail and unread list with instant search, and a reading pane with collapsible history and a reply composer.
-- **Contacts** (`#/contacts`) - a filterable, sortable directory and a contact page at an address you can reload or share (`#/contacts/<id>`).
+In the shell menu the screens take the orders 100 (contacts), 200 (dashboard), 300 (chat) and 400 (mail); only screens that have landed as packages appear there. The others are listed with the address the reference application gives them.
+
+- **Dashboard** (`#/dashboard` in the reference application) - KPI cards, charts, team workload, a stage funnel and a sortable, paginated recent-activity table.
+- **Inbox** (`#/chat` in the reference application) - channels, a searchable conversation list, the thread with a reply-and-note composer, and the customer-details panel.
+- **Mail** (`#/mail` in the reference application) - mailboxes, an all-mail and unread list with instant search, and a reading pane with collapsible history and a reply composer.
+- **Contacts** (`inbox-contacts-mfe`, `/?screen=contacts`) - a filterable, sortable directory and a contact page at an address you can reload or share (`/?screen=contacts;route=<id>`).
 
 ## Data and mocks
 
-Every conversation, message, mail, mailbox, contact, dashboard metric and identity comes from the seed datasets in `src/api/`, served by the app's own `@gears-frontx/api` services (`InboxApiService`, `MailApiService`, `DashboardApiService`) through the app's `RestMockPlugin`. Each service registers the plugin without switching it on; `setMockMode(true)` in `src/api/registry.ts` switches every service's mock plugin on at boot. Passing `false` there, or dropping the call, sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
+Every conversation, message, contact and identity comes from the seed dataset in `shared/inbox/api/`, served by `InboxApiService` through the template's own `RestMockPlugin` (the reference application still serves mail and dashboard data from `src/api/`). Each package registers only the services it reads and switches their mock plugins on with the framework's `mock({ enabledByDefault: true })` in its `init.ts`. Passing `false` there sends every request to the real backend at the service's base URL, with the endpoints, the response types and the screens unchanged.
+
+Each screen is its own module graph, so the state a write changes lives once per page instead of once per package: a realm-global store (`shared/inbox/api/mockStore.ts`, under `Symbol.for('@gears-frontx/frontx-template-inbox/mock-state/v1')`) that every screen reads, with a revision every accepted write moves. A screen whose query cache is older than the revision reads again.
 
 While mocks are on, a route the mock map does not know answers 404 instead of reaching the network. `POST /api/inbox/messages` answers 400 to a body without a conversation, text or a `reply`/`note` kind and 404 for a conversation that does not exist; `POST /api/inbox/conversations` starts a conversation with an existing contact. A posted reply or note and a started conversation are kept in the mock store, so they are still there after the screen remounts, until the page reloads. What the user selects, types and changes on a screen is kept in that screen's store, so leaving a section and coming back finds it as it was. All seed email addresses use reserved example domains, and all seed phone numbers use the fictional `555 01xx` range.
 
 ## Theming
 
-Layout is CSS Modules over the kit's semantic tokens; there is no CSS framework and no second component library. The kit's `theme.css` paints light or dark from `data-theme` on the root element and follows the system's `prefers-color-scheme` while none is set, which is how the app boots. The rail's theme toggle sets and stores an explicit choice.
+Layout is CSS Modules over the kit's semantic tokens; there is no CSS framework and no second component library. Each screen renders in a shadow root: its lifecycle anchors the kit's tokens on the shadow host, and its frame sets `data-theme` from the shell's theme property, so a theme switch in the shell repaints every screen. Popups (sheets, dialogs, selects) portal into a node inside the shadow root.
 
 ## AI bundle
 

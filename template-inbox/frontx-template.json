@@ -1,26 +1,12 @@
 {
   "schemaVersion": "1.0",
   "name": "@gears-frontx/frontx-template-inbox",
-  "version": "0.1.0-alpha.0",
-  "description": "Establishes a new repository as a runnable workspace application: a plain Vite + React app on @gears-frontx/ui-kit with dashboard, chat inbox, mail and contacts screens, its own hash router and UI strings, mocked @gears-frontx/api services, and the build, lint and test toolchain in place. Apply this to start a helpdesk, shared mailbox, contacts or metrics product; it needs no other template. It does not use the FrontX runtime (no @gears-frontx/react, no microfrontends) and is not a shell variant.",
+  "version": "0.2.0-alpha.0",
+  "description": "Contributes a workspace product to a repository that already has an application shell: microfrontend screens (contacts, dashboard, chat and mail) built from @gears-frontx/ui-kit, each with its own Module Federation build, route tree inside the shell's screen domain, UI strings, and mocked @gears-frontx/api services that share one mock dataset across the screens. Apply this onto template-shell to start a helpdesk, shared mailbox, contacts or metrics product; the screens appear in the shell's menu without further wiring.",
   "ownershipBoundaries": {
     "exclusiveSubtrees": [
-      "src/",
-      "public/",
-      ".frontx/ai/@gears-frontx/frontx-template-inbox/",
-      "index.html",
-      "package.json",
-      "package-lock.json",
-      "tsconfig.json",
-      "tsconfig.node.json",
-      "tsconfig.test.json",
-      "vite.config.ts",
-      "vitest.config.ts",
-      "vitest.setup.ts",
-      "eslint.config.js",
-      ".dependency-cruiser.cjs",
-      ".gitignore",
-      "README.md"
+      "src-app/mfe_packages/shared/inbox/",
+      ".frontx/ai/@gears-frontx/frontx-template-inbox/"
     ],
     "sharedFiles": []
   }

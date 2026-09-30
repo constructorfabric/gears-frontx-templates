@@ -1,0 +1,21 @@
+/*
+ * The root every inbox screen renders into, inside its shadow root. It takes
+ * the place the standalone app's frame had beside the rail: a row the
+ * screen's panes sit in, filling the area the shell gives the screen and
+ * scrolling nowhere itself, because each pane scrolls on its own. Colours and
+ * the typeface are the kit's tokens, which the frame's `data-theme` selects.
+ */
+
+.frame {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* The portal node takes no room of its own; popups position themselves. */
+.portal {
+  display: contents;
+}

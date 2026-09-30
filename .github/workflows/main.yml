@@ -155,12 +155,12 @@ jobs:
   # hand, and they rot (#483).
   #
   # Two kinds of template, both need covering:
-  #   - self-contained (template-shell, template-inbox): root package.json
-  #     and lockfile of their own, validated standalone by the glob loop
-  #     below, which deliberately avoids hardcoding template names;
-  #   - add-only overlay (template-mfe): no root package.json, no tooling of
-  #     its own. It cannot be validated in place - its packages' file: links
-  #     resolve to template-mfe/../template-shell, and its vite/vitest
+  #   - self-contained (template-shell): root package.json and lockfile of
+  #     its own, validated standalone by the glob loop below, which
+  #     deliberately avoids hardcoding template names;
+  #   - add-only overlay (template-mfe, template-inbox): no root package.json
+  #     claimed, no tooling of its own. It cannot be validated in place - its
+  #     packages' file: links resolve to ../template-shell, and its vite/vitest
   #     configs import out of the shell. The only way to run its checks is to
   #     compose the pair the way `frontx add` does and validate the result,
   #     which the second step does.

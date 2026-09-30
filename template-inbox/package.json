@@ -1,54 +1,33 @@
 {
-  "name": "@gears-frontx/frontx-template-inbox",
-  "version": "0.1.0-alpha.0",
-  "description": "Workspace application template: a plain Vite + ui-kit app with a dashboard, chat inbox, mail and contacts screens over a mocked API layer",
+  "//": "MONOREPO DEV HARNESS - NOT PART OF THIS TEMPLATE. This file is deliberately absent from frontx-template.json's ownershipBoundaries, so `frontx add` never copies it into a project and this template claims no root package.json anywhere. It follows template-mfe/package.json: the workspaces are this template's MFE packages, and the overrides redirect the pins this repository can offer a local source for (template-shell and its packages/*) to that source, so the packages' tests run in place against the shell they are written for. Every other pin, @gears-frontx/ui-kit and @gears-frontx/api included, resolves from the registry exactly as in a project. template-shell must be built first (`npm ci && npm run build` inside template-shell), because an MFE's vite and vitest configs load the shell's build plugin and test utilities from its build output. The devDependencies serve `dev:reference` only: until the last screen has moved into a package, the former standalone application under src/ stays on disk, unclaimed, and `npm run dev:reference` runs it next to the composed shell for side-by-side checks. They leave together with src/. The nwsapi override carries template-mfe's reason: jsdom's CSS-matching engine regressed in 2.2.26 and 2.2.27, and this harness shares the same jsdom chain.",
+  "name": "frontx-template-inbox-monorepo-harness",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "src-app/mfe_packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.node.json",
-    "lint": "eslint . --max-warnings 0",
-    "arch:deps": "depcruise src --config .dependency-cruiser.cjs --output-type err-long",
-    "test": "npm run test:unit",
-    "test:unit": "vitest --run --passWithNoTests=false",
-    "test:unit:watch": "vitest --watch"
+    "test": "npm run test:unit --workspaces --if-present",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "dev:reference": "vite --config vite.config.ts"
   },
-  "dependencies": {
+  "devDependencies": {
     "@gears-frontx/api": "0.3.0-alpha.3",
     "@gears-frontx/ui-kit": "0.4.0-alpha.6",
-    "axios": "1.14.0",
+    "@vitejs/plugin-react": "4.3.4",
     "lucide-react": "1.33.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "3.10.1"
+    "recharts": "3.10.1",
+    "vite": "6.4.3"
   },
-  "devDependencies": {
-    "@eslint/js": "9.27.0",
-    "@testing-library/dom": "10.4.1",
-    "@testing-library/react": "16.3.2",
-    "@testing-library/user-event": "14.6.3",
-    "@types/node": "22.10.2",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.0.3",
-    "@vitejs/plugin-react": "4.3.4",
-    "dependency-cruiser": "17.3.10",
-    "eslint": "9.27.0",
-    "eslint-plugin-react-hooks": "7.1.1",
-    "eslint-plugin-unused-imports": "4.4.1",
-    "globals": "15.12.0",
-    "jsdom": "26.1.0",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.65.0",
-    "vite": "6.4.3",
-    "vitest": "4.1.4"
-  },
-  "keywords": [
-    "frontx",
-    "template",
-    "typescript"
-  ],
-  "author": "Cyber Fabric",
-  "license": "Apache-2.0"
+  "overrides": {
+    "@gears-frontx/frontx-template-shell": "file:../template-shell",
+    "@gears-frontx/auth": "file:../template-shell/packages/auth",
+    "@gears-frontx/framework": "file:../template-shell/packages/framework",
+    "@gears-frontx/i18n": "file:../template-shell/packages/i18n",
+    "@gears-frontx/react": "file:../template-shell/packages/react",
+    "@gears-frontx/state": "file:../template-shell/packages/state",
+    "nwsapi": "2.2.24"
+  }
 }
