@@ -1,9 +1,7 @@
 import { createRootRoute, createRoute, Outlet, useParams } from '@gears-frontx/routing-tanstack';
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@gears-frontx/ui-kit';
 import { useInboxT } from '@inbox-shared/lifecycle/screenContext';
 import { useRouteFocus } from '@inbox-shared/lifecycle/useRouteFocus';
-import { ScreenHeading } from '@inbox-shared/ui/ScreenHeading';
-import sharedStyles from '@inbox-shared/ui/shared.module.css';
+import { ScreenNotFound } from '@inbox-shared/ui/ScreenRoutes';
 import { ContactsScreen } from './screen/ContactsScreen';
 
 /**
@@ -32,24 +30,10 @@ function ContactsLayout() {
   );
 }
 
-/** An address inside this screen that names no page of it. */
-function ContactsNotFound() {
-  const t = useInboxT();
-  return (
-    <div className={sharedStyles.emptyPane} data-testid="contacts-route-not-found">
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>
-            <ScreenHeading className={sharedStyles.inlineHeading}>{t('page_not_found_title')}</ScreenHeading>
-          </EmptyTitle>
-          <EmptyDescription>{t('page_not_found_description')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    </div>
-  );
-}
-
-const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: ContactsNotFound });
+const rootRoute = createRootRoute({
+  component: Outlet,
+  notFoundComponent: () => <ScreenNotFound testId="contacts-route-not-found" />,
+});
 
 const layoutRoute = createRoute({ getParentRoute: () => rootRoute, id: 'contacts', component: ContactsLayout });
 

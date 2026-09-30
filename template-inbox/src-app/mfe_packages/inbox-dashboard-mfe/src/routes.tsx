@@ -1,9 +1,6 @@
-import { createRootRoute, createRoute, Outlet } from '@gears-frontx/routing-tanstack';
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@gears-frontx/ui-kit';
+import { createRootRoute, createRoute } from '@gears-frontx/routing-tanstack';
 import { useInboxT } from '@inbox-shared/lifecycle/screenContext';
-import { useRouteFocus } from '@inbox-shared/lifecycle/useRouteFocus';
-import { ScreenHeading } from '@inbox-shared/ui/ScreenHeading';
-import sharedStyles from '@inbox-shared/ui/shared.module.css';
+import { ScreenNotFound, SinglePageRoot } from '@inbox-shared/ui/ScreenRoutes';
 import { DashboardScreen } from './screen/DashboardScreen';
 
 /**
@@ -14,36 +11,15 @@ import { DashboardScreen } from './screen/DashboardScreen';
  * route's component: there is no page to keep mounted behind another, so the
  * not-found replaces the overview instead of sitting under it.
  */
-function DashboardRoot() {
-  // One page, so the key never changes; the call keeps the screen on the same
-  // focus rule as the others should it grow a second route.
-  useRouteFocus('');
-  return <Outlet />;
-}
-
 function DashboardOverview() {
   const t = useInboxT();
   return <DashboardScreen t={t} />;
 }
 
-/** An address inside this screen that names no page of it. */
-function DashboardNotFound() {
-  const t = useInboxT();
-  return (
-    <div className={sharedStyles.emptyPane} data-testid="dashboard-route-not-found">
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>
-            <ScreenHeading className={sharedStyles.inlineHeading}>{t('page_not_found_title')}</ScreenHeading>
-          </EmptyTitle>
-          <EmptyDescription>{t('page_not_found_description')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    </div>
-  );
-}
-
-const rootRoute = createRootRoute({ component: DashboardRoot, notFoundComponent: DashboardNotFound });
+const rootRoute = createRootRoute({
+  component: SinglePageRoot,
+  notFoundComponent: () => <ScreenNotFound testId="dashboard-route-not-found" />,
+});
 
 const overviewRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: DashboardOverview });
 

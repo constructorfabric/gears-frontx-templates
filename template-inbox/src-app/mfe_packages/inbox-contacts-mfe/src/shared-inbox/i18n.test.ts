@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import sharedEn from '@inbox-shared/i18n/en.json';
 import { createTranslate } from '@inbox-shared/i18n/translate';
 import { catalogueFor } from '@inbox-shared/i18n/useInboxTranslate';
-import en from '../i18n/en.json';
-import { t } from '../test-support/translate';
 
 const catalogue = {
   greeting: 'Hello, {name}',
@@ -40,32 +38,6 @@ describe('createTranslate', () => {
     expect(translate('absent')).toBe('absent');
     expect(translate('also_absent')).toBe('also_absent');
     expect(warn).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('the shipped catalogues', () => {
-  it('pairs every plural form with its other form, in both layers', () => {
-    for (const catalogue of [sharedEn, en]) {
-      for (const key of Object.keys(catalogue)) {
-        const match = /^(.*)_one$/.exec(key);
-        if (match) expect(Object.keys(catalogue), key).toContain(`${match[1]}_other`);
-      }
-    }
-  });
-
-  it("keeps the screen's keys out of the shared layer, so a package override is always deliberate", () => {
-    const shared = new Set(Object.keys(sharedEn));
-    expect(Object.keys(en).filter((key) => shared.has(key))).toEqual([]);
-  });
-
-  it('reads the shipped plurals', () => {
-    expect(t('people_count', { count: 1 })).toBe('1 person');
-    expect(t('people_count', { count: 29 })).toBe('29 people');
-  });
-
-  it("carries the menu label and the document title the frame reads", () => {
-    expect(t('nav_label')).toBe('Contacts');
-    expect(t('document_title', { section: t('nav_label') })).toBe('Contacts - Workspace');
   });
 });
 

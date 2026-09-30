@@ -1,9 +1,6 @@
-import { createRootRoute, createRoute, Outlet } from '@gears-frontx/routing-tanstack';
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@gears-frontx/ui-kit';
+import { createRootRoute, createRoute } from '@gears-frontx/routing-tanstack';
 import { useInboxT } from '@inbox-shared/lifecycle/screenContext';
-import { useRouteFocus } from '@inbox-shared/lifecycle/useRouteFocus';
-import { ScreenHeading } from '@inbox-shared/ui/ScreenHeading';
-import sharedStyles from '@inbox-shared/ui/shared.module.css';
+import { ScreenNotFound, SinglePageRoot } from '@inbox-shared/ui/ScreenRoutes';
 import { MailScreen } from './screen/mail/MailScreen';
 
 /**
@@ -14,36 +11,15 @@ import { MailScreen } from './screen/mail/MailScreen';
  * (`?screen=mail;route=x`) names no page of it and gets the screen's own
  * not-found in place of the mail.
  */
-function MailRoot() {
-  // One page, so the key never changes; the call keeps the screen on the same
-  // focus rule as the others should it grow a second route.
-  useRouteFocus('');
-  return <Outlet />;
-}
-
 function MailPage() {
   const t = useInboxT();
   return <MailScreen t={t} />;
 }
 
-/** An address inside this screen that names no page of it. */
-function MailNotFound() {
-  const t = useInboxT();
-  return (
-    <div className={sharedStyles.emptyPane} data-testid="mail-route-not-found">
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>
-            <ScreenHeading className={sharedStyles.inlineHeading}>{t('page_not_found_title')}</ScreenHeading>
-          </EmptyTitle>
-          <EmptyDescription>{t('page_not_found_description')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    </div>
-  );
-}
-
-const rootRoute = createRootRoute({ component: MailRoot, notFoundComponent: MailNotFound });
+const rootRoute = createRootRoute({
+  component: SinglePageRoot,
+  notFoundComponent: () => <ScreenNotFound testId="mail-route-not-found" />,
+});
 
 const mailRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: MailPage });
 

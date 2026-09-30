@@ -3,4 +3,4 @@ import { describeScreenCatalogue } from '@inbox-shared/test-support/describeScre
 import en from './en.json';
 import { t } from '../test-support/translate';
 
-describeScreenCatalogue({ describe, it, expect }, en, t, 'Mail');
+describeScreenCatalogue({ describe, it, expect }, en, t, 'Dashboard');
