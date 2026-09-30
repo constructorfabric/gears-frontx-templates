@@ -8,7 +8,7 @@ import { requestScreenHeadingFocus, ScreenHeading } from '@inbox-shared/ui/Scree
  * stand-in gives every shown element a 1x1 box. A test stubs the rects of one
  * heading to the box a browser reports for a squeezed one - laid out, zero
  * wide - and checks the rule that decides which heading answers. That the
- * screens no longer squeeze their heading is a layout fact, measured in a
+ * screens do not squeeze their heading is a layout fact, measured in a
  * browser rather than here.
  */
 const squeeze = (element: HTMLElement) =>

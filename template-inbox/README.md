@@ -79,6 +79,7 @@ The four packages and the shared folder are product code; a product repository t
 
 3. The project's root `package.json` already lists `src-app/mfe_packages/*` in `workspaces`, which picks up the four packages; `shared/` has no `package.json` and needs no entry. Each package declares its own dependencies, so `npm install` at the project root is the whole install. The project's `.frontx/` provenance records the shell and the two added templates only: the inbox is the project's own code, not a template it tracks.
 4. Copy the two guidelines under `.frontx/ai/@gears-frontx/frontx-template-inbox/guidelines/` into the project's own AI bundle and list them in its `extension.json`; they cite only paths under `src-app/mfe_packages/`.
-5. Leave behind what only serves this repository: this README, `frontx-template.json`, the harness `package.json` and `package-lock.json`, and `src-app/vitest.mfe.base.ts` and `src-app/__test-utils__/`, whose forwarders the shell's own files replace in a project.
+5. The shared folder's tests run inside `inbox-contacts-mfe/src/shared-inbox/`, and two of them glob the sibling packages (`screenLayout.test.tsx` their stylesheets, `screens.test.ts` their `mfe.json`); a project that drops the contacts screen moves that folder into a package it keeps.
+6. Leave behind what only serves this repository: this README, `frontx-template.json`, the harness `package.json` and `package-lock.json`, and `src-app/vitest.mfe.base.ts` and `src-app/__test-utils__/`, whose forwarders the shell's own files replace in a project.
 
 Then `npm run build`, `npm run type-check`, `npm run lint`, `npm run arch:deps` and `npm run test:unit` at the project root check the screens with the rest of the application.

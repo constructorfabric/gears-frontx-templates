@@ -343,7 +343,7 @@
  * grid row wrapper. The kit's `Card` root carries `overflow: hidden`, which
  * per the flexbox spec zeroes a flex item's automatic minimum size instead
  * of resolving it to the item's content size - so without `flex: none`
- * here, the flex-shrink algorithm was free to compress this card down to a
+ * here, the flex-shrink algorithm would be free to compress this card to a
  * sliver instead of letting `.dashboardBody`'s own `overflow-y: auto`
  * handle the overflow by scrolling, the way it does for every sibling row.
  */

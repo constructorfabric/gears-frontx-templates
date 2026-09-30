@@ -76,8 +76,8 @@ export function Composer({
   // One body for both tabs: the box stays the same and only the placeholder,
   // the submit label and the frame swap. Each tab still owns a panel so the
   // tablist has something to control; the kit's TabsContent unmounts an
-  // inactive panel (Base UI's default), so only one textarea - and one
-  // `textareaRef` target - exists at a time.
+  // inactive panel by default, so only one textarea - and one `textareaRef`
+  // target - exists at a time.
   const body = (
     <div className={cx(sharedStyles.composerBox, isNote && styles.composerBoxNote)}>
       <Textarea

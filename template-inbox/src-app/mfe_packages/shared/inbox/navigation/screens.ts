@@ -3,7 +3,7 @@
  * in the page URL (`?screen=<token>`) and what `openScreen` names to open
  * one. Each equals the `presentation.route` of that screen's extension in its
  * package's `mfe.json`, without the leading slash; a test in
- * `inbox-contacts-mfe` holds every landed package's manifest to it.
+ * `inbox-contacts-mfe` holds every package's manifest to it.
  */
 export const INBOX_SCREENS = {
   contacts: 'contacts',

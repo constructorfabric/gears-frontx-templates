@@ -101,8 +101,8 @@ const ensureUsableWebStorage = (): void => {
 /**
  * A `PointerEvent` constructor when the environment has none.
  *
- * jsdom implements no `PointerEvent`, while the kit's Base UI primitives
- * construct one off the element's owner window to forward a click onto the
+ * jsdom implements no `PointerEvent`, while the kit's primitives construct
+ * one off the element's owner window to forward a click onto the
  * hidden native input behind a checkbox, radio or switch - a suite rendering
  * one dies on `ownerWindow(...).PointerEvent is not a constructor` before it
  * asserts anything. A `MouseEvent` subclass carrying the pointer half of

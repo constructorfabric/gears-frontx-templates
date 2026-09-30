@@ -87,7 +87,7 @@ Each template is also independently validatable:
 cd template-shell && npm ci && npm run build && npm run type-check && npm run lint && npm run test:unit
 ```
 
-`template-mfe` and `template-inbox` cannot be validated in place - their packages' `file:` links resolve into `../template-shell`, and their root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes every overlay onto `template-shell` (the way `frontx add` does) and validates the result; `template-inbox/README.md` gives the same composition as local commands. The harness runs the inbox packages' unit tests and type-check in place:
+`template-mfe` and `template-inbox` cannot be validated in place - their root `package.json` is a monorepo-only harness, never something a seeded project sees, whose `overrides` redirect the shell packages the MFE packages pin to `file:` links into `../template-shell`. `main.yml`'s `template-validate` job composes every overlay onto `template-shell` (the way `frontx add` does) and validates the result; `template-inbox/README.md` gives the same composition as local commands. The harness runs the inbox packages' unit tests and type-check in place:
 
 ```bash
 cd template-shell && npm ci && npm run build

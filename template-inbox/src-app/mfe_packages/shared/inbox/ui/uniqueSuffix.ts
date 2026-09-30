@@ -3,7 +3,7 @@
  *
  * `crypto.randomUUID` exists only in secure contexts, so a screen served over
  * plain http from a LAN address has none; there a page-wide counter plus the
- * load time stands in, which is all a client-made id needs.
+ * call time stands in, which is all a client-made id needs.
  */
 
 let fallbackCount = 0;
