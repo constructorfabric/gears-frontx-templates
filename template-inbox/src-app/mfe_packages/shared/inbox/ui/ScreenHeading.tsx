@@ -51,14 +51,30 @@ export function ScreenHeading({ children, className }: ScreenHeadingProps) {
   const request = useSyncExternalStore(subscribe, readRequested, readRequested);
 
   useEffect(() => {
-    // A heading that renders no box - inside a hidden subtree (a screen
-    // keeping its list mounted behind a detail page) or a pane a narrow
-    // layout sets to `display: none` - leaves the request to the visible one.
-    // So does one whose box is squeezed to zero width: it is laid out, but
-    // nothing of it shows, and focus on it would land on nothing visible.
-    if (request === answered || ref.current === null || !rendersVisibleBox(ref.current)) return;
-    answered = request;
-    ref.current.focus();
+    const heading = ref.current;
+    if (request === answered || heading === null) return;
+    const answer = (): boolean => {
+      // A heading that renders no box - inside a hidden subtree (a screen
+      // keeping its list mounted behind a detail page) or a pane a narrow
+      // layout sets to `display: none` - leaves the request to the visible
+      // one. So does one whose box is squeezed to zero width: it is laid
+      // out, but nothing of it shows, and focus on it would land on nothing
+      // visible.
+      if (request !== requested || request === answered || !rendersVisibleBox(heading)) return false;
+      answered = request;
+      heading.focus();
+      return true;
+    };
+    if (answer() || typeof ResizeObserver === 'undefined') return;
+    // Not visible yet is not the same as never visible: a screen's first
+    // layout can squeeze a pane to nothing until its stylesheet has loaded.
+    // The request stays open for this heading until it gets a box, another
+    // heading answers it, or a newer request replaces it.
+    const observer = new ResizeObserver(() => {
+      if (answer() || request !== requested || request === answered) observer.disconnect();
+    });
+    observer.observe(heading);
+    return () => observer.disconnect();
   }, [request]);
 
   return (
