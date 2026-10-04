@@ -17,7 +17,6 @@
 // ============================================================================
 
 export { createFrontX } from './createFrontX';
-export { createFrontXApp, type FrontXAppConfig } from './createFrontXApp';
 
 // ============================================================================
 // Plugin Exports
@@ -89,14 +88,14 @@ export {
   sidebarDomain,
   popupDomain,
   overlayDomain,
-  DomainRouting,
-  dispatchChain,
-  buildEntryAddresses,
-  readEntryAddress,
-  rootDomainKeyOf,
-  type DomainRouteStatus,
-  type DomainRoutingOptions,
-  type DispatchResult,
+  // The app-facing router handle type (ADR 0036) — `FrameworkRouter` itself
+  // stays internal to this package, never exported. The framework-internal
+  // reach-through functions (`buildExtensionHistory`, `startRoutedDomain`,
+  // `stopRoutedDomain`, `teardownRoutedDomain`, `routedDomainStatus`,
+  // `subscribeRoutedDomainStatus`) are NOT part of this public entry — see
+  // `./internal.ts` (D5/D10: MFE-reachable surface carries only
+  // `app.mfeRouter`'s navigation facade).
+  type MfeRouterHandle,
 } from './plugins';
 
 // MFE Type Constants (solution-specific GTS type ids, app-layer owned)
@@ -118,9 +117,7 @@ export {
 export {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
 } from './mfe/constants';
-export { entryAddressesSchema } from './mfe/entry-addresses-schema';
 
 // MFE Types (re-exported from @gears-frontx/mfes for convenience)
 export type {

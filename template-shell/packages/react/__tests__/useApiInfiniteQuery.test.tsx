@@ -11,13 +11,10 @@
 // @cpt-FEATURE:implement-endpoint-descriptors:p3
 
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
-import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach, beforeEach } from 'vitest';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { eventBus, resetSharedFetchCache, resetSharedQueryClient } from '@gears-frontx/framework';
-import { FrontXProvider } from '@gears-frontx/react';
-import { useApiInfiniteQuery } from '../src/hooks/useApiInfiniteQuery';
-import { useApiSuspenseInfiniteQuery } from '../src/hooks/useApiSuspenseInfiniteQuery';
 import {
+  loadFreshHelpers,
   ownedApps,
   buildAppWithQueryClient,
   buildTestQueryClient,
@@ -25,6 +22,23 @@ import {
   makeSuspenseQueryWrapper,
   makeQueryDescriptor,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let useApiInfiniteQuery: typeof import('../src/hooks/useApiInfiniteQuery')['useApiInfiniteQuery'];
+let useApiSuspenseInfiniteQuery: typeof import('../src/hooks/useApiSuspenseInfiniteQuery')['useApiSuspenseInfiniteQuery'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider } = await import('@gears-frontx/react'));
+  ({ useApiInfiniteQuery } = await import('../src/hooks/useApiInfiniteQuery'));
+  ({ useApiSuspenseInfiniteQuery } = await import('../src/hooks/useApiSuspenseInfiniteQuery'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {

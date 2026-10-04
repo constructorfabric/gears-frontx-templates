@@ -19,13 +19,12 @@
  * on the nested registry. No build-time imports of foreign-package mfe.json
  * files, no hardcoded URLs, no GTS-entity decomposition in L4 code.
  *
- * The widgets domain is itself routed (its own `route: "widgets"` composes a
- * nested domain key under whatever address the shell broadcast Widgets Host
- * under — D5/D6): its own `DomainRouting` is constructed once this screen's
- * bootstrap has resolved and the shell-broadcast entry address for THIS
- * mount is known, and back-projects each widget's mount/unmount exactly like
- * the shell's own four domains, plus the auto-mount-on-attach coalescing and
- * deferred-write rules a nested, self-mounting domain needs (D6).
+ * The widgets domain is itself routed (its own flat `route: "widgets"`,
+ * admitted by this nested app's own injected `FrameworkRouter` — ADR 0036):
+ * `WidgetsHostScreen`'s own domain-slot attach starts that router's observer
+ * for this domain, and every settled mount/unmount is reflected into the URL
+ * automatically from there, exactly like the shell's own domains — this
+ * module builds no routing wiring of its own.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -52,40 +51,42 @@ import {
   type MountStrategy,
   type ExtensionDomain,
   type Extension,
-  type ChildMfeBridge,
-  type MfeMountContext,
+  type FrontXApp,
   type MfManifest,
   type MfeEntryMF,
   type JSONSchema,
+  type ChildMfeBridge,
+  type MfeMountContext,
   type MfeRegistry,
 } from '@gears-frontx/react';
-import {
-  resolveNavigationHistory,
-  createRouteSignal,
-  composeDomainKey,
-  type EntryAddress,
-  type NavigationHistory,
-  type RouteSignal,
-} from '@gears-frontx/routing';
 import {
   themeSchema,
   languageSchema,
   extensionScreenSchema,
 } from '@gears-frontx/frontx-template-shell';
-import {
-  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
-  DomainRouting,
-  dispatchChain,
-  buildEntryAddresses,
-  readEntryAddress,
-} from '@gears-frontx/react';
-import { routedScreen } from './shared/routedScreen';
-
-const WIDGETS_DOMAIN_ID =
-  'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 
 const WIDGET_PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
+
+// The one app of this runtime: each extension instance is its own loaded copy
+// of this bundle, so this copy builds exactly one app, here at module level.
+// `microfrontends()` builds its registry lazily; `mount()` below reads
+// `app.mfeRegistry` as its first statement, which places the registry's
+// construction inside the mount window so the host links it.
+// Exported test-only, like `bootstrapWidgetsRuntime`: a test that needs the real
+// nested app reuses this one, since a runtime builds exactly one.
+export const widgetsHostApp = createFrontX()
+  .use(effects())
+  .use(microfrontends({
+    typeSystem: gtsPlugin,
+    mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
+  }))
+  .use(queryCacheShared())
+  .use(mock())
+  .build();
+
+const WIDGETS_DOMAIN_ID =
+  'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 
 interface MfeManifestConfig {
   manifest: MfManifest;
@@ -114,109 +115,33 @@ class WidgetsContainerHooks implements ContainerHooks {
 }
 
 /**
- * Per-mount routing and this implementation, read at call time: the nested
- * registry may outlive one mount. Exported only so `bootstrapWidgetsRuntime`
- * (also exported test-only, below) is callable from a test without a full
- * `mount()` cycle — see `lifecycle-widgets-host.gts-order.test.ts`.
+ * This implementation, read at call time: the nested registry may outlive
+ * one mount. Exported so `bootstrapWidgetsRuntime` (below) is callable from a
+ * test without a full `mount()` cycle — see
+ * `lifecycle-widgets-host.gts-order.test.ts`. URL sync for this domain is
+ * not this holder's concern: the nested app's own injected
+ * `FrameworkRouter` (`app.mfeRouter`) reflects every settled mount/unmount
+ * automatically (ADR 0036) — the host screen in `lifecycle-widgets-host.tsx` only starts/stops that
+ * router's observer for this domain from its own slot's attach/detach.
  */
 export interface WidgetsRoutingHolder {
-  routing: DomainRouting | undefined;
   impl: WidgetsDomainImpl | undefined;
 }
 
 class WidgetsDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: ConcurrentMountStrategy;
-  private readonly inFlight = new Map<string, Promise<void>>();
-  private readonly waiters = new Map<string, Array<() => void>>();
 
-  constructor(ctx: DomainContext, hooks: ContainerHooks, private readonly registry: MfeRegistry, private readonly holder: WidgetsRoutingHolder) {
+  constructor(ctx: DomainContext, hooks: ContainerHooks, holder: WidgetsRoutingHolder) {
     super();
     holder.impl = this;
     this.strategy = new ConcurrentMountStrategy(ctx.mounter, hooks);
-    ctx.registerHandler(FRONTX_ACTION_MOUNT_EXT, ActionHandler.fromFunction((_t, p) => this.mount(p as ActionPayload)));
+    ctx.registerHandler(FRONTX_ACTION_MOUNT_EXT, ActionHandler.fromFunction((_t, p) => this.strategy.mount(p as ActionPayload)));
     ctx.registerHandler(
       FRONTX_ACTION_UNMOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
-        const payload = p as ActionPayload;
-        await this.strategy.unmount!(payload);
-        this.holder.routing?.afterUnmount(payload.subject);
+        await this.strategy.unmount!(p as ActionPayload);
       }),
     );
-  }
-
-  /**
-   * Dispatch a mount through the actions chain and learn when it settled. Settles on the first of:
-   * this domain's handler settling for `subject`; a synchronous refusal; the promise
-   * executeActionsChain returned (today it resolves even when the chain failed before any
-   * handler); the domain's own action timeout. After #648 there is no promise — the other three remain.
-   */
-  mountThroughChain(subject: string, timeoutMs: number): Promise<void> {
-    const settled = new Promise<void>((resolve) => this.waiters.set(subject, [...(this.waiters.get(subject) ?? []), resolve]));
-    const timer = setTimeout(() => {
-      // Only this wait gives up: the handler keeps running. If it still settles later, its
-      // afterMount runs after endOpening() and makes a separate push of its own (a second history
-      // entry) — the warning is what marks that case in the live run.
-      console.warn(`[demo-mfe widgets-host] mount of ${subject} did not settle within ${timeoutMs}ms`);
-      this.settle(subject);
-    }, timeoutMs);
-    void settled.then(() => clearTimeout(timer));
-    const result = dispatchChain(this.registry, { action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject } } }, `mount ${subject}`);
-    if (!result.accepted) this.settle(subject);
-    else void result.settled?.then(() => this.settle(subject));
-    return settled;
-  }
-
-  private settle(subject: string): void {
-    for (const resolve of this.waiters.get(subject) ?? []) resolve();
-    this.waiters.delete(subject);
-  }
-
-  /**
-   * Release every admitted widget through the strategy before React destroys
-   * the domain slot. Waiting for in-flight strategy mounts first makes the
-   * mounter's later fire-and-forget `detach()` observe an empty mount-set;
-   * the core mounter remains the fallback that clears DOM, mount-state and
-   * the container teardown callback if this lifecycle path is interrupted.
-   */
-  async releaseAll(): Promise<void> {
-    // A chain can still be inside `strategy.mount()` when its host starts
-    // teardown. Snapshotting the mounted set first misses that subject, then
-    // lets it become mounted after this method returns. Wait for every
-    // already-admitted mount before taking the teardown snapshot.
-    await Promise.allSettled([...this.inFlight.values()]);
-    const mounted = Array.from(this.registry.getMountedExtensions(WIDGETS_DOMAIN_ID));
-    const results = await Promise.allSettled(mounted.map((subject) => this.strategy.unmount!({ subject })));
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        // One broken widget must not keep other widgets mounted or prevent
-        // the host lifecycle from reaching React-root cleanup.
-        console.error('[demo-mfe widgets-host] failed to release widget', result.reason);
-      }
-    }
-  }
-
-  /** ConcurrentMountStrategy is not idempotent: a URL restore, the auto-mount pass and a chain may ask at once. */
-  private mount(payload: ActionPayload): Promise<void> {
-    const subject = payload.subject;
-    const pending = this.inFlight.get(subject);
-    if (pending) return pending;
-    if (this.registry.getMountedExtensions(WIDGETS_DOMAIN_ID).includes(subject)) {
-      this.holder.routing?.afterMount(subject);
-      this.settle(subject);
-      return Promise.resolve();
-    }
-    const work = (async () => {
-      try {
-        await this.strategy.mount(payload);
-        // Before this handler settles: the chain's next step (the ping) needs the widget's entry in the URL.
-        this.holder.routing?.afterMount(subject);
-      } finally {
-        this.inFlight.delete(subject);
-        this.settle(subject);
-      }
-    })();
-    this.inFlight.set(subject, work);
-    return work;
   }
 
   protected getMountStrategies(): MountStrategy[] {
@@ -225,59 +150,12 @@ class WidgetsDomainImpl extends ExtensionDomainImplementation {
 }
 
 class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
-  constructor(private readonly registry: MfeRegistry, private readonly holder: WidgetsRoutingHolder) {
+  constructor(private readonly holder: WidgetsRoutingHolder) {
     super();
   }
   build(ctx: DomainContext): WidgetsDomainImpl {
-    return new WidgetsDomainImpl(ctx, new WidgetsContainerHooks(), this.registry, this.holder);
+    return new WidgetsDomainImpl(ctx, new WidgetsContainerHooks(), this.holder);
   }
-}
-
-function createWidgetsHostApp(): ReturnType<ReturnType<typeof createFrontX>['build']> {
-  return createFrontX()
-    .use(effects())
-    .use(microfrontends({
-      typeSystem: gtsPlugin,
-      mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
-    }))
-    .use(queryCacheShared())
-    .use(mock())
-    .build();
-}
-
-/**
- * A `microfrontends()`-FREE placeholder app, used ONLY as the `app` argument
- * `ThemeAwareReactLifecycle`'s constructor requires (for the shared
- * query-cache / theme context `FrontXProvider` resolves).
- *
- * `@gears-frontx/framework`'s `microfrontends()` plugin builds its
- * `MfeRegistry` through a module-level singleton factory
- * (`mfeRegistryFactory` in `template-shell/packages/framework/src/mfe/registry.ts`):
- * the FIRST call to build a registry within this loaded copy of the module
- * wins permanently — every later `createWidgetsHostApp()` call (regardless
- * of new plugin config) returns THAT SAME cached `MfeRegistry` instance, not
- * a fresh one. `DemoMfeWidgetsHostLifecycle`'s own constructor runs at
- * module-evaluation time (when this file's default export is constructed),
- * always strictly BEFORE any `mount()` call and therefore always outside the
- * ambient mounting-bridge rendezvous window `DefaultMountManager` opens
- * around the synchronous portion of `lifecycle.mount(...)`. If the
- * constructor called the real, `microfrontends()`-bearing `createWidgetsHostApp()`,
- * it would permanently consume that one first-build slot with a registry
- * that adopts no inbound bridge — degrading every future mount of this
- * extension to root-registry behavior for good, regardless of any fix to
- * WHERE the nested registry construction happens relative to `mount()`.
- * This placeholder never touches `microfrontends()`, so it never calls
- * `mfeRegistryFactory.build()` — leaving that one slot free for
- * `DemoMfeWidgetsHostLifecycle.mount()`'s own, later, synchronous call to
- * the real `createWidgetsHostApp()` to win it from inside the rendezvous
- * window instead.
- */
-function createWidgetsHostAppShell(): ReturnType<ReturnType<typeof createFrontX>['build']> {
-  return createFrontX()
-    .use(effects())
-    .use(queryCacheShared())
-    .use(mock())
-    .build();
 }
 
 /**
@@ -309,13 +187,12 @@ function createWidgetsHostAppShell(): ReturnType<ReturnType<typeof createFrontX>
  *
  * Returns the located widgets domain declaration so the caller can read its
  * `route` and `defaultActionTimeout` without a second manifest walk.
- */
-/**
+ *
  * Exported test-only (see `WidgetsRoutingHolder`'s doc comment): production
- * code only ever reaches this through `DemoMfeWidgetsHostLifecycle.mount()`.
+ * code reaches this only through `DemoMfeWidgetsHostLifecycle.mount()`.
  */
 export async function bootstrapWidgetsRuntime(
-  app: ReturnType<typeof createWidgetsHostApp>,
+  app: FrontXApp,
   holder: WidgetsRoutingHolder,
 ): Promise<ExtensionDomain> {
   const registry = app.mfeRegistry;
@@ -352,10 +229,8 @@ export async function bootstrapWidgetsRuntime(
   // before ANY domain that references them by `x-gts-ref` in its own
   // `sharedProperties` — not only the well-known `screenDomain` registered
   // below, but also the manifest-declared widgets domain in the loop that
-  // follows. The framework plugin has already registered the entry-addresses
-  // schema required by its base domain contract before this runtime exists.
-  // Registering these three ahead of the manifest-driven domain loop covers
-  // the application-level schema ordering rule.
+  // follows. Registering these three ahead of the manifest-driven domain loop
+  // covers the application-level schema ordering rule.
   registry.typeSystem.registerSchema(themeSchema);
   registry.typeSystem.registerSchema(languageSchema);
   registry.typeSystem.registerSchema(extensionScreenSchema);
@@ -391,13 +266,14 @@ export async function bootstrapWidgetsRuntime(
   // four referenced schemas were already registered above.
   registry.typeSystem.register(screenDomain);
 
-  // Guarded against a cached registry (HMR, a remount on the same nested
-  // `MfeRegistry` singleton): `registerDomain`/`registerExtension` on an
-  // already-owned domain/extension would either throw or duplicate
-  // registration depending on the registry's own idempotency guarantees,
-  // neither of which this bootstrap can rely on across repeated calls.
+  // Guarded against a cached registry: every mount of the host lifecycle
+  // runs this bootstrap against the same nested `MfeRegistry`, so a remount
+  // finds the domain and its extensions already registered, and
+  // `registerDomain`/`registerExtension` on an already-owned domain/extension
+  // would either throw or duplicate the registration. Each registration runs
+  // only for an entity the registry does not already hold.
   if (!registry.getDomain(WIDGETS_DOMAIN_ID)) {
-    registry.registerDomain(widgetsDomain, new WidgetsDomainFactory(registry, holder));
+    registry.registerDomain(widgetsDomain, new WidgetsDomainFactory(holder));
   }
 
   for (const config of manifests) {
@@ -421,64 +297,33 @@ export async function bootstrapWidgetsRuntime(
   return widgetsDomain;
 }
 
-/** Module-level lazy singleton: one `resolveNavigationHistory()` and one `createRouteSignal` per module, mirroring the shell's own `shellNavigation()`. */
-let navigation: { history: NavigationHistory; signal: RouteSignal } | undefined;
-
-function widgetsNavigation(): { history: NavigationHistory; signal: RouteSignal } {
-  if (!navigation) {
-    const history = resolveNavigationHistory();
-    navigation = { history, signal: createRouteSignal(history) };
-  }
-  return navigation;
-}
-
 /**
  * Module-level singleton, not a per-mount instance field: `bootstrapWidgetsRuntime`
- * guards `registerDomain` against a cached nested registry (HMR, a remount),
- * so on a remount the factory — and therefore `WidgetsDomainImpl`'s own
- * `holder.impl = this` assignment — never runs again. A fresh
- * `{ routing: undefined, impl: undefined }` object per `mount()` would leave
- * that remount's holder with no `impl` at all, and `mountThroughChain` would
- * throw reading `undefined`. Keeping the SAME object across every mount, and
- * only resetting its `routing` field (never `impl`, which belongs to the
- * domain implementation instance and outlives any one mount), is what lets a
- * remount still reach the original `WidgetsDomainImpl`.
+ * guards `registerDomain` against a cached nested registry, so on a remount
+ * the factory, and therefore `WidgetsDomainImpl`'s own `holder.impl = this`
+ * assignment, never runs again. A fresh `{ impl: undefined }` object per
+ * `mount()` would leave that remount's holder with no `impl` at all, breaking
+ * the one thing `holder.impl` exists for: a test driving
+ * `bootstrapWidgetsRuntime` directly (`WidgetsRoutingHolder`'s own doc
+ * comment) reaching the SAME, real `WidgetsDomainImpl` instance across a
+ * remount, not a stale or absent one. Keeping the SAME object across every
+ * mount is what lets a remount still reach the original `WidgetsDomainImpl`.
  *
- * This same reasoning is why an HMR update of THIS module must not hand the
- * next `bootstrapWidgetsRuntime()` call a fresh holder either: HMR replaces
- * this module's own top-level bindings (a plain `const` here would start
- * `{ impl: undefined }` again on every edit), but it does NOT replace the
- * cached nested `MfeRegistry` (that singleton lives in `@gears-frontx/framework`'s
- * own module, untouched by this file's reload — see `createWidgetsHostApp`'s
- * doc comment) or the `WidgetsDomainImpl` instance already registered on it.
- * `bootstrapWidgetsRuntime`'s `!registry.getDomain(...)` guard then skips
- * `registerDomain` on the post-HMR pass (the domain is still there), so the
- * factory that performs `holder.impl = this` never runs again for the new
- * holder — reproducing the exact "fresh holder, cached registry" gap the
- * paragraph above already fixed for a plain remount, this time via HMR
- * instead of an unmount/remount cycle.
- *
- * Recovering the PREVIOUS module instance's holder is done through a
- * `globalThis`-keyed slot, the SAME mechanism `@gears-frontx/routing`'s own
- * `resolveNavigationHistory()` already uses to survive this exact class of
- * module-identity break (`src/history/singleton.ts`'s `NAVIGATION_HISTORY_KEY`)
- * — not `import.meta.hot.data`: that field is only ever populated by a real
- * Vite dev server walking its module graph on an actual file-save HMR event,
- * so it stays `undefined` in every other realm this module can load in
- * (a production build, a test runner's module loader, SSR) and would leave
- * this bug fixed only in the one environment hardest to write a regression
- * test against. A `globalThis` slot survives any module-identity reset for
- * the same reason `resolveNavigationHistory()`'s does — the realm object
- * itself is never torn down — which is what lets the test below reproduce
- * the fresh-module/cached-registry gap with a plain `vi.resetModules()`,
- * no real dev server required. This is symmetric with the existing
- * `import.meta.hot.dispose` below, which already reasons about `widgetsHolder`
- * surviving its own module's reload: it stops the OLD `routing` there and
- * leaves `impl` alone for the same reason this recovers it here.
+ * The holder is also keyed on `globalThis`, the SAME mechanism
+ * `@gears-frontx/routing`'s own `resolveNavigationHistory()` uses to survive
+ * a module-identity break (`src/history/singleton.ts`'s
+ * `NAVIGATION_HISTORY_KEY`): a second evaluation of this module in the same
+ * realm, against a nested `MfeRegistry` that already holds the widgets
+ * domain, receives the holder the first evaluation populated instead of
+ * starting `{ impl: undefined }` with no factory run left to fill it. A
+ * plain `const` here would not survive that. The realm object itself is
+ * never torn down, so the slot is reachable from every module instance,
+ * which is what lets a test reproduce a second evaluation with
+ * `vi.resetModules()`.
  */
 const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
 const realm = globalThis as Record<symbol, WidgetsRoutingHolder | undefined>;
-const widgetsHolder: WidgetsRoutingHolder = realm[WIDGETS_HOLDER_KEY] ?? { routing: undefined, impl: undefined };
+const widgetsHolder: WidgetsRoutingHolder = realm[WIDGETS_HOLDER_KEY] ?? { impl: undefined };
 realm[WIDGETS_HOLDER_KEY] = widgetsHolder;
 
 interface WidgetsHostScreenProps {
@@ -496,25 +341,7 @@ interface WidgetsHostScreenProps {
    * timing.
    */
   readonly bootstrap: Promise<ExtensionDomain>;
-  /**
-   * The entry address the shell broadcast for THIS mount of Widgets Host —
-   * `undefined` for a standalone mount (no host, or a host without routing).
-   * Held by the lifecycle rather than re-read from the bridge here, since a
-   * remount's second `readEntryAddress` call happens in `mount()`, before
-   * this component is (re-)rendered.
-   */
-  readonly address: EntryAddress | undefined;
   readonly registry: MfeRegistry;
-  /** Read-only here — `holder.impl` is set once by `WidgetsDomainImpl`'s own constructor and never reassigned by this component. */
-  readonly holder: WidgetsRoutingHolder;
-  /**
-   * Writes `widgetsHolder.routing`, in the lifecycle's own module scope
-   * rather than as a direct mutation of the `holder` prop object here: a
-   * prop is treated as immutable by this project's lint rule (and by the
-   * React Compiler this codebase targets), so the write goes through this
-   * callback instead.
-   */
-  readonly setRouting: (routing: DomainRouting | undefined) => void;
   /**
    * Signals `DemoMfeWidgetsHostLifecycle.mount()` that `ExtensionDomainSlot`'s
    * own `mounter.attach(root)` has completed for the widgets domain — i.e.
@@ -531,30 +358,28 @@ interface WidgetsHostScreenProps {
    * Awaiting this signal too — not just `bootstrap` — is what closes that
    * second race.
    *
-   * This component deliberately delays calling it until AFTER its own
-   * auto-mount-on-attach pass (below) has settled for every extension
-   * currently registered on this domain — not the instant `attach()`
-   * returns. `ExtensionDomainSlot` only renders once this component's own
-   * `ready` state flips true, and its root-attach effect runs on a LATER
-   * React commit than the microtask that resolves `mount()`'s own promise
-   * and immediately drives a chain's `next` continuation. If that
-   * continuation dispatched a `mount_ext` for this domain before
-   * `DefaultExtensionMounter` had a root attached, it would throw "no root
-   * attached for domain ...". Deferring this signal until after the
-   * auto-mount pass settles means any later `mount_ext` for an extension
-   * this pass already mounted lands on the cheap, safe
-   * `mountState === 'mounted'` early-return in `mountExtension` instead of
-   * racing the root-attach timing a second time.
+   * Called synchronously at the end of `handleAttached`, once this domain's
+   * own opening mounts have been dispatched (or deferred behind the
+   * enclosing entry) — not awaited, since `mfes` serializes each subject's
+   * mount/unmount and this component relies on that ordering rather than on
+   * any settlement of its own. `ExtensionDomainSlot` only renders once this
+   * component's own `ready` state flips true, and its root-attach effect
+   * runs on a LATER React commit than the microtask that resolves
+   * `mount()`'s own promise and immediately drives a chain's `next`
+   * continuation. If that continuation dispatched a `mount_ext` for this
+   * domain before `DefaultExtensionMounter` had a root attached, it would
+   * reject with "no root attached for domain ...". Calling this signal only
+   * after the opening dispatch closes that race: any later `mount_ext` for
+   * an extension the opening dispatch already mounted lands on the cheap,
+   * safe `mountState === 'mounted'` early-return in `mountExtension` instead
+   * of racing the root-attach timing a second time.
    */
   readonly onDomainAttached: () => void;
 }
 
 function WidgetsHostScreen({
   bootstrap,
-  address,
   registry,
-  holder,
-  setRouting,
   onDomainAttached,
 }: WidgetsHostScreenProps): React.ReactElement {
   const [widgetsDomain, setWidgetsDomain] = useState<ExtensionDomain | undefined>();
@@ -579,57 +404,26 @@ function WidgetsHostScreen({
   // `ExtensionDomainSlot` renders only once `widgetsDomain` is set (below), so
   // by the time this fires `widgetsDomain` is always defined — the non-null
   // assertion mirrors that render-gating rather than asserting past it.
+  //
+  // `ExtensionDomainSlot` itself starts this domain's own URL observer from
+  // its own attach, once the slot renders below (ADR 0036, D10/D11) — this
+  // handler only runs the auto-mount-on-attach pass.
   const handleAttached = (): void => {
-    const domain = widgetsDomain!;
-    if (holder.routing) {
-      // Re-entry guard (Q2): `ExtensionDomainSlot`'s own `onAttached` can fire more
-      // than once for the same domain mount without an intervening `unmount` (a
-      // double-invoked effect in dev, or a slot re-attach) — this component's
-      // `handleAttached` is re-created every render, so a second call would
-      // otherwise construct a second `DomainRouting` while the first stays
-      // subscribed, leaving two live observers racing writes to the same URL.
-      // Stopping the previous one first keeps at most one subscription live.
-      holder.routing.stop();
-    }
-    // Held locally: a remount may replace holder.routing while this pass awaits.
-    let routing: DomainRouting | undefined;
-    if (address && domain.route) {
-      const domainKey = composeDomainKey(address.domainKey, address.extension, domain.route);
-      routing = new DomainRouting({
-        ...widgetsNavigation(),
-        registry,
-        domainId: WIDGETS_DOMAIN_ID,
-        domainKey,
-        mountActionType: FRONTX_ACTION_MOUNT_EXT,
-        unmountActionType: FRONTX_ACTION_UNMOUNT_EXT,
-        cardinality: 'multiple',
-        enclosing: address,
-      });
-      setRouting(routing);
-      registry.updateSharedProperty(
-        FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
-        buildEntryAddresses(registry, [{ domainId: WIDGETS_DOMAIN_ID, domainKey }]),
-      );
-      routing.start();
-    }
+    // D10: Widgets Host's own auto-mount-on-attach pass, sent with history
+    // intent `replace` — the injected router's generic settled-action
+    // reflection (ADR 0036) back-projects each one into the URL on its own;
+    // this domain builds no routing wiring of its own.
     const ids = registry.getExtensionsForDomain(WIDGETS_DOMAIN_ID).map((e) => e.id);
-    const autoMount = (): Promise<void> =>
-      Promise.allSettled(ids.map((id) => holder.impl!.mountThroughChain(id, domain.defaultActionTimeout))).then(() => undefined);
-    void (routing ? routing.withOpening(autoMount) : autoMount())
-      .then(() => {
-        onDomainAttached(); // mount() resolves only now — after the opening write is made or deferred
-      })
-      .catch((err: unknown) => {
-        // Q4: without this catch, a rejection here (e.g. `withOpening` itself
-        // throwing) would leave `onDomainAttached` uncalled forever — `mount()`
-        // awaits the promise `onDomainAttached` resolves (`domainAttachedPromise`)
-        // alongside `bootstrapPromise`, so a silently-hung gating pass would hang
-        // the whole extension mount. Resolving anyway is the same "best effort,
-        // do not block mounting" stance `bootstrapWidgetsRuntime`'s per-extension
-        // registration loop already takes.
-        console.error('[demo-mfe widgets-host] opening/auto-mount pass failed:', err);
-        onDomainAttached();
-      });
+    for (const id of ids) {
+      try {
+        registry.executeActionsChain({
+          action: { type: FRONTX_ACTION_MOUNT_EXT, target: WIDGETS_DOMAIN_ID, payload: { subject: id, history: 'replace' } },
+        });
+      } catch (error) {
+        console.error(`[demo-mfe widgets-host] auto-mount of ${id} refused`, error);
+      }
+    }
+    onDomainAttached(); // mount() resolves once the opening dispatch is made
   };
 
   if (error) {
@@ -660,17 +454,16 @@ function WidgetsHostScreen({
       return entry?.actions?.includes(WIDGET_PING_ACTION_TYPE) ?? false;
     });
 
-  // #648: `executeActionsChain` is no longer guaranteed to return a promise (it can refuse
-  // synchronously and return nothing), so an unconditional `.catch()` on its result would
-  // throw `undefined.catch` even though the chain ran. `dispatchChain` already normalizes all
-  // three shapes (sync throw, `undefined`, a promise) — same helper `mountThroughChain` above
-  // uses, rather than a second bespoke adapter for the same problem.
+  // #648: `executeActionsChain` is acceptance-only — it can refuse synchronously
+  // and returns nothing to await — so an unconditional `.catch()` on its result
+  // would throw `undefined.catch` even though the chain ran; a synchronous
+  // throw is the only refusal shape, caught here, fire-and-forget.
   const handlePing = (extensionId: string): void => {
-    dispatchChain(
-      registry,
-      { action: { type: WIDGET_PING_ACTION_TYPE, target: extensionId, payload: {} } },
-      `ping ${extensionId}`,
-    );
+    try {
+      registry.executeActionsChain({ action: { type: WIDGET_PING_ACTION_TYPE, target: extensionId, payload: {} } });
+    } catch (error) {
+      console.error(`[demo-mfe widgets-host] ping ${extensionId} refused`, error);
+    }
   };
 
   return (
@@ -717,14 +510,6 @@ function WidgetsHostScreen({
 
 class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
   /**
-   * The nested app/registry the currently-mounted `WidgetsHostScreen`
-   * renders against, constructed synchronously in `mount()` below — see
-   * `WidgetsHostScreenProps.app`'s doc comment for why this must not be
-   * built lazily inside the React tree.
-   */
-  private widgetsApp: ReturnType<typeof createWidgetsHostApp> | undefined;
-
-  /**
    * The `bootstrapWidgetsRuntime(...)` promise started synchronously (before
    * any `await`) inside `mount()`, and awaited by `mount()` itself before
    * `mount()`'s own returned promise settles. This is what closes the async
@@ -764,43 +549,32 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
    */
   private onDomainAttached: () => void = () => {};
 
-  /** The entry address the shell broadcast for the current mount — read once in `mount()`, before any await. */
-  private address: EntryAddress | undefined;
-
   constructor() {
-    // A `microfrontends()`-free placeholder — see `createWidgetsHostAppShell`'s
-    // doc comment for why the REAL app must not be built here.
-    super(createWidgetsHostAppShell());
+    super(widgetsHostApp);
   }
 
   async mount(container: Element | ShadowRoot, bridge: ChildMfeBridge, mountContext?: MfeMountContext): Promise<void> {
-    // Constructed here — synchronously inside this override, before any
-    // `await` and before delegating to `ThemeAwareReactLifecycle.mount()`
-    // (which is what actually calls `createRoot(...).render(...)`) — so
-    // this registry's construction happens strictly within the ambient
-    // mounting-bridge rendezvous window `DefaultMountManager.mountExtension`
-    // opens around the synchronous portion of this very call. Building it
-    // lazily inside a React hook instead risks the rendezvous window having
-    // already closed by the time React actually runs the component's
-    // initial render. This is also the FIRST call anywhere in this module
-    // to build a real `microfrontends()`-bearing app (the constructor above
-    // deliberately avoided that), so it is the call that wins the
-    // `mfeRegistryFactory` singleton's one-time build slot — see
-    // `createWidgetsHostAppShell`.
-    this.widgetsApp = createWidgetsHostApp();
-    // Reset only `routing` (not `impl` — see `widgetsHolder`'s own doc comment).
-    widgetsHolder.routing = undefined;
-    // Read synchronously, before any await: a bridge's shared-property value
-    // is available synchronously the moment the bridge exists (O1/O2).
-    this.address = readEntryAddress(bridge);
+    // Read here — synchronously inside this override, before any `await` and
+    // before delegating to `ThemeAwareReactLifecycle.mount()` (which is what
+    // actually calls `createRoot(...).render(...)`) — so the registry's
+    // construction happens strictly within the ambient mounting-bridge
+    // rendezvous window `DefaultMountManager.mountExtension` opens around the
+    // synchronous portion of this very call. Reading it lazily inside a React
+    // hook instead risks the rendezvous window having already closed by the
+    // time React actually runs the component's initial render. After the
+    // first mount the registry already exists and this read returns it.
+    const registry = widgetsHostApp.mfeRegistry;
+    if (!registry) {
+      throw new Error('demo-mfe widgets-host: app.mfeRegistry is undefined.');
+    }
 
     // Kick off the manifest fetch + domain-registration bootstrap
     // synchronously (still within the same synchronous prefix as the
-    // registry construction above — invoking an async function runs its
+    // registry read above — invoking an async function runs its
     // body up to its first `await` synchronously). `super.mount()` then
     // renders `WidgetsHostScreen`, which receives this same promise to
     // drive its own loading/error UI without re-triggering bootstrap.
-    this.bootstrapPromise = bootstrapWidgetsRuntime(this.widgetsApp, widgetsHolder);
+    this.bootstrapPromise = bootstrapWidgetsRuntime(widgetsHostApp, widgetsHolder);
 
     let resolveDomainAttached!: () => void;
     this.domainAttachedPromise = new Promise<void>((resolve) => {
@@ -826,81 +600,27 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
     await Promise.all([this.bootstrapPromise, this.domainAttachedPromise]);
   }
 
-  async unmount(container: Element | ShadowRoot): Promise<void> {
-    // Before releasing occupants below: the slot's own detach unmounts this
-    // domain's occupants past the action-chain handlers (O7), so this
-    // instance's observer must already be released — otherwise it would see
-    // those removals as ordinary transitions and try to dispatch unmounts
-    // for extensions the mounter is already tearing down (O4). Stopped
-    // first, so `afterUnmount` inside `releaseAll`'s own unmount path
-    // no-ops rather than writing a URL entry for a screen that is itself
-    // leaving.
-    widgetsHolder.routing?.stop();
-    widgetsHolder.routing = undefined;
-    // D2: release every occupant through the registry's own bookkeeping
-    // (see `WidgetsDomainImpl.releaseAll`'s doc comment) BEFORE
-    // `super.unmount(container)` triggers `ExtensionDomainSlot`'s cleanup
-    // effect. That effect's own `mounter.detach()` mass-unmounts the DOM but
-    // never clears `getMountedExtensions()` — and this domain's registry is
-    // a module-singleton that outlives one mount of Widgets Host. Without
-    // this, the NEXT mount's auto-mount pass would find every widget
-    // already "mounted" and never call `strategy.mount()` again, leaving
-    // Widgets Host permanently blank on re-entry (back/forward, or a fresh
-    // Back after leaving).
-    try {
-      await widgetsHolder.impl?.releaseAll();
-    } finally {
-      // React's root must be released even when a widget's lifecycle rejects.
-      await super.unmount(container);
-    }
-  }
-
-  protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    if (!this.widgetsApp || !this.bootstrapPromise || !this.domainAttachedPromise) {
+  protected renderContent(): React.ReactNode {
+    if (!this.bootstrapPromise || !this.domainAttachedPromise) {
       throw new Error(
-        'demo-mfe widgets-host: renderContent() called before mount() constructed the nested app.',
+        'demo-mfe widgets-host: renderContent() called before mount() started the bootstrap.',
       );
     }
-    const registry = this.widgetsApp.mfeRegistry;
+    const registry = widgetsHostApp.mfeRegistry;
     if (!registry) {
       throw new Error(
         'demo-mfe widgets-host: nested app has no mfeRegistry.',
       );
     }
-    return routedScreen(
+    return (
       <WidgetsHostScreen
         bootstrap={this.bootstrapPromise}
-        address={this.address}
         registry={registry}
-        holder={widgetsHolder}
-        setRouting={(routing) => {
-          widgetsHolder.routing = routing;
-        }}
         onDomainAttached={this.onDomainAttached}
-      />,
-      bridge,
+      />
     );
   }
 }
 
-export default new DemoMfeWidgetsHostLifecycle();
-
-// Q1: mirrors the shell's own `shellNavigation()` HMR teardown
-// (`template-shell/src-app/app/mfe/shell-routing.ts`). HMR replaces this
-// module's exports with a fresh copy, whose own `navigation` module var
-// starts `undefined` again — the next `widgetsNavigation()` call would then
-// build a second history/signal pair sharing the same DOM/browser history
-// object, while this OLD module instance's `DomainRouting` (held in
-// `widgetsHolder`, which itself is NOT replaced by HMR — see its own doc
-// comment) stays subscribed to the first pair forever, since nothing else
-// ever calls its `stop()`. Only `routing` is reset (not `holder.impl`, which
-// belongs to the domain implementation instance rather than to this
-// navigation cache and outlives any one mount, exactly as a plain remount
-// leaves it alone).
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    widgetsHolder.routing?.stop();
-    widgetsHolder.routing = undefined;
-    navigation = undefined;
-  });
-}
+const lifecycle = new DemoMfeWidgetsHostLifecycle();
+export default lifecycle;

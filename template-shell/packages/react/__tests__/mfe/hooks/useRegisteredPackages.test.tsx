@@ -7,26 +7,43 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { FrontXProvider } from '../../../src/FrontXProvider';
-import { useRegisteredPackages } from '../../../src/mfe/hooks/useRegisteredPackages';
-import { createFrontX } from '@gears-frontx/framework';
-import { effects } from '@gears-frontx/framework';
-import { microfrontends } from '@gears-frontx/framework';
 import type { Extension, ExtensionDomain } from '@gears-frontx/framework';
-import { ExtensionDomainImplementationFactory } from '@gears-frontx/framework';
-import { gtsPlugin } from '@gears-frontx/framework';
 import type { FrontXApp } from '@gears-frontx/framework';
 import type { DomainContext, ExtensionDomainImplementation } from '@gears-frontx/framework';
 
+// Each test loads a fresh module copy: a runtime builds one app.
+let FrontXProvider: typeof import('../../../src/FrontXProvider')['FrontXProvider'];
+let useRegisteredPackages: typeof import('../../../src/mfe/hooks/useRegisteredPackages')['useRegisteredPackages'];
+let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
+let effects: typeof import('@gears-frontx/framework')['effects'];
+let microfrontends: typeof import('@gears-frontx/framework')['microfrontends'];
+let ExtensionDomainImplementationFactory: typeof import('@gears-frontx/framework')['ExtensionDomainImplementationFactory'];
+let gtsPlugin: typeof import('@gears-frontx/framework')['gtsPlugin'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ FrontXProvider } = await import('../../../src/FrontXProvider'));
+  ({ useRegisteredPackages } = await import('../../../src/mfe/hooks/useRegisteredPackages'));
+  ({ createFrontX } = await import('@gears-frontx/framework'));
+  ({ effects } = await import('@gears-frontx/framework'));
+  ({ microfrontends } = await import('@gears-frontx/framework'));
+  ({ ExtensionDomainImplementationFactory } = await import('@gears-frontx/framework'));
+  ({ gtsPlugin } = await import('@gears-frontx/framework'));
+  TestContainerProvider = defineTestContainerProvider();
+});
+
 // Placeholder factory — never actually called because the test mocks registerDomain.
 // Extends ExtensionDomainImplementationFactory to satisfy the type system.
-class TestContainerProvider extends ExtensionDomainImplementationFactory {
-  build(_ctx: DomainContext): ExtensionDomainImplementation {
-    throw new Error('TestContainerProvider.build: should not be called — registerDomain is mocked');
-  }
+function defineTestContainerProvider() {
+  return class TestContainerProvider extends ExtensionDomainImplementationFactory {
+    build(_ctx: DomainContext): ExtensionDomainImplementation {
+      throw new Error('TestContainerProvider.build: should not be called — registerDomain is mocked');
+    }
+  };
 }
+let TestContainerProvider: ReturnType<typeof defineTestContainerProvider>;
 
 describe('useRegisteredPackages hook - Phase 39.6', () => {
   const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.package.hooks.domain.v1';
@@ -78,7 +95,7 @@ describe('useRegisteredPackages hook - Phase 39.6', () => {
    */
   function buildApp(): FrontXApp {
     const app = createFrontX()
-            .use(effects())
+      .use(effects())
       .use(microfrontends({ typeSystem: gtsPlugin }))
       .build();
     apps.push(app);

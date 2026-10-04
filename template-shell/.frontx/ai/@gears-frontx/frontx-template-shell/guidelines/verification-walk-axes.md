@@ -32,16 +32,14 @@ mounted together. A run against a surface like that declares no checkpoint axis
 and lets the walk cover whatever `--host` opens.
 
 **The set comes from the manifests, not from the menu.** Read each realized
-screen extension's `presentation.route` out of the `mfe.json` that declares it.
-That `route` is **this template's own field**, shaped by template-mfe's manifest
-conventions and consumed by this shell's screen domain - it is not an
-ecosystem-guaranteed key, and `@gears-frontx/mfes` declares no extension-domain
-values at all. The menu enumerates what the menu chose to offer, which is a
+screen extension's `route` out of the `mfe.json` that declares it.
+The `route` sits at the extension's top level, beside `id`, `domain` and
+`entry`, not inside `presentation`. The menu enumerates what the menu chose to offer, which is a
 different question, and a set taken from it is a set nothing confirmed.
 
 demo-mfe's shipped extensions declare, for example:
 
-| Checkpoint name | `presentation.route` | Extension id (the `{handle}` value) |
+| Checkpoint name | `route` | Extension id (the `{handle}` value) |
 |---|---|---|
 | `helloworld` | `/hello-world` | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1` |
 | `profile` | `/profile` | `...~frontx.demo.screens.profile.v1` |
@@ -149,7 +147,7 @@ node "$DRIVER" \
   --host <dev server origin> \
   --browser-cmd 'npx --yes agent-browser@<the version this run pinned>' \
   --capdir "$CAPDIR/pass-1" \
-  --checkpoints '<name>:<presentation.route>:<that screen's ready testid>:<its extension id>,...' \
+  --checkpoints '<name>:<route>:<that screen's ready testid>:<its extension id>,...' \
   --checkpoint-selector 'menu-item-{handle}' \
   --variants default,light,dark,dracula \
   --variant-switcher studio-theme-trigger \
@@ -162,7 +160,7 @@ node "$DRIVER" \
   --host <dev server origin> \
   --browser-cmd 'npx --yes agent-browser@<the version this run pinned>' \
   --capdir "$CAPDIR/pass-2" \
-  --checkpoints '<name>:<presentation.route>:<that screen's ready testid>:<its extension id>,...' \
+  --checkpoints '<name>:<route>:<that screen's ready testid>:<its extension id>,...' \
   --checkpoint-selector 'menu-item-{handle}' \
   --variants dracula-large \
   --variant-switcher studio-theme-trigger \

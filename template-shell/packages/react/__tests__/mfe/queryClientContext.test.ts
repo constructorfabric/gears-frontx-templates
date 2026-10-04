@@ -1,29 +1,43 @@
 import React from 'react';
-import { describe, expect, it, afterEach, vi } from 'vitest';
+import { describe, expect, it, afterEach, vi, beforeEach } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
-import {
-  createFrontX,
-  type ChildMfeBridge,
-  type EndpointDescriptor,
-  type FrontXApp,
-  queryCache,
-  queryCacheShared,
-  resetSharedQueryClient,
-} from '@gears-frontx/framework';
-import {
-  ThemeAwareReactLifecycle,
-  useApiQuery,
-  useQueryCache,
-} from '@gears-frontx/react';
-import {
-  bootstrapFrontXQueryClient,
-  resolveFrontXQueryClient,
-  useOptionalFrontXQueryClient,
-} from '@gears-frontx/react/testing';
+import { loadOtherRuntime } from '../queryHooks.helpers';
+import type { ChildMfeBridge, EndpointDescriptor, FrontXApp } from '@gears-frontx/framework';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
+let queryCache: typeof import('@gears-frontx/framework')['queryCache'];
+let queryCacheShared: typeof import('@gears-frontx/framework')['queryCacheShared'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let TestLifecycle: ReturnType<typeof defineTestLifecycle>;
+let OptionalQueryClientLifecycle: ReturnType<typeof defineOptionalQueryClientLifecycle>;
+let ApiQueryLateJoinLifecycle: ReturnType<typeof defineApiQueryLateJoinLifecycle>;
+let ThemeAwareReactLifecycle: typeof import('@gears-frontx/react')['ThemeAwareReactLifecycle'];
+let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
+let useQueryCache: typeof import('@gears-frontx/react')['useQueryCache'];
+let bootstrapFrontXQueryClient: typeof import('@gears-frontx/react/testing')['bootstrapFrontXQueryClient'];
+let resolveFrontXQueryClient: typeof import('@gears-frontx/react/testing')['resolveFrontXQueryClient'];
+let useOptionalFrontXQueryClient: typeof import('@gears-frontx/react/testing')['useOptionalFrontXQueryClient'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX, queryCache, queryCacheShared, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ ThemeAwareReactLifecycle, useApiQuery, useQueryCache } = await import('@gears-frontx/react'));
+  TestLifecycle = defineTestLifecycle();
+  OptionalQueryClientLifecycle = defineOptionalQueryClientLifecycle();
+  ApiQueryLateJoinLifecycle = defineApiQueryLateJoinLifecycle();
+  ({ bootstrapFrontXQueryClient, resolveFrontXQueryClient, useOptionalFrontXQueryClient } = await import('@gears-frontx/react/testing'));
+});
 
 afterEach(() => {
   resetSharedQueryClient();
 });
+
+/** The host is another runtime: its own module copy, sharing the test runtime's state. */
+async function buildHostApp(): Promise<FrontXApp> {
+  const hostRuntime = await loadOtherRuntime();
+  return hostRuntime.createFrontX().use(hostRuntime.queryCache()).build();
+}
 
 /** Minimal real app: failure-path test only needs an app without shared QueryClient wiring. */
 function createMinimalHai3App(): FrontXApp {
@@ -34,7 +48,7 @@ function makeScreenMountBridgeStub(): ChildMfeBridge {
   return {
     extDomainId: 'screen',
     extensionId: 'bridge',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => undefined),
     getProperty: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),
@@ -70,49 +84,55 @@ function ApiQueryLateJoinProbe({
   return null;
 }
 
-class TestLifecycle extends ThemeAwareReactLifecycle {
-  constructor(
-    app: FrontXApp,
-    private readonly onRender: (value: unknown) => void
-  ) {
-    super(app);
-  }
+function defineTestLifecycle() {
+  return class extends ThemeAwareReactLifecycle {
+    constructor(
+      app: FrontXApp,
+      private readonly onRender: (value: unknown) => void
+    ) {
+      super(app);
+    }
 
-  protected renderContent() {
-    return React.createElement(QueryCacheProbe, { onRender: this.onRender });
-  }
+    protected renderContent() {
+      return React.createElement(QueryCacheProbe, { onRender: this.onRender });
+    }
+  };
 }
 
-class OptionalQueryClientLifecycle extends ThemeAwareReactLifecycle {
-  constructor(
-    app: FrontXApp,
-    private readonly onRender: (value: unknown) => void
-  ) {
-    super(app);
-  }
+function defineOptionalQueryClientLifecycle() {
+  return class extends ThemeAwareReactLifecycle {
+    constructor(
+      app: FrontXApp,
+      private readonly onRender: (value: unknown) => void
+    ) {
+      super(app);
+    }
 
-  protected renderContent() {
-    return React.createElement(OptionalQueryClientProbe, { onRender: this.onRender });
-  }
+    protected renderContent() {
+      return React.createElement(OptionalQueryClientProbe, { onRender: this.onRender });
+    }
+  };
 }
 
-class ApiQueryLateJoinLifecycle extends ThemeAwareReactLifecycle {
-  constructor(
-    app: FrontXApp,
-    private readonly onRender: (r: { data: unknown; isLoading: boolean }) => void
-  ) {
-    super(app);
-  }
+function defineApiQueryLateJoinLifecycle() {
+  return class extends ThemeAwareReactLifecycle {
+    constructor(
+      app: FrontXApp,
+      private readonly onRender: (r: { data: unknown; isLoading: boolean }) => void
+    ) {
+      super(app);
+    }
 
-  protected renderContent() {
-    return React.createElement(ApiQueryLateJoinProbe, { onRender: this.onRender });
-  }
+    protected renderContent() {
+      return React.createElement(ApiQueryLateJoinProbe, { onRender: this.onRender });
+    }
+  };
 }
 
 describe('MFE shared QueryClient join', () => {
   it('resolves the shared QueryClient at mount when the child app built before the host', async () => {
     const childApp = createFrontX().use(queryCacheShared()).build();
-    const hostApp = createFrontX().use(queryCache()).build();
+    const hostApp = await buildHostApp();
     const hostClient = resolveFrontXQueryClient(hostApp);
     if (!hostClient) {
       throw new Error('expected host query client');
@@ -148,7 +168,7 @@ describe('MFE shared QueryClient join', () => {
   });
 
   it('keeps the joined QueryClient readable after immediate host app teardown following mount', async () => {
-    const hostApp = createFrontX().use(queryCache()).build();
+    const hostApp = await buildHostApp();
     const hostClient = resolveFrontXQueryClient(hostApp);
     if (!hostClient) {
       throw new Error('expected host query client');
@@ -228,7 +248,7 @@ describe('MFE shared QueryClient join', () => {
 
   it('does not activate queryCacheShared() from render bootstrap', async () => {
     const childApp = createFrontX().use(queryCacheShared()).build();
-    const hostApp = createFrontX().use(queryCache()).build();
+    const hostApp = await buildHostApp();
 
     expect(bootstrapFrontXQueryClient(childApp)).toBeUndefined();
     expect(resolveFrontXQueryClient(childApp)).toBeUndefined();
@@ -266,7 +286,7 @@ describe('MFE shared QueryClient join', () => {
 
     let hostApp!: FrontXApp;
     await act(async () => {
-      hostApp = createFrontX().use(queryCache()).build();
+      hostApp = await buildHostApp();
     });
 
     await waitFor(() => {
@@ -307,7 +327,7 @@ describe('MFE shared QueryClient join', () => {
 
     let hostApp!: FrontXApp;
     await act(async () => {
-      hostApp = createFrontX().use(queryCache()).build();
+      hostApp = await buildHostApp();
       const hostClient = resolveFrontXQueryClient(hostApp);
       if (!hostClient) {
         throw new Error('expected host query client');

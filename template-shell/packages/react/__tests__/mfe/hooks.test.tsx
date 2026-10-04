@@ -34,7 +34,7 @@ function makeBridge(overrides: Partial<ChildMfeBridge> = {}): ChildMfeBridge {
   return {
     extDomainId: TEST_DOMAIN_ID,
     extensionId: 'test-instance',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => {}),
     getProperty: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),

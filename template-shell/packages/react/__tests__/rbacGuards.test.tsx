@@ -16,10 +16,9 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import React from 'react';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { createFrontX, auth } from '@gears-frontx/framework';
 import type {
   AuthProvider,
   AuthContext,
@@ -29,9 +28,21 @@ import type {
   AuthSession,
   AuthTransition,
 } from '@gears-frontx/framework';
-import { FrontXProvider } from '../src/FrontXProvider';
-import { useCanAccess } from '../src/hooks/useCanAccess';
-import { CanAccess } from '../src/components/CanAccess';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
+let auth: typeof import('@gears-frontx/framework')['auth'];
+let FrontXProvider: typeof import('../src/FrontXProvider')['FrontXProvider'];
+let useCanAccess: typeof import('../src/hooks/useCanAccess')['useCanAccess'];
+let CanAccess: typeof import('../src/components/CanAccess')['CanAccess'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX, auth } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider } = await import('../src/FrontXProvider'));
+  ({ useCanAccess } = await import('../src/hooks/useCanAccess'));
+  ({ CanAccess } = await import('../src/components/CanAccess'));
+});
 
 // ============================================================================
 // Helpers
@@ -264,7 +275,7 @@ describe('useCanAccess', () => {
     // re-check is then correct.
     const rebuiltApp = { ...app };
     expect(rebuiltApp).not.toBe(app);
-    expect(rebuiltApp.auth).toBe(app.auth);
+    expect(Reflect.get(rebuiltApp, 'auth')).toBe(Reflect.get(app, 'auth'));
 
     function Guard() {
       const { allow, isResolving } = useCanAccess(QUERY_READ);

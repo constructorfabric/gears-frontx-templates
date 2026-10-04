@@ -8,12 +8,30 @@
     {
       "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "$comment": "Derived Action type for the duplicate-entry-instance stress test. Inherits the base Action contract (type, target, payload, timeout, required) via allOf — no fields are added or narrowed. The mediator routes by (extensionInstanceId, actionType) so an action targeted at one instance does not reach another; per-entry validation enforces that only entries declaring this action in their actions[] (fixture-a's entry) accept it.",
-      "allOf": [
-        {
-          "$ref": "gts://gts.frontx.mfes.comm.action.v1~"
+      "$comment": "Derived Action type for the duplicate-entry-instance stress test. Self-contained and closed: re-declares every property the base action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload (cpt-frontx-dod-gts-type-provider-infra-schema-ownership) — no fields are added or narrowed beyond the base contract. The mediator routes by (extensionInstanceId, actionType) so an action targeted at one instance does not reach another; per-entry validation enforces that only entries declaring this action in their actions[] (fixture-a's entry) accept it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "x-gts-ref": "/$id",
+          "$comment": "Self-reference to this action's schema type ID"
+        },
+        "target": {
+          "x-gts-ref": "gts.frontx.mfes.ext.extension.v1~*",
+          "$comment": "Type ID of the target extension instance"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "$comment": "No payload fields — a ping carries nothing"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1,
+          "$comment": "Optional timeout override in milliseconds"
         }
-      ]
+      },
+      "required": ["type", "target"]
     }
   ],
   "entries": [

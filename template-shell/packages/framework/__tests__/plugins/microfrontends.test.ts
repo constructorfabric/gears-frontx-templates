@@ -12,24 +12,25 @@
  * @packageDocumentation
  */
 
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { eventBus, resetStore } from '@gears-frontx/state';
-import { gtsPlugin } from '@gears-frontx/gts-plugin';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TypeSystemPlugin } from '@gears-frontx/mfes';
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
-import { createFrontX } from '../../src/createFrontX';
-import { microfrontends } from '../../src/plugins/microfrontends';
-import { loadLayoutDomains } from '../../src/plugins/microfrontends/gts/loader';
-import { entryAddressesSchema } from '../../src/mfe/entry-addresses-schema';
-import {
-  themeSchema,
-  languageSchema,
-  extensionScreenSchema,
-} from '@gears-frontx/frontx-template-shell';
 import type { MfeRegistry } from '@gears-frontx/framework';
-import { TestContainerProvider } from '../../src/testing/TestContainerProvider';
-import { resetSharedQueryClient } from '../../src/testing';
 import type { FrontXApp } from '../../src/types';
+
+// One app per runtime: every test loads its own module copy.
+let eventBus: typeof import('@gears-frontx/state').eventBus;
+let resetStore: typeof import('@gears-frontx/state').resetStore;
+let gtsPlugin: typeof import('@gears-frontx/gts-plugin').gtsPlugin;
+let createFrontX: typeof import('../../src/createFrontX').createFrontX;
+let microfrontends: typeof import('../../src/plugins/microfrontends').microfrontends;
+let TestContainerProvider: typeof import('../../src/testing/TestContainerProvider').TestContainerProvider;
+let resetSharedQueryClient: typeof import('../../src/testing').resetSharedQueryClient;
+type LayoutDomains = ReturnType<typeof import('../../src/plugins/microfrontends/gts/loader').loadLayoutDomains>;
+let sidebarDomain: LayoutDomains[0];
+let popupDomain: LayoutDomains[1];
+let screenDomain: LayoutDomains[2];
+let overlayDomain: LayoutDomains[3];
 
 function getAppMfeRegistry(app: FrontXApp): MfeRegistry {
   const registry = app.mfeRegistry;
@@ -40,21 +41,23 @@ function getAppMfeRegistry(app: FrontXApp): MfeRegistry {
 }
 
 describe('microfrontends plugin - Phase 7.9', () => {
-  const [sidebarDomain, popupDomain, screenDomain, overlayDomain] = loadLayoutDomains();
   let apps: FrontXApp[] = [];
-  // NOTE: We deliberately reuse the module-scoped `gtsPlugin` singleton across
-  // every test in this file. The `mfeRegistryFactory` is itself a
-  // process-wide singleton that caches the very first TypeSystemPlugin it was
-  // built with, and rejects subsequent .build(...) calls with a *different*
-  // plugin identity (even if both are named "gts"). That makes a fresh
-  // `new GtsPlugin()` per test incompatible with the registry factory.
-  //
-  // Schema registration below is idempotent: the three first-class schemas are
-  // static and do not mutate between tests, so sharing the singleton does not
-  // leak test-specific state.
-  const typeSystem: TypeSystemPlugin = gtsPlugin;
+  let typeSystem: TypeSystemPlugin;
 
-  beforeAll(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+    ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
+    ({ createFrontX } = await import('../../src/createFrontX'));
+    ({ microfrontends } = await import('../../src/plugins/microfrontends'));
+    ({ TestContainerProvider } = await import('../../src/testing/TestContainerProvider'));
+    ({ resetSharedQueryClient } = await import('../../src/testing'));
+    const { loadLayoutDomains } = await import('../../src/plugins/microfrontends/gts/loader');
+    [sidebarDomain, popupDomain, screenDomain, overlayDomain] = loadLayoutDomains();
+    const { themeSchema, languageSchema, extensionScreenSchema } = await import(
+      '@gears-frontx/frontx-template-shell'
+    );
+    typeSystem = gtsPlugin;
     typeSystem.registerSchema(themeSchema);
     typeSystem.registerSchema(languageSchema);
     typeSystem.registerSchema(extensionScreenSchema);
@@ -80,12 +83,11 @@ describe('microfrontends plugin - Phase 7.9', () => {
   }
 
   describe('plugin factory', () => {
-    it('registers the entry-addresses schema required by its base domains', () => {
-      const registerSchema = vi.spyOn(typeSystem, 'registerSchema');
-
-      microfrontends({ typeSystem });
-
-      expect(registerSchema).toHaveBeenCalledWith(entryAddressesSchema);
+    it('injects the framework router into the registry it builds', () => {
+      const app = buildApp();
+      const registry = getAppMfeRegistry(app);
+      expect(app.mfeRouter).toBeDefined();
+      expect(registry).toBeDefined();
     });
 
     it('accepts required typeSystem parameter and returns a valid plugin object', () => {
@@ -195,23 +197,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
       expect(registry.getDomain(overlayDomain.id)).toBeDefined();
     });
 
-    it('registers all base domains so each can be queried back', () => {
-      const app = buildApp();
-      const registry = getAppMfeRegistry(app);
-      const provider = new TestContainerProvider();
-      provider.setRegistry(registry);
-
-      registry.registerDomain(sidebarDomain, provider.prepareForDomain(sidebarDomain));
-      registry.registerDomain(popupDomain, provider.prepareForDomain(popupDomain));
-      registry.registerDomain(screenDomain, provider.prepareForDomain(screenDomain));
-      registry.registerDomain(overlayDomain, provider.prepareForDomain(overlayDomain));
-
-      expect(registry.getDomain(sidebarDomain.id)?.id).toBe(sidebarDomain.id);
-      expect(registry.getDomain(popupDomain.id)?.id).toBe(popupDomain.id);
-      expect(registry.getDomain(screenDomain.id)?.id).toBe(screenDomain.id);
-      expect(registry.getDomain(overlayDomain.id)?.id).toBe(overlayDomain.id);
-    });
-
     it('returns undefined for unregistered domains', () => {
       const app = buildApp();
       const registry = getAppMfeRegistry(app);
@@ -279,16 +264,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
       expect(overlayDomain.id).toContain('frontx.screensets.layout.overlay');
     });
 
-    it('validates the loaded domain instance when registered', () => {
-      const app = buildApp();
-      const registry = getAppMfeRegistry(app);
-      const provider = new TestContainerProvider();
-
-      registry.registerDomain(sidebarDomain, provider.prepareForDomain(sidebarDomain));
-
-      expect(registry.getDomain(sidebarDomain.id)).toBeDefined();
-    });
-
     it('loads lifecycle stages from JSON', () => {
       expect(sidebarDomain.lifecycleStages).toBeDefined();
       expect(Array.isArray(sidebarDomain.lifecycleStages)).toBe(true);
@@ -328,7 +303,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
-          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -350,7 +324,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
-          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -372,7 +345,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
-          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
@@ -394,7 +366,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
         sharedProperties: [
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~',
           'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
-          'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~',
         ],
         actions: [
           'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',

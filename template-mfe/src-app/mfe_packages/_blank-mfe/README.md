@@ -74,12 +74,12 @@ gts.frontx.mfes.ext.extension.v1~acme.crm.ext.customer_details_screen.v1
 "remoteName": "yourMfeName"
 ```
 
-**Update the presentation metadata:**
+**Update the route and presentation metadata:**
 ```json
+"route": "/your-route",
 "presentation": {
   "label": "Your Screen Label",
   "icon": "lucide:your-icon",
-  "route": "/your-route",
   "order": 100
 }
 ```

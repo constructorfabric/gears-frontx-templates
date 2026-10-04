@@ -6,18 +6,16 @@ Part of the FrontX Framework Layer (L2) - depends on all SDK packages (@gears-fr
 
 ## Core API
 
-- [createGears FrontX](https://frontx.dev/docs/framework/create): App builder with plugin composition
-- [createGears FrontXApp](https://frontx.dev/docs/framework/app): Convenience function (full preset with MFE)
-- [presets](https://frontx.dev/docs/framework/presets): Pre-configured plugin combinations (full, minimal, headless)
+- [createGears FrontX](https://frontx.dev/docs/framework/create): The one way to create an app (`.use(...).build()`); a runtime builds exactly one
+- [presets](https://frontx.dev/docs/framework/presets): Pre-configured plugin arrays (full, minimal); `full()` adds microfrontends only when `config.microfrontends` is supplied and auth only when `config.auth` is supplied, `minimal()` is themes only
 
 ## Available Plugins
 
 | Plugin | Provides |
 |--------|----------|
-| `screensets()` | screensetsRegistry (MFE-enabled), layout domain slices |
 | `themes()` | themeRegistry, changeTheme action |
 | `layout()` | header, footer, menu, sidebar, popup, overlay state |
-| `microfrontends()` | MFE actions, selectors, domain constants |
+| `microfrontends()` | mfeRegistry (MFE-enabled), MFE actions, selectors, domain constants |
 | `i18n()` | i18nRegistry, setLanguage action |
 | `effects()` | Core effect coordination |
 | `mock()` | mockSlice, toggleMockMode action |
@@ -25,30 +23,31 @@ Part of the FrontX Framework Layer (L2) - depends on all SDK packages (@gears-fr
 ## Quick Start
 
 ```typescript
-import { createGears FrontX, screensets, themes, layout, microfrontends, i18n } from '@gears-frontx/framework';
+// A runtime builds exactly one app: the two compositions below are
+// alternatives, choose one per runtime.
 
-// Compose plugins
+// Alternative: compose plugins
+import { createGears FrontX, effects, themes, layout, microfrontends, i18n } from '@gears-frontx/framework';
 const app = createGears FrontX()
-  .use(screensets())
+  .use(effects())
   .use(themes())
   .use(layout())
-  .use(microfrontends())
+  .use(microfrontends(config))
   .use(i18n())
   .build();
 
-// Or use preset (equivalent to above)
-import { createGears FrontXApp } from '@gears-frontx/framework';
-const app = createGears FrontXApp();
+// Alternative: use the full preset, with microfrontends support
+import { createGears FrontX, presets } from '@gears-frontx/framework';
+const app = createGears FrontX().useAll(presets.full({ microfrontends: config })).build();
 
 // Access MFE-enabled registry
-app.screensetsRegistry.registerDomain(screenDomain);
-app.screensetsRegistry.registerExtension(homeExtension);
-await app.screensetsRegistry.loadExtension({ extensionId: 'home' });
+app.mfeRegistry.registerDomain(screenDomain, containerProvider);
+await app.mfeRegistry.registerExtension(homeExtension);
 
 // Access MFE actions
-app.actions.loadExtension({ extensionId: 'home' });
-app.actions.mountExtension({ extensionId: 'home', domainId: 'screen', container });
-app.actions.unmountExtension({ extensionId: 'home', domainId: 'screen' });
+app.actions.loadExtension('home');
+app.actions.mountExtension('home');
+app.actions.unmountExtension('home');
 
 // Access theme and i18n actions
 app.actions.changeTheme({ themeId: 'dark' });
@@ -118,17 +117,16 @@ import {
 ## Plugin Composition Pattern
 
 ```typescript
-import { createGears FrontX, screensets, microfrontends } from '@gears-frontx/framework';
+import { createGears FrontX, microfrontends, gtsPlugin } from '@gears-frontx/framework';
 
 // MFE-enabled app
 const app = createGears FrontX()
-  .use(screensets())      // Provides screensetsRegistry (MFE-enabled)
-  .use(microfrontends())  // Provides MFE actions and domain management
+  .use(microfrontends({ typeSystem: gtsPlugin })) // Provides mfeRegistry (MFE-enabled), MFE actions and domain management
   .build();
 
 // Access MFE features
-app.screensetsRegistry.registerExtension(extension);
-await app.actions.mountExtension({ extensionId, domainId, container });
+await app.mfeRegistry.registerExtension(extension);
+app.actions.mountExtension(extensionId);
 ```
 
 ## MFE Types

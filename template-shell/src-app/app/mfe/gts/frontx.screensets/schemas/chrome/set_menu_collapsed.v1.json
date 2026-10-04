@@ -1,8 +1,9 @@
 {
   "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_menu_collapsed.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "Schema for the host chrome's set_menu_collapsed action. Derives from action.v1 and requires the desired collapsed state in payload.",
+  "$comment": "Schema for the host chrome's set_menu_collapsed action. Self-contained and closed: re-declares every property action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload.",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "type": {
       "x-gts-ref": "/$id",
@@ -14,6 +15,7 @@
     },
     "payload": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "collapsed": {
           "type": "boolean",

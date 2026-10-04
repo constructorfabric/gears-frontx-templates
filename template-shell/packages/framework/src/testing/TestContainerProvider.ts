@@ -70,18 +70,10 @@ export class TestContainerProvider extends ExtensionDomainImplementationFactory 
     }
     const actions = declaration.actions ?? [];
 
-    // Resolve the framework's well-known lifecycle action IDs through the
-    // injected typeSystem rather than a hardcoded import — mirrors
-    // DefaultMfeRegistry.crossValidateHandlers so this fixture accepts every
-    // domain the real registry accepts, including a hierarchy-derived (is-a)
-    // mount_ext/unmount_ext variant, not just an exact GTS-literal match.
-    // Handlers are registered under the ACTUAL declared action id (which may
-    // be the derived variant) — crossValidateHandlers checks declared actions
-    // against collected handlers by exact key, not by isTypeOf.
     const mountExtActionId = ctx.typeSystem.resolveMountExtActionId();
     const unmountExtActionId = ctx.typeSystem.resolveUnmountExtActionId();
-    const declaredMountAction = actions.find((id) => ctx.typeSystem.isTypeOf(id, mountExtActionId));
-    const declaredUnmountAction = actions.find((id) => ctx.typeSystem.isTypeOf(id, unmountExtActionId));
+    const declaredMountAction = actions.includes(mountExtActionId) ? mountExtActionId : undefined;
+    const declaredUnmountAction = actions.includes(unmountExtActionId) ? unmountExtActionId : undefined;
 
     const container = this.mockContainer;
     const hooks: ContainerHooks = {

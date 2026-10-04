@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { FrontXProvider, apiRegistry, createFrontXApp, MfeHandlerMF, gtsPlugin, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/react';
+import { FrontXProvider, apiRegistry, createFrontX, presets, microfrontends, MfeHandlerMF, gtsPlugin, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/react';
 import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
 import { Toaster } from '@/app/components/ui/sonner';
 import { AccountsApiService } from '@/app/api';
@@ -35,12 +35,17 @@ apiRegistry.initialize({});
 
 // Create FrontX app instance
 // Register MfeHandlerMF to enable Module Federation MFE loading
-const app = createFrontXApp({
-  microfrontends: {
+const app = createFrontX()
+  .useAll(presets.full())
+  .use(microfrontends({
     typeSystem: gtsPlugin,
     mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
-  },
-});
+  }))
+  .build();
+
+// The root registry is built eagerly: the shell is the root runtime, so its
+// registry is not tied to any mount window.
+void app.mfeRegistry;
 
 // Register app-level effects (pass store dispatch)
 registerBootstrapEffects(app.store.dispatch);

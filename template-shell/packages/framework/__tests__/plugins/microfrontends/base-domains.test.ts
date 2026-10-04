@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isValidRouteName } from '@gears-frontx/mfes';
+import { validateName } from '@gears-frontx/routing';
 import {
   screenDomain,
   sidebarDomain,
@@ -16,11 +16,9 @@ import {
 import {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   FRONTX_SCREEN_EXTENSION_TYPE,
 } from '../../../src/mfe/constants';
 import { loadLayoutDomains } from '../../../src/plugins/microfrontends/gts/loader';
-import { entryAddressesSchema } from '../../../src/mfe/entry-addresses-schema';
 import {
   FRONTX_ACTION_LOAD_EXT,
   FRONTX_ACTION_MOUNT_EXT,
@@ -145,19 +143,14 @@ describe('Base Extension Domain Constants - Shared Properties', () => {
 });
 
 describe('Base Extension Domain Constants - routing', () => {
-  it('ships the schema its base domains require', () => {
-    expect(entryAddressesSchema.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES}`);
-  });
-
   it.each([
     ['screen', screenDomain],
     ['sidebar', sidebarDomain],
     ['popup', popupDomain],
     ['overlay', overlayDomain],
-  ])('%s declares its own route and the entry-addresses property', (route, domain) => {
+  ])('%s declares its own valid route', (route, domain) => {
     expect(domain.route).toBe(route);
-    expect(isValidRouteName(domain.route!)).toBe(true);
-    expect(domain.sharedProperties).toContain(FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES);
+    expect(validateName(domain.route!)).toBe(true);
   });
 
   it('the JSON copies agree with the declarations on route and shared properties', () => {

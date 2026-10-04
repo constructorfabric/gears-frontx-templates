@@ -15,13 +15,25 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { apiRegistry, RestProtocol } from '@gears-frontx/api';
-import { createStore } from '@gears-frontx/state';
 import type { RestPlugin, RestPluginHooks, RestRequestContext } from '@gears-frontx/api';
 import type { AccessEvaluation, AuthProvider, AuthSession } from '@gears-frontx/auth';
-import { createFrontX } from '../src/createFrontX';
-import { auth, frontxApiTransport } from '../src/plugins/auth';
 import type { AuthTransportBinder } from '../src/plugins/auth';
+
+// One app per runtime: every test loads its own module copy.
+let apiRegistry: typeof import('@gears-frontx/api').apiRegistry;
+let RestProtocol: typeof import('@gears-frontx/api').RestProtocol;
+let createStore: typeof import('@gears-frontx/state').createStore;
+let createFrontX: typeof import('../src/createFrontX').createFrontX;
+let auth: typeof import('../src/plugins/auth').auth;
+let frontxApiTransport: typeof import('../src/plugins/auth').frontxApiTransport;
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ apiRegistry, RestProtocol } = await import('@gears-frontx/api'));
+  ({ createStore } = await import('@gears-frontx/state'));
+  ({ createFrontX } = await import('../src/createFrontX'));
+  ({ auth, frontxApiTransport } = await import('../src/plugins/auth'));
+});
 
 /** Concrete auth transport plugins implement hooks; `RestPlugin` instance type omits optional hook keys. */
 type AuthRestPlugin = RestPlugin & Pick<RestPluginHooks, 'onRequest' | 'onError'>;

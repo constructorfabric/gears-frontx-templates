@@ -13,12 +13,11 @@
 // @cpt-FEATURE:implement-endpoint-descriptors:p3
 // @cpt-FEATURE:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { eventBus, resetSharedFetchCache, resetSharedQueryClient } from '@gears-frontx/framework';
-import { useApiMutation } from '../src/hooks/useApiMutation';
-import { createQueryCache, type MutationCallbackContext } from '../src/hooks/QueryCache';
+import type { MutationCallbackContext } from '../src/hooks/QueryCache';
 import {
+  loadFreshHelpers,
   ownedApps,
   buildTestQueryClient,
   buildMutationCacheTestQueryClient,
@@ -28,6 +27,21 @@ import {
   buildPresetApp,
   getAttachedQueryClient,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let useApiMutation: typeof import('../src/hooks/useApiMutation')['useApiMutation'];
+let createQueryCache: typeof import('../src/hooks/QueryCache')['createQueryCache'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ useApiMutation } = await import('../src/hooks/useApiMutation'));
+  ({ createQueryCache } = await import('../src/hooks/QueryCache'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {

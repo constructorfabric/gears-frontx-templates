@@ -8,24 +8,34 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createFrontX } from '../../../src/createFrontX';
-import { effects } from '../../../src/plugins/effects';
-import {
-  microfrontends,
-  registerExtension,
-  unregisterExtension,
-  MfeEvents,
-  type RegisterExtensionPayload,
-  type UnregisterExtensionPayload,
-  selectExtensionState,
-  selectRegisteredExtensions,
-} from '../../../src/plugins/microfrontends';
-import { eventBus, resetStore } from '@gears-frontx/state';
-import { gtsPlugin } from '@gears-frontx/gts-plugin';
+import { type RegisterExtensionPayload, type UnregisterExtensionPayload } from '../../../src/plugins/microfrontends';
 import type { MfeRegistry } from '@gears-frontx/mfes';
 import type { Extension, ExtensionDomain } from '@gears-frontx/framework';
-import { TestContainerProvider } from '../../../src/testing/TestContainerProvider';
 import type { FrontXApp } from '../../../src/types';
+
+// One app per runtime: every test loads its own module copy.
+let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
+let effects: typeof import('../../../src/plugins/effects')['effects'];
+let microfrontends: typeof import('../../../src/plugins/microfrontends')['microfrontends'];
+let registerExtension: typeof import('../../../src/plugins/microfrontends')['registerExtension'];
+let unregisterExtension: typeof import('../../../src/plugins/microfrontends')['unregisterExtension'];
+let MfeEvents: typeof import('../../../src/plugins/microfrontends')['MfeEvents'];
+let selectExtensionState: typeof import('../../../src/plugins/microfrontends')['selectExtensionState'];
+let selectRegisteredExtensions: typeof import('../../../src/plugins/microfrontends')['selectRegisteredExtensions'];
+let eventBus: typeof import('@gears-frontx/state')['eventBus'];
+let resetStore: typeof import('@gears-frontx/state')['resetStore'];
+let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
+let TestContainerProvider: typeof import('../../../src/testing/TestContainerProvider')['TestContainerProvider'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX } = await import('../../../src/createFrontX'));
+  ({ effects } = await import('../../../src/plugins/effects'));
+  ({ microfrontends, registerExtension, unregisterExtension, MfeEvents, selectExtensionState, selectRegisteredExtensions } = await import('../../../src/plugins/microfrontends'));
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
+  ({ TestContainerProvider } = await import('../../../src/testing/TestContainerProvider'));
+});
 
 function getMfeRegistry(app: FrontXApp): MfeRegistry {
   if (!app.mfeRegistry) {

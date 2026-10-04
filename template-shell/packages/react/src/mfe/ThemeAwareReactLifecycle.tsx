@@ -8,6 +8,7 @@ import type {
 } from '@gears-frontx/framework';
 import { FrontXProvider } from '../FrontXProvider';
 import { hasFrontXQueryClientActivator, resolveFrontXQueryClient } from '../queryClient';
+import { collectDomainTeardowns } from './domainTeardownCollector';
 
 /**
  * Marks every node `adoptHostStylesIntoShadowRoot` puts into a shadow root, so
@@ -138,6 +139,10 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
   constructor(private readonly app: FrontXApp) { }
 
   mount(container: Element | ShadowRoot, bridge: ChildMfeBridge, mountContext?: MfeMountContext): void {
+    // Must stay the first statement: this read builds the runtime's registry
+    // inside the mount window so the host links it.
+    void this.app.mfeRegistry;
+
     if (container instanceof ShadowRoot) {
       this.adoptHostStylesIntoShadowRoot(container);
     }
@@ -157,11 +162,30 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
     );
   }
 
-  unmount(_container: Element | ShadowRoot): void {
-    if (this.root) {
-      this.root.unmount();
-      this.root = null;
-    }
+  /**
+   * `Root.unmount()` itself is synchronous, but a nested `ExtensionDomainSlot`
+   * mounted anywhere in this root's own tree cannot make ITS cleanup
+   * synchronous too — its mounter's own `detach()` awaits per-extension
+   * unmounts. Collecting whatever that cleanup fire-and-forgets (through
+   * `domainTeardownCollector`, scoped to this one `Root.unmount()` call) and
+   * awaiting it here is what makes this method's own returned promise settle
+   * only once every nested domain this root owns has actually finished
+   * tearing down — never before. A root with no routed nested domain
+   * collects nothing, and this resolves exactly as before (a microtask after
+   * the synchronous unmount, same observable timing `void | Promise<void>`
+   * already allows).
+   */
+  async unmount(_container: Element | ShadowRoot): Promise<void> {
+    if (!this.root) return;
+    const root = this.root;
+    this.root = null;
+    const pendingTeardowns = collectDomainTeardowns(() => root.unmount());
+    // Waits for EVERY nested teardown to settle before reporting the first
+    // failure: `Promise.all` would reject as soon as one fails and let the
+    // caller proceed (e.g. destroy the app) while the others still run.
+    const settled = await Promise.allSettled(pendingTeardowns);
+    const failed = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   /**

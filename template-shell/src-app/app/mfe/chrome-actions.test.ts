@@ -23,7 +23,6 @@ import {
   languageSchema,
   themeSchema,
 } from '@gears-frontx/frontx-template-shell';
-import { entryAddressesSchema } from '@gears-frontx/react';
 
 import {
   CHROME_ACTION_SCHEMAS,
@@ -73,7 +72,6 @@ beforeAll(() => {
   gtsPlugin.registerSchema(themeSchema);
   gtsPlugin.registerSchema(languageSchema);
   gtsPlugin.registerSchema(extensionScreenSchema);
-  gtsPlugin.registerSchema(entryAddressesSchema);
   for (const schema of CHROME_ACTION_SCHEMAS) {
     gtsPlugin.registerSchema(schema);
   }
@@ -97,6 +95,24 @@ describe('CHROME_ACTION_SCHEMAS', () => {
       expect(() => gtsPlugin.register({ type, target: sidebarDomain.id, payload })).toThrow(
         new RegExp(`does not match pattern '${screenDomain.id}'`),
       );
+    },
+  );
+
+  it.each(CHROME_ACTIONS)(
+    'refuses $type carrying an undeclared top-level field, through the real GTS admission path',
+    ({ type, payload }) => {
+      expect(() =>
+        gtsPlugin.register({ type, target: screenDomain.id, payload, extraneous: true }),
+      ).toThrow();
+    },
+  );
+
+  it.each(CHROME_ACTIONS)(
+    'refuses $type carrying an undeclared payload field, through the real GTS admission path',
+    ({ type, payload }) => {
+      expect(() =>
+        gtsPlugin.register({ type, target: screenDomain.id, payload: { ...payload, extraneous: true } }),
+      ).toThrow();
     },
   );
 });

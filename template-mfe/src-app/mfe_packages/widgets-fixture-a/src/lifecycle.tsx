@@ -1,11 +1,12 @@
 /**
  * widgets-fixture-a — leaf widget MFE lifecycle.
  *
- * Each mount produces an isolated module instance under the per-load blob URL
- * chain (ADR-0004), so when this entry is registered as two distinct extension
- * instances (alpha and beta) sharing the same `entry.path`, the parent runtime
- * loads the bundle twice and evaluates this module twice — module-level state
- * (the random hex generated below) is therefore per-mount.
+ * Each extension instance is its own loaded copy of this bundle under the
+ * per-load blob URL chain (ADR-0004): when this entry is registered as two
+ * distinct extension instances (alpha and beta) sharing the same `entry.path`,
+ * the parent runtime loads the bundle twice and evaluates this module twice.
+ * Module-level state — the random hex and the one FrontX app below — is
+ * therefore per extension instance, not shared between alpha and beta.
  *
  * Each mounted instance runs its own tiny router (`route: "/widget-alpha"` /
  * `"/widget-beta"` on the two extensions in `mfe.json`), scoped to the entry
@@ -21,25 +22,23 @@ import {
   effects,
   queryCacheShared,
   mock,
+  microfrontends,
+  gtsPlugin,
   ActionHandler,
   ThemeAwareReactLifecycle,
+  ExtensionRouter,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
 } from '@gears-frontx/react';
-import { resolveNavigationHistory } from '@gears-frontx/routing';
 import {
-  adaptProviderHistory,
-  createProviderRouter,
   createRootRoute,
   createRoute,
-  EngineProvider,
   Outlet,
   useSearch,
-  type AnyRouter,
+  type AnyRoute,
 } from '@gears-frontx/routing-tanstack';
-import { readEntryAddress } from '@gears-frontx/react';
 
 const PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
@@ -53,10 +52,17 @@ const LAST_PING_PARAM = 'last-ping';
 const HELLOWORLD_EXTENSION_ID =
   'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1';
 
-const fixtureApp = createFrontX()
+// The one app of this runtime. Each extension instance (alpha, beta) is loaded
+// as its own copy of this bundle, so each copy builds exactly one app, here at
+// module level. `microfrontends()` builds its registry lazily; the first mount
+// reads `app.mfeRegistry` (first statement of `ThemeAwareReactLifecycle.mount`),
+// which places the registry's construction inside the mount window so the host
+// links it.
+const app = createFrontX()
   .use(effects())
   .use(queryCacheShared())
   .use(mock())
+  .use(microfrontends({ typeSystem: gtsPlugin }))
   .build();
 
 function generateRandomHex(): string {
@@ -65,33 +71,21 @@ function generateRandomHex(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Per-mount random hex. Each blob-URL-isolated load of this module produces a
+// Per-instance random hex. Each blob-URL-isolated load of this module produces a
 // fresh value, which is the empirical witness that distinct extension
 // instances backed by the same entry path get distinct module evaluations.
 const randomHex = generateRandomHex();
 
-/** One mount of one extension: just its router. */
-interface MountSession {
-  readonly router: AnyRouter;
-}
+const BridgeContext = React.createContext<ChildMfeBridge | null>(null);
 
-// Keyed by `bridge.extensionId` (stable across a remount of the same
-// extension — the bridge pair is minted once and reactivated, not recreated,
-// per mount): a ping dispatched right after a remount must reach the NEW
-// session, not a leftover one an older container's late unmount could
-// otherwise clear out from under it (see `unmount()` below).
-const sessions = new Map<string, MountSession>();
-
-const SessionContext = React.createContext<{ session: MountSession; bridge: ChildMfeBridge } | null>(null);
-
-function useWidget(): { session: MountSession; bridge: ChildMfeBridge } {
-  const value = React.useContext(SessionContext);
-  if (!value) throw new Error('widget-a: rendered outside its mount session');
-  return value;
+function useBridge(): ChildMfeBridge {
+  const bridge = React.useContext(BridgeContext);
+  if (!bridge) throw new Error('widget-a: rendered outside its mount');
+  return bridge;
 }
 
 function WidgetARoot(): React.ReactElement {
-  const { bridge } = useWidget();
+  const bridge = useBridge();
   return (
     <div
       data-testid="widget-a-instance"
@@ -105,12 +99,14 @@ function WidgetARoot(): React.ReactElement {
 }
 
 function WidgetAHome(): React.ReactElement {
-  const { bridge } = useWidget();
+  const bridge = useBridge();
   const search = useSearch({ strict: false }) as Record<string, unknown>;
   const lastPing = typeof search[LAST_PING_PARAM] === 'string' ? (search[LAST_PING_PARAM] as string) : null;
 
-  const handleMountHelloWorld = React.useCallback(async () => {
-    await bridge.executeActionsChain({
+  // Dispatch is acceptance-only: it returns void and never throws, so
+  // there is nothing to await or catch here.
+  const handleMountHelloWorld = React.useCallback(() => {
+    bridge.executeActionsChain({
       action: {
         type: FRONTX_ACTION_MOUNT_EXT,
         target: FRONTX_SCREEN_DOMAIN,
@@ -147,84 +143,82 @@ function WidgetANotFound(): React.ReactElement {
   return <p data-testid="widget-a-not-found">widget-a has no such page</p>;
 }
 
-function createSession(bridge: ChildMfeBridge): MountSession {
-  const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
-  const routeTree = rootRoute.addChildren([
-    createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
-  ]);
-  const history = adaptProviderHistory(resolveNavigationHistory(), readEntryAddress(bridge));
-  return { router: createProviderRouter(routeTree, history) };
-}
+const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
+const routeTree: AnyRoute = rootRoute.addChildren([
+  createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
+]);
 
 class PingHandler extends ActionHandler {
-  constructor(private readonly instanceId: string) {
+  constructor(
+    private readonly instanceId: string,
+    private readonly isMounted: () => boolean,
+  ) {
     super();
   }
 
   async handleAction(actionTypeId: string): Promise<void> {
-    const session = sessions.get(this.instanceId);
-    if (!session) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
+    if (!this.isMounted()) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
     const lastPing = new Date().toISOString();
     console.info(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
-    // Safe to write immediately, before `EngineProvider`'s own mount effect
-    // has attached this session's router to the shared history: the
-    // composed source's `write` (`composed-history-source.ts`) calls
-    // `backProjectEntries` against the shared `NavigationHistory` directly —
-    // it never checks or waits on the adapter's attach state. Once
-    // `attachAdaptedHistory` does run, `attachToNavigationHistory`
-    // (`history-adaptation.ts`) re-reads `source.readParams()` before
-    // subscribing, so it resyncs to whatever this write already landed
-    // rather than missing it.
+    // D21: each runtime reads AND writes only its own entry's parameters —
+    // `location()` reads this occupant's OWN current pathname/search (never
+    // a sibling's, never the composed page's), so merging `LAST_PING_PARAM`
+    // into it preserves any other search param a caller outside this
+    // widget's own render tree already set, instead of overwriting the
+    // whole query string from scratch.
     try {
-      // The whole parameter list is replaced, not merged, so carry the other search params forward.
-      await session.router.navigate({
-        to: '.',
-        search: (previous: Record<string, unknown>) => ({ ...previous, [LAST_PING_PARAM]: lastPing }),
-        replace: true,
-      });
+      // Resolved here, not at module level: the router's navigation facade
+      // reads the occupant value the host supplies on link adoption, which
+      // happens during mount. A facade taken at module evaluation would stay
+      // the refusing one.
+      const navigation = app.mfeRouter!.navigation();
+      const { pathname, search } = navigation.location();
+      const params = new URLSearchParams(search);
+      params.set(LAST_PING_PARAM, lastPing);
+      navigation.replace(`${pathname || '/'}?${params.toString()}`);
     } catch (err) {
       // A silent failure here would leave the host believing the ping landed: surface it.
-      console.error(`[widget-a ${this.instanceId}] ping navigate() failed:`, err);
+      console.error(`[widget-a ${this.instanceId}] ping navigation failed:`, err);
       throw err;
     }
+    return Promise.resolve();
   }
 }
 
-/** One mount's React tree: its own `ThemeAwareReactLifecycle` instance, so its own Root (H3). */
+/** One container's React tree: its own `ThemeAwareReactLifecycle` instance, so its own Root (H3). */
 class WidgetAMount extends ThemeAwareReactLifecycle {
   constructor() {
-    super(fixtureApp);
+    super(app);
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    const session = sessions.get(bridge.extensionId)!;
     return (
-      <SessionContext.Provider value={{ session, bridge }}>
-        <EngineProvider router={session.router} />
-      </SessionContext.Provider>
+      <BridgeContext.Provider value={bridge}>
+        <ExtensionRouter registry={app.mfeRegistry!} routeTree={routeTree} />
+      </BridgeContext.Provider>
     );
   }
 }
 
 /**
- * `ThemeAwareReactLifecycle` keeps one Root per instance, but widget_alpha and
- * widget_beta share this module's default export: a second mount on a shared
- * instance would overwrite the first Root and one unmount would tear down the
- * other's tree. Each container therefore gets its own `WidgetAMount` instance
- * (H3; the general shared-root defect is tracked separately, U2).
+ * This runtime can be mounted into a new container while an older container's
+ * unmount is still settling, so each container gets its own `WidgetAMount` and
+ * Root (H3). The app itself is the one module-level app above, never per mount.
  */
 class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
   private readonly mounts = new Map<
     Element | ShadowRoot,
-    { readonly tree: WidgetAMount; readonly extensionId: string; readonly session: MountSession }
+    { readonly tree: WidgetAMount; readonly extensionId: string }
   >();
+
+  private isMounted(extensionId: string): boolean {
+    return [...this.mounts.values()].some((mounted) => mounted.extensionId === extensionId);
+  }
 
   mount(container: Element | ShadowRoot, bridge: ChildMfeBridge): void {
     console.info(`[widget-a ${bridge.extensionId}] mount randomHex=${randomHex}`);
-    const session = createSession(bridge);
-    sessions.set(bridge.extensionId, session);
     const tree = new WidgetAMount();
-    this.mounts.set(container, { tree, extensionId: bridge.extensionId, session });
+    this.mounts.set(container, { tree, extensionId: bridge.extensionId });
     tree.mount(container, bridge);
     // Registered synchronously, before `mount()` returns: `DefaultMountManager`
     // treats a lifecycle's `mount()` completion as the signal that the
@@ -232,29 +226,30 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
     // as soon as it does. A React `useEffect` runs strictly after that point
     // (`createRoot().render()` only schedules work), so registering there
     // would be reachable-too-late for a chained ping step.
-    bridge.registerActionHandler(PING_ACTION_TYPE, new PingHandler(bridge.extensionId));
+    bridge.registerActionHandler(
+      PING_ACTION_TYPE,
+      new PingHandler(bridge.extensionId, () => this.isMounted(bridge.extensionId)),
+    );
   }
 
-  unmount(container: Element | ShadowRoot): void {
+  unmount(container: Element | ShadowRoot): void | Promise<void> {
     const mounted = this.mounts.get(container);
     if (!mounted) return;
+    // Dropped before the teardown so a ping arriving mid-teardown is
+    // rejected, not routed into a dying tree; a newer container of the same
+    // extension keeps the extension mounted.
     this.mounts.delete(container);
-    mounted.tree.unmount(container);
-    // A late unmount of an older container must not drop the session a newer mount of the same extension owns.
-    if (sessions.get(mounted.extensionId) === mounted.session) sessions.delete(mounted.extensionId);
+    return mounted.tree.unmount(container);
   }
 
   /**
    * HMR dispose hook (Q4), mirroring `lifecycle-widgets-host.tsx`'s and
    * `shell-routing.ts`'s own HMR teardown: unmounts every container this OLD
-   * module instance still holds. Each `unmount()` above already runs the
-   * React tree's own cleanup (detaching its adapted history) and evicts the
-   * extension's entry from `sessions`, so the replacement module HMR swaps
-   * in starts with an empty map instead of orphaned subscriptions this old
-   * instance would otherwise leave nothing to release.
+   * module instance still holds, so the replacement module HMR swaps in does
+   * not inherit subscriptions this old instance would otherwise leave behind.
    */
-  disposeAll(): void {
-    for (const container of [...this.mounts.keys()]) this.unmount(container);
+  disposeAll(): Promise<unknown> {
+    return Promise.allSettled([...this.mounts.keys()].map((container) => Promise.resolve().then(() => this.unmount(container))));
   }
 }
 
@@ -262,8 +257,7 @@ const lifecycle = new WidgetsFixtureALifecycle();
 export default lifecycle;
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    lifecycle.disposeAll();
-    sessions.clear();
+  import.meta.hot.dispose(async () => {
+    await lifecycle.disposeAll();
   });
 }

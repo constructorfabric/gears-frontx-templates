@@ -75,6 +75,32 @@ function cleanupSkippedDuplicatePlugin(plugin: FrontXPlugin): void {
 // @cpt-end:cpt-frontx-flow-framework-composition-plugin-dependency:p1:inst-1
 
 // ============================================================================
+// Build Guard
+// ============================================================================
+
+/**
+ * One app per runtime: this module copy is one runtime's framework. The state
+ * is module-level on purpose and has no reset — `destroy()` does not free it,
+ * because a destroyed app's slot is still this runtime's app. Tests that need
+ * a fresh guard load a fresh module copy (`vi.resetModules()` + dynamic import).
+ */
+type BuildState = 'idle' | 'building' | 'built';
+let buildState: BuildState = 'idle';
+
+function assertBuildable(): void {
+  if (buildState === 'building') {
+    throw new Error(
+      'createFrontX().build() was called while another build is in progress. A runtime builds exactly one FrontX app.'
+    );
+  }
+  if (buildState === 'built') {
+    throw new Error(
+      'A FrontX app has already been built in this runtime. A runtime builds exactly one app: create it once at module level and reuse it.'
+    );
+  }
+}
+
+// ============================================================================
 // App Builder Implementation
 // ============================================================================
 
@@ -153,6 +179,30 @@ class FrontXAppBuilderImpl implements FrontXAppBuilder {
   // @cpt-begin:cpt-frontx-flow-framework-composition-app-bootstrap:p1:inst-2
   // @cpt-begin:cpt-frontx-state-framework-composition-builder:p1:inst-2
   build(): FrontXApp {
+    assertBuildable();
+    buildState = 'building';
+    let created: { app: FrontXApp; orderedPlugins: FrontXPlugin[] };
+    try {
+      created = this.createApp();
+    } catch (error) {
+      // No app exists, so the runtime may build again.
+      buildState = 'idle';
+      throw error;
+    }
+    buildState = 'built';
+    const { app, orderedPlugins } = created;
+
+    // 7. Call onInit for each plugin
+    orderedPlugins.forEach((plugin) => {
+      if (plugin.onInit) {
+        plugin.onInit(app);
+      }
+    });
+
+    return app;
+  }
+
+  private createApp(): { app: FrontXApp; orderedPlugins: FrontXPlugin[] } {
     // 1. Resolve dependencies and order plugins
     const orderedPlugins = this.resolveDependencies();
 
@@ -183,10 +233,20 @@ class FrontXAppBuilderImpl implements FrontXAppBuilder {
       themeRegistry: aggregated.registries.themeRegistry as ThemeRegistry,
       apiRegistry: apiRegistry,
       i18nRegistry: aggregated.registries.i18nRegistry as FrontXApp['i18nRegistry'],
-      mfeRegistry: aggregated.registries.mfeRegistry as FrontXApp['mfeRegistry'],
+      mfeRegistry: undefined,
       actions: aggregated.actions as FrontXActions,
       destroy: () => this.destroyApp(orderedPlugins, app),
     };
+
+    // `mfeRegistry` is a lazy getter on the registries; copy its descriptor
+    // instead of reading it, so building the app never builds the registry.
+    const mfeRegistryDescriptor = Object.getOwnPropertyDescriptor(
+      aggregated.registries,
+      'mfeRegistry'
+    );
+    if (mfeRegistryDescriptor) {
+      Object.defineProperty(app, 'mfeRegistry', mfeRegistryDescriptor);
+    }
 
     // Merge plugin-provided runtime app extensions onto the built app object.
     // Guard against plugins silently overwriting core app properties.
@@ -199,14 +259,7 @@ class FrontXAppBuilderImpl implements FrontXAppBuilder {
     }
     Object.assign(app as object, aggregated.app);
 
-    // 7. Call onInit for each plugin
-    orderedPlugins.forEach((plugin) => {
-      if (plugin.onInit) {
-        plugin.onInit(app);
-      }
-    });
-
-    return app;
+    return { app, orderedPlugins };
   }
   // @cpt-end:cpt-frontx-flow-framework-composition-app-bootstrap:p1:inst-2
   // @cpt-end:cpt-frontx-state-framework-composition-builder:p1:inst-2
@@ -285,7 +338,11 @@ class FrontXAppBuilderImpl implements FrontXAppBuilder {
 
       // Merge registries
       if (plugin.provides.registries) {
-        Object.assign(registries, plugin.provides.registries);
+        // By descriptor: a registry may be a lazy accessor that must not be read here.
+        Object.defineProperties(
+          registries,
+          Object.getOwnPropertyDescriptors(plugin.provides.registries)
+        );
       }
 
       // Merge runtime app extensions (plugin-defined surface on built `app`)

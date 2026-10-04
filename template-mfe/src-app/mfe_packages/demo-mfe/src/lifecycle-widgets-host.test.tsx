@@ -1,13 +1,10 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { act, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveNavigationHistory } from '@gears-frontx/routing';
 import type { ChildMfeBridge } from '@gears-frontx/react';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
-const ENTRY_ADDRESSES =
-  'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~';
 const MOUNT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
 const UNMOUNT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~';
 const WIDGET_PING_ACTION_TYPE = 'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
@@ -19,42 +16,41 @@ const WIDGET_IDS = [ALPHA_ID, BETA_ID, GAMMA_ID];
 const ROUTE_OF: Record<string, string> = {
   [ALPHA_ID]: 'widget-alpha',
   [BETA_ID]: 'widget-beta',
-  [GAMMA_ID]: 'widget',
+  [GAMMA_ID]: 'widget-b',
 };
-
-const HOST_DOMAIN_KEY = 'screen';
-const HOST_EXTENSION = 'widgets-host';
-const ENCLOSING_ADDRESS = { domainKey: HOST_DOMAIN_KEY, extension: HOST_EXTENSION };
 
 type FakeExtension = { id: string; domain: string; entry: string; route: string };
 type ActionHandlerLike = { handleAction: (actionTypeId: string, payload: unknown) => Promise<void> };
-type Chain = { action: { type: string; target: string; payload?: { subject?: string } } };
+type Chain = { action: { type: string; target: string; payload?: { subject?: string; history?: string } } };
 
 /**
  * A hand-rolled `MfeRegistry` + one-level actions-chain mediator: real enough
- * to construct `WidgetsDomainImpl` through its own factory (so its private
- * `mount()`/coalescing/`mountThroughChain` all run for real) without
- * reaching into `mfes`'s own tested dispatch/mounter machinery (Global
- * Constraints — `mfes` is not under test here). Each widget's dispatch can
- * be overridden per test to simulate the actions-chain edge cases
- * `mountThroughChain` itself defends against (refusal, no promise, timeout).
+ * to construct `WidgetsDomainImpl` through its own factory (so its mount/
+ * unmount handler wiring runs for real) without reaching into `mfes`'s own
+ * tested dispatch/mounter machinery, OR into the real `FrameworkRouter`
+ * (`lifecycle-widgets-host.remount.test.tsx` and `router.test.ts` cover the
+ * real router's own route-admission and URL-back-projection behaviour —
+ * Global Constraints, not re-tested here). `ExtensionDomainSlot` is faked below (the real one — starting/stopping
+ * a routed domain's own observer, and mass-releasing every mounted
+ * extension on detach — is a Global Constraint, covered by
+ * `ExtensionDomainSlot`'s own suite and `mfes`'s own `DefaultExtensionMounter`
+ * suite; `lifecycle-widgets-host.remount.test.tsx` exercises them for real
+ * together): this file is about `WidgetsHostScreen`'s and `WidgetsDomainImpl`'s
+ * OWN contract (registers the domain, renders the slot, dispatches each
+ * opening mount with `history: 'replace'` without waiting) — not about
+ * whether a real router admits a route or writes a URL, or how an unmount
+ * is released.
  *
- * `overrides` is keyed by (subject, actionType), not by subject alone (Q3):
- * a real registry could see both a mount and an unmount chain for the same
+ * `overrides` is keyed by (subject, actionType), not by subject alone: a
+ * real registry could see both a mount and an unmount chain for the same
  * subject in flight, and collapsing them onto one key would let an unmount
- * override answer a mount dispatch (or vice versa). This fake still has no
- * per-subject serialization of its own beyond that — two concurrent
- * dispatches for the same (subject, actionType) race exactly as they would
- * against `executeActionsChain` itself, and it is `WidgetsDomainImpl`'s own
- * `inFlight` map (the thing the "coalesce" test below exercises), not this
- * fake, that is responsible for not asking the mounter twice.
+ * override answer a mount dispatch (or vice versa).
  */
 class FakeRegistry {
   readonly extensions = new Map<string, FakeExtension>();
   readonly mounted = new Set<string>();
   readonly domains = new Map<string, unknown>();
   readonly handlers = new Map<string, ActionHandlerLike>();
-  readonly sharedProperties = new Map<string, unknown>();
   readonly overrides = new Map<string, (payload: { subject: string }) => Promise<void> | undefined>();
   readonly executeActionsChain = vi.fn((chain: Chain): Promise<void> | undefined => {
     const subject = chain.action.payload?.subject;
@@ -66,7 +62,6 @@ class FakeRegistry {
     return handler.handleAction(chain.action.type, chain.action.payload);
   });
 
-  /** Registers an override for one (subject, actionType) pair — see the class doc comment (Q3). */
   setOverride(subject: string, actionType: string, fn: (payload: { subject: string }) => Promise<void> | undefined): void {
     this.overrides.set(`${subject}:${actionType}`, fn);
   }
@@ -87,7 +82,7 @@ class FakeRegistry {
     return this.domains.get(domainId);
   }
 
-  registerDomain(domain: { id: string }, factory: { build: (ctx: unknown) => unknown }): void {
+  registerDomain(domain: { id: string; route?: string }, factory: { build: (ctx: unknown) => unknown }): void {
     this.domains.set(domain.id, domain);
     const ctx = {
       mounter: {
@@ -111,20 +106,11 @@ class FakeRegistry {
     this.extensions.set(extension.id, extension);
   }
 
-  updateSharedProperty(propertyId: string, value: unknown): void {
-    this.sharedProperties.set(propertyId, value);
-  }
-
-  getDomainProperty(_domainId: string, propertyTypeId: string): unknown {
-    return this.sharedProperties.get(propertyTypeId);
-  }
-
   typeSystem = {
     register: vi.fn(),
     registerSchema: vi.fn(),
-    // Widened beyond `undefined` (rather than left inferred) so the ping
-    // tests below can give it a per-test implementation that returns a
-    // schema shape without fighting `Mock<() => undefined>`'s narrow type.
+    // Widened beyond `undefined` so the ping tests below can give it a
+    // per-test implementation returning a schema shape.
     getSchema: vi.fn((): { actions?: readonly string[] } | undefined => undefined),
   };
 }
@@ -139,7 +125,7 @@ function fakeManifestResponse() {
           {
             id: WIDGETS_DOMAIN_ID,
             route: 'widgets',
-            sharedProperties: [ENTRY_ADDRESSES],
+            sharedProperties: [],
             actions: [MOUNT, UNMOUNT],
             extensionsActions: [],
             defaultActionTimeout: 5000,
@@ -158,31 +144,31 @@ function fakeManifestResponse() {
 let fakeRegistry: FakeRegistry | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
-/**
- * Every subject actually reaching the mounter, in call order — distinct from
- * `fakeRegistry.executeActionsChain.mock.calls`, which records one entry per
- * top-level *dispatch* (there can be more than one for the same subject when
- * a URL-restore observer and the auto-mount pass both ask for it in the same
- * tick). `WidgetsDomainImpl`'s own `inFlight` map is what collapses those
- * dispatches into at most one real call here — the "coalesce" test below
- * asserts against this array specifically so removing that dedup fails it.
- */
-let mountStrategyCalls: string[] = [];
+/** `app.mfeRouter` in production — only the navigation facade (ADR 0036); nothing in this file reads it. */
+let fakeRouter: { navigation: ReturnType<typeof vi.fn> };
+
+/** Gates `FakeConcurrentMountStrategy.mount` — set by the "never waits" test to hold a mount open while it asserts against the surrounding call. */
 let mountGate: Promise<void> | undefined;
 
+/**
+ * Every `FakeConcurrentMountStrategy.mount()` call currently in flight —
+ * a test awaits these directly (`Promise.all(pendingMounts)`) to know
+ * `fakeRegistry.mounted` reflects every opening widget, instead of an
+ * `await Promise.resolve()` assuming a fixed microtask-flush depth for a
+ * dispatch loop that deliberately never awaits them itself (the "never
+ * waits" test below). Cleared in `beforeEach`.
+ */
+let pendingMounts: Promise<void>[] = [];
+
 class FakeConcurrentMountStrategy {
-  async mount(payload: { subject: string }): Promise<void> {
-    mountStrategyCalls.push(payload.subject);
-    await mountGate;
-    // A real microtask gap between the call and marking the subject mounted:
-    // without it, `getMountedExtensions(...).includes(subject)` would already
-    // be true by the time a second, racing dispatch for the same subject
-    // reaches `WidgetsDomainImpl`'s own private `mount()` (this fake's own
-    // body never actually `await`s anything otherwise), which would hide
-    // whether `inFlight` — not this coincidence — is what stops a real race
-    // from reaching the mounter twice (the "coalesce" test below).
-    await Promise.resolve();
-    fakeRegistry!.mounted.add(payload.subject);
+  mount(payload: { subject: string }): Promise<void> {
+    const settled = (async () => {
+      await mountGate;
+      await Promise.resolve();
+      fakeRegistry!.mounted.add(payload.subject);
+    })();
+    pendingMounts.push(settled);
+    return settled;
   }
   async unmount(payload: { subject: string }): Promise<void> {
     fakeRegistry!.mounted.delete(payload.subject);
@@ -206,50 +192,55 @@ class FakeThemeAwareReactLifecycle {
     const renderContent = (this as unknown as { renderContent: (b: ChildMfeBridge) => React.ReactNode }).renderContent;
     this.root.render(<>{renderContent.call(this, bridge)}</>);
   }
-  unmount(_container: Element | ShadowRoot): void {
+  unmount(_container: Element | ShadowRoot): Promise<void> {
     this.root?.unmount();
     this.root = null;
+    return Promise.resolve();
   }
 }
 
 /**
- * `createFrontX()` is called twice per `mount()` cycle (a `microfrontends()`-
- * free placeholder in the constructor, the real one inside `mount()`) and,
- * in production, the real `mfeRegistryFactory` singleton makes every call
- * within one loaded module copy return the SAME `MfeRegistry` — the fixture
- * that makes a remount observe the previous mount's registrations. Mocking
- * `createFrontX` itself (rather than only the mount strategy) is what lets
- * this file hand every call the SAME `FakeRegistry` instance without
- * reaching into `mfes`'s real builder/plugin chain at all.
- */
-/**
  * Every `onAttached` callback `ExtensionDomainSlot`'s mock below has ever
  * fired, in order — declared through `vi.hoisted` so it exists before the
- * hoisted `vi.mock` factory closes over it. The "re-entry attach" test (Q2)
- * replays the LATEST one a second time to simulate `onAttached` firing twice
- * for the same domain mount without an intervening `unmount` (a
- * double-invoked effect, or a slot re-attach) — something this fake's own
- * effect deliberately allows (it re-fires on every new `onAttached`
- * identity), unlike production `ExtensionDomainSlot`, which this test file
- * cannot exercise directly (Global Constraints — `mfes` is not under test).
+ * hoisted `vi.mock` factory closes over it.
  */
-const { attachedCallbacks } = vi.hoisted(() => ({ attachedCallbacks: [] as Array<() => void> }));
+const { attachedCallbacks, createFrontXSpy, buildSpy } = vi.hoisted(() => ({
+  attachedCallbacks: [] as Array<() => void>,
+  /** Counts `createFrontX()` and `build()` calls per module copy: a runtime builds exactly one app. */
+  createFrontXSpy: vi.fn(),
+  buildSpy: vi.fn(),
+}));
 
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const real = await importOriginal<Record<string, unknown>>();
   const builder = {
     use: () => builder,
-    build: () => ({
-      mfeRegistry: fakeRegistry,
-      themeRegistry: { getCurrent: () => undefined },
-      i18nRegistry: { getLanguage: () => null },
-    }),
+    build: () => {
+      buildSpy();
+      return {
+        // The app is built once at module evaluation, so the registry is read
+        // when asked for, not captured.
+        get mfeRegistry() {
+          return fakeRegistry;
+        },
+        // `app.mfeRouter` in production narrows to the navigation facade
+        // alone (ADR 0036, D10) — nothing under test here reads it; starting/
+        // stopping this domain's own observer is `ExtensionDomainSlot`'s own
+        // internal concern (its own suite, Global Constraints here).
+        mfeRouter: fakeRouter,
+        themeRegistry: { getCurrent: () => undefined },
+        i18nRegistry: { getLanguage: () => null },
+      };
+    },
   };
   return {
     ...real,
     ConcurrentMountStrategy: FakeConcurrentMountStrategy,
     ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle,
-    createFrontX: () => builder,
+    createFrontX: () => {
+      createFrontXSpy();
+      return builder;
+    },
     ExtensionDomainSlot: ({ onAttached }: { onAttached?: (root: Element) => void }) => {
       const ref = React.useRef<HTMLDivElement | null>(null);
       React.useEffect(() => {
@@ -263,52 +254,24 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   };
 });
 
-function bridgeWithAddress(address: { domainKey: string; extension: string } | undefined): ChildMfeBridge {
+function fakeBridge(): ChildMfeBridge {
   return {
-    extDomainId: HOST_DOMAIN_KEY,
-    extensionId: HOST_EXTENSION,
+    extDomainId: 'screen',
+    extensionId: 'widgets-host',
     executeActionsChain: vi.fn().mockResolvedValue(undefined),
     registerActionHandler: vi.fn(),
-    getProperty: vi.fn((propertyId: string) => {
-      if (propertyId !== ENTRY_ADDRESSES || !address) return undefined;
-      return { id: propertyId, value: { [HOST_EXTENSION]: address } };
-    }),
+    getProperty: vi.fn(() => undefined),
     subscribeToProperty: vi.fn(() => vi.fn()),
   } as unknown as ChildMfeBridge;
 }
 
-/**
- * `keepModule: true` (the remount test's second call) deliberately skips
- * `resetModules()` — a remount reuses the SAME loaded module copy, whose
- * module-level `widgetsHolder`/`navigation` singletons are exactly what
- * makes the cached-registry remount path (`WidgetsDomainImpl` built once,
- * on the first `registerDomain`) reachable a second time. Every other test
- * resets modules so each gets its own fresh singletons.
- */
 async function mount(
   bridge: ChildMfeBridge,
-  {
-    keepModule = false,
-    beforeMount,
-  }: {
-    keepModule?: boolean;
-    /**
-     * Runs right after `@gears-frontx/frontx-template-shell` is (re-)imported
-     * for this mount, before the SUT module import that constructs anything
-     * from it. `resetModules()` gives that package a fresh copy every mount
-     * (it is NOT mocked, unlike `@gears-frontx/react`), so a `DomainRouting`
-     * class captured by a static top-of-file import would not be the same
-     * class the freshly-imported SUT actually calls — a prototype spy needs
-     * this SAME freshly-imported handle to intercept anything (F3, Q2).
-     */
-    beforeMount?: (framework: typeof import('@gears-frontx/react')) => void;
-  } = {},
-): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement; framework: typeof import('@gears-frontx/react') }> {
+  { keepModule = false }: { keepModule?: boolean } = {},
+): Promise<{ lifecycle: { unmount: (c: Element) => unknown }; container: HTMLDivElement }> {
   if (!keepModule) vi.resetModules();
   fetchMock = vi.fn().mockResolvedValue(fakeManifestResponse());
   vi.stubGlobal('fetch', fetchMock);
-  const framework = await import('@gears-frontx/react');
-  beforeMount?.(framework);
   const module = await import('./lifecycle-widgets-host');
   const lifecycle = module.default as unknown as { mount: (c: Element, b: ChildMfeBridge) => Promise<void>; unmount: (c: Element) => unknown };
   const container = document.createElement('div');
@@ -316,32 +279,22 @@ async function mount(
   // Not wrapped in `act()`: `mount()` itself awaits a promise that only
   // settles once a `useEffect` this render schedules has actually run, and
   // React defers passive effects to a real macrotask outside `act()`'s own
-  // synchronous flush — nesting the whole await inside one `act()` call
-  // would deadlock, since `act()` only flushes after its callback settles
-  // and the callback cannot settle before that flush.
+  // synchronous flush.
   await lifecycle.mount(container, bridge);
   mountedInstances.push({ lifecycle, container });
-  return { lifecycle, container, framework };
+  return { lifecycle, container };
 }
 
-/**
- * Every mount's `DomainRouting` subscribes to the REAL, process-wide
- * `resolveNavigationHistory()` singleton (shared via `globalThis`, same
- * mechanism T6c relies on) — a test that never unmounts leaves that
- * subscription live long after its own module copy is gone, and a later
- * test's `history.push`/`replace` would fan out to it too, writing that
- * stale instance's own (different, per-test) `FakeRegistry` state into the
- * ONE shared browser URL every later test also reads. Tracking and
- * unmounting every instance this file mounts, every test, is what keeps
- * that from leaking across tests.
- */
 let mountedInstances: Array<{ lifecycle: { unmount: (c: Element) => unknown }; container: Element }> = [];
 
 beforeEach(() => {
   fakeRegistry = new FakeRegistry();
-  mountStrategyCalls = [];
+  fakeRouter = { navigation: vi.fn(() => ({ navigate: vi.fn(), replace: vi.fn() })) };
   attachedCallbacks.length = 0;
-  window.history.replaceState(null, '', '/');
+  createFrontXSpy.mockClear();
+  buildSpy.mockClear();
+  mountGate = undefined;
+  pendingMounts = [];
 });
 
 afterEach(() => {
@@ -359,342 +312,104 @@ afterEach(() => {
 });
 
 describe('demo-mfe widgets-host lifecycle', () => {
-  it('broadcasts widget addresses under the composed nested domain key (broadcasts widget addresses)', async () => {
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+  it('renders its own widgets-domain slot (starting that domain\'s own observer is ExtensionDomainSlot\'s own concern — its own suite)', async () => {
+    const { container } = await mount(fakeBridge());
 
-    const map = fakeRegistry!.getDomainProperty(WIDGETS_DOMAIN_ID, ENTRY_ADDRESSES) as Record<
-      string,
-      { domainKey: string; extension: string }
-    >;
-    for (const id of WIDGET_IDS) {
-      expect(map[id]).toEqual({ domainKey: 'screen.widgets-host.widgets', extension: ROUTE_OF[id] });
+    expect(container.querySelector('[data-testid="widgets-domain-slot"]')).not.toBeNull();
+  });
+
+  it('auto-mounts every registered widget with an opening mount_ext chain carrying history "replace" (auto-mount, D10)', async () => {
+    await mount(fakeBridge());
+
+    const mountCalls = fakeRegistry!.executeActionsChain.mock.calls
+      .map(([chain]: [Chain]) => chain)
+      .filter((chain) => chain.action.type === MOUNT);
+    expect(mountCalls.map((c) => c.action.payload?.subject).sort()).toEqual([...WIDGET_IDS].sort());
+    for (const chain of mountCalls) {
+      expect(chain.action.payload?.history).toBe('replace');
     }
   });
 
-  it('coalesces a URL-restore mount and the auto-mount pass for the same widget into one mount call (coalesce)', async () => {
-    // The alpha token is already in the URL when Widgets Host attaches, so the
-    // route-ownership observer's own `added` dispatch and the auto-mount
-    // pass's own dispatch for the same subject race in the same tick.
-    window.history.replaceState(null, '', '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
-    const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-
-    await waitFor(() => expect(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID)).toContain(ALPHA_ID));
-    // Exactly one real mount reached the mounter for alpha, however many
-    // dispatches asked for it — `fakeRegistry.executeActionsChain`'s own call
-    // count is not a stand-in for this: both the URL-restore observer and the
-    // auto-mount pass make a top-level dispatch for alpha, and only
-    // `WidgetsDomainImpl`'s own `inFlight` map (not this fake) collapses the
-    // second one before it ever reaches the mounter.
-    expect(mountStrategyCalls.filter((subject) => subject === ALPHA_ID)).toHaveLength(1);
-    expect(container).toBeDefined();
-  });
-
-  it('defers the widgets write until the enclosing Widgets Host entry itself is in the URL, then writes once (opening write)', async () => {
-    // No `screen=widgets-host` entry yet: the opening write must wait for it.
-    window.history.replaceState(null, '', '/?screen=hello-world');
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-
-    await waitFor(() => expect(WIDGET_IDS.every((id) => fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID).includes(id))).toBe(true));
-    // Auto-mount settled before the enclosing entry exists — nothing written yet.
-    expect(window.location.search).not.toContain('widgets');
-
-    const history = resolveNavigationHistory();
-    await act(async () => {
-      history.push('/?screen=widgets-host');
-    });
-
-    await waitFor(() => {
-      for (const id of WIDGET_IDS) expect(window.location.search).toContain(ROUTE_OF[id]);
-    });
-  });
-
-  it('has every widget entry in the URL once mount() itself resolves when the opening write is not deferred (ping chain order)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    const pushSpy = vi.spyOn(window.history, 'pushState');
-    const replaceSpy = vi.spyOn(window.history, 'replaceState');
-    pushSpy.mockClear();
-    replaceSpy.mockClear();
-
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-
-    for (const id of WIDGET_IDS) expect(window.location.search).toContain(ROUTE_OF[id]);
-    // Coalesced into exactly one history write carrying all three tokens —
-    // `withOpening` collects every widget's `afterMount` before flushing.
-    // Without that wrap, each `afterMount` would write on its own as soon as
-    // its own mount settles (F1).
-    const writes = [...pushSpy.mock.calls, ...replaceSpy.mock.calls];
-    expect(writes).toHaveLength(1);
-    const url = writes[0]![2] as string;
-    for (const id of WIDGET_IDS) expect(url).toContain(ROUTE_OF[id]);
-  });
-
-  it('stops dispatching further mounts once unmounted, and its own unmount makes no history write (release on unmount)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-    const searchBeforeUnmount = window.location.search;
-
-    lifecycle.unmount(container);
-
-    const history = resolveNavigationHistory();
-    await act(async () => {
-      history.push('/?screen=hello-world');
-    });
-
-    expect(window.location.search).not.toBe(searchBeforeUnmount);
-  });
-
-  it('unmounts through routing.stop() -> releaseAll() -> super.unmount(), in that order (unmount order, RM-WBR W2)', async () => {
-    // RM-WBR W2 (issue constructorfabric/gears-frontx#638 ledger): the RM-LIVE2
-    // regression test (`lifecycle-widgets-host.remount.test.tsx`) drives
-    // `releaseAll()` directly against a real registry, so it never notices if
-    // `DemoMfeWidgetsHostLifecycle.unmount()` itself stopped calling
-    // `releaseAll()`, or called it out of order against `routing.stop()`/
-    // `super.unmount()`. This test exercises the real override instead,
-    // against this file's own faked `ExtensionDomainSlot`/
-    // `ConcurrentMountStrategy`/`ThemeAwareReactLifecycle` — a full render
-    // under the real `microfrontends()` + `EngineProvider` combination hangs
-    // in jsdom (see the remount test file's own doc comment) — asserting
-    // call order via `invocationCallOrder`, the same technique the "broadcast
-    // order" test above uses.
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    const strategyUnmountSpy = vi.spyOn(FakeConcurrentMountStrategy.prototype, 'unmount');
-    const superUnmountSpy = vi.spyOn(FakeThemeAwareReactLifecycle.prototype, 'unmount');
-    let stopSpy!: ReturnType<typeof vi.spyOn>;
-
-    const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (framework) => {
-        stopSpy = vi.spyOn(framework.DomainRouting.prototype, 'stop');
-      },
-    });
-    stopSpy.mockClear();
-    strategyUnmountSpy.mockClear();
-    superUnmountSpy.mockClear();
-
-    await lifecycle.unmount(container);
-
-    expect(stopSpy).toHaveBeenCalledTimes(1);
-    expect(strategyUnmountSpy.mock.calls.length).toBeGreaterThan(0);
-    expect(superUnmountSpy).toHaveBeenCalledTimes(1);
-
-    const stopOrder = stopSpy.mock.invocationCallOrder[0]!;
-    const lastReleaseOrder =
-      strategyUnmountSpy.mock.invocationCallOrder[strategyUnmountSpy.mock.invocationCallOrder.length - 1]!;
-    const superOrder = superUnmountSpy.mock.invocationCallOrder[0]!;
-
-    expect(stopOrder).toBeLessThan(lastReleaseOrder);
-    expect(lastReleaseOrder).toBeLessThan(superOrder);
-  });
-
-  it('attempts every widget release and still releases the React root when one widget unmount rejects', async () => {
-    const { lifecycle, container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-    fakeRegistry!.mounted.clear();
-    for (const id of WIDGET_IDS) fakeRegistry!.mounted.add(id);
-
-    const originalUnmount = FakeConcurrentMountStrategy.prototype.unmount;
-    const strategyUnmountSpy = vi.spyOn(FakeConcurrentMountStrategy.prototype, 'unmount').mockImplementation(async function (this: FakeConcurrentMountStrategy, payload) {
-      if (payload.subject === ALPHA_ID) throw new Error('alpha release failed');
-      await originalUnmount.call(this, payload);
-    });
-    const superUnmountSpy = vi.spyOn(FakeThemeAwareReactLifecycle.prototype, 'unmount');
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-
-    await lifecycle.unmount(container);
-
-    expect(strategyUnmountSpy.mock.calls.map(([payload]) => payload.subject)).toEqual(expect.arrayContaining(WIDGET_IDS));
-    expect(superUnmountSpy).toHaveBeenCalledWith(container);
-    expect(errorSpy).toHaveBeenCalledWith('[demo-mfe widgets-host] failed to release widget', expect.any(Error));
-  });
-
-  it('waits for an in-flight mount, then releases the occupant it created (release in-flight)', async () => {
-    const { framework } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-    const holder = (globalThis as Record<symbol, { impl?: { mountThroughChain: (subject: string, timeoutMs: number) => Promise<void>; releaseAll: () => Promise<void> } } | undefined>)[
-      Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1')
-    ];
-    expect(holder?.impl).toBeDefined();
-
-    fakeRegistry!.mounted.clear();
+  it('dispatches the opening mounts without waiting for any of them to settle (never waits)', async () => {
     let releaseMount!: () => void;
     mountGate = new Promise<void>((resolve) => {
       releaseMount = resolve;
     });
 
-    const mounting = holder!.impl!.mountThroughChain(ALPHA_ID, 5000);
-    await Promise.resolve();
-    const releaseAll = holder!.impl!.releaseAll();
+    // `mount()` resolves (this `await` returns) even though every opening
+    // widget mount is still pending behind `mountGate` — proof that
+    // `WidgetsHostScreen.handleAttached` fires its dispatch loop and calls
+    // `onDomainAttached()` without awaiting any of them.
+    await mount(fakeBridge());
+
+    expect(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID)).toHaveLength(0);
     releaseMount();
-
-    await Promise.all([mounting, releaseAll]);
-
-    expect(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID)).not.toContain(ALPHA_ID);
-    expect(framework.DomainRouting).toBeDefined();
+    await act(async () => {
+      await Promise.all(pendingMounts);
+    });
+    expect(new Set(fakeRegistry!.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
   });
 
-  it('remounts on the same cached registry with a new address without registerDomain throwing (remount)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+  // Releasing every mounted widget on unmount — and doing so through the
+  // SAME shared releaser a strategy's own explicit unmount uses, so an
+  // in-flight mount racing teardown rolls itself back instead of leaking a
+  // "mounted" bookkeeping entry nothing ever clears — is `ExtensionDomainSlot`'s
+  // own attach/detach ordering plus `mfes`'s own `DefaultExtensionMounter.detach()`
+  // (Global Constraints here, this file's own doc comment): this host keeps
+  // no release step of its own to test. `lifecycle-widgets-host.remount.test.tsx`
+  // exercises the real combination end to end (mount, leave, re-enter).
 
-    const secondAddress = { domainKey: 'screen', extension: 'widgets-host-2' };
-    window.history.replaceState(null, '', '/?screen=widgets-host-2');
-    await expect(mount(bridgeWithAddress(secondAddress), { keepModule: true })).resolves.toBeDefined();
+  it('remounts on the same cached registry without registerDomain throwing, and auto-mounts again with history "replace" (remount)', async () => {
+    await mount(fakeBridge());
 
-    const map = fakeRegistry!.getDomainProperty(WIDGETS_DOMAIN_ID, ENTRY_ADDRESSES) as Record<
-      string,
-      { domainKey: string; extension: string }
-    >;
-    for (const id of WIDGET_IDS) {
-      expect(map[id].domainKey).toBe('screen.widgets-host-2.widgets');
+    await expect(mount(fakeBridge(), { keepModule: true })).resolves.toBeDefined();
+
+    const mountCalls = fakeRegistry!.executeActionsChain.mock.calls
+      .map(([chain]: [Chain]) => chain)
+      .filter((chain) => chain.action.type === MOUNT);
+    expect(mountCalls.length).toBeGreaterThanOrEqual(WIDGET_IDS.length);
+    for (const chain of mountCalls) {
+      expect(chain.action.payload?.history).toBe('replace');
     }
   });
 
-  it('resolves mount() after every widget settles even when executeActionsChain returns no promise (#648)', async () => {
+  it('builds one nested app per module copy and reuses it across mount, unmount and remount', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const { lifecycle, container } = await mount(fakeBridge(), { keepModule: i > 0 });
+      mountedInstances.pop();
+      await lifecycle.unmount(container);
+    }
+
+    expect(createFrontXSpy).toHaveBeenCalledTimes(1);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('mount() resolves even when a widget chain returns no promise (#648)', async () => {
     fakeRegistry = new FakeRegistry();
     for (const id of WIDGET_IDS) {
       fakeRegistry.setOverride(id, MOUNT, () => undefined);
     }
-    window.history.replaceState(null, '', '/?screen=widgets-host');
 
-    await expect(mount(bridgeWithAddress(ENCLOSING_ADDRESS))).resolves.toBeDefined();
+    await expect(mount(fakeBridge())).resolves.toBeDefined();
   });
 
-  it('resolves without waiting for the timeout when the chain refuses before reaching the handler (refused before the handler)', async () => {
-    fakeRegistry = new FakeRegistry();
-    fakeRegistry.setOverride(ALPHA_ID, MOUNT, () => Promise.resolve());
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-
-    const start = Date.now();
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-    expect(Date.now() - start).toBeLessThan(5000);
-  });
-
-  it('resolves mount() by its own defaultActionTimeout and warns when a widget mount never settles (timeout)', async () => {
-    // Faking only `setTimeout`/`clearTimeout` — the two `mountThroughChain`
-    // itself uses — leaves `MessageChannel`/microtasks alone, which is what
-    // React's own passive-effect scheduling needs to keep running; faking
-    // those too would freeze `handleAttached` before it ever starts.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  it('mount() resolves without waiting for any widget mount to settle, and starts no timer for one (no waiters)', async () => {
     fakeRegistry = new FakeRegistry();
     fakeRegistry.setOverride(ALPHA_ID, MOUNT, () => new Promise(() => {})); // never settles
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    window.history.replaceState(null, '', '/?screen=widgets-host');
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 
-    let resolved = false;
-    const mountPromise = mount(bridgeWithAddress(ENCLOSING_ADDRESS)).then(() => {
-      resolved = true;
-    });
+    await expect(mount(fakeBridge())).resolves.toBeDefined();
 
-    // Advanced in small increments rather than one 5000ms jump: bootstrap
-    // (manifest fetch, registration) is still in flight on real microtasks
-    // when this starts, so `mountThroughChain`'s own `setTimeout(..., 5000)`
-    // is not yet scheduled — a single jump to +5000ms would sail past a
-    // timer that does not exist yet. Each small step flushes those pending
-    // microtasks first, letting the real timer get created, then keeps
-    // advancing until it fires.
-    for (let i = 0; i < 100 && !resolved; i += 1) {
-      await vi.advanceTimersByTimeAsync(100);
-    }
-    await mountPromise;
-
-    expect(resolved).toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(ALPHA_ID));
-    vi.useRealTimers();
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
-
-  it('does not touch history when mounting onto a URL that already carries every entry (no history on mount, P8)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta&screen.widgets-host.widgets=widget');
-    const pushSpy = vi.spyOn(window.history, 'pushState');
-    const replaceSpy = vi.spyOn(window.history, 'replaceState');
-    replaceSpy.mockClear();
-    pushSpy.mockClear();
-
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
-
-    expect(pushSpy).not.toHaveBeenCalled();
-    expect(replaceSpy).not.toHaveBeenCalled();
-  });
-
-  it('broadcasts the entry addresses before starting the routing observer and before the first widget mount dispatch (broadcast order)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    const broadcastSpy = vi.spyOn(fakeRegistry!, 'updateSharedProperty');
-    let startSpy!: ReturnType<typeof vi.spyOn>;
-
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (framework) => {
-        startSpy = vi.spyOn(framework.DomainRouting.prototype, 'start');
-      },
-    });
-
-    const firstMountDispatchIndex = fakeRegistry!.executeActionsChain.mock.calls.findIndex(
-      ([chain]: [Chain]) => chain.action.type === MOUNT,
-    );
-    expect(firstMountDispatchIndex).toBeGreaterThanOrEqual(0);
-    const firstMountDispatchOrder = fakeRegistry!.executeActionsChain.mock.invocationCallOrder[firstMountDispatchIndex]!;
-
-    expect(broadcastSpy).toHaveBeenCalled();
-    expect(startSpy).toHaveBeenCalled();
-    expect(broadcastSpy.mock.invocationCallOrder[0]!).toBeLessThan(startSpy.mock.invocationCallOrder[0]!);
-    expect(startSpy.mock.invocationCallOrder[0]!).toBeLessThan(firstMountDispatchOrder);
-  });
-
-  it('stops the previous routing before replacing it when onAttached fires again for the same mount (re-entry attach)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    let stopSpy!: ReturnType<typeof vi.spyOn>;
-
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-      beforeMount: (framework) => {
-        stopSpy = vi.spyOn(framework.DomainRouting.prototype, 'stop');
-      },
-    });
-
-    expect(attachedCallbacks.length).toBeGreaterThan(0);
-    const reattach = attachedCallbacks[attachedCallbacks.length - 1]!;
-    stopSpy.mockClear();
-
-    await act(async () => {
-      reattach();
-    });
-
-    // The first routing was stopped before a second one replaced it — not
-    // left subscribed alongside it.
-    expect(stopSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('still resolves mount() when the opening/auto-mount pass rejects, logging the error instead of hanging (gating rejection)', async () => {
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    let withOpeningSpy!: ReturnType<typeof vi.spyOn>;
-
-    await expect(
-      mount(bridgeWithAddress(ENCLOSING_ADDRESS), {
-        beforeMount: (framework) => {
-          withOpeningSpy = vi
-            .spyOn(framework.DomainRouting.prototype, 'withOpening')
-            .mockRejectedValueOnce(new Error('boom'));
-        },
-      }),
-    ).resolves.toBeDefined();
-
-    expect(withOpeningSpy).toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('opening/auto-mount'), expect.any(Error));
-  }, 10000);
 
   it('does not throw when a ping dispatch returns no promise, and the action still counts as dispatched (ping, #648)', async () => {
     fakeRegistry = new FakeRegistry();
-    // After #648 `executeActionsChain` can refuse synchronously and return
-    // nothing at all — not just for the mount dispatches `mountThroughChain`
-    // already covers, but for every dispatch this registry makes, ping
-    // included. Schema lookups return a fixed shape regardless of which
-    // widget's entry is asked about — this fixture only has one entry type.
     fakeRegistry.typeSystem.getSchema.mockReturnValue({ actions: [WIDGET_PING_ACTION_TYPE] });
     vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => undefined);
-    window.history.replaceState(null, '', '/?screen=widgets-host');
-    // `not.toThrow()` alone doesn't prove the click handler stayed clean: React 19
-    // can catch a thrown error from an event handler and report it through
-    // console.error itself, which would pass `not.toThrow()` while still
-    // signaling the exact `undefined.catch` regression this test guards against.
-    // Asserting the spy saw nothing is the unambiguous check.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    const { container } = await mount(fakeBridge());
     const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
     expect(button).toBeTruthy();
 
@@ -702,9 +417,6 @@ describe('demo-mfe widgets-host lifecycle', () => {
       fireEvent.click(button!);
     });
 
-    // Unrelated `act(...)` warnings from `mount()`'s own render are expected noise in
-    // this suite (see the sibling "synchronous refusal" test above) — what matters is
-    // that the ping dispatch itself never logs a failure.
     expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.anything());
     expect(fakeRegistry.executeActionsChain).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -719,10 +431,9 @@ describe('demo-mfe widgets-host lifecycle', () => {
     vi.spyOn(fakeRegistry, 'executeActionsChain').mockImplementation(() => {
       throw new Error('ping refused synchronously');
     });
-    window.history.replaceState(null, '', '/?screen=widgets-host');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { container } = await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    const { container } = await mount(fakeBridge());
     const button = container.querySelector('[data-testid="ping-alpha"]') as HTMLButtonElement | null;
     expect(button).toBeTruthy();
 
@@ -731,37 +442,32 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`ping ${ALPHA_ID}`), expect.any(Error));
   });
 
-  it('rebinds impl to the already-registered domain after an HMR reload, when the nested registry is cached (HMR + cached registry)', async () => {
-    // Same key `lifecycle-widgets-host.tsx`'s own `widgetsHolder` singleton
-    // reads/writes (see its doc comment) — read here without any SUT export,
-    // the same way this file already reaches into a module's internals for
-    // things production intentionally keeps unexported.
+  it('rebinds impl to the already-registered domain on a remount, when the nested registry is cached (remount + cached registry)', async () => {
     const WIDGETS_HOLDER_KEY = Symbol.for('@gears-frontx/demo-mfe/widgets-host-holder/v1');
 
-    window.history.replaceState(null, '', '/?screen=widgets-host');
     const registry = new FakeRegistry();
     fakeRegistry = registry;
 
     // First mount: nothing registered on `registry` yet, so `registerDomain`
     // runs for real and constructs `WidgetsDomainImpl` (`holder.impl = this`).
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    await mount(fakeBridge());
+    await act(async () => {
+      await Promise.all(pendingMounts);
+    });
     expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
 
-    // Simulate an HMR update of THIS module without touching `registry`:
-    // `vi.resetModules()` (inside `mount()`, `keepModule` defaults to false)
-    // clears vitest's module cache, so the next `import('./lifecycle-widgets-host')`
-    // re-runs the module's own top-level code — exactly what a real HMR
-    // reload does to its bindings. `fakeRegistry` is deliberately left
-    // pointing at the SAME instance (unlike every other test's `beforeEach`):
-    // the nested `MfeRegistry` singleton is what HMR does NOT reset in
-    // production, and reproducing that half of the bug is the point.
-    await mount(bridgeWithAddress(ENCLOSING_ADDRESS));
+    // Remount against the SAME `registry`: `vi.resetModules()` (inside
+    // `mount()`, `keepModule` defaults to false) clears vitest's module cache,
+    // so the next `import('./lifecycle-widgets-host')` re-runs the module's
+    // own top-level code with fresh bindings. `fakeRegistry` is deliberately
+    // left pointing at the SAME instance (unlike every other test's `beforeEach`).
+    await mount(fakeBridge());
+    await act(async () => {
+      await Promise.all(pendingMounts);
+    });
 
     const holder = (globalThis as Record<symbol, { impl?: unknown } | undefined>)[WIDGETS_HOLDER_KEY];
     expect(holder?.impl).toBeDefined();
-    // Auto-mount ran to completion on the post-"HMR" module instance without
-    // throwing (`holder.impl!.mountThroughChain` reading a real `impl`, not
-    // `undefined`), and the widgets are still mounted — not silently gone.
     expect(new Set(registry.getMountedExtensions(WIDGETS_DOMAIN_ID))).toEqual(new Set(WIDGET_IDS));
   });
 });

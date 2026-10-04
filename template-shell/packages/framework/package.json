@@ -1,6 +1,6 @@
 {
   "name": "@gears-frontx/framework",
-  "version": "0.2.0-alpha.9",
+  "version": "0.2.0-alpha.10",
   "description": "FrontX framework integrating all SDK packages with plugin architecture",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -21,6 +21,11 @@
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js",
       "require": "./dist/testing.cjs"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js",
+      "require": "./dist/internal.cjs"
     }
   },
   "files": [
@@ -42,9 +47,10 @@
   "devDependencies": {
     "@gears-frontx/auth": "*",
     "@gears-frontx/frontx-template-shell": "file:../..",
-    "@gears-frontx/mfes": "0.3.0-alpha.9",
-    "@gears-frontx/gts-plugin": "0.3.0-alpha.9",
-    "@gears-frontx/routing": "0.3.0-alpha.0",
+    "@gears-frontx/mfes": "0.3.0-alpha.10",
+    "@gears-frontx/gts-plugin": "0.3.0-alpha.10",
+    "@gears-frontx/routing": "0.3.0-alpha.1",
+    "@gears-frontx/routing-tanstack": "0.3.0-alpha.2",
     "@reduxjs/toolkit": "2.12.0",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "4.1.4",
@@ -58,6 +64,7 @@
     "@gears-frontx/state": "*",
     "@gears-frontx/mfes": "*",
     "@gears-frontx/routing": "*",
+    "@gears-frontx/routing-tanstack": "*",
     "@gears-frontx/gts-plugin": "*",
     "@gears-frontx/api": "*",
     "@gears-frontx/i18n": "*",
@@ -73,6 +80,9 @@
       "optional": false
     },
     "@gears-frontx/mfes": {
+      "optional": false
+    },
+    "@gears-frontx/routing-tanstack": {
       "optional": false
     },
     "@gears-frontx/gts-plugin": {

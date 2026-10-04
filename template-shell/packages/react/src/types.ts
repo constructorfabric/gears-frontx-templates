@@ -130,18 +130,13 @@ type TranslationParams = Record<string, string | number | boolean>;
  *
  * @example
  * ```tsx
- * <FrontXProvider config={{ devMode: true }}>
- *   <App />
- * </FrontXProvider>
- *
- * // With pre-built app
- * const app = createFrontX().use(microfrontends()).build();
+ * const app = createFrontX().use(microfrontends(config)).build();
  * <FrontXProvider app={app}>
  *   <App />
  * </FrontXProvider>
  *
  * // With MFE bridge (for MFE components)
- * <FrontXProvider mfeBridge={{ bridge, extensionId, domainId }}>
+ * <FrontXProvider app={app} mfeBridge={{ bridge, extensionId, domainId }}>
  *   <MyMfeApp />
  * </FrontXProvider>
  *
@@ -154,10 +149,8 @@ type TranslationParams = Record<string, string | number | boolean>;
 export interface FrontXProviderProps {
   /** Child components */
   children: ReactNode;
-  /** FrontX configuration */
-  config?: FrontXConfig;
-  /** Pre-built FrontX app instance (optional) */
-  app?: FrontXApp;
+  /** The runtime's FrontX app, built once by the caller */
+  app: FrontXApp;
   /** MFE bridge context (for MFE components) */
   mfeBridge?: MfeContextValue;
 }

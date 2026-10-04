@@ -1,16 +1,33 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { eventBus, resetStore } from '@gears-frontx/state';
-import { createFrontX } from '../src/createFrontX';
-import { createFrontXApp } from '../src/createFrontXApp';
-import { presets } from '../src/presets';
-import { effects } from '../src/plugins/effects';
-import { i18n } from '../src/plugins/i18n';
-import { layout } from '../src/plugins/layout';
-import { mock } from '../src/plugins/mock';
-import { queryCache } from '../src/plugins/queryCache';
-import { themes } from '../src/plugins/themes';
-import { resetSharedQueryClient } from '../src/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrontXActions, FrontXApp, FrontXPlugin } from '../src/types';
+
+// One app per runtime: every test loads its own module copy.
+type Eventing = typeof import('@gears-frontx/state');
+let eventBus: Eventing['eventBus'];
+let resetStore: Eventing['resetStore'];
+let createFrontX: typeof import('../src/createFrontX').createFrontX;
+let presets: typeof import('../src/presets').presets;
+let effects: typeof import('../src/plugins/effects').effects;
+let i18n: typeof import('../src/plugins/i18n').i18n;
+let layout: typeof import('../src/plugins/layout').layout;
+let mock: typeof import('../src/plugins/mock').mock;
+let queryCache: typeof import('../src/plugins/queryCache').queryCache;
+let themes: typeof import('../src/plugins/themes').themes;
+let resetSharedQueryClient: typeof import('../src/testing').resetSharedQueryClient;
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ createFrontX } = await import('../src/createFrontX'));
+  ({ presets } = await import('../src/presets'));
+  ({ effects } = await import('../src/plugins/effects'));
+  ({ i18n } = await import('../src/plugins/i18n'));
+  ({ layout } = await import('../src/plugins/layout'));
+  ({ mock } = await import('../src/plugins/mock'));
+  ({ queryCache } = await import('../src/plugins/queryCache'));
+  ({ themes } = await import('../src/plugins/themes'));
+  ({ resetSharedQueryClient } = await import('../src/testing'));
+});
 
 type ActionName = keyof FrontXActions;
 
@@ -65,8 +82,8 @@ describe('plugin system contract', () => {
       assertMissingAction(actions, 'setLanguage');
     });
 
-    it('createFrontXApp follows the full preset contract', () => {
-      const app = track(createFrontXApp());
+    it('the full preset exposes the full action surface', () => {
+      const app = track(createFrontX().useAll(presets.full()).build());
       const actions = getActionsView(app);
 
       expect(app.themeRegistry).toBeDefined();
@@ -91,12 +108,11 @@ describe('plugin system contract', () => {
   });
 
   describe('dependency resolution', () => {
-    it('composition order does not matter when declared dependencies are present', () => {
+    it('succeeds when dependencies are registered in order', () => {
       const providerPlugin: FrontXPlugin = { name: 'provider', dependencies: [], provides: {} };
       const consumerPlugin: FrontXPlugin = { name: 'consumer', dependencies: ['provider'], provides: {} };
 
       expect(() => track(createFrontX().use(providerPlugin).use(consumerPlugin).build())).not.toThrow();
-      expect(() => track(createFrontX().use(consumerPlugin).use(providerPlugin).build())).not.toThrow();
     });
 
     it('succeeds when plugins are registered out of dependency order', () => {

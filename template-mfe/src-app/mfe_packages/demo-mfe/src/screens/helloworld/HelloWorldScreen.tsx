@@ -61,9 +61,10 @@ export const HelloWorldScreen: React.FC<HelloWorldScreenProps> = ({ bridge }) =>
   // Load translations using the shared hook
   const { t, loading } = useScreenTranslations(languageModules, bridge);
 
-  // Navigate to Theme Screen
-  const handleGoToTheme = useCallback(async () => {
-    await bridge.executeActionsChain({
+  // Navigate to Theme Screen. Dispatch is acceptance-only: it returns void
+  // and never throws, so there is nothing to await or catch here.
+  const handleGoToTheme = useCallback(() => {
+    bridge.executeActionsChain({
       action: {
         type: FRONTX_ACTION_MOUNT_EXT,
         target: FRONTX_SCREEN_DOMAIN,
@@ -76,8 +77,8 @@ export const HelloWorldScreen: React.FC<HelloWorldScreenProps> = ({ bridge }) =>
   // Profile extension. The chained `next` step targets the extension ID directly
   // so the mediator routes it to Profile's registered ActionHandler rather than
   // through the domain's lifecycle action pipeline.
-  const handleOpenProfileAndRefresh = useCallback(async () => {
-    await bridge.executeActionsChain({
+  const handleOpenProfileAndRefresh = useCallback(() => {
+    bridge.executeActionsChain({
       action: {
         type: FRONTX_ACTION_MOUNT_EXT,
         target: FRONTX_SCREEN_DOMAIN,
@@ -100,12 +101,14 @@ export const HelloWorldScreen: React.FC<HelloWorldScreenProps> = ({ bridge }) =>
   // defined at creation time via `next` continuations, dispatched in one
   // `executeActionsChain` call. Mounting Widgets Host evicts Hello World itself
   // from the shell's screen domain (`ExclusiveMountStrategy`), but the chain
-  // keeps executing on the mediator's own promise chain regardless of what
-  // happens to the sender afterward — this exercises cross-nesting delivery
-  // two hops away from the shell (shell -> Widgets Host -> widgets domain ->
-  // widget-a).
-  const handlePingWidgetA = useCallback(async () => {
-    await bridge.executeActionsChain({
+  // keeps executing in the mediator, as a recursive continuation, regardless
+  // of what happens to the sender afterward — this exercises cross-nesting
+  // delivery two hops away from the shell (shell -> Widgets Host -> widgets
+  // domain -> widget-a). Widgets Host auto-mounts all extensions including
+  // alpha, so this mount_ext lands on an already-mounted or in-progress alpha
+  // and resolves successfully.
+  const handlePingWidgetA = useCallback(() => {
+    bridge.executeActionsChain({
       action: {
         type: FRONTX_ACTION_MOUNT_EXT,
         target: FRONTX_SCREEN_DOMAIN,

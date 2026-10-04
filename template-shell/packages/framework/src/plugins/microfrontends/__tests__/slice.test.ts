@@ -37,7 +37,7 @@ describe('addExtensionMounted', () => {
     expect(state.mountedExtensions['d1']).toEqual(['e1', 'e2']);
   });
 
-  it('is idempotent — duplicate dispatch is a no-op', () => {
+  it('handles duplicate dispatches as a no-op', () => {
     let state = reducer(emptyState(), addExtensionMounted({ domainId: 'd1', extensionId: 'e1' }));
     state = reducer(state, addExtensionMounted({ domainId: 'd1', extensionId: 'e1' }));
     expect(state.mountedExtensions['d1']).toEqual(['e1']);

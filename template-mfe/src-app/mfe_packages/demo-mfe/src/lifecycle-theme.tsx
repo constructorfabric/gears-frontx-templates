@@ -3,7 +3,6 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
 import { ThemeAwareReactLifecycle } from '@gears-frontx/react';
 import { mfeApp } from './init';
 import { CurrentThemeScreen } from './screens/theme/CurrentThemeScreen';
-import { routedScreen } from './shared/routedScreen';
 
 class CurrentThemeLifecycle extends ThemeAwareReactLifecycle {
   constructor() {
@@ -11,7 +10,7 @@ class CurrentThemeLifecycle extends ThemeAwareReactLifecycle {
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    return routedScreen(<CurrentThemeScreen bridge={bridge} />, bridge);
+    return <CurrentThemeScreen bridge={bridge} />;
   }
 }
 

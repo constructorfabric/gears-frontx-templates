@@ -3,7 +3,6 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
 import { KitThemedLifecycle } from './shared/KitThemedLifecycle';
 import { mfeApp } from './init';
 import { UIKitElementsScreen } from './screens/uikit/UIKitElementsScreen';
-import { routedScreen } from './shared/routedScreen';
 
 class UIKitElementsLifecycle extends KitThemedLifecycle {
   constructor() {
@@ -11,7 +10,7 @@ class UIKitElementsLifecycle extends KitThemedLifecycle {
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    return routedScreen(<UIKitElementsScreen bridge={bridge} />, bridge);
+    return <UIKitElementsScreen bridge={bridge} />;
   }
 }
 

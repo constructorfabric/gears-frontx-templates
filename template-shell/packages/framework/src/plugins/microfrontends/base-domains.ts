@@ -37,7 +37,6 @@ import {
 import {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   FRONTX_SCREEN_EXTENSION_TYPE,
 } from '../../mfe/constants';
 import {
@@ -90,7 +89,6 @@ export const screenDomain: ExtensionDomain = {
   sharedProperties: [
     FRONTX_SHARED_PROPERTY_THEME,
     FRONTX_SHARED_PROPERTY_LANGUAGE,
-    FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   ],
   defaultActionTimeout: 30000,
   lifecycleStages: [...INIT_ONLY_LIFECYCLE_STAGES],
@@ -114,7 +112,6 @@ export const sidebarDomain: ExtensionDomain = {
   sharedProperties: [
     FRONTX_SHARED_PROPERTY_THEME,
     FRONTX_SHARED_PROPERTY_LANGUAGE,
-    FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   ],
   defaultActionTimeout: 30000,
   lifecycleStages: [...DEFAULT_LIFECYCLE_STAGES],
@@ -137,7 +134,6 @@ export const popupDomain: ExtensionDomain = {
   sharedProperties: [
     FRONTX_SHARED_PROPERTY_THEME,
     FRONTX_SHARED_PROPERTY_LANGUAGE,
-    FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   ],
   defaultActionTimeout: 30000,
   lifecycleStages: [...DEFAULT_LIFECYCLE_STAGES],
@@ -160,7 +156,6 @@ export const overlayDomain: ExtensionDomain = {
   sharedProperties: [
     FRONTX_SHARED_PROPERTY_THEME,
     FRONTX_SHARED_PROPERTY_LANGUAGE,
-    FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES,
   ],
   defaultActionTimeout: 30000,
   lifecycleStages: [...DEFAULT_LIFECYCLE_STAGES],

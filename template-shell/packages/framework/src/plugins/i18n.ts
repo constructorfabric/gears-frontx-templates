@@ -11,7 +11,6 @@
 
 import { eventBus } from '@gears-frontx/state';
 import { i18nRegistry as singletonI18nRegistry, Language } from '@gears-frontx/i18n';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '../mfe/constants';
 import type { FrontXPlugin, SetLanguagePayload, LanguagePropagationFailedPayload } from '../types';
 
 // Define i18n events for module augmentation
@@ -68,21 +67,12 @@ export function i18n(): FrontXPlugin {
 
     // @cpt-begin:cpt-frontx-flow-framework-composition-i18n-propagation:p1:inst-2
     // @cpt-begin:cpt-frontx-dod-framework-composition-propagation:p1:inst-2
-    onInit(app) {
+    onInit() {
       // Language change effect
       languageChangedSubscription = eventBus.on(
         'i18n/language/changed',
         async (payload: SetLanguagePayload) => {
           await i18nRegistry.setLanguage(payload.language as Language);
-          try {
-            app.mfeRegistry?.updateSharedProperty(
-              FRONTX_SHARED_PROPERTY_LANGUAGE,
-              payload.language
-            );
-          } catch (error) {
-            console.error('[Gears FrontX] Failed to propagate language to MFE domains', error);
-            eventBus.emit('i18n/propagation/failed', { language: payload.language, error });
-          }
         }
       );
 

@@ -5,13 +5,15 @@ export default defineConfig({
     index: 'src/index.ts',
     types: 'src/types.ts',
     testing: 'src/testing.ts',
+    internal: 'src/internal.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
   clean: true,
   sourcemap: true,
-  // Share query-cache modules across entries so `dist/testing.js` does not duplicate
-  // plugin singletons (globalThis + WeakMaps) relative to `dist/index.js`.
+  // Share modules across entries so `dist/testing.js`/`dist/internal.js` do not
+  // duplicate plugin singletons (globalThis + WeakMaps, e.g. `routersByRegistry`)
+  // relative to `dist/index.js`.
   splitting: true,
   external: [
     '@gears-frontx/state',

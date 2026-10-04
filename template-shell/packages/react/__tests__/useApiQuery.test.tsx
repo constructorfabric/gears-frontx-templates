@@ -12,12 +12,11 @@
 // @cpt-FEATURE:implement-endpoint-descriptors:p3
 // @cpt-FEATURE:cpt-frontx-dod-request-lifecycle-use-api-query:p2
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
-import { eventBus, resetSharedFetchCache, resetSharedQueryClient } from '@gears-frontx/framework';
-import { FrontXProvider, useApiQuery } from '@gears-frontx/react';
 import {
+  loadFreshHelpers,
   ownedApps,
   buildTestQueryClient,
   makeQueryWrapper,
@@ -27,6 +26,20 @@ import {
   buildChildAppWithQueryCacheShared,
   getAttachedQueryClient,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider, useApiQuery } = await import('@gears-frontx/react'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {
@@ -214,7 +227,7 @@ describe('useApiQuery', () => {
     // Host must register queryCache() before the child can use queryCacheShared().
     // Two live apps keep the shared fetch cache retained so Rest uses getWithSharedCache
     // (not the peek-null fallback to plain get()).
-    const hostApp = buildHostAppWithQueryCache(0);
+    const hostApp = await buildHostAppWithQueryCache(0);
     const childApp = buildChildAppWithQueryCacheShared();
     const fetchFn = vi
       .fn<(path: string, options?: { signal?: AbortSignal }) => Promise<string>>()
@@ -244,7 +257,7 @@ describe('useApiQuery', () => {
   });
 
   it('per-hook staleTime: 0 disables shared fetch cache reuse across runtimes', async () => {
-    const hostApp = buildHostAppWithQueryCache(60_000);
+    const hostApp = await buildHostAppWithQueryCache(60_000);
     const childApp = buildChildAppWithQueryCacheShared();
     const fetchFn = vi
       .fn<(path: string, options?: { signal?: AbortSignal }) => Promise<string>>()

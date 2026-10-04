@@ -22,7 +22,7 @@
       "id": "gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_b.widget.v1",
       "domain": "gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1",
       "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.widgets.fixture_b.entry.v1",
-      "route": "/widget"
+      "route": "/widget-b"
     }
   ]
 }

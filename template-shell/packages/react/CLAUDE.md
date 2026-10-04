@@ -10,43 +10,40 @@ This package is part of the **React Layer (L3)** - it depends only on @gears-fro
 
 ### Gears FrontXProvider
 
-Wrap your app with Gears FrontXProvider to enable all hooks:
+Wrap your app with Gears FrontXProvider to enable all hooks. A runtime builds exactly one app, once at module level; the provider never creates one. The three compositions below are alternatives: choose one per runtime.
 
 ```tsx
-import { Gears FrontXProvider } from '@gears-frontx/react';
+import { createGears FrontX, Gears FrontXProvider, presets } from '@gears-frontx/react';
+
+// Alternative 1: the full preset
+const app = createGears FrontX({ devMode: true }).useAll(presets.full()).build();
 
 function App() {
   return (
-    <Gears FrontXProvider>
+    <Gears FrontXProvider app={app}>
       <YourApp />
     </Gears FrontXProvider>
   );
 }
 
-// With configuration
-<Gears FrontXProvider config={{ devMode: true }}>
-  <YourApp />
-</Gears FrontXProvider>
+```
 
-// With pre-built app (host-style shell; host typically also uses queryCache())
-const app = createGears FrontX().use(screensets()).use(queryCache()).build();
-<Gears FrontXProvider app={app}>
-  <YourApp />
-</Gears FrontXProvider>
+Alternative 2: a host shell with a custom plugin set (a host typically uses `queryCache()`):
 
-// Child MFE app — canonical bootstrap matches src/mfe_packages/*/init.ts:
-// apiRegistry.register / initialize before .build; createGears FrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
-// registerSlice after .build when slices exist.
-const mfeApp = createGears FrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
-<Gears FrontXProvider app={mfeApp}>
-  <YourApp />
-</Gears FrontXProvider>
+```tsx
+const app = createGears FrontX().use(effects()).use(queryCache()).build();
+```
+
+Alternative 3: a child MFE app. The canonical bootstrap matches `src/mfe_packages/*/init.ts`: `apiRegistry.register` / `initialize` before `.build()`, `registerSlice` after `.build()` when slices exist:
+
+```tsx
+const app = createGears FrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
 ```
 
 The shared `QueryClient` is created and owned by the `queryCache()` framework plugin at L2.
 `Gears FrontXProvider` resolves that client from the app instance — it does not create its own `QueryClient`.
 
-When the host uses `queryCache()` and the child MFE app uses `queryCacheShared()` (with `effects()` and `mock()` on the same chain as in repo MFE inits), both roots join the same shared `QueryClient` while keeping separate React trees. `ThemeAwareReactLifecycle` relies on that shared plugin-owned client through the app instance. If the shared client is missing for a mounted MFE, the lifecycle now fails explicitly instead of silently falling back.
+When the host uses `queryCache()` and the child MFE app uses `queryCacheShared()` (with `effects()` and `mock()` on the same chain as in repo MFE inits), both roots join the same shared `QueryClient` while keeping separate React trees. `ThemeAwareReactLifecycle` relies on that shared plugin-owned client through the app instance. If the shared client is missing for a mounted MFE, the lifecycle fails explicitly instead of silently falling back.
 
 For separate roots, build each app with the appropriate query-cache plugin (`queryCache()` for the host, `queryCacheShared()` for child MFE shells) so every tree joins the same cache through plugin composition. Host apps should register domains/extensions during bootstrap; **`ExtensionDomainSlot`** is the preferred host-side renderer for screen slots while the framework wires `mount_ext`.
 
@@ -170,11 +167,13 @@ function MyComponent() {
   const app = useFrontX();
 
   // Access MFE-enabled registry
-  const extensions = app.screensetsRegistry.getRegisteredExtensions();
+  const extensions = app.mfeRegistry.getExtensionsForDomain('screen');
 
-  // Access MFE actions
-  await app.actions.loadExtension({ extensionId: 'home' });
-  await app.actions.mountExtension({ extensionId: 'home', domainId: 'screen', container });
+  // Access MFE actions — fire-and-forget: each dispatches an actions chain
+  // through the acceptance-only registry surface and returns nothing to
+  // await.
+  app.actions.loadExtension('home');
+  app.actions.mountExtension('home');
 }
 ```
 
@@ -265,10 +264,14 @@ import { Gears FrontX_ACTION_LOAD_EXT, Gears FrontX_SHARED_PROPERTY_THEME } from
 function MyExtension() {
   const bridge = useMfeBridge();
 
-  // Execute actions chain on parent
-  await bridge.executeActionsChain({
-    action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { extensionId: 'other' } }
-  });
+  const handleLoad = () => {
+    // executeActionsChain is acceptance-only: it returns void, never
+    // throws, and never yields anything to await for the chain's own
+    // execution.
+    bridge.executeActionsChain({
+      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
+    });
+  };
 
   // Get shared property
   const theme = bridge.getProperty(Gears FrontX_SHARED_PROPERTY_THEME);
@@ -327,7 +330,7 @@ function MyExtension() {
   const loadExtension = useHostAction(Gears FrontX_ACTION_LOAD_EXT);
 
   const handleClick = () => {
-    loadExtension({ extensionId: 'other' });
+    loadExtension({ subject: 'other' });
   };
 
   return <button onClick={handleClick}>Load Extension</button>;
@@ -557,13 +560,11 @@ function MyComponent() {
   const app = useFrontX();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleNavigate = async () => {
+  const handleNavigate = () => {
     if (containerRef.current) {
-      await app.actions.mountExtension({
-        extensionId: 'home',
-        domainId: 'screen',
-        container: containerRef.current,
-      });
+      // Fire-and-forget: dispatches an actions chain through the
+      // acceptance-only registry surface and returns nothing to await.
+      app.actions.mountExtension('home');
     }
   };
 
@@ -583,7 +584,7 @@ import { ExtensionDomainSlot } from '@gears-frontx/react';
 function MyComponent() {
   return (
     <ExtensionDomainSlot
-      registry={app.screensetsRegistry}
+      registry={app.mfeRegistry}
       domainId="screen"
       extensionId="home"
       loadingComponent={<Loading />}

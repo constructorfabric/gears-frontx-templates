@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionHandler } from '@gears-frontx/react';
-import { createRouteSignal } from '@gears-frontx/routing';
-import { fakeNavigation } from './__tests__/fake-navigation';
 
 const registerDomain = vi.fn();
 const updateSharedProperty = vi.fn();
@@ -51,9 +49,9 @@ const mockApp = {
   i18nRegistry: { getLanguage: () => null },
 };
 
-// Each domain needs a valid `route` — `createShellRouting`'s `rootDomainKeyOf`
-// throws for a domain that declares none, and `bootstrapMFE` would then throw
-// before ever reaching the manifest fetch these cases exercise.
+// Each domain needs a valid `route` — the injected router rejects a routed
+// domain that declares none, and `bootstrapMFE` would then throw before ever
+// reaching the manifest fetch these cases exercise.
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const real = await importOriginal<Record<string, never>>();
   return {
@@ -129,99 +127,12 @@ describe('bootstrapMFE (host-app)', () => {
     expect(registerSchema).toHaveBeenCalledTimes(2);
   });
 
-  it('does not register the framework-owned entry-addresses schema itself', async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { entryAddressesSchema } = await import('@gears-frontx/react');
-
-    const { bootstrapMFE } = await import('./bootstrap');
-    await bootstrapMFE(mockApp as never);
-
-    expect(registerSchema.mock.calls.some((call) => call[0] === entryAddressesSchema)).toBe(false);
-  });
-
-  it('broadcasts the entry-addresses shared property once per registration resolved so far, never ahead of it (M1)', async () => {
-    // `registered` is only pushed to once `registerExtension`'s OWN promise
-    // settles (on the next microtask, not synchronously inside the call) —
-    // mirroring how the real registry's state only reflects a registration
-    // once it has actually completed. Correct code awaits
-    // `registerExtension` before re-broadcasting, so each broadcast's value
-    // reflects exactly the registrations that have resolved by then. A
-    // mutation that broadcasts BEFORE awaiting `registerExtension` (M1) would
-    // see this array one step behind — the previous, weaker version of this
-    // test (checking only the final broadcast's value) could not tell the
-    // two apart, since a delayed broadcast still eventually reaches the same
-    // end state.
-    const registered: Array<{ id: string; domain: string }> = [];
-    const extA = { id: 'ext.a', domain: 'screen-domain', presentation: { route: '/a' } };
-    const extB = { id: 'ext.b', domain: 'screen-domain', presentation: { route: '/b' } };
-    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
-    getExtensionsForDomain.mockImplementation((domainId: string) =>
-      domainId === 'screen-domain' ? [...registered] : [],
-    );
-    registerExtension.mockImplementation(
-      (ext: { id: string; domain: string }) =>
-        new Promise<void>((resolve) => {
-          queueMicrotask(() => {
-            registered.push(ext);
-            resolve();
-          });
-        }),
-    );
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          { manifest: { $id: 'manifest.demo', id: 'manifest.demo' }, entries: [], extensions: [extA, extB] },
-        ]),
-        { status: 200 },
-      ),
-    );
-
-    const { bootstrapMFE } = await import('./bootstrap');
-    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/react');
-    await bootstrapMFE(mockApp as never);
-
-    const addressValues = updateSharedProperty.mock.calls
-      .filter(([id]) => id === FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES)
-      .map(([, value]) => value);
-
-    // One broadcast after the 4 (extension-less) domains, one after `ext.a`
-    // resolves, one after `ext.b` resolves, and a final one after the whole
-    // package loop (C2) — each strictly containing more than the last.
-    expect(addressValues).toEqual([
-      {},
-      { 'ext.a': { domainKey: 'screen', extension: 'a' } },
-      { 'ext.a': { domainKey: 'screen', extension: 'a' }, 'ext.b': { domainKey: 'screen', extension: 'b' } },
-      { 'ext.a': { domainKey: 'screen', extension: 'a' }, 'ext.b': { domainKey: 'screen', extension: 'b' } },
-    ]);
-  });
-
-  it("the screen mount handler calls routing.afterMount only after the strategy's own mount settles, and before the handler itself settles", async () => {
+  it("the screen mount handler only calls the strategy's own mount — URL reflection is the injected router's own settled-action report now (ADR 0036), not this handler's concern", async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await import('./bootstrap');
-    const routing = await bootstrapMFE(mockApp as never);
-
-    // Records the three events in order — proves the handler awaits the
-    // strategy before it back-projects (not racing the two, D3), AND that
-    // `afterMount` runs before the handler's own returned promise settles
-    // (not merely somewhere before it, which a version of this handler that
-    // called `afterMount` from a `.then()` chained onto the settled handler
-    // promise — running afterMount AFTER the handler had already settled —
-    // would still satisfy: 'handler settled' catches that, F1/M3).
-    const order: string[] = [];
-    const afterMountSpy = vi.spyOn(routing.screen, 'afterMount').mockImplementation(() => order.push('afterMount'));
-    let resolveMount: (() => void) | undefined;
-    exclusiveMount.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveMount = () => {
-            order.push('strategy.mount settled');
-            resolve();
-          };
-        }),
-    );
+    await bootstrapMFE(mockApp as never);
 
     const [, screenFactory] = registerDomain.mock.calls[0];
     const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
@@ -234,95 +145,19 @@ describe('bootstrapMFE (host-app)', () => {
 
     const mountHandler = handlers.get('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~');
     expect(mountHandler).toBeDefined();
-    // Cast (not `Promise.resolve(...)`, which would itself insert an extra
-    // microtask hop between the handler settling and `.then()` below seeing
-    // it, quietly forgiving a mutation that defers `afterMount` by exactly
-    // that one hop) — `handleAction` returns the handler's own promise
-    // unwrapped (`FunctionActionHandler.handleAction` in `@gears-frontx/mfes`
-    // is a direct passthrough), so `.then()` directly on it observes the
-    // real settlement with no hop of its own.
-    const settled = mountHandler!.handleAction('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~', {
+    await mountHandler!.handleAction('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~', {
       subject: 'ext.hello-world',
-    }) as Promise<void>;
-    // Attached before the `await settled` below, so this callback's push
-    // lands in `order` before that await's own continuation runs.
-    settled.then(() => order.push('handler settled'));
-    expect(order).toEqual([]); // neither has run yet — strategy.mount is still pending
-    resolveMount?.();
-    await settled;
+    });
 
-    expect(order).toEqual(['strategy.mount settled', 'afterMount', 'handler settled']);
-    expect(afterMountSpy).toHaveBeenCalledWith('ext.hello-world');
+    expect(exclusiveMount).toHaveBeenCalledWith({ subject: 'ext.hello-world' });
   });
 
-  it('dispatches exactly one push to /?screen=hello-world for a mount, with real routing and no afterMount spy', async () => {
-    // Unlike the ordering test above (which fakes `afterMount` to observe
-    // sequencing), this exercises the real `DomainRouting` end to end against
-    // a real `fakeNavigation`, proving the handler's back-projection actually
-    // reaches the URL — a spy-only test could pass even if `afterMount` wrote
-    // the wrong path or wrote more than once (F1).
-    const history = fakeNavigation('/');
-    const nav = { history, signal: createRouteSignal(history) };
-    getExtension.mockImplementation((id: string) =>
-      id === 'ext.hello-world' ? { id, domain: 'screen-domain', presentation: { route: '/hello-world' } } : undefined,
-    );
+  it("an optional domain's mount and unmount handlers only call their own strategy — URL reflection is the injected router's own settled-action report now (ADR 0036)", async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await import('./bootstrap');
-    await bootstrapMFE(mockApp as never, nav);
-
-    exclusiveMount.mockResolvedValue(undefined);
-    const [, screenFactory] = registerDomain.mock.calls[0];
-    const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
-    screenFactory.build({
-      mounter: {},
-      registerHandler: (actionTypeId: string, handler: { handleAction: (t: string, p: unknown) => unknown }) => {
-        handlers.set(actionTypeId, handler);
-      },
-    });
-    const mountHandler = handlers.get('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~')!;
-
-    await mountHandler.handleAction('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~', {
-      subject: 'ext.hello-world',
-    });
-
-    expect(history.writes).toEqual([{ kind: 'push', path: '/?screen=hello-world' }]);
-  });
-
-  it("an optional domain's mount and unmount handlers call routing.afterMount/afterUnmount only after their own strategy settles (F3)", async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const { bootstrapMFE } = await import('./bootstrap');
-    const routing = await bootstrapMFE(mockApp as never);
-
-    const order: string[] = [];
-    const afterMountSpy = vi.spyOn(routing.sidebar, 'afterMount').mockImplementation(() => order.push('afterMount'));
-    const afterUnmountSpy = vi
-      .spyOn(routing.sidebar, 'afterUnmount')
-      .mockImplementation(() => order.push('afterUnmount'));
-
-    let resolveMount: (() => void) | undefined;
-    optionalMount.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveMount = () => {
-            order.push('strategy.mount settled');
-            resolve();
-          };
-        }),
-    );
-    let resolveUnmount: (() => void) | undefined;
-    optionalUnmount.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveUnmount = () => {
-            order.push('strategy.unmount settled');
-            resolve();
-          };
-        }),
-    );
+    await bootstrapMFE(mockApp as never);
 
     // Sidebar is the second `registerDomain` call (screen, sidebar, popup, overlay).
     const [, sidebarFactory] = registerDomain.mock.calls[1];
@@ -338,21 +173,11 @@ describe('bootstrapMFE (host-app)', () => {
     expect(mountHandler).toBeDefined();
     expect(unmountHandler).toBeDefined();
 
-    const mountSettled = mountHandler!.handleAction('mount', { subject: 'ext.sidebar-thing' });
-    resolveMount?.();
-    await mountSettled;
+    await mountHandler!.handleAction('mount', { subject: 'ext.sidebar-thing' });
+    await unmountHandler!.handleAction('unmount', { subject: 'ext.sidebar-thing' });
 
-    const unmountSettled = unmountHandler!.handleAction('unmount', { subject: 'ext.sidebar-thing' });
-    expect(order).toEqual(['strategy.mount settled', 'afterMount']); // unmount's strategy is still pending
-    resolveUnmount?.();
-    await unmountSettled;
-
-    // A mutation that removes the `afterUnmount` call entirely (M4) leaves
-    // `order` one entry short and this spy never called — either assertion
-    // below catches it.
-    expect(order).toEqual(['strategy.mount settled', 'afterMount', 'strategy.unmount settled', 'afterUnmount']);
-    expect(afterMountSpy).toHaveBeenCalledWith('ext.sidebar-thing');
-    expect(afterUnmountSpy).toHaveBeenCalledWith('ext.sidebar-thing');
+    expect(optionalMount).toHaveBeenCalledWith({ subject: 'ext.sidebar-thing' });
+    expect(optionalUnmount).toHaveBeenCalledWith({ subject: 'ext.sidebar-thing' });
   });
 
   it('throws when the manifest fetch fails', async () => {
@@ -400,24 +225,10 @@ describe('bootstrapMFE (host-app)', () => {
     expect(registerExtension).toHaveBeenCalledWith(ext);
   });
 
-  it('a throwing broadcast does not reject bootstrapMFE, and registration continues for later extensions (C2)', async () => {
+  it('registers every extension in a package, in order', async () => {
     const extA = { id: 'ext.a', domain: 'screen-domain' };
     const extB = { id: 'ext.b', domain: 'screen-domain' };
     getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } = await import('@gears-frontx/react');
-    // Throws on exactly the SECOND entry-addresses broadcast (the one right
-    // after `ext.a` registers) — the first is the domains-only broadcast, the
-    // theme/language broadcasts use a different property id and are
-    // untouched. Registration itself must stay all-or-nothing (still
-    // unguarded), so `ext.b` still registers afterwards; only the broadcast
-    // around it is isolated.
-    let addressBroadcastCount = 0;
-    updateSharedProperty.mockImplementation((id: string) => {
-      if (id !== FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES) return;
-      addressBroadcastCount += 1;
-      if (addressBroadcastCount === 2) throw new Error('broadcast boom');
-    });
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify([
@@ -428,11 +239,10 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await import('./bootstrap');
-    await expect(bootstrapMFE(mockApp as never)).resolves.toBeDefined();
+    await expect(bootstrapMFE(mockApp as never)).resolves.toBeUndefined();
 
     expect(registerExtension).toHaveBeenCalledWith(extA);
     expect(registerExtension).toHaveBeenCalledWith(extB);
-    expect(errorSpy).toHaveBeenCalled();
   });
 
   it('skips extension registration when host does not own the target domain', async () => {

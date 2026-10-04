@@ -19,6 +19,12 @@
 
 import React, { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { MfeRegistry } from '@gears-frontx/framework';
+// Framework-internal reach-through (never MFE-reachable) — this component's
+// own attach/detach is the one place this routed domain's observer starts
+// and stops; a host never reaches this directly (`teardownRoutedDomain` is
+// the one ordering a host's own teardown needs instead).
+import { startRoutedDomain, stopRoutedDomain } from '@gears-frontx/framework/internal';
+import { registerDomainTeardown } from '../domainTeardownCollector';
 
 /**
  * Props for ExtensionDomainSlot component
@@ -116,6 +122,10 @@ export function ExtensionDomainSlot(props: ExtensionDomainSlotProps): React.Reac
     // The mounter owns all per-extension container placement under this root.
     const mounter = registry.getMounter(domainId);
     mounter.attach(root);
+    // D10/D11: a routed domain's own URL observer starts once its slot has
+    // somewhere to mount into — a no-op for an unrouted domain, or a
+    // registry with no `FrameworkRouter` attached (e.g. a test double).
+    startRoutedDomain(registry, domainId);
     // @cpt-end:cpt-frontx-flow-react-bindings-extension-domain-slot:p1:inst-attach-root
 
     // @cpt-begin:cpt-frontx-state-react-bindings-extension-slot:p1:inst-slot-attached
@@ -126,10 +136,24 @@ export function ExtensionDomainSlot(props: ExtensionDomainSlotProps): React.Reac
 
     // @cpt-begin:cpt-frontx-flow-react-bindings-extension-domain-slot:p1:inst-detach-root
     return () => {
+      // Stopped before the mass-unmount below (O7-adjacent ordering): a
+      // still-live observer would otherwise see `detach()`'s own removals
+      // as ordinary transitions and try to dispatch unmounts for extensions
+      // the mounter is already tearing down. Safe to call again even when a
+      // host already stopped this domain's observer itself for its own
+      // teardown ordering.
+      stopRoutedDomain(registry, domainId);
       // Mass-unmount every extension currently mounted in the domain.
       // detach() is async (awaits per-extension unmounts) but React cleanup is
-      // synchronous; we deliberately fire-and-forget here.
-      void mounter.detach();
+      // synchronous, so this call site cannot itself await it. Registering
+      // the promise with whichever `ThemeAwareReactLifecycle.unmount()` is
+      // currently unmounting this root (or any ancestor root, for a nested
+      // domain slot) is what lets that lifecycle's own unmount resolve only
+      // once this domain's own teardown has actually finished, instead of
+      // the moment `Root.unmount()` returns synchronously — see
+      // `domainTeardownCollector`'s own doc comment.
+      const detachPromise = mounter.detach();
+      registerDomainTeardown(detachPromise);
 
       // @cpt-begin:cpt-frontx-state-react-bindings-extension-slot:p1:inst-slot-detached
       setAttached(false);

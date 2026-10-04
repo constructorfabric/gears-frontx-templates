@@ -161,7 +161,7 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       };
       const manifest = { $id: 'manifest.demo' };
       const entry = { id: 'entry.demo', actions: [], domainActions: [] };
-      const screenExtension = { id: 'screen.demo', presentation: { route: '/demo' } };
+      const screenExtension = { id: 'screen.demo', route: '/demo' };
       const helperExtension = { id: 'helper.demo' };
       currentManifests.push({
         manifest,

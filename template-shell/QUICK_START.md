@@ -54,7 +54,8 @@ The `@` import alias resolves to `src-app/` (e.g. `@/app/components/ui/...`).
 The host shell is intentionally empty. Screens come from **microfrontends**:
 
 1. Each MFE declares screen **extensions** in its `mfe.json` (with a
-   `presentation` block: label, icon, route, order).
+   top-level `route` and a
+   `presentation` block: label, icon, order).
 2. The build produces a manifest; `src-app/app/mfe/bootstrap.ts` fetches
    `/generated-mfe-manifests.json` and registers everything at runtime.
 3. `src-app/app/layout/Menu.tsx` reads the registered screen extensions and
@@ -100,13 +101,14 @@ scaffold step deletes it.
    ```
 
 3. **Declare it in `mfe.json`** — an entry plus a screen extension whose
-   `presentation` block drives the menu item:
+   `route` locates it and whose `presentation` block drives the menu item:
    ```jsonc
    {
      "id": "gts…screen.v1~frontx.my_mfe.screens.my_screen.v1",
      "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
      "entry": "gts…entry_mf.v1~frontx.my_mfe.mfe.my_screen.v1",
-     "presentation": { "label": "My Screen", "icon": "lucide:star", "route": "/my-screen", "order": 30 }
+     "route": "/my-screen",
+     "presentation": { "label": "My Screen", "icon": "lucide:star", "order": 30 }
    }
    ```
 

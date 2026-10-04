@@ -8,49 +8,37 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createFrontX } from '../../../src/createFrontX';
-import { effects } from '../../../src/plugins/effects';
-import {
-  microfrontends,
-  loadExtension,
-  mountExtension,
-  unmountExtension,
-  MfeEvents,
-  selectExtensionState,
-  selectExtensionError,
-  selectMountedExtensions,
-} from '../../../src/plugins/microfrontends';
-import { eventBus, resetStore } from '@gears-frontx/state';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   type Extension,
   type MfeRegistry,
 } from '@gears-frontx/mfes';
-import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
-import { mfeRegistryFactory } from '../../../src/mfe/registry';
-import { gtsPlugin } from '@gears-frontx/gts-plugin';
 import type { FrontXApp } from '../../../src/types';
 
-/**
- * The Phase 13 mount-sync suites only exercise a handful of MfeRegistry
- * methods. We stub exactly those surfaces to keep the test scaffolding honest
- * instead of blanket-casting to MfeRegistry.
- */
-type MountSyncRegistry = Pick<
-  MfeRegistry,
-  | 'typeSystem'
-  | 'executeActionsChain'
-  | 'getMountedExtensions'
-  | 'registerExtension'
-  | 'unregisterExtension'
->;
+// One app per runtime: every test loads its own module copy.
+let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
+let effects: typeof import('../../../src/plugins/effects')['effects'];
+let microfrontends: typeof import('../../../src/plugins/microfrontends')['microfrontends'];
+let loadExtension: typeof import('../../../src/plugins/microfrontends')['loadExtension'];
+let mountExtension: typeof import('../../../src/plugins/microfrontends')['mountExtension'];
+let unmountExtension: typeof import('../../../src/plugins/microfrontends')['unmountExtension'];
+let MfeEvents: typeof import('../../../src/plugins/microfrontends')['MfeEvents'];
+let selectExtensionState: typeof import('../../../src/plugins/microfrontends')['selectExtensionState'];
+let selectExtensionError: typeof import('../../../src/plugins/microfrontends')['selectExtensionError'];
+let eventBus: typeof import('@gears-frontx/state')['eventBus'];
+let resetStore: typeof import('@gears-frontx/state')['resetStore'];
+let FRONTX_ACTION_UNMOUNT_EXT: typeof import('@gears-frontx/gts-plugin')['FRONTX_ACTION_UNMOUNT_EXT'];
+let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
 
-function asMfeRegistry(stub: MountSyncRegistry): MfeRegistry {
-  // This is the only cast we allow: the factory.build() signature returns
-  // MfeRegistry and the production code paths we exercise rely only on
-  // the MountSyncRegistry subset.
-  return stub as unknown as MfeRegistry;
-}
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX } = await import('../../../src/createFrontX'));
+  ({ effects } = await import('../../../src/plugins/effects'));
+  ({ microfrontends, loadExtension, mountExtension, unmountExtension, MfeEvents, selectExtensionState, selectExtensionError } = await import('../../../src/plugins/microfrontends'));
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ FRONTX_ACTION_UNMOUNT_EXT } = await import('@gears-frontx/gts-plugin'));
+  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
+});
 
 describe('microfrontends plugin - Phase 13', () => {
   let apps: FrontXApp[] = [];
@@ -391,173 +379,6 @@ describe('microfrontends plugin - Phase 13', () => {
 
       const error = selectExtensionError(state, uniqueExtId);
       expect(error).toBeUndefined();
-    });
-  });
-
-  describe('13.8.4 - mount state sync follows registry state', () => {
-    it('does not mark the requested extension mounted when the chain resolves without mounting it', async () => {
-      const fakeRegistry: MountSyncRegistry = {
-        typeSystem: gtsPlugin,
-        executeActionsChain: vi.fn().mockResolvedValue(undefined),
-        getMountedExtensions: vi.fn().mockReturnValue([] as readonly string[]),
-        registerExtension: vi.fn().mockResolvedValue(undefined),
-        unregisterExtension: vi.fn().mockResolvedValue(undefined),
-      };
-
-      vi.spyOn(mfeRegistryFactory, 'build').mockReturnValue(asMfeRegistry(fakeRegistry));
-
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const domainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
-      const requestedExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.requested.ext.v1';
-
-      await app.mfeRegistry?.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_MOUNT_EXT,
-          target: domainId,
-          payload: { subject: requestedExtensionId },
-        },
-      });
-
-      expect(selectMountedExtensions(app.store.getState(), domainId)).toEqual([]);
-    });
-
-    it('mirrors the registry mounted extension when a fallback path leaves a different extension mounted', async () => {
-      const mountedByDomain = new Map<string, readonly string[]>();
-      const fakeRegistry: MountSyncRegistry = {
-        typeSystem: gtsPlugin,
-        executeActionsChain: vi.fn().mockImplementation(async (chain: { action: { target: string } }) => {
-          mountedByDomain.set(chain.action.target, ['gts.frontx.mfes.ext.extension.v1~test.app.fallback.ext.v1']);
-        }),
-        getMountedExtensions: vi.fn((domainId: string) => mountedByDomain.get(domainId) ?? []),
-        registerExtension: vi.fn().mockResolvedValue(undefined),
-        unregisterExtension: vi.fn().mockResolvedValue(undefined),
-      };
-
-      vi.spyOn(mfeRegistryFactory, 'build').mockReturnValue(asMfeRegistry(fakeRegistry));
-
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const domainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
-      const requestedExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.requested.ext.v1';
-      const fallbackExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.fallback.ext.v1';
-
-      await app.mfeRegistry?.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_MOUNT_EXT,
-          target: domainId,
-          payload: { subject: requestedExtensionId },
-        },
-      });
-
-      expect(selectMountedExtensions(app.store.getState(), domainId)).toEqual([fallbackExtensionId]);
-    });
-
-    it('syncs every domain touched by a chained mount/unmount sequence', async () => {
-      const mountedByDomain = new Map<string, readonly string[]>();
-      const fakeRegistry: MountSyncRegistry = {
-        typeSystem: gtsPlugin,
-        executeActionsChain: vi.fn().mockImplementation(async (chain: {
-          action: { target: string };
-          next?: { action: { target: string } };
-        }) => {
-          mountedByDomain.set(chain.action.target, ['gts.frontx.mfes.ext.extension.v1~test.app.root.ext.v1']);
-          if (chain.next) {
-            mountedByDomain.set(chain.next.action.target, ['gts.frontx.mfes.ext.extension.v1~test.app.next.ext.v1']);
-          }
-        }),
-        getMountedExtensions: vi.fn((domainId: string) => mountedByDomain.get(domainId) ?? []),
-        registerExtension: vi.fn().mockResolvedValue(undefined),
-        unregisterExtension: vi.fn().mockResolvedValue(undefined),
-      };
-
-      vi.spyOn(mfeRegistryFactory, 'build').mockReturnValue(asMfeRegistry(fakeRegistry));
-
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const rootDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.root.domain.v1';
-      const nextDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.next.domain.v1';
-      const rootExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.requested.root.v1';
-      const nextExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.requested.next.v1';
-
-      await app.mfeRegistry?.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_MOUNT_EXT,
-          target: rootDomainId,
-          payload: { subject: rootExtensionId },
-        },
-        next: {
-          action: {
-            type: FRONTX_ACTION_MOUNT_EXT,
-            target: nextDomainId,
-            payload: { subject: nextExtensionId },
-          },
-        },
-      });
-
-      expect(selectMountedExtensions(app.store.getState(), rootDomainId)).toEqual(['gts.frontx.mfes.ext.extension.v1~test.app.root.ext.v1']);
-      expect(selectMountedExtensions(app.store.getState(), nextDomainId)).toEqual(['gts.frontx.mfes.ext.extension.v1~test.app.next.ext.v1']);
-    });
-
-    it('does not dispatch mount sync for fallback-only domains that were never executed', async () => {
-      const mountedByDomain = new Map<string, readonly string[]>();
-      const fakeRegistry: MountSyncRegistry = {
-        typeSystem: gtsPlugin,
-        executeActionsChain: vi.fn().mockImplementation(async (chain: { action: { target: string } }) => {
-          mountedByDomain.set(chain.action.target, ['gts.frontx.mfes.ext.extension.v1~test.app.root.ext.v1']);
-        }),
-        getMountedExtensions: vi.fn((domainId: string) => mountedByDomain.get(domainId) ?? []),
-        registerExtension: vi.fn().mockResolvedValue(undefined),
-        unregisterExtension: vi.fn().mockResolvedValue(undefined),
-      };
-
-      vi.spyOn(mfeRegistryFactory, 'build').mockReturnValue(asMfeRegistry(fakeRegistry));
-
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const rootDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.root.domain.v1';
-      const fallbackDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.fallback.domain.v1';
-      const rootExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.requested.root.v1';
-      let notificationCount = 0;
-      const unsubscribe = app.store.subscribe(() => {
-        notificationCount += 1;
-      });
-
-      await app.mfeRegistry?.executeActionsChain({
-        action: {
-          type: FRONTX_ACTION_MOUNT_EXT,
-          target: rootDomainId,
-          payload: { subject: rootExtensionId },
-        },
-        fallback: {
-          action: {
-            type: FRONTX_ACTION_MOUNT_EXT,
-            target: fallbackDomainId,
-            payload: { subject: 'gts.frontx.mfes.ext.extension.v1~test.app.requested.fallback.v1' },
-          },
-        },
-      });
-      unsubscribe();
-
-      expect(selectMountedExtensions(app.store.getState(), rootDomainId)).toEqual(['gts.frontx.mfes.ext.extension.v1~test.app.root.ext.v1']);
-      expect(selectMountedExtensions(app.store.getState(), fallbackDomainId)).toEqual([]);
-      expect(notificationCount).toBe(1);
     });
   });
 

@@ -30,7 +30,7 @@ vi.mock('../../shared/useScreenTranslations', () => ({
 
 async function setupHelloWorldScreen() {
   const { HelloWorldScreen } = await import('./HelloWorldScreen');
-  const executeActionsChain = vi.fn().mockResolvedValue(undefined);
+  const executeActionsChain = vi.fn().mockReturnValue(undefined);
   const expectedTheme = 'custom-theme';
   const expectedLanguage = 'pl';
   const bridgeFixture = createMfeBridgeFixture({

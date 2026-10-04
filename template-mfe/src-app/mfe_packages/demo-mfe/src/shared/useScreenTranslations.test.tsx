@@ -10,7 +10,7 @@ function screenTranslationsTestBridge(
   return {
     extDomainId: 'test-domain',
     extensionId: 'test-instance',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),
     getProperty: overrides.getProperty ?? vi.fn(),
     subscribeToProperty: overrides.subscribeToProperty ?? vi.fn().mockReturnValue(() => undefined),

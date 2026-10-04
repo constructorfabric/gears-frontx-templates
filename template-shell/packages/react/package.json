@@ -1,6 +1,6 @@
 {
   "name": "@gears-frontx/react",
-  "version": "0.2.0-alpha.9",
+  "version": "0.2.0-alpha.10",
   "description": "React bindings and hooks for FrontX framework",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,6 +36,9 @@
     "test:unit": "vitest --run --passWithNoTests=false",
     "test:unit:watch": "vitest --watch"
   },
+  "dependencies": {
+    "@gears-frontx/routing-tanstack": "0.3.0-alpha.2"
+  },
   "devDependencies": {
     "@reduxjs/toolkit": "2.12.0",
     "@tanstack/react-query": "5.101.4",
@@ -55,6 +58,7 @@
   },
   "peerDependencies": {
     "@gears-frontx/framework": "*",
+    "@gears-frontx/routing-tanstack": "*",
     "@tanstack/react-query": "5.101.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -62,6 +66,9 @@
   },
   "peerDependenciesMeta": {
     "@gears-frontx/framework": {
+      "optional": false
+    },
+    "@gears-frontx/routing-tanstack": {
       "optional": false
     },
     "react": {

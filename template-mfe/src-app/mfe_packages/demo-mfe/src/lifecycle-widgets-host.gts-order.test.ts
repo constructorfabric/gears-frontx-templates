@@ -1,12 +1,11 @@
 /**
  * Regression test for RM-LIVE1 (issue constructorfabric/gears-frontx#638
  * ledger, row "LIVE1", found by the live browser run): `bootstrapWidgetsRuntime`
- * registered every manifest-declared domain (including the widgets domain,
- * which declares `sharedProperties: [entry_addresses]`) against the real GTS
- * type system BEFORE `entryAddressesSchema` was registered on that same type
- * system. Real GTS validation then throws `Referenced entity ...
- * entry_addresses ... not found in registry`, so `registerDomain(widgetsDomain)`
- * is never reached and Widgets Host is blank on every cold load.
+ * must register every manifest-declared domain against the real GTS type
+ * system strictly after the manifest and schemas it references — real GTS
+ * validation throws `Referenced entity ... not found in registry` otherwise,
+ * and `registerDomain(widgetsDomain)` is never reached, leaving Widgets Host
+ * blank on every cold load.
  *
  * `lifecycle-widgets-host.test.tsx` never caught this: its `FakeRegistry`'s
  * `typeSystem` is a hand-rolled stub (`register: vi.fn()`) that performs no
@@ -20,12 +19,11 @@
  * `mount()` — so a minimal registry double (real `typeSystem`, faked
  * `registerDomain`/`registerExtension` bookkeeping) exercises the exact
  * registration-order contract under test without needing a full
- * `createWidgetsHostApp()` / module-federation-loaded `mfes` registry.
+ * real app built with `createFrontX()` / module-federation-loaded `mfes` registry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
 import type { ExtensionDomain, MfManifest } from '@gears-frontx/react';
-import { entryAddressesSchema } from '@gears-frontx/react';
 import { bootstrapWidgetsRuntime, type WidgetsRoutingHolder } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
@@ -34,7 +32,7 @@ const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.mai
 const WIDGETS_DOMAIN = {
   id: WIDGETS_DOMAIN_ID,
   route: 'widgets',
-  sharedProperties: ['gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.entry_addresses.v1~'],
+  sharedProperties: [],
   actions: [
     'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
     'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
@@ -86,9 +84,6 @@ const MANIFEST: MfManifest = {
  */
 function buildRealTypeSystemRegistry() {
   const typeSystem = new GtsPlugin();
-  // `bootstrapWidgetsRuntime` receives an already-built app; the framework
-  // plugin has installed its base-domain schema at that earlier boundary.
-  typeSystem.registerSchema(entryAddressesSchema);
   const domains = new Map<string, ExtensionDomain>();
   const extensions = new Map<string, unknown>();
   return {
@@ -114,7 +109,7 @@ afterEach(() => {
 });
 
 describe('bootstrapWidgetsRuntime — GTS registration order (RM-LIVE1)', () => {
-  it('registers the entry_addresses schema before registering a manifest domain whose sharedProperties reference it', async () => {
+  it('registers the manifest before registering the domain it declares (manifest-before-domain order)', async () => {
     const registry = buildRealTypeSystemRegistry();
     vi.stubGlobal(
       'fetch',
@@ -125,7 +120,7 @@ describe('bootstrapWidgetsRuntime — GTS registration order (RM-LIVE1)', () => 
         ],
       }),
     );
-    const holder: WidgetsRoutingHolder = { routing: undefined, impl: undefined };
+    const holder: WidgetsRoutingHolder = { impl: undefined };
     // `bootstrapWidgetsRuntime` only reads `app.mfeRegistry` — see this
     // file's doc comment above for why this double is sufficient.
     const app = { mfeRegistry: registry } as unknown as Parameters<typeof bootstrapWidgetsRuntime>[0];

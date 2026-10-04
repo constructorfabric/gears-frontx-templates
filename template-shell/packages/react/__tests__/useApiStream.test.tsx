@@ -8,22 +8,29 @@
  * @packageDocumentation
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { StreamDescriptor, StreamStatus } from '@gears-frontx/framework';
 import {
-  eventBus,
-  resetSharedFetchCache,
-  resetSharedQueryClient,
-  type StreamDescriptor,
-  type StreamStatus,
-} from '@gears-frontx/framework';
-import { useApiStream } from '@gears-frontx/react';
-import {
+  loadFreshHelpers,
   ownedApps,
   buildTestQueryClient,
   makeQueryWrapper,
   makeStreamDescriptor,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let useApiStream: typeof import('@gears-frontx/react')['useApiStream'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ useApiStream } = await import('@gears-frontx/react'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {

@@ -33,12 +33,16 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 ## Quick Start
 
 ```tsx
-import { Gears FrontXProvider, useTranslation, useFrontX } from '@gears-frontx/react';
+import { createGears FrontX, Gears FrontXProvider, presets, useTranslation, useFrontX } from '@gears-frontx/react';
+
+// One app per runtime, built once at module level (the full preset here;
+// `presets.full({ microfrontends: config })` also adds microfrontends)
+const app = createGears FrontX().useAll(presets.full()).build();
 
 // Wrap app with provider
 function App() {
   return (
-    <Gears FrontXProvider>
+    <Gears FrontXProvider app={app}>
       <Layout>
         <MainScreen />
       </Layout>
@@ -87,9 +91,11 @@ function MyExtension() {
   const bridge = useMfeBridge();
   const theme = useSharedProperty(Gears FrontX_SHARED_PROPERTY_THEME);
 
-  const handleAction = async () => {
-    await bridge.executeActionsChain({
-      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { extensionId: 'other' } }
+  // executeActionsChain is acceptance-only: it returns void, never throws,
+  // and never yields anything to await for the chain's own execution.
+  const handleAction = () => {
+    bridge.executeActionsChain({
+      action: { type: Gears FrontX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
     });
   };
 

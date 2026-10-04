@@ -47,10 +47,10 @@ const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
  * reference again.
  *
  * The extension id goes in verbatim, and it is the extension id rather than
- * `presentation.route` for two reasons. It is the identity the registry keys
+ * the extension's `route` for two reasons. It is the identity the registry keys
  * on - the same value this component already uses as the React key and as the
  * mount subject - so two menu items cannot carry one id. The route is
- * presentation metadata beside it: nothing stops two extensions declaring the
+ * a separate property: nothing stops two extensions declaring the
  * same route, and an extension may declare none at all. A route-derived id
  * could therefore either collide or collapse to the bare prefix. Verbatim also
  * means no slug step, which is its own collision risk - `a.b` and `a-b` slug to
@@ -203,10 +203,12 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
   };
 
+  // Dispatch is acceptance-only: it returns void and never throws, so the
+  // handler only hands the chain to the registry.
   const handleMenuItemClick = useCallback(
-    async (extensionId: string) => {
+    (extensionId: string) => {
       if (!mfeRegistry) return;
-      await mfeRegistry.executeActionsChain({
+      mfeRegistry.executeActionsChain({
         action: {
           type: FRONTX_ACTION_MOUNT_EXT,
           target: FRONTX_SCREEN_DOMAIN,

@@ -13,15 +13,13 @@ Authoritative files:
 
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
 - `src-app/app/mfe/bootstrap.ts` — domain registration and manifest ingestion
-- `src-app/app/mfe/shell-routing.ts` — one `DomainRouting` per shell domain
-  (screen, sidebar, popup, overlay), wired to the shell's navigation history
-- `src-app/app/mfe/MfeScreenContainer.tsx` — starts/stops the four observers
-  and renders the unresolved-route fallback
-- `packages/framework/src/plugins/microfrontends/domain-routing.ts`,
-  `entry-address.ts` — the published back-projection and entry-address
-  coordinator shared by hosts
-- `packages/framework/src/mfe/entry-addresses-schema.ts` — schema installed
-  by `microfrontends()` for the framework base domains
+- `src-app/app/mfe/MfeScreenContainer.tsx` — renders the screen domain's own
+  `<ExtensionDomainSlot>` (which owns that domain's own URL observer,
+  starting/stopping it from its own attach/detach) and the unresolved-route
+  fallback
+- `packages/framework/src/plugins/microfrontends/router.ts` — `FrameworkRouter`,
+  the concrete implementation of the `mfes` runtime's router port, injected
+  into every registry `microfrontends()` builds
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
   the four well-known domain instances
@@ -49,34 +47,49 @@ mfeRegistry.executeActionsChain({
 });
 ```
 
-Switching screens is still a mount action against a domain, not a direct route
-transition — but the shell now closes the loop between that action and the
-address bar. Each of the four base domains (`screen`, `sidebar`, `popup`,
-`overlay`) has its own `DomainRouting` instance (`shell-routing.ts`,
-`@gears-frontx/framework`), created alongside the domain and started
-once the screen slot attaches (`MfeScreenContainer`'s `onAttached` calls
-`routing.start()`; `onDetached` calls `routing.stop()`). After a domain's mount
-handler settles, it calls that domain's `afterMount(extensionId)`, which
-back-projects the extension's token into the URL for that domain's key — so a
-menu click now leaves a real entry in the address bar, and browser
-back/forward and bookmarking work against it. The same `DomainRouting` also
-runs the other direction: on every history transition it resolves each
-entry's token to a registered extension and dispatches the corresponding
-mount (or, for a resolution swap on a `multiple`-cardinality domain, an
-unmount of the prior owner) — so a URL typed, bookmarked, or reached via
-Back/Forward mounts the extension it names, which is what makes a deep link
-work. An entry whose token resolves to nothing registered is left in the URL
-rather than dropped; the screen domain's own fallback (`MfeScreenContainer`)
-renders "No screen matches this address." whenever every entry in the screen
-domain is unresolved and nothing is mounted.
+`executeActionsChain` is acceptance-only: it returns `void`, never throws, and
+yields nothing to await for the chain's own execution. A caller that genuinely
+needs to react to a chain's outcome expresses that dependency **inside the
+chain itself**, as a terminal action targeting the extension whose mount it
+depends on, via a `next` continuation — never by awaiting this call.
 
-Every occupant that mounts under a routed domain also learns its own address:
-the shell broadcasts the `entry_addresses` shared property
-(`@gears-frontx/framework`'s `buildEntryAddresses`), a map from extension id
-to `{ domainKey, extension }`, and re-broadcasts after each successful
-registration during bootstrap. A mounted extension reads its own entry back via
-`readEntryAddress` rather than through the action-chain payload — the payload
-never carries it.
+Switching screens is still a mount action against a domain, not a direct route
+transition — but the shell closes the loop between that action and the
+address bar through `FrameworkRouter`, the concrete router every `createFrontX()`
+app's `microfrontends()` plugin injects into the `mfes` runtime's router port
+(`packages/framework/src/plugins/microfrontends/router.ts`). Each routed
+domain (`screen`, `sidebar`, `popup`, `overlay` in the shell) is admitted by
+this router at registration — its own declared `route`, checked against every
+other routed domain live in the page — and its own URL-entry observer starts
+once that domain's own `<ExtensionDomainSlot>` attaches a DOM root, and stops
+on that same slot's own detach (`ExtensionDomainSlot` reaches the router
+through `@gears-frontx/framework`'s `./internal` subpath — never through
+`app.mfeRouter`, which exposes only the extension-local navigation facade).
+After a `mount_ext`/`unmount_ext` execution settles in a domain, the runtime
+reports it to the router, which reflects it into the URL by comparing the
+domain's current mounted set against its current URL entries — no domain
+implementation calls anything to make this happen. A menu click still leaves a
+real entry in the address bar, and browser back/forward and bookmarking still
+work against it; the router's own observer runs the other direction too: on
+every URL change it dispatches the `mount_ext`/`unmount_ext` chains needed to
+bring the mounts to what the URL now says, each carrying the intent that
+restoring a URL-driven state writes nothing further. An entry whose token
+resolves to nothing registered is left in the URL rather than dropped; the
+screen domain's own fallback (`MfeScreenContainer`) renders "No screen matches
+this address." whenever every entry in the screen domain is unresolved and
+nothing is mounted.
+
+No occupant address is broadcast through a shared property. An
+occupant that declares its own route learns its own address privately, from
+the runtime's occupant-value rendezvous — an MFE that wants to build its own
+internal route tree supplies it to its own `microfrontends()`-bearing
+`createFrontX()` app and renders `@gears-frontx/react`'s `<ExtensionRouter>`
+over it; an MFE that only needs to read or change its own pathname/search
+imperatively (outside the rendered tree — an `ActionHandler`, for instance)
+calls that same app's own `mfeRouter.navigation()`. Neither path ever goes
+through the action-chain payload or a bridge property, and `app.mfeRouter`
+itself never exposes the occupant value, the router instance, or raw
+history — only the navigation facade.
 
 ## From `mfe.json` to the browser
 
@@ -108,23 +121,19 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 `bootstrapMFE()` proceeds in a fixed order:
 
-1. `microfrontends()` registers `entryAddressesSchema` — the framework-owned
-   schema required by the four base domain declarations — before it constructs
-   the MFE registry. `bootstrapMFE()` then registers the shell's chrome action
-   schemas.
+1. `microfrontends()` constructs the shared `FrameworkRouter` and builds the
+   MFE registry with it injected. `bootstrapMFE()` then registers the shell's
+   chrome action schemas.
 2. Register the four well-known domains — `screen` (with
    `ExclusiveMountStrategy`: one mounted screen at a time), `sidebar`, `popup`,
-   `overlay` — then broadcast the `entry_addresses` shared property once
-   (empty: nothing has registered yet).
+   `overlay` — each admitted by the router automatically as it registers.
 3. Broadcast initial shared properties (`theme`, `language`).
 4. Fetch the manifest aggregate.
 5. First pass over **all** packages: register every non-action schema (derived
    extension/domain types), so later validation can chain through them
    regardless of package order in the aggregate.
 6. Per package: scoped action schemas → `manifest` → `domains` → `entries` →
-   `extensions`, re-broadcasting `entry_addresses` after each registered
-   extension so its route reaches the property before anything (the menu, a
-   deep link) can ask the host to mount it.
+   `extensions`.
 
 Two outcomes at the `extensions` step are deliberately different:
 

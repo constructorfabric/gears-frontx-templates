@@ -25,23 +25,37 @@ import {
 // ============================================================================
 
 let mfeRegistry: MfeRegistry | null = null;
+let registryInitializer: (() => MfeRegistry) | null = null;
 
 /**
- * Set the MFE-enabled MfeRegistry reference.
- * Called during plugin initialization.
+ * Record the MFE-enabled MfeRegistry the lifecycle actions operate on.
+ * Called by the microfrontends plugin's registry initializer when it builds
+ * the registry.
  */
 export function setMfeRegistry(registry: MfeRegistry): void {
   mfeRegistry = registry;
 }
 
 /**
+ * Bind the plugin's lazy registry initializer. Registry-dependent actions go
+ * through it, so the first action call builds the registry when nothing else
+ * has.
+ */
+export function bindMfeRegistryInitializer(initializer: () => MfeRegistry): void {
+  registryInitializer = initializer;
+}
+
+function requireRegistry(): MfeRegistry {
+  if (mfeRegistry) return mfeRegistry;
+  if (registryInitializer) return registryInitializer();
+  throw new Error('MFE registry not initialized. The microfrontends plugin must be built before using lifecycle actions.');
+}
+
+/**
  * Helper to resolve domain ID for an extension.
  */
-function resolveDomainId(extensionId: string): string {
-  if (!mfeRegistry) {
-    throw new Error('MFE registry not initialized. Call setMfeRegistry() before using lifecycle actions.');
-  }
-  const extension = mfeRegistry.getExtension(extensionId);
+function resolveDomainId(registry: MfeRegistry, extensionId: string): string {
+  const extension = registry.getExtension(extensionId);
   if (!extension) {
     throw new Error(`Extension '${extensionId}' is not registered. Register it before calling lifecycle actions.`);
   }
@@ -115,12 +129,13 @@ function runActionsChain(run: () => unknown, onError: (error: unknown) => void):
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-1
 export function loadExtension(extensionId: string): void {
-  const domainId = resolveDomainId(extensionId);
+  const registry = requireRegistry();
+  const domainId = resolveDomainId(registry, extensionId);
 
   // Call executeActionsChain fire-and-forget (no await)
   runActionsChain(
     () =>
-      mfeRegistry!.executeActionsChain({
+      registry.executeActionsChain({
         action: {
           type: FRONTX_ACTION_LOAD_EXT,
           target: domainId,
@@ -150,12 +165,13 @@ export function loadExtension(extensionId: string): void {
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-2
 export function mountExtension(extensionId: string): void {
-  const domainId = resolveDomainId(extensionId);
+  const registry = requireRegistry();
+  const domainId = resolveDomainId(registry, extensionId);
 
   // Call executeActionsChain fire-and-forget (no await)
   runActionsChain(
     () =>
-      mfeRegistry!.executeActionsChain({
+      registry.executeActionsChain({
         action: {
           type: FRONTX_ACTION_MOUNT_EXT,
           target: domainId,
@@ -183,8 +199,9 @@ export function mountExtension(extensionId: string): void {
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-3
 export function unmountExtension(extensionId: string): void {
-  const domainId = resolveDomainId(extensionId);
-  const domain = mfeRegistry!.getDomain(domainId);
+  const registry = requireRegistry();
+  const domainId = resolveDomainId(registry, extensionId);
+  const domain = registry.getDomain(domainId);
   if (domain === undefined) {
     throw new Error(
       `MFE unmount failed: domain '${domainId}' is not registered (extension '${extensionId}'). Register the domain before unmounting.`
@@ -202,7 +219,7 @@ export function unmountExtension(extensionId: string): void {
   // Call executeActionsChain fire-and-forget (no await)
   runActionsChain(
     () =>
-      mfeRegistry!.executeActionsChain({
+      registry.executeActionsChain({
         action: {
           type: FRONTX_ACTION_UNMOUNT_EXT,
           target: domainId,

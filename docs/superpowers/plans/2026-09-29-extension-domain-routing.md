@@ -41,8 +41,13 @@ routing/lifecycle integration; applications only compose it.
 
 - Keep MFES free of `@gears-frontx/routing` imports and preserve its canonical
   token helper as the single semantic source.
-- Use lifecycle epochs plus in-flight ownership tracking so old callbacks cannot
-  mutate a newer session.
+- A mount's own request payload carries the origin that dispatched it: a
+  domain's own routing instance stamps a restore or opening request with its
+  `domainKey`; a programmatic request carries no stamp. `afterMount` reads
+  that stamp off the payload it is handed rather than tracking mounts by any
+  session-scoped identifier of its own, so a callback answering a request
+  from an instance that has since stopped and restarted still resolves
+  against the same stable rule.
 - Do not use `npm install` unless needed for the lockfile; inspect any generated
   lockfile change for local `file:` self-links.
 - No commit or PR mutation is part of this pass.

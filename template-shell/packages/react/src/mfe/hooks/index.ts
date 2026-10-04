@@ -11,3 +11,4 @@ export { useMfeRegistry } from './useMfeRegistry';
 export { useDomainExtensions } from './useDomainExtensions';
 export { useMountedExtensions } from './useMountedExtensions';
 export { useRegisteredPackages } from './useRegisteredPackages';
+export { useDomainRouteStatus, type DomainRouteStatus } from './useDomainRouteStatus';

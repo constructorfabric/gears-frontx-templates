@@ -9,29 +9,7 @@ type TestBridge = BridgeFixture['bridge'];
 type TestApp = { id: string };
 type ActionPayload = Record<string, string | number | boolean | null>;
 
-// `@gears-frontx/routing-tanstack` ships pre-built ESM: its named exports are
-// non-configurable, so `vi.spyOn` on the real module throws "Cannot redefine
-// property". Wrapping the real implementation in `vi.fn` here is the
-// fallback the plan calls for — every call still runs the real
-// `adaptProviderHistory`, so every other test in this file (which never
-// inspects the spy) behaves exactly as it would unmocked.
-vi.mock('@gears-frontx/routing-tanstack', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@gears-frontx/routing-tanstack')>();
-  return { ...actual, adaptProviderHistory: vi.fn(actual.adaptProviderHistory) };
-});
-
-/** A bridge whose host broadcast no entry-addresses shared property — `readEntryAddress` returns `undefined` for it. */
-function bridgeWithoutProperties(): TestBridge {
-  return createMfeBridgeFixture({ extDomainId: 'demo-domain', extensionId: 'hello-instance' }).bridge;
-}
-
-/**
- * Mounts Hello World's lifecycle content and waits for the routed screen to
- * actually paint: `EngineProvider`'s initial route match resolves after a
- * microtask the synchronous `render()` call does not wait out on its own —
- * asserting on the DOM immediately after `render()` sees the empty shell
- * `RouterProvider` renders before that match settles, not the mocked screen.
- */
+/** Renders Hello World's lifecycle content directly, as the lifecycle's own mount() does. */
 async function mountHelloWorld(bridge: TestBridge): Promise<object> {
   const module = await import('./lifecycle-helloworld');
   const lifecycle: object = module.default;
@@ -57,7 +35,6 @@ vi.mock('@gears-frontx/react', () => ({
       superMountSpy(container, bridge);
     }
   },
-  readEntryAddress: () => undefined,
 }));
 
 vi.mock('./init', () => ({
@@ -103,23 +80,6 @@ describe('demo-mfe lifecycles', () => {
 
     expect(Reflect.get(lifecycle, 'app')).toEqual({ id: 'demo-mfe-app' } satisfies TestApp);
     expect(screen.getByTestId('hello-screen').textContent).toContain('hello-instance');
-  });
-
-  // `adaptProviderHistory` is the one seam a screen has no host to consult
-  // through: no bridge property, no entry address, no back-projection — this
-  // pins that a screen still runs, matching the real URL directly, rather
-  // than throwing or rendering nothing.
-  it('runs a screen provider in standalone mode when the host broadcast no entry address', async () => {
-    const tanstack = await import('@gears-frontx/routing-tanstack');
-    const adapt = vi.mocked(tanstack.adaptProviderHistory);
-    adapt.mockClear();
-    window.history.replaceState(null, '', '/standalone-probe?x=1');
-
-    await mountHelloWorld(bridgeWithoutProperties());
-
-    expect(adapt).toHaveBeenCalledTimes(1);
-    expect(adapt.mock.calls[0][1]).toBeUndefined();
-    expect(adapt.mock.results[0].value.location.pathname).toBe('/standalone-probe');
   });
 
   it('renders the theme lifecycle content', async () => {

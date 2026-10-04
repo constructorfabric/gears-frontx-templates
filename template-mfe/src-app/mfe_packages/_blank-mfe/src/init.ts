@@ -4,7 +4,7 @@
  * Cache/runtime note:
  * - The host app owns the shared runtime via queryCache().
  * - Child apps join that shared QueryClient via queryCacheShared().
- * - Do not add queryCache(), createFrontXApp(), or QueryClientProvider here.
+ * - Do not add queryCache(), a second createFrontX(), or QueryClientProvider here.
  */
 // @cpt-dod:cpt-frontx-dod-mfe-isolation-internal-dataflow:p1
 // @cpt-dod:cpt-frontx-dod-unit-test-generation-and-agent-verification-blank-mfe-tests:p1

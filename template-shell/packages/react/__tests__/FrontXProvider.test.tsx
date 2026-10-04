@@ -11,36 +11,43 @@
 // @cpt-FEATURE:implement-endpoint-descriptors:p3
 // @cpt-FEATURE:cpt-frontx-dod-request-lifecycle-query-provider:p2
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import React from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientContext } from '@tanstack/react-query';
+import type { MockState } from '@gears-frontx/framework';
+import type { MfeContextValue } from '@gears-frontx/react';
 import {
-  createFrontX,
-  createFrontXApp,
-  eventBus,
-  resetSharedFetchCache,
-  resetSharedQueryClient,
-  type MockState,
-} from '@gears-frontx/framework';
-import {
-  FrontXProvider,
-  useApiQuery,
-  useFrontX,
-  useQueryCache,
-  type MfeContextValue,
-} from '@gears-frontx/react';
-import { useOptionalFrontXQueryClient } from '@gears-frontx/react/testing';
-import {
+  loadFreshHelpers,
   ownedApps,
   buildTestQueryClient,
   buildAppWithQueryClient,
   buildHostAppWithQueryCache,
   buildChildAppWithQueryCacheShared,
+  buildAppInOtherRuntime,
+  buildPresetApp,
   getAttachedQueryClient,
   makeQueryDescriptor,
   makeContextValue,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
+let useFrontX: typeof import('@gears-frontx/react')['useFrontX'];
+let useQueryCache: typeof import('@gears-frontx/react')['useQueryCache'];
+let useOptionalFrontXQueryClient: typeof import('@gears-frontx/react/testing')['useOptionalFrontXQueryClient'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider, useApiQuery, useFrontX, useQueryCache } = await import('@gears-frontx/react'));
+  ({ useOptionalFrontXQueryClient } = await import('@gears-frontx/react/testing'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {
@@ -59,7 +66,7 @@ afterEach(() => {
 describe('FrontXProvider provides query cache access to descendants', () => {
   it('activates a late-joining shared QueryClient during the first plain FrontXProvider render', async () => {
     const childApp = buildChildAppWithQueryCacheShared();
-    const hostApp = buildHostAppWithQueryCache(60_000);
+    const hostApp = await buildHostAppWithQueryCache(60_000);
     getAttachedQueryClient(hostApp).setQueryData(['probe', 'late-join'], 'shared-query-client');
 
     function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -90,9 +97,9 @@ describe('FrontXProvider provides query cache access to descendants', () => {
     // may not run yet and renderHook leaves `result.current` at null (not undefined).
     expect(result.current == null).toBe(true);
 
-    let hostApp!: ReturnType<typeof buildHostAppWithQueryCache>;
+    let hostApp!: Awaited<ReturnType<typeof buildHostAppWithQueryCache>>;
     await act(async () => {
-      hostApp = buildHostAppWithQueryCache(60_000);
+      hostApp = await buildHostAppWithQueryCache(60_000);
     });
     getAttachedQueryClient(hostApp).setQueryData(['probe', 'late-host'], 'shared-query-client');
 
@@ -101,11 +108,10 @@ describe('FrontXProvider provides query cache access to descendants', () => {
     );
   });
 
-  it('shadows outer query contexts when a nested app has no resolved QueryClient', () => {
+  it('shadows outer query contexts when a nested app has no resolved QueryClient', async () => {
     const outerClient = buildTestQueryClient();
     const outerApp = buildAppWithQueryClient(outerClient);
-    const innerApp = createFrontX().build();
-    ownedApps.push(innerApp);
+    const innerApp = await buildAppInOtherRuntime();
 
     function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
       return (
@@ -128,7 +134,7 @@ describe('FrontXProvider provides query cache access to descendants', () => {
     expect(tanstackClient.result.current).toBeUndefined();
   });
 
-  it('provider-owned apps still toggle mock mode when a QueryClient is attached', async () => {
+  it('apps still toggle mock mode when a QueryClient is attached', async () => {
     const app = buildAppWithQueryClient(buildTestQueryClient());
 
     function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -157,9 +163,8 @@ describe('FrontXProvider provides query cache access to descendants', () => {
     );
   });
 
-  it('useFrontX exposes the provided app instance when app prop is set', () => {
-    const providedApp = createFrontXApp();
-    ownedApps.push(providedApp);
+  it('useFrontX exposes the provided app instance', () => {
+    const providedApp = buildPresetApp();
 
     function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
       return <FrontXProvider app={providedApp}>{children}</FrontXProvider>;
@@ -173,13 +178,15 @@ describe('FrontXProvider provides query cache access to descendants', () => {
     expect(result.current).toBe(providedApp);
   });
 
-  it('aligns QueryClient with the new app on the same commit when the app prop swaps', () => {
+  it('aligns QueryClient with the new app on the same commit when the app prop swaps', async () => {
     const clientA = buildTestQueryClient();
     const clientB = buildTestQueryClient();
+    const appA = buildAppWithQueryClient(clientA);
+    const appB = await buildAppInOtherRuntime(clientB);
+    // Seeded after the awaited build: these clients use gcTime 0, so an entry
+    // with no observer is dropped on the next timer turn.
     clientA.setQueryData(['frontx-provider-swap-probe'], 'a');
     clientB.setQueryData(['frontx-provider-swap-probe'], 'b');
-    const appA = buildAppWithQueryClient(clientA);
-    const appB = buildAppWithQueryClient(clientB);
 
     const renderLog: Array<{ appLabel: 'A' | 'B'; cache: string | undefined }> = [];
 

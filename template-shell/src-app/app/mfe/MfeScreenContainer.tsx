@@ -4,31 +4,26 @@
  * MFE Screen Container Component
  *
  * Bootstraps MFE domains and extensions on first mount, then renders the
- * per-domain `<ExtensionDomainSlot>` for the screen domain. The slot's
- * `onAttached` is discovery settling for the screen domain (D4): the root the
- * mounter needs is now attached, so this is where the four shell observers
- * start (`routing.start()`). `onDetached` is the pair of that: the slot's own
- * root has gone away (this container itself unmounting, not one mounted
- * screen), so the four observers are released (`routing.stop()`) rather than
- * left subscribed to history with nothing left to mount into. Mount/unmount
- * actions are dispatched by other components (e.g., the menu) through
+ * per-domain `<ExtensionDomainSlot>` for the screen domain. `ExtensionDomainSlot`
+ * itself starts/stops the screen domain's own URL observer from its own
+ * attach/detach (ADR 0036, D10/D11) — this container builds no routing
+ * wiring of its own; it only reads that domain's own status (via the
+ * shell-scoped `useDomainRouteStatus` hook) to show a fallback when every
+ * URL entry for this domain fails to resolve. Mount/unmount actions are
+ * dispatched by other components (e.g., the menu) through
  * `registry.executeActionsChain`.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useFrontX,
   useMountedExtensions,
+  useDomainRouteStatus,
   ExtensionDomainSlot,
   screenDomain,
   FRONTX_SCREEN_DOMAIN,
 } from '@gears-frontx/react';
-import type { DomainRouting } from '@gears-frontx/react';
 import { bootstrapMFE } from './bootstrap';
-import type { ShellRouting } from './shell-routing';
-
-const NO_STATUS = { entries: 0, unresolved: 0 };
-const noSubscribe = () => () => {};
 
 /**
  * The in-flight/settled `bootstrapMFE` call, hoisted to module scope rather
@@ -56,26 +51,11 @@ const noSubscribe = () => () => {};
  */
 let bootstrapPromise: ReturnType<typeof bootstrapMFE> | undefined;
 
-/** Screen-domain URL status, kept in sync via `useSyncExternalStore` rather
- * than local state — `DomainRouting` is the source of truth and updates on
- * its own observer's schedule, not React's. */
-function useRouteStatus(routing: DomainRouting | undefined) {
-  // Memoized on `routing` alone: `useSyncExternalStore` resubscribes
-  // whenever the function identity it's passed changes, so an inline
-  // arrow recreated on every render would tear down and rebuild the
-  // subscription every render for no reason (C4).
-  const subscribe = useCallback(
-    (callback: () => void) => (routing ? routing.subscribeStatus(callback) : noSubscribe()),
-    [routing],
-  );
-  return useSyncExternalStore(subscribe, () => routing?.getStatus() ?? NO_STATUS);
-}
-
 export function MfeScreenContainer() {
   const app = useFrontX();
-  const [routing, setRouting] = useState<ShellRouting | undefined>(undefined);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const mountedScreens = useMountedExtensions(FRONTX_SCREEN_DOMAIN);
-  const status = useRouteStatus(routing?.screen);
+  const status = useDomainRouteStatus(bootstrapped ? app.mfeRegistry : undefined, FRONTX_SCREEN_DOMAIN);
 
   useEffect(() => {
     if (!bootstrapPromise) {
@@ -83,8 +63,8 @@ export function MfeScreenContainer() {
     }
     let cancelled = false;
     bootstrapPromise
-      .then((result) => {
-        if (!cancelled) setRouting(result);
+      .then(() => {
+        if (!cancelled) setBootstrapped(true);
       })
       .catch((error) => {
         if (!cancelled) console.error('[MFE Bootstrap] Failed to bootstrap MFE:', error);
@@ -101,13 +81,11 @@ export function MfeScreenContainer() {
 
   return (
     <div className="flex-1 overflow-auto" data-mfe-screen-container>
-      {routing && app.mfeRegistry ? (
+      {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}
           domainId={screenDomain.id}
           className="h-full"
-          onAttached={() => routing.start()}
-          onDetached={() => routing.stop()}
         />
       ) : null}
       {unresolvedOnly ? (

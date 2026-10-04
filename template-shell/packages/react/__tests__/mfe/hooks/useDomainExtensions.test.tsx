@@ -6,20 +6,25 @@
  * @packageDocumentation
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { FrontXProvider, useDomainExtensions } from '@gears-frontx/react';
-import {
-  createFrontX,
-  effects,
-  gtsPlugin,
-  microfrontends,
-  queryCache,
-  TestContainerProvider,
-  type Extension,
-  type ExtensionDomain,
-  type FrontXApp,
-} from '@gears-frontx/framework';
+import type { Extension, ExtensionDomain, FrontXApp } from '@gears-frontx/framework';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let useDomainExtensions: typeof import('@gears-frontx/react')['useDomainExtensions'];
+let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
+let effects: typeof import('@gears-frontx/framework')['effects'];
+let gtsPlugin: typeof import('@gears-frontx/framework')['gtsPlugin'];
+let microfrontends: typeof import('@gears-frontx/framework')['microfrontends'];
+let queryCache: typeof import('@gears-frontx/framework')['queryCache'];
+let TestContainerProvider: typeof import('@gears-frontx/framework')['TestContainerProvider'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ FrontXProvider, useDomainExtensions } = await import('@gears-frontx/react'));
+  ({ createFrontX, effects, gtsPlugin, microfrontends, queryCache, TestContainerProvider } = await import('@gears-frontx/framework'));
+});
 
 describe('useDomainExtensions hook - Phase 21.7', () => {
   const sidebarDomainId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1';

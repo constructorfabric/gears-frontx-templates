@@ -2,7 +2,7 @@
 
 Manual verification procedure for [gears-frontx#638](https://github.com/constructorfabric/gears-frontx/issues/638): routing wired into `template-shell` and the demo MFE, driven end-to-end in a real browser. This is not a committed test harness — no Playwright suite lives in this repo. Verification runs through [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) instead, by direct decision: it drives the real browser over CDP and reads the actual `history` API and shadow-DOM output without adding a Playwright dependency or spec files to the templates repo. Each run's URL log goes into the PR description as a table, not into this directory.
 
-The address channel between the shell and its mounted MFEs is the shared property `entry_addresses`: screens, sidebar/popup/overlay slots, and widgets each read and write their own address through it, and the shell's `DomainRouting` fans changes out to `history.pushState`/`replaceState`. Everything below observes that channel from the browser: the URL bar, `history.length`, and a small recorder injected into the page.
+Every occupant's address reaches it privately now, through the `mfes` runtime's occupant-value rendezvous — no shared property carries it. The shell's and every MFE's own injected `FrameworkRouter` (`@gears-frontx/framework`) owns agreement between the URL and the mounts for each routed domain: it observes that domain's own URL entries, translates a URL change into `mount_ext`/`unmount_ext` chains, and fans a settled mount/unmount out to `history.pushState`/`replaceState`. Everything below observes that from the browser: the URL bar, `history.length`, and a small recorder injected into the page.
 
 ## Composing and running the shell (L0–L1)
 
@@ -111,9 +111,9 @@ After the run, stop the dev servers (`TaskStop` on the background task, or kill 
 
 Both are expected and were confirmed across runs — do not treat either as a regression without new evidence:
 
-- **Step 1 (cold deep link into Widgets Host) logs a cosmetic console error**, `[MfeRegistry] Actions chain failed | mount_ext`. It comes from React StrictMode's double-invoke of the shell's `DomainRouting` dispatch racing the widgets domain's own registration in development; it does not affect the resulting DOM state or the recorder log.
-- **Step 9 (unknown widget route) can log two `replaceState` calls instead of one.** One normalizes the invalid route inside the widget fixture, the other adds the remaining widgets from `DomainRouting`'s coalesced write; which one lands first varies between runs. The end state (`notFound === true`, `fallback === false`, no `pushState`) is unaffected.
-- **Pressing Back while a newly selected screen is still mounting can drop the forward history entry it was leaving.** The new screen's own `afterMount` runs once its mount settles — asynchronously, on whatever tick that finishes — and if Back is pressed before it does, that late `afterMount` still pushes its entry on top of wherever Back landed, ahead of the entry Back moved away from. This is accepted as a known limitation for #638, not fixed here.
+- **Step 1 (cold deep link into Widgets Host) logs a cosmetic console error**, `[MfeRegistry] Actions chain failed | mount_ext`. It comes from React StrictMode's double-invoke of the shell's router dispatch racing the widgets domain's own registration in development; it does not affect the resulting DOM state or the recorder log.
+- **Step 9 (unknown widget route) can log two `replaceState` calls instead of one.** One normalizes the invalid route inside the widget fixture, the other adds the remaining widgets from the router's own coalesced write; which one lands first varies between runs. The end state (`notFound === true`, `fallback === false`, no `pushState`) is unaffected.
+- **Pressing Back while a newly selected screen is still mounting can drop the forward history entry it was leaving.** The settled-action reflection for the new screen's mount runs once that mount itself settles — asynchronously, on whatever tick that finishes — and if Back is pressed before it does, that late reflection still writes its entry on top of wherever Back landed, ahead of the entry Back moved away from. This is accepted as a known limitation for #638, not fixed here.
 
 ## Related
 

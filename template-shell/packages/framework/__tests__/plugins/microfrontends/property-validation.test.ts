@@ -158,14 +158,17 @@ describe('application-layer derived GTS schemas', () => {
       expect(extensionScreenSchema.required).toContain('presentation');
     });
 
-    it('presentation has required label and route fields', () => {
+    it('requires a top-level route', () => {
+      expect(extensionScreenSchema.required).toContain('route');
+    });
+
+    it('presentation requires label and carries no route', () => {
       const presentation = extensionScreenSchema.properties?.['presentation'];
       expect(presentation).toBeDefined();
       expect(presentation?.type).toBe('object');
       expect(presentation?.required).toContain('label');
-      expect(presentation?.required).toContain('route');
       expect(presentation?.properties).toHaveProperty('label');
-      expect(presentation?.properties).toHaveProperty('route');
+      expect(presentation?.properties).not.toHaveProperty('route');
       expect(presentation?.properties).toHaveProperty('icon');
       expect(presentation?.properties).toHaveProperty('order');
     });

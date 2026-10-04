@@ -2,23 +2,38 @@
  * Tests for theme and language propagation - decouple-domain-contracts
  *
  * Verifies that theme/changed and i18n/language/changed events propagate
- * shared properties via themes() and i18n() plugins calling updateSharedProperty
- * on the mfeRegistry. Propagation is no longer owned by microfrontends().
+ * shared properties to the mfeRegistry through the microfrontends() plugin.
  *
  * @packageDocumentation
  * @vitest-environment jsdom
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { createFrontX } from '../../../src/createFrontX';
-import { effects } from '../../../src/plugins/effects';
-import { themes } from '../../../src/plugins/themes';
-import { i18n } from '../../../src/plugins/i18n';
-import { microfrontends } from '../../../src/plugins/microfrontends';
-import { eventBus, resetStore } from '@gears-frontx/state';
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../../src/mfe/constants';
-import { gtsPlugin } from '@gears-frontx/gts-plugin';
 import type { FrontXApp } from '../../../src/types';
+
+// One app per runtime: every test loads its own module copy.
+let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
+let effects: typeof import('../../../src/plugins/effects')['effects'];
+let themes: typeof import('../../../src/plugins/themes')['themes'];
+let i18n: typeof import('../../../src/plugins/i18n')['i18n'];
+let microfrontends: typeof import('../../../src/plugins/microfrontends')['microfrontends'];
+let eventBus: typeof import('@gears-frontx/state')['eventBus'];
+let resetStore: typeof import('@gears-frontx/state')['resetStore'];
+let FRONTX_SHARED_PROPERTY_THEME: typeof import('../../../src/mfe/constants')['FRONTX_SHARED_PROPERTY_THEME'];
+let FRONTX_SHARED_PROPERTY_LANGUAGE: typeof import('../../../src/mfe/constants')['FRONTX_SHARED_PROPERTY_LANGUAGE'];
+let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX } = await import('../../../src/createFrontX'));
+  ({ effects } = await import('../../../src/plugins/effects'));
+  ({ themes } = await import('../../../src/plugins/themes'));
+  ({ i18n } = await import('../../../src/plugins/i18n'));
+  ({ microfrontends } = await import('../../../src/plugins/microfrontends'));
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } = await import('../../../src/mfe/constants'));
+  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
+});
 
 describe('Theme and Language Propagation - decouple-domain-contracts', () => {
   let apps: FrontXApp[] = [];
@@ -128,29 +143,22 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
     });
 
     it('should unsubscribe theme propagation when the plugin app is destroyed', () => {
-      const firstApp = createFrontX()
+      const app = createFrontX()
         .use(effects())
         .use(themes())
         .use(microfrontends({ typeSystem: gtsPlugin }))
         .build();
-      apps.push(firstApp);
+      apps.push(app);
+      const applySpy = vi.spyOn(app.themeRegistry, 'apply');
+      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty');
 
-      firstApp.destroy();
-      apps = apps.filter((app) => app !== firstApp);
-
-      const secondApp = createFrontX()
-        .use(effects())
-        .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(secondApp);
-
-      const updateSpy = vi.spyOn(secondApp.mfeRegistry!, 'updateSharedProperty');
+      app.destroy();
+      apps = apps.filter((built) => built !== app);
 
       eventBus.emit('theme/changed', { themeId: 'dark' });
 
-      expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_THEME, 'dark');
-      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(applySpy).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -243,32 +251,21 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       });
     });
 
-    it('should unsubscribe language propagation when the plugin app is destroyed', async () => {
-      const firstApp = createFrontX()
+    it('should unsubscribe language propagation when the plugin app is destroyed', () => {
+      const app = createFrontX()
         .use(effects())
         .use(i18n())
         .use(microfrontends({ typeSystem: gtsPlugin }))
         .build();
-      apps.push(firstApp);
+      apps.push(app);
+      const setLanguageSpy = vi.spyOn(app.i18nRegistry, 'setLanguage');
 
-      firstApp.destroy();
-      apps = apps.filter((app) => app !== firstApp);
-
-      const secondApp = createFrontX()
-        .use(effects())
-        .use(i18n())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(secondApp);
-
-      const updateSpy = vi.spyOn(secondApp.mfeRegistry!, 'updateSharedProperty');
+      app.destroy();
+      apps = apps.filter((built) => built !== app);
 
       eventBus.emit('i18n/language/changed', { language: 'de' });
 
-      await vi.waitFor(() => {
-        expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
-      });
-      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(setLanguageSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -328,41 +325,6 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       } finally {
         process.off('unhandledRejection', onUnhandled);
       }
-    });
-  });
-
-  describe('microfrontends() plugin no longer owns propagation', () => {
-    it('should not call updateSharedProperty from microfrontends onInit for theme events', () => {
-      // Build with only microfrontends (no themes plugin) — propagation must not occur
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty');
-
-      eventBus.emit('theme/changed', { themeId: 'dark' });
-
-      // microfrontends no longer subscribes to theme/changed
-      expect(updateSpy).not.toHaveBeenCalled();
-    });
-
-    it('should not call updateSharedProperty from microfrontends onInit for language events', async () => {
-      // Build with only microfrontends (no i18n plugin) — propagation must not occur
-      const app = createFrontX()
-        .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty');
-
-      eventBus.emit('i18n/language/changed', { language: 'de' });
-      await Promise.resolve();
-
-      // microfrontends no longer subscribes to i18n/language/changed
-      expect(updateSpy).not.toHaveBeenCalled();
     });
   });
 });

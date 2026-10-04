@@ -12,37 +12,35 @@ This package is part of the **Framework Layer (L2)** - it depends on SDK package
 
 ### Plugin Architecture
 
-Build applications by composing plugins:
+Build the application by composing plugins. A runtime builds exactly one app, so the compositions below are alternatives: choose one per runtime.
 
 ```typescript
-import { createGears FrontX, screensets, themes, layout, microfrontends, i18n } from '@gears-frontx/framework';
+// Alternative: an explicit plugin list.
+import { createGears FrontX, effects, themes, layout, i18n } from '@gears-frontx/framework';
 
 const app = createGears FrontX()
-  .use(screensets())
+  .use(effects())
   .use(themes())
   .use(layout())
-  .use(microfrontends())
   .use(i18n())
   .build();
 ```
 
 ### Presets
 
-Pre-configured plugin combinations:
+Pre-configured plugin arrays, passed to `.useAll(...)`. `full()` contains effects, themes, layout, i18n, the query cache, and mock; it adds `microfrontends()` only when `config.microfrontends` is supplied and `auth()` only when `config.auth` is supplied. `minimal()` contains themes only. There is no other preset. Each example below is an alternative: choose one per runtime.
 
 ```typescript
-import { createGears FrontXApp, presets } from '@gears-frontx/framework';
+import { createGears FrontX, presets } from '@gears-frontx/framework';
 
-// Full preset (default) - all plugins including MFE support
-const fullApp = createGears FrontXApp();
-
-// Or explicitly use presets
-const minimalApp = createGears FrontX()
-  .use(presets.minimal())  // screensets + themes only
+// Alternative: the full preset, with microfrontends support
+const fullApp = createGears FrontX()
+  .useAll(presets.full({ microfrontends: config }))
   .build();
 
-const headlessApp = createGears FrontX()
-  .use(presets.headless()) // screensets only
+// Alternative: the minimal preset (themes only)
+const minimalApp = createGears FrontX()
+  .useAll(presets.minimal())
   .build();
 ```
 
@@ -50,10 +48,9 @@ const headlessApp = createGears FrontX()
 
 | Plugin | Provides | Dependencies |
 |--------|----------|--------------|
-| `screensets()` | `screenSlice` state, `setActiveScreen`, `setScreenLoading` | - |
 | `themes()` | themeRegistry, changeTheme action | - |
-| `layout()` | header, footer, menu, sidebar, popup, overlay state | screensets |
-| `microfrontends()` | `screensetsRegistry` (MFE-enabled), MFE actions, selectors, domain constants | screensets |
+| `layout()` | header, footer, menu, sidebar, popup, overlay state | - |
+| `microfrontends()` | `mfeRegistry` (MFE-enabled), MFE actions, selectors, domain constants | - |
 | `i18n()` | i18nRegistry, setLanguage action | - |
 | `effects()` | Core effect coordination | - |
 | `queryCache()` | Host-owned shared `QueryClient` lifecycle, Flux `cache/*` events, mock toggle + destroy cleanup, L1 `sharedFetchCache` retain/release and invalidation sync | - |
@@ -65,10 +62,10 @@ const headlessApp = createGears FrontX()
 The `queryCache()` plugin owns the shared **headless TanStack Query `QueryClient`** (`@tanstack/query-core` peer) and bridges it to L1 transport dedup: it **retains** the global `sharedFetchCache` from `@gears-frontx/api` for the app lifetime and **keeps it aligned** with Flux-driven cache events. It's included in the `full()` preset by default:
 
 ```typescript
-import { createGears FrontXApp } from '@gears-frontx/framework';
+import { createGears FrontX, presets } from '@gears-frontx/framework';
 
-// Full preset includes queryCache plugin automatically
-const app = createGears FrontXApp();
+// Alternative: the full preset includes the queryCache plugin automatically
+const app = createGears FrontX().useAll(presets.full()).build();
 
 // The plugin attaches the shared QueryClient to the app for React bindings
 // and shared child roots via queryCacheShared().
@@ -80,7 +77,7 @@ const app = createGears FrontXApp();
 //   eventBus.emit('cache/remove', { queryKey })
 ```
 
-For custom plugin compositions:
+For custom plugin compositions (an alternative to the preset above; choose one per runtime):
 
 ```typescript
 import { createGears FrontX, queryCache } from '@gears-frontx/framework';
@@ -105,17 +102,17 @@ The plugin:
 The `mock()` plugin provides centralized mock mode control. It's included in the `full()` preset by default, so apps don't need manual setup:
 
 ```typescript
-import { createGears FrontXApp } from '@gears-frontx/framework';
+import { createGears FrontX, presets } from '@gears-frontx/framework';
 
-// Full preset includes mock plugin automatically
-const app = createGears FrontXApp();
+// Alternative: the full preset includes the mock plugin automatically
+const app = createGears FrontX().useAll(presets.full()).build();
 
 // Toggle mock mode via actions (used by FrontX Studio ApiModeToggle)
 app.actions.toggleMockMode(true);  // Activates all registered mock plugins
 app.actions.toggleMockMode(false); // Deactivates all registered mock plugins
 ```
 
-For custom plugin compositions:
+For custom plugin compositions (an alternative; choose one per runtime):
 
 ```typescript
 import { createGears FrontX, effects, mock } from '@gears-frontx/framework';
@@ -130,15 +127,18 @@ Services register mock plugins using `registerPlugin()` in their constructor. Th
 
 ### Built Application
 
-After calling `.build()`, access registries and actions through `app.*`. The MFE-enabled `screensetsRegistry` is available when the build includes `microfrontends()` (for example, `createGears FrontXApp()`):
+After calling `.build()`, access registries and actions through `app.*`. The MFE-enabled `mfeRegistry` is available when the build includes `microfrontends()` (for example, `createGears FrontX().useAll(presets.full({ microfrontends: config }))`):
 
 ```typescript
-const app = createGears FrontXApp(); // Full preset includes microfrontends()
+const app = createGears FrontX().useAll(presets.full({ microfrontends: config })).build();
 
 // Access MFE-enabled registry
-app.screensetsRegistry.registerDomain(screenDomain, containerProvider);
-await app.screensetsRegistry.registerExtension(homeExtension);
-await app.screensetsRegistry.executeActionsChain({
+app.mfeRegistry.registerDomain(screenDomain, containerProvider);
+await app.mfeRegistry.registerExtension(homeExtension);
+
+// executeActionsChain is acceptance-only: it returns void, never throws,
+// and never yields a promise to await for the chain's own execution.
+app.mfeRegistry.executeActionsChain({
   action: { type: Gears FrontX_ACTION_MOUNT_EXT, target: 'screen', payload: { subject: 'home' } }
 });
 
@@ -151,11 +151,11 @@ const state = app.store.getState();
 app.store.dispatch(someAction);
 
 // Access MFE actions
-app.actions.loadExtension({ extensionId: 'home' });
-app.actions.mountExtension({ extensionId: 'home', domainId: 'screen', container });
-app.actions.unmountExtension({ extensionId: 'home', domainId: 'screen' });
+app.actions.loadExtension('home');
+app.actions.mountExtension('home');
+app.actions.unmountExtension('home');
 app.actions.registerExtension(homeExtension);
-app.actions.unregisterExtension({ extensionId: 'home' });
+app.actions.unregisterExtension('home');
 
 // Access theme and i18n actions
 app.actions.changeTheme({ themeId: 'dark' });
@@ -167,7 +167,7 @@ app.destroy();
 
 ## MFE Plugin
 
-The `microfrontends()` plugin provides the MFE-enabled `screensetsRegistry` plus the MFE action surface:
+The `microfrontends()` plugin provides the MFE-enabled `mfeRegistry` plus the MFE action surface:
 
 ### MFE Actions
 
@@ -180,22 +180,22 @@ import {
   unregisterExtension,
 } from '@gears-frontx/framework';
 
+// loadExtension/mountExtension/unmountExtension are fire-and-forget: each
+// dispatches an actions chain through the acceptance-only registry surface
+// and returns nothing to await. Dispatch never throws.
+
 // Load extension code
-await loadExtension({ extensionId: 'home' });
+loadExtension('home');
 
 // Mount extension into domain
-await mountExtension({
-  extensionId: 'home',
-  domainId: 'screen',
-  container: document.getElementById('screen-container')!,
-});
+mountExtension('home');
 
 // Unmount extension from domain
-await unmountExtension({ extensionId: 'home', domainId: 'screen' });
+unmountExtension('home');
 
 // Register/unregister extensions dynamically
 registerExtension(homeExtension);
-unregisterExtension({ extensionId: 'home' });
+unregisterExtension('home');
 ```
 
 ### MFE Selectors
@@ -277,7 +277,7 @@ import type { Gears FrontXPlugin } from '@gears-frontx/framework';
 export function myPlugin(): Gears FrontXPlugin {
   return {
     name: 'my-plugin',
-    dependencies: ['screensets'], // Optional dependencies
+    dependencies: ['effects'], // Optional dependencies
     provides: {
       registries: { myRegistry: createMyRegistry() },
       slices: [mySlice],
@@ -296,12 +296,12 @@ export function myPlugin(): Gears FrontXPlugin {
 
 ## Key Rules
 
-1. **Use presets for common cases** - `createGears FrontXApp()` for full apps with MFE support
+1. **Use presets for common cases** - `createGears FrontX().useAll(presets.full({ microfrontends: config }))` for full apps with MFE support; build one app per runtime
 2. **Compose plugins for customization** - Use `createGears FrontX().use()` pattern
 3. **Dependencies are auto-resolved** - Plugin order doesn't matter
 4. **Access via app instance** - All registries and actions on `app.*`
 5. **NO React in this package** - Framework is headless, use @gears-frontx/react for React bindings
-6. **MFE is the primary architecture** - Use `screensetsRegistry` for domain/extension management when the app includes `microfrontends()`
+6. **MFE is the primary architecture** - Use `mfeRegistry` for domain/extension management when the app includes `microfrontends()`
 
 ## Re-exports
 
@@ -335,11 +335,10 @@ const menu = useAppSelector((state: RootStateWithLayout) => state.layout.menu);
 
 ### Core
 - `createGears FrontX` - App builder factory
-- `createGears FrontXApp` - Convenience function (full preset)
-- `presets` - Available presets (full, minimal, headless)
+- `presets` - Available presets (full, minimal)
 
 ### Plugins
-- `screensets`, `themes`, `layout`, `microfrontends`, `i18n`, `effects`, `queryCache`, `queryCacheShared`, `mock`
+- `themes`, `layout`, `microfrontends`, `i18n`, `effects`, `queryCache`, `queryCacheShared`, `mock`
 
 ### Registries
 - `createThemeRegistry` - Theme registry factory
@@ -347,7 +346,7 @@ const menu = useAppSelector((state: RootStateWithLayout) => state.layout.menu);
 ### Types
 - `Gears FrontXConfig`, `Gears FrontXPlugin`, `Gears FrontXApp`, `Gears FrontXAppBuilder`
 - `PluginFactory`, `PluginProvides`, `PluginLifecycle`
-- `Preset`, `Presets`, `ScreensetsConfig`
+- `Preset`, `Presets`
 - All re-exported types from SDK packages
 
 ## Testing Subpath (`@gears-frontx/framework/testing`)
@@ -363,8 +362,8 @@ The `./testing` subpath exposes Vitest-based helpers — `TestContainerProvider`
 The legacy screenset navigation API has been removed. FrontX now uses the MFE architecture exclusively:
 
 ### Removed APIs
-- `screensetRegistry` (replaced by `screensetsRegistry`)
-- `createScreensetRegistry()` (replaced by `ScreensetsRegistry` class)
+- `screensetRegistry` (replaced by `mfeRegistry`)
+- `createScreensetRegistry()` (replaced by `MfeRegistry` class)
 - `navigation()` plugin (replaced by MFE actions)
 - `routing()` plugin (replaced by extension route presentation)
 - `routeRegistry` (replaced by extension route management)
@@ -379,11 +378,7 @@ app.actions.navigateToScreen({ screensetId: 'demo', screenId: 'home' });
 
 **NEW**: Mount extension
 ```typescript
-await app.actions.mountExtension({
-  extensionId: 'home',
-  domainId: 'screen',
-  container: document.getElementById('screen-container')!,
-});
+app.actions.mountExtension('home');
 ```
 
 **OLD**: Register screenset
@@ -403,14 +398,14 @@ screensetRegistry.register(screenset);
 
 **NEW**: Register domain and extensions
 ```typescript
-import { screensetsRegistry, ExtensionDomain, Extension } from '@gears-frontx/framework';
+import type { ExtensionDomain, Extension } from '@gears-frontx/framework';
 
 // Register domain
-app.screensetsRegistry.registerDomain(screenDomain, containerProvider);
+app.mfeRegistry.registerDomain(screenDomain, containerProvider);
 
 // Register extensions
-await app.screensetsRegistry.registerExtension(homeExtension);
-await app.screensetsRegistry.registerExtension(profileExtension);
+await app.mfeRegistry.registerExtension(homeExtension);
+await app.mfeRegistry.registerExtension(profileExtension);
 ```
 
 See the MFE migration guide in the project documentation for detailed migration steps.

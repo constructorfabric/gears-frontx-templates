@@ -29,8 +29,9 @@ export interface MfeState {
    * registered-but-empty is represented as `[]`.
    *
    * Multi-mount domains (backed by `ConcurrentMountStrategy`) accumulate multiple
-   * IDs; single-mount domains hold at most one element. Managed via the idempotent
-   * `addExtensionMounted` / `removeExtensionMounted` reducers.
+   * IDs; single-mount domains hold at most one element. The `addExtensionMounted` and
+   * `removeExtensionMounted` reducers handle duplicate dispatches from concurrent chains
+   * safely — duplicate adds are no-ops, and duplicate removals are no-ops.
    */
   mountedExtensions: Record<string, string[]>;
 }
@@ -82,7 +83,7 @@ const { slice, ...actions } = createSlice({
       state.errors[action.payload.extensionId] = action.payload.error;
     },
 
-    // Mount state reducers — idempotent by design for safe concurrent diff-dispatch
+    // Mount state reducers designed to handle duplicate dispatches from concurrent chains safely
     addExtensionMounted: (state: MfeState, action: ReducerPayload<{ domainId: string; extensionId: string }>) => {
       const { domainId, extensionId } = action.payload;
       if (!state.mountedExtensions[domainId]) {
@@ -100,7 +101,7 @@ const { slice, ...actions } = createSlice({
       if (!list) {
         return;
       }
-      // No-op-if-absent: idempotent removal; safe when two concurrent chains both remove the same ID.
+      // No-op-if-absent: removal is safe when two concurrent chains both try to remove the same ID.
       const idx = list.indexOf(extensionId);
       if (idx !== -1) {
         list.splice(idx, 1);

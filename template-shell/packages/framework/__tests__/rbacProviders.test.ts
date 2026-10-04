@@ -7,9 +7,7 @@
  * - Runtime fail-closed behavior when provider methods throw or return malformed payloads
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createFrontX } from '../src/createFrontX';
-import { auth } from '../src/plugins/auth';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AccessDecision,
   AccessEvaluation,
@@ -38,6 +36,16 @@ type Auth0Claims = {
   scope: string;
   permissions?: string[];
 };
+
+// One app per runtime: every test loads its own module copy.
+let createFrontX: typeof import('../src/createFrontX').createFrontX;
+let auth: typeof import('../src/plugins/auth').auth;
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ createFrontX } = await import('../src/createFrontX'));
+  ({ auth } = await import('../src/plugins/auth'));
+});
 
 const ownedApps: Array<{ destroy: () => void }> = [];
 

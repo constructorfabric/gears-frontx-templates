@@ -19,10 +19,10 @@ shared screen domain — verbatim from `demo-mfe`:
   "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1",
   "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
   "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.widgets_host.v1",
+  "route": "/widgets-host",
   "presentation": {
     "label": "Widgets Host",
     "icon": "lucide:layout-grid",
-    "route": "/widgets-host",
     "order": 200
   }
 }
@@ -37,17 +37,17 @@ shared screen domain — verbatim from `demo-mfe`:
   `entries[]`, whose `exposedModule` names the lifecycle module your
   `vite.config.ts` exposes through Module Federation.
 
-## `presentation` semantics
+## `route` and `presentation` semantics
 
-The screen domain pins a derived extension type that **requires**
-`presentation` — the host validates every screen-domain extension against it
+The screen domain pins a derived extension type that **requires** the
+extension's top-level `route` and its `presentation` — the host validates every screen-domain extension against it
 at registration and rejects mismatches outright (your screen will not appear,
 with a thrown registration error, not a silent skip):
 
-| Field | Required | Meaning |
+| Field (on the extension) | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text. A raw display string — there is no i18n key for menu labels today, so the label renders identically in every language |
-| `route` | yes | route path (e.g. `/widgets-host`). Schema-required, but the current shell mounts by action and does not consume it — do not expect deep links; still, keep it unique and stable |
+| `route` (top level, beside `id`/`domain`/`entry`) | yes | route token (e.g. `/widgets-host`), one leading `/` stripped before use. The shell's own injected router reads this to admit the extension as a deep-linkable occupant of the screen domain and to reflect its mount/unmount into the URL — keep it unique within the domain and stable across releases |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 

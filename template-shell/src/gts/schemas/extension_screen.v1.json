@@ -17,18 +17,14 @@
           "type": "string",
           "$comment": "Icon identifier for the extension in host UI (e.g., Iconify icon name with prefix)"
         },
-        "route": {
-          "type": "string",
-          "$comment": "Route path for the extension (e.g., '/hello-world'). Used by navigation."
-        },
         "order": {
           "type": "number",
           "$comment": "Sort order for the extension in host UI lists (lower = higher priority)"
         }
       },
-      "required": ["label", "route"],
+      "required": ["label"],
       "$comment": "Presentation metadata for screen domain extensions. Drives nav menu auto-population."
     }
   },
-  "required": ["presentation"]
+  "required": ["presentation", "route"]
 }

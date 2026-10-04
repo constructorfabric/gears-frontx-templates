@@ -22,21 +22,34 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/query-core';
-import { getSharedFetchCache, resetSharedFetchCache } from '@gears-frontx/api';
-import { createFrontX } from '../src/createFrontX';
-import { queryCache, queryCacheShared } from '../src/plugins/queryCache';
-import {
-  resetSharedQueryClient,
-  peekSharedQueryClient,
-  peekSharedQueryClientRetainers,
-  peekQueryClientBroadcastTarget,
-  peekAppQueryClient,
-  peekAppQueryClientResolver,
-  peekAppQueryClientActivator,
-} from '../src/testing';
-import { eventBus, resetStore } from '@gears-frontx/state';
-import { MockEvents } from '../src/effects/mockEffects';
 import type { FrontXApp, FrontXPlugin } from '../src/types';
+
+// One app per runtime: every test loads its own module copy.
+let getSharedFetchCache: typeof import('@gears-frontx/api').getSharedFetchCache;
+let resetSharedFetchCache: typeof import('@gears-frontx/api').resetSharedFetchCache;
+// Every app a test builds comes from its own module copy of createFrontX: the
+// framework allows one build per copy, while these tests deliberately run several
+// plugin runtimes side by side over the globalThis-shared QueryClient.
+const RUNTIME_POOL_SIZE = 8;
+let createFrontXPool: Array<typeof import('../src/createFrontX').createFrontX>;
+function createFrontX(...args: Parameters<typeof import('../src/createFrontX').createFrontX>) {
+  const next = createFrontXPool.shift();
+  if (!next) throw new Error('Test needs more than RUNTIME_POOL_SIZE runtimes.');
+  return next(...args);
+}
+let queryCache: typeof import('../src/plugins/queryCache').queryCache;
+let queryCacheShared: typeof import('../src/plugins/queryCache').queryCacheShared;
+type Testing = typeof import('../src/testing');
+let resetSharedQueryClient: Testing['resetSharedQueryClient'];
+let peekSharedQueryClient: Testing['peekSharedQueryClient'];
+let peekSharedQueryClientRetainers: Testing['peekSharedQueryClientRetainers'];
+let peekQueryClientBroadcastTarget: Testing['peekQueryClientBroadcastTarget'];
+let peekAppQueryClient: Testing['peekAppQueryClient'];
+let peekAppQueryClientResolver: Testing['peekAppQueryClientResolver'];
+let peekAppQueryClientActivator: Testing['peekAppQueryClientActivator'];
+let eventBus: typeof import('@gears-frontx/state').eventBus;
+let resetStore: typeof import('@gears-frontx/state').resetStore;
+let MockEvents: typeof import('../src/effects/mockEffects').MockEvents;
 
 // ============================================================================
 // Test helpers
@@ -149,7 +162,26 @@ function requireBroadcastTarget(client: QueryClient): string {
 // Setup / Teardown
 // ============================================================================
 
-beforeEach(() => {
+beforeEach(async () => {
+  createFrontXPool = [];
+  for (let i = 0; i < RUNTIME_POOL_SIZE; i += 1) {
+    vi.resetModules();
+    createFrontXPool.push((await import('../src/createFrontX')).createFrontX);
+  }
+  vi.resetModules();
+  ({ getSharedFetchCache, resetSharedFetchCache } = await import('@gears-frontx/api'));
+  ({ queryCache, queryCacheShared } = await import('../src/plugins/queryCache'));
+  ({
+    resetSharedQueryClient,
+    peekSharedQueryClient,
+    peekSharedQueryClientRetainers,
+    peekQueryClientBroadcastTarget,
+    peekAppQueryClient,
+    peekAppQueryClientResolver,
+    peekAppQueryClientActivator,
+  } = await import('../src/testing'));
+  ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+  ({ MockEvents } = await import('../src/effects/mockEffects'));
   resetStore();
   resetSharedFetchCache();
   resetSharedQueryClient();

@@ -1,245 +1,364 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act } from '@testing-library/react';
-import { resolveNavigationHistory } from '@gears-frontx/routing';
-import { FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES } from '@gears-frontx/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { ChildMfeBridge } from '@gears-frontx/react';
+
+/** Records `createRoot(container)` calls: each container gets its own Root. */
+const createRootSpy = vi.fn();
+const rootRenderSpy = vi.fn();
+const rootUnmountSpy = vi.fn();
+/** Whether the host has adopted this runtime's link: the navigation facade refuses until it has (the real router returns a fresh refusing facade while no occupant value exists). */
+let linkAdopted = false;
+/** Counts `app.mfeRouter.navigation()` resolutions. */
+const navigationResolveSpy = vi.fn();
+/** Counts `ThemeAwareReactLifecycle` constructions: one per mounted container. */
+const themeAwareConstructSpy = vi.fn();
+/** Counts `createFrontX()` and `build()` calls: a runtime builds exactly one app. */
+const createFrontXSpy = vi.fn();
+const buildSpy = vi.fn();
+
+/** The navigation-facade spy `PingHandler` writes through (ADR 0036, the navigation facade). */
+const navigationReplaceSpy = vi.fn();
+/** Set by a test to make the next `navigation().replace()` call throw, exercising `PingHandler`'s own catch/log/rethrow path. */
+let navigationReplaceThrows: Error | null = null;
+/** What `navigation().location()` returns for the NEXT ping — this occupant's own current entry (D21); a test overrides it to assert the ping handler merges into existing params instead of overwriting them. */
+let navigationLocation = { pathname: '/', search: '' };
 
 /**
- * `ThemeAwareReactLifecycle` is real, unmocked, production behaviour
- * belonging to `@gears-frontx/react` (Global Constraints — not under test
- * here): its own `mount()` wraps `renderContent()` in `FrontXProvider`,
- * which defers its children until a shared `QueryClient` a real host's
- * `queryCache()` retains becomes reachable — nothing this isolated suite
- * builds. Standing in for it keeps the render path real (a genuine
- * `createRoot().render()` of this module's own `renderContent()` output,
- * routing and all) while removing that dependency, mirroring
- * `lifecycle-widgets-host.test.tsx`'s own `FakeThemeAwareReactLifecycle`.
+ * `<ExtensionRouter>` (this lifecycle renders it instead of building its own
+ * router — ADR 0036, D5) and the React render tree are both faked here: this
+ * suite is a plumbing smoke test for the ping handler's own
+ * registration/write/rejection contract, not a render test (a real
+ * `<ExtensionRouter>` mount belongs in an integration suite driven through
+ * the real `mfes` runtime, mirroring `lifecycle-widgets-host.remount.test.tsx`).
+ * `navigation().replace()` is the one surface this file DOES assert against
+ * in detail: it is `PingHandler`'s own write path (`lifecycle.tsx`'s
+ * `navigation.replace(...)`), and it is real, user-facing behaviour
+ * this suite's render-fidelity trade-off must not also hide.
  */
-vi.mock('@gears-frontx/react', async (importOriginal) => {
-  const [real, React, { createRoot }] = await Promise.all([
-    importOriginal<Record<string, unknown>>(),
-    import('react'),
-    import('react-dom/client'),
-  ]);
-
-  class FakeThemeAwareReactLifecycle {
-    private root: ReturnType<typeof createRoot> | null = null;
-
-    constructor(protected readonly app: unknown) {}
-
-    mount(container: Element | ShadowRoot, bridge: unknown): void {
-      this.root = createRoot(container as Element);
-      const renderContent = (this as unknown as {
-        renderContent: (value: unknown) => ReturnType<typeof React.createElement>;
-      }).renderContent;
-      this.root.render(React.createElement(React.Fragment, null, renderContent.call(this, bridge)));
-    }
-
-    unmount(_container: Element | ShadowRoot): void {
-      this.root?.unmount();
-      this.root = null;
-    }
-  }
-
-  return { ...real, ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle };
-});
-
-/**
- * Q3: `PingHandler` gets its router from `createProviderRouter`, and the only
- * way to make ONE call's `navigate()` reject (real TanStack routing succeeds
- * in this suite otherwise) is to intercept it at the source. `navigateOverride`
- * lets a single test replace the real `navigate` for its one call; every other
- * test leaves it `null` and gets the real, unmocked routing behaviour.
- */
-let navigateOverride: (() => Promise<never>) | null = null;
-
-vi.mock('@gears-frontx/routing-tanstack', async (importOriginal) => {
-  const real = await importOriginal<Record<string, unknown>>();
-  const realCreateProviderRouter = real.createProviderRouter as (...args: unknown[]) => { navigate: (opts: unknown) => Promise<void> };
-  return {
-    ...real,
-    createProviderRouter: (...args: unknown[]) => {
-      const router = realCreateProviderRouter(...args);
-      const realNavigate = router.navigate.bind(router);
-      router.navigate = (opts: unknown) => (navigateOverride ? navigateOverride() : realNavigate(opts));
-      return router;
+vi.mock('@gears-frontx/react', () => {
+  const fakeFrameworkRouter = {
+    navigation: () => {
+      navigationResolveSpy();
+      if (!linkAdopted) {
+        const refuse = (): never => {
+          throw new Error('navigation refused: no occupant value');
+        };
+        return { navigate: refuse, replace: refuse, location: refuse };
+      }
+      return facade;
     },
+  };
+  const facade = {
+      navigate: vi.fn(),
+      replace: (path: string) => {
+        if (navigationReplaceThrows) {
+          const err = navigationReplaceThrows;
+          navigationReplaceThrows = null;
+          throw err;
+        }
+        navigationReplaceSpy(path);
+      },
+      location: () => navigationLocation,
+  };
+  // Opaque — `ExtensionRouter` is faked below (returns `null`), so nothing
+  // ever reads this registry's own shape.
+  const fakeMfeRegistry = {};
+  const fakeAppBuilder = {
+    use: () => fakeAppBuilder,
+    build: () => {
+      buildSpy();
+      return {
+        get mfeRegistry() {
+          return fakeMfeRegistry;
+        },
+        mfeRouter: fakeFrameworkRouter,
+      };
+    },
+  };
+  return {
+    ActionHandler: class ActionHandler {
+      static {
+        void 0;
+      }
+    },
+    ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
+      constructor(private readonly app: { mfeRegistry: unknown }) {
+        themeAwareConstructSpy();
+      }
+      mount(container: Element | ShadowRoot): void {
+        void this.app.mfeRegistry;
+        createRootSpy(container);
+        rootRenderSpy();
+      }
+      async unmount(): Promise<void> {
+        rootUnmountSpy();
+      }
+    },
+    createFrontX: () => {
+      createFrontXSpy();
+      return fakeAppBuilder;
+    },
+    microfrontends: () => ({}),
+    effects: () => ({}),
+    queryCacheShared: () => ({}),
+    mock: () => ({}),
+    gtsPlugin: {},
+    ExtensionRouter: () => null,
+    FRONTX_ACTION_MOUNT_EXT: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+    FRONTX_SCREEN_DOMAIN: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
   };
 });
 
-const { default: lifecycle } = await import('./lifecycle');
+vi.mock('@gears-frontx/routing-tanstack', () => ({
+  createRootRoute: (opts: unknown) => ({ ...(opts as object), addChildren: (children: unknown) => ({ ...(opts as object), children }) }),
+  createRoute: (opts: unknown) => opts,
+  Outlet: () => null,
+  useSearch: () => ({}),
+}));
 
-const ALPHA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
 const PING = 'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
-const addresses: Record<string, { domainKey: string; extension: string }> = { [ALPHA]: { domainKey: 'screen.widgets-host.widgets', extension: 'widget-alpha' } };
+const ALPHA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
+const BETA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_beta.v1';
 
-function fakeBridge() {
-  const handlers = new Map<string, { handleAction(t: string, p?: unknown): Promise<void> }>();
+type HandlerMap = Map<string, { handleAction(t: string): Promise<void> }>;
+
+function fakeBridge(extensionId: string): { bridge: ChildMfeBridge; handlers: HandlerMap } {
+  const handlers: HandlerMap = new Map();
   return {
     handlers,
     bridge: {
-      extensionId: ALPHA, extDomainId: 'd',
+      extensionId,
+      extDomainId: 'd',
       registerActionHandler: (t: string, h: never) => handlers.set(t, h),
-      executeActionsChain: vi.fn(), subscribeToProperty: () => () => {},
-      getProperty: (id: string) => (id === FRONTX_SHARED_PROPERTY_ENTRY_ADDRESSES ? { id, value: addresses } : undefined),
+      executeActionsChain: vi.fn(),
+      subscribeToProperty: () => () => {},
+      getProperty: () => undefined,
     } as never,
   };
 }
 
-function deepQuery(root: ParentNode, testId: string): Element[] {
-  const found: Element[] = [];
-  const walk = (node: ParentNode) => node.querySelectorAll('*').forEach((el) => {
-    if (el.getAttribute('data-testid') === testId) found.push(el);
-    if (el.shadowRoot) walk(el.shadowRoot);
-  });
-  walk(root);
-  return found;
-}
-
-/**
- * A detached shadow root (`document.createElement('div').attachShadow(...)`
- * with its host never appended anywhere) leaves the router's initial route
- * match permanently unsettled — connected to the live document is what the
- * engine's own load path needs. Every test host is appended here and
- * removed again in `afterEach`, so containers stay isolated per test.
- */
-const mountedHosts: HTMLElement[] = [];
-
-function shadowContainer(): ShadowRoot {
-  const host = document.createElement('div');
-  document.body.appendChild(host);
-  mountedHosts.push(host);
-  return host.attachShadow({ mode: 'open' });
-}
-
-afterEach(() => {
-  for (const host of mountedHosts.splice(0)) host.remove();
-  navigateOverride = null;
+beforeEach(() => {
+  vi.resetModules();
+  navigationReplaceSpy.mockClear();
+  createRootSpy.mockClear();
+  rootRenderSpy.mockClear();
+  rootUnmountSpy.mockClear();
+  navigationResolveSpy.mockClear();
+  linkAdopted = true;
+  themeAwareConstructSpy.mockClear();
+  createFrontXSpy.mockClear();
+  buildSpy.mockClear();
+  navigationReplaceThrows = null;
+  navigationLocation = { pathname: '/', search: '' };
 });
 
-describe('widget-a last-ping', () => {
-  it('writes an early ping with one replace and shows it from the URL (early ping)', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
-    const pushes = vi.spyOn(window.history, 'pushState');
-    const lengthBefore = window.history.length;
-    const { bridge, handlers } = fakeBridge();
-    const root = shadowContainer();
-    // `mount()` and the ping both run OUTSIDE `act()`, back to back, with no
-    // `await` between them: the handler is registered synchronously inside
-    // `mount()`, so `handleAction` runs its `router.navigate()` before React
-    // has committed the first render or run any effect at all — before
-    // `EngineProvider`'s own mount effect has attached this session's router
-    // to the shared history. That write still lands: the composed source's
-    // `write` calls `backProjectEntries` against the shared
-    // `NavigationHistory` directly, with no dependency on attach state. The
-    // empty `act()` below just flushes React's pending render/effects so the
-    // component reads back what the ping already wrote.
-    lifecycle.mount(root, bridge);
-    const pingSettled = handlers.get(PING)!.handleAction(PING);
-    await act(async () => {});
-    await pingSettled;
-    expect(window.location.search).toMatch(/screen\.widgets-host\.widgets=widget-alpha;route;last-ping=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
-    expect(pushes).not.toHaveBeenCalled();
-    expect(window.history.length).toBe(lengthBefore);
-    const shown = deepQuery(root, 'widget-a-last-ping')[0]?.getAttribute('data-last-ping');
-    expect(window.location.search).toContain(`last-ping=${shown}`);
-    lifecycle.unmount(root);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('widgets-fixture-a lifecycle', () => {
+  it('builds one app at module evaluation and reuses it across mount, unmount and remount', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge } = fakeBridge(ALPHA);
+    const first = document.createElement('div');
+    const second = document.createElement('div');
+
+    expect(createFrontXSpy).toHaveBeenCalledTimes(1);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
+
+    lifecycle.mount(first, bridge);
+    await lifecycle.unmount(first);
+    lifecycle.mount(second, bridge);
+    await lifecycle.unmount(second);
+
+    expect(createFrontXSpy).toHaveBeenCalledTimes(1);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('restores last-ping from the URL without a ping and without history writes', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha;route;last-ping=2026-09-23T10:15:30.000Z');
-    const writes = [vi.spyOn(window.history, 'pushState'), vi.spyOn(window.history, 'replaceState')];
-    const { bridge } = fakeBridge();
-    const root = shadowContainer();
-    await act(async () => { lifecycle.mount(root, bridge); });
-    expect(deepQuery(root, 'widget-a-last-ping')[0]?.getAttribute('data-last-ping')).toBe('2026-09-23T10:15:30.000Z');
-    for (const w of writes) expect(w).not.toHaveBeenCalled();
-    lifecycle.unmount(root);
-  });
+  it('registers a ping handler on mount, and rejects a ping once its own container has unmounted', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers } = fakeBridge(ALPHA);
+    const container = document.createElement('div');
 
-  it('keeps beta rendered when alpha unmounts (unmount alpha keeps beta)', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta');
-    const BETA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_beta.v1';
-    addresses[BETA] = { domainKey: 'screen.widgets-host.widgets', extension: 'widget-beta' };
-    const alpha = fakeBridge();
-    const beta = fakeBridge();
-    Object.assign(beta.bridge as object, { extensionId: BETA });
-    const alphaRoot = shadowContainer();
-    const betaRoot = shadowContainer();
-    await act(async () => { lifecycle.mount(alphaRoot, alpha.bridge); lifecycle.mount(betaRoot, beta.bridge); });
-    await act(async () => { lifecycle.unmount(alphaRoot); });
-    expect(deepQuery(alphaRoot, 'widget-a-instance')).toHaveLength(0);
-    expect(deepQuery(betaRoot, 'widget-a-instance')).toHaveLength(1);
-    lifecycle.unmount(betaRoot);
-    delete addresses[BETA];
-  });
+    lifecycle.mount(container, bridge);
 
-  it('keeps the newer session when an older container of the same extension unmounts late', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
-    const { bridge, handlers } = fakeBridge();
-    const oldRoot = shadowContainer();
-    const newRoot = shadowContainer();
-    await act(async () => { lifecycle.mount(oldRoot, bridge); lifecycle.mount(newRoot, bridge); });
-    await act(async () => { lifecycle.unmount(oldRoot); });
-    // The ping still finds the newer mount's session and writes through its router.
-    await act(async () => { await handlers.get(PING)!.handleAction(PING); });
-    expect(window.location.search).toMatch(/widget-alpha;route;last-ping=/);
-    expect(deepQuery(newRoot, 'widget-a-instance')).toHaveLength(1);
-    lifecycle.unmount(newRoot);
-  });
+    expect(createRootSpy).toHaveBeenCalledWith(container);
+    expect(rootRenderSpy).toHaveBeenCalledTimes(1);
+    expect(handlers.get(PING)).toBeDefined();
 
-  it('reaches its own not-found route for an unknown route inside its entry', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha;route=/nope');
-    const { bridge } = fakeBridge();
-    const root = shadowContainer();
-    await act(async () => { lifecycle.mount(root, bridge); });
-    expect(deepQuery(root, 'widget-a-not-found')).toHaveLength(1);
-    expect(deepQuery(root, 'widget-a-instance')).toHaveLength(1);
-    lifecycle.unmount(root);
-  });
+    await lifecycle.unmount(container);
+    expect(rootUnmountSpy).toHaveBeenCalledTimes(1);
 
-  it('rejects a ping once its own container has unmounted', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
-    const { bridge, handlers } = fakeBridge();
-    const root = shadowContainer();
-    await act(async () => { lifecycle.mount(root, bridge); });
-    lifecycle.unmount(root);
-    // The container is gone, but the handler reference the host captured while
-    // it was mounted is not: a ping the host dispatches just after tearing the
-    // widget down must still reject, not silently navigate a router nobody owns.
     await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('ping while not mounted');
   });
 
-  it('rejects a ping for an id with no live session, even while a different extension is mounted', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha&screen.widgets-host.widgets=widget-beta');
-    const GAMMA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_gamma.v1';
-    addresses[GAMMA] = { domainKey: 'screen.widgets-host.widgets', extension: 'widget-beta' };
-    const orphan = fakeBridge();
-    const other = fakeBridge();
-    Object.assign(other.bridge as object, { extensionId: GAMMA });
-    const orphanRoot = shadowContainer();
-    const otherRoot = shadowContainer();
-    await act(async () => { lifecycle.mount(orphanRoot, orphan.bridge); });
-    lifecycle.unmount(orphanRoot);
-    await act(async () => { lifecycle.mount(otherRoot, other.bridge); });
-    // A foreign session (GAMMA) is live at the time of this ping; the lookup
-    // must stay keyed to the orphan's own id and not fall through to it.
-    await expect(orphan.handlers.get(PING)!.handleAction(PING)).rejects.toThrow('ping while not mounted');
-    lifecycle.unmount(otherRoot);
-    delete addresses[GAMMA];
+  it('writes last-ping through the navigation facade, both right after mount and again later (before and after ExtensionRouter attaches)', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers } = fakeBridge(ALPHA);
+    const container = document.createElement('div');
+
+    // The ping handler is registered synchronously inside `mount()` (so a
+    // chained ping can reach it before `DefaultMountManager` lets `next`
+    // continue — see `lifecycle.tsx`'s own doc comment on `PingHandler`
+    // registration) — calling it here, with no `act()`/no awaited render
+    // effect in between, is this suite's render-free proxy for "before
+    // ExtensionRouter's own mount effect has attached anything at all": the
+    // facade writes through `navigation` regardless of whether
+    // anything has rendered yet.
+    lifecycle.mount(container, bridge);
+    await handlers.get(PING)!.handleAction(PING);
+
+    expect(navigationReplaceSpy).toHaveBeenCalledTimes(1);
+    const firstWrite = navigationReplaceSpy.mock.calls[0]![0] as string;
+    expect(firstWrite).toMatch(/^\/\?last-ping=\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}\.\d{3}Z$/);
+
+    // A second ping — the facade write path is identical regardless of how
+    // many renders separate it from `mount()` ("after ExtensionRouter attaches").
+    await handlers.get(PING)!.handleAction(PING);
+
+    expect(navigationReplaceSpy).toHaveBeenCalledTimes(2);
+    const secondWrite = navigationReplaceSpy.mock.calls[1]![0] as string;
+    expect(secondWrite).toMatch(/^\/\?last-ping=\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}\.\d{3}Z$/);
+
+    await lifecycle.unmount(container);
   });
 
-  it('logs and rethrows when the router navigate() call rejects', async () => {
-    resolveNavigationHistory().replace('/?screen=widgets-host&screen.widgets-host.widgets=widget-alpha');
-    const { bridge, handlers } = fakeBridge();
-    const root = shadowContainer();
-    await act(async () => { lifecycle.mount(root, bridge); });
+  it("preserves another already-present search param on its own entry when writing last-ping (D21 — reads AND writes only its own entry's parameters)", async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers } = fakeBridge(ALPHA);
+    const container = document.createElement('div');
+
+    // Some OTHER caller already set a param on this occupant's own entry
+    // (e.g. a deep link) before the ping handler ever reads it.
+    navigationLocation = { pathname: '/', search: '?other=kept' };
+
+    lifecycle.mount(container, bridge);
+    await handlers.get(PING)!.handleAction(PING);
+
+    expect(navigationReplaceSpy).toHaveBeenCalledTimes(1);
+    const write = navigationReplaceSpy.mock.calls[0]![0] as string;
+    expect(write).toContain('other=kept');
+    expect(write).toMatch(/last-ping=\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}\.\d{3}Z/);
+
+    await lifecycle.unmount(container);
+  });
+
+  it('keeps the newer session when an older container of the same extension unmounts late', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers: oldHandlers } = fakeBridge(ALPHA);
+    const oldContainer = document.createElement('div');
+    const newContainer = document.createElement('div');
+
+    lifecycle.mount(oldContainer, bridge);
+    // Same extension id remounted into a new container (a real remount: the
+    // bridge pair is minted once and reactivated, not recreated, per mount —
+    // `lifecycle.tsx`'s own doc comment on `mounts`) — reuse the SAME
+    // bridge object so both mounts register under the SAME `extensionId` key.
+    lifecycle.mount(newContainer, bridge);
+
+    // The late unmount of the OLDER container must not drop the session the
+    // newer mount owns: a ping dispatched through either container's own
+    // handler reference still finds a live session and resolves.
+    await lifecycle.unmount(oldContainer);
+    await expect(oldHandlers.get(PING)!.handleAction(PING)).resolves.toBeUndefined();
+    expect(navigationReplaceSpy).toHaveBeenCalledTimes(1);
+
+    await lifecycle.unmount(newContainer);
+  });
+
+  it('rejects a ping for an id with no live session, even while a different extension is mounted', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge: orphanBridge, handlers: orphanHandlers } = fakeBridge(ALPHA);
+    const { bridge: otherBridge } = fakeBridge(BETA);
+    const orphanContainer = document.createElement('div');
+    const otherContainer = document.createElement('div');
+
+    lifecycle.mount(orphanContainer, orphanBridge);
+    await lifecycle.unmount(orphanContainer);
+    lifecycle.mount(otherContainer, otherBridge);
+
+    // A foreign session (BETA) is live at the time of this ping; the lookup
+    // must stay keyed to the orphan's own id (ALPHA) and not fall through to it.
+    await expect(orphanHandlers.get(PING)!.handleAction(PING)).rejects.toThrow('ping while not mounted');
+
+    await lifecycle.unmount(otherContainer);
+  });
+
+  it('logs and rethrows when the navigation facade rejects the write', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers } = fakeBridge(ALPHA);
+    const container = document.createElement('div');
+    lifecycle.mount(container, bridge);
+
+    navigationReplaceThrows = new Error('navigation boom');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    navigateOverride = () => Promise.reject(new Error('navigate boom'));
-    await act(async () => {
-      await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('navigate boom');
-    });
+
+    await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('navigation boom');
+
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[0]).toContain('widget-a');
-    lifecycle.unmount(root);
+
+    await lifecycle.unmount(container);
+  });
+
+  it('gives each container its own Root', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge } = fakeBridge(ALPHA);
+    const first = document.createElement('div');
+    const second = document.createElement('div');
+
+    lifecycle.mount(first, bridge);
+    lifecycle.mount(second, bridge);
+
+    expect(createRootSpy).toHaveBeenCalledTimes(2);
+    expect(createRootSpy.mock.calls.map((call) => call[0])).toEqual([first, second]);
+    expect(themeAwareConstructSpy).toHaveBeenCalledTimes(2);
+
+    await lifecycle.unmount(first);
+    await lifecycle.unmount(second);
+  });
+
+  it('resolves the navigation facade at ping time: a ping before the host adopts the link is refused without a write, a ping after adoption writes', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge, handlers } = fakeBridge(ALPHA);
+    const container = document.createElement('div');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Module evaluation resolved nothing: a facade taken here would be the refusing one.
+    expect(navigationResolveSpy).not.toHaveBeenCalled();
+
+    linkAdopted = false;
+    lifecycle.mount(container, bridge);
+    await expect(handlers.get(PING)!.handleAction(PING)).rejects.toThrow('navigation refused');
+    expect(navigationReplaceSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+
+    linkAdopted = true;
+    await handlers.get(PING)!.handleAction(PING);
+    expect(navigationReplaceSpy).toHaveBeenCalledTimes(1);
+    expect(navigationResolveSpy).toHaveBeenCalledTimes(2);
+
+    await lifecycle.unmount(container);
+  });
+
+  it('disposeAll unmounts every container even when one container unmount throws synchronously', async () => {
+    const { default: lifecycle } = await import('./lifecycle');
+    const { bridge: alphaBridge } = fakeBridge(ALPHA);
+    const { bridge: betaBridge } = fakeBridge(BETA);
+    const first = document.createElement('div');
+    const second = document.createElement('div');
+    lifecycle.mount(first, alphaBridge);
+    lifecycle.mount(second, betaBridge);
+
+    rootUnmountSpy.mockImplementationOnce(() => {
+      throw new Error('unmount boom');
+    });
+
+    const settled = await lifecycle.disposeAll();
+
+    expect(settled).toEqual([
+      expect.objectContaining({ status: 'rejected' }),
+      expect.objectContaining({ status: 'fulfilled' }),
+    ]);
+    expect(rootUnmountSpy).toHaveBeenCalledTimes(2);
   });
 });

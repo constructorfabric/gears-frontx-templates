@@ -43,7 +43,7 @@ export function createMfeBridgeFixture(
   const unsubscriptions: RecordedUnsubscribe[] = [];
   const executeActionsChain =
     options.executeActionsChain ??
-    vi.fn<ChildMfeBridge['executeActionsChain']>().mockResolvedValue(undefined);
+    vi.fn<ChildMfeBridge['executeActionsChain']>().mockReturnValue(undefined);
   const registerActionHandler =
     options.registerActionHandler ??
     vi.fn<ChildMfeBridge['registerActionHandler']>();

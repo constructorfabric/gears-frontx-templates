@@ -11,18 +11,31 @@
 // @cpt-FEATURE:implement-endpoint-descriptors:p3
 
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
-import { describe, it, expect, expectTypeOf, afterEach, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, afterEach, vi, beforeEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
-import { eventBus, resetSharedFetchCache, resetSharedQueryClient } from '@gears-frontx/framework';
-import { FrontXProvider } from '@gears-frontx/react';
-import { useApiSuspenseQuery } from '../src/hooks/useApiSuspenseQuery';
 import {
+  loadFreshHelpers,
   ownedApps,
   buildAppWithQueryClient,
   buildTestQueryClient,
   makeSuspenseQueryWrapper,
   makeQueryDescriptor,
 } from './queryHooks.helpers';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
+let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let useApiSuspenseQuery: typeof import('../src/hooks/useApiSuspenseQuery')['useApiSuspenseQuery'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  await loadFreshHelpers();
+  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider } = await import('@gears-frontx/react'));
+  ({ useApiSuspenseQuery } = await import('../src/hooks/useApiSuspenseQuery'));
+});
 
 afterEach(() => {
   ownedApps.forEach((app) => {

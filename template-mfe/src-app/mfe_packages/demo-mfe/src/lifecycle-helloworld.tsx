@@ -3,7 +3,6 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
 import { KitThemedLifecycle } from './shared/KitThemedLifecycle';
 import { mfeApp } from './init';
 import { HelloWorldScreen } from './screens/helloworld/HelloWorldScreen';
-import { routedScreen } from './shared/routedScreen';
 
 class HelloWorldLifecycle extends KitThemedLifecycle {
   constructor() {
@@ -11,7 +10,7 @@ class HelloWorldLifecycle extends KitThemedLifecycle {
   }
 
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
-    return routedScreen(<HelloWorldScreen bridge={bridge} />, bridge);
+    return <HelloWorldScreen bridge={bridge} />;
   }
 }
 

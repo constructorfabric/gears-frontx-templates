@@ -1,6 +1,6 @@
 {
   "name": "@gears-frontx/frontx-template-shell",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Standard FrontX application template \u2014 target scaffold for template-side code relocation",
   "private": true,
   "type": "module",
@@ -71,9 +71,9 @@
   },
   "dependencies": {
     "@gears-frontx/api": "0.3.0-alpha.3",
-    "@gears-frontx/gts-plugin": "0.3.0-alpha.9",
-    "@gears-frontx/mfes": "0.3.0-alpha.9",
-    "@gears-frontx/routing": "0.3.0-alpha.0",
+    "@gears-frontx/gts-plugin": "0.3.0-alpha.10",
+    "@gears-frontx/mfes": "0.3.0-alpha.10",
+    "@gears-frontx/routing": "0.3.0-alpha.1",
     "@gears-frontx/ui-kit": "0.4.0-alpha.3",
     "@hookform/resolvers": "5.2.2",
     "@iconify/react": "6.0.2",

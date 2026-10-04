@@ -7,10 +7,23 @@
  * position is the whole mechanism the invariant rests on.
  */
 import type React from 'react';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
-import { createFrontX, type ChildMfeBridge } from '@gears-frontx/framework';
-import { ThemeAwareReactLifecycle } from '../ThemeAwareReactLifecycle';
+import type { ChildMfeBridge, FrontXApp } from '@gears-frontx/framework';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let app: FrontXApp;
+let ProbeLifecycle: ReturnType<typeof defineProbeLifecycle>;
+let ThemeAwareReactLifecycle: typeof import('../ThemeAwareReactLifecycle')['ThemeAwareReactLifecycle'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  const { createFrontX } = await import('@gears-frontx/framework');
+  ({ ThemeAwareReactLifecycle } = await import('../ThemeAwareReactLifecycle'));
+  // The runtime's one app, shared by every lifecycle a case constructs.
+  app = createFrontX().build();
+  ProbeLifecycle = defineProbeLifecycle();
+});
 
 /**
  * Stands in for the shell's Tailwind preflight. Neutral, test-owned CSS, but the
@@ -29,19 +42,21 @@ const MFE_LINK_HREF = 'https://remote.test/assets/blank-mfe.css';
 /** Stands in for a CSS module that reaches the shadow root after mounting has started. */
 const LATE_MODULE_CSS = '._lazyPanel { padding: 1rem; }';
 
-class ProbeLifecycle extends ThemeAwareReactLifecycle {
-  /** Widens the protected hook so a case can exercise adoption without a full mount. */
-  adoptInto(shadowRoot: ShadowRoot): void {
-    this.adoptHostStylesIntoShadowRoot(shadowRoot);
-  }
+function defineProbeLifecycle() {
+  return class extends ThemeAwareReactLifecycle {
+    /** Widens the protected hook so a case can exercise adoption without a full mount. */
+    adoptInto(shadowRoot: ShadowRoot): void {
+      this.adoptHostStylesIntoShadowRoot(shadowRoot);
+    }
 
-  protected renderContent(_bridge: ChildMfeBridge): React.ReactNode {
-    return null;
-  }
+    protected renderContent(_bridge: ChildMfeBridge): React.ReactNode {
+      return null;
+    }
+  };
 }
 
-function adoptIntoFreshLifecycle(shadowRoot: ShadowRoot): void {
-  new ProbeLifecycle(createFrontX().build()).adoptInto(shadowRoot);
+function adoptIntoLifecycle(shadowRoot: ShadowRoot): void {
+  new ProbeLifecycle(app).adoptInto(shadowRoot);
 }
 
 /** Nothing in these cases reaches the bridge - renderContent ignores it. */
@@ -128,7 +143,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
 
     expect(cascadeOrder(shadowRoot)).toEqual([HOST_PREFLIGHT_CSS, MFE_BUTTON_CSS]);
   });
@@ -137,7 +152,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     appendHostLink(HOST_LINK_HREF);
     const shadowRoot = shadowRootHoldingMfeLink(MFE_LINK_HREF);
 
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
 
     expect(cascadeOrder(shadowRoot)).toEqual([HOST_LINK_HREF, MFE_LINK_HREF]);
   });
@@ -150,7 +165,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
 
     expect(cascadeOrder(shadowRoot)).toEqual([HOST_LINK_HREF, HOST_PREFLIGHT_CSS, MFE_BUTTON_CSS]);
   });
@@ -162,7 +177,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
     const lateStyle = document.createElement('style');
     lateStyle.textContent = ':host { color: red; }';
     shadowRoot.appendChild(lateStyle);
@@ -188,7 +203,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     appendHostLink(HOST_LINK_HREF);
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
-    const lifecycle = new ProbeLifecycle(createFrontX().build());
+    const lifecycle = new ProbeLifecycle(app);
 
     await act(async () => {
       lifecycle.mount(shadowRoot, noopBridge);
@@ -229,7 +244,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootWithIsolationStyle();
     appendMfeRuntimeStyle(shadowRoot, MFE_BUTTON_CSS);
-    const lifecycle = new ProbeLifecycle(createFrontX().build());
+    const lifecycle = new ProbeLifecycle(app);
 
     await act(async () => {
       lifecycle.mount(shadowRoot, noopBridge);
@@ -262,7 +277,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // first addition arriving before the first removal is the claim.
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootWithIsolationStyle();
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
 
     const mutationKinds: string[] = [];
     const observer = new MutationObserver((records) => {
@@ -273,7 +288,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     });
     observer.observe(shadowRoot, { childList: true });
 
-    adoptIntoFreshLifecycle(shadowRoot);
+    adoptIntoLifecycle(shadowRoot);
     await act(async () => {
       await Promise.resolve();
     });
@@ -292,7 +307,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // exists to make the MFE win.
     appendHostStyle(HOST_PREFLIGHT_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
-    const lifecycle = new ProbeLifecycle(createFrontX().build());
+    const lifecycle = new ProbeLifecycle(app);
 
     await act(async () => {
       lifecycle.mount(shadowRoot, noopBridge);

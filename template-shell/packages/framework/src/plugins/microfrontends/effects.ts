@@ -31,13 +31,14 @@ import type { MfeRegistry } from '@gears-frontx/mfes';
  * Initialize MFE effects.
  * Call this once during app bootstrap to start listening for MFE events.
  *
- * @param mfeRegistry - MFE-enabled registry from microfrontends plugin
+ * @param getRegistry - The microfrontends plugin's registry initializer; called when an
+ *   event is handled so that subscribing never builds the registry itself
  * @returns Cleanup function to unsubscribe all effects
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-registration:p1:inst-1
 // @cpt-begin:cpt-frontx-state-framework-composition-mfe-registration:p1:inst-1
 // @cpt-begin:cpt-frontx-flow-framework-composition-teardown:p2:inst-2
-export function initMfeEffects(mfeRegistry: MfeRegistry): () => void {
+export function initMfeEffects(getRegistry: () => MfeRegistry): () => void {
   const store = getStore();
   const unsubscribers: Array<{ unsubscribe: () => void }> = [];
 
@@ -53,7 +54,7 @@ export function initMfeEffects(mfeRegistry: MfeRegistry): () => void {
       store.dispatch(setExtensionRegistering({ extensionId: extension.id }));
 
       // Call runtime to register extension
-      await mfeRegistry.registerExtension(extension);
+      await getRegistry().registerExtension(extension);
 
       // Update state: registered
       store.dispatch(setExtensionRegistered({ extensionId: extension.id }));
@@ -74,7 +75,7 @@ export function initMfeEffects(mfeRegistry: MfeRegistry): () => void {
 
     try {
       // Call runtime to unregister extension
-      await mfeRegistry.unregisterExtension(extensionId);
+      await getRegistry().unregisterExtension(extensionId);
 
       // Update state: unregistered
       store.dispatch(setExtensionUnregistered({ extensionId }));

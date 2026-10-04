@@ -23,7 +23,8 @@ const screenExtension = (
   id,
   domain: 'screen-domain',
   entry: `${id}.entry`,
-  presentation: { label, route, order },
+  route,
+  presentation: { label, order },
 });
 
 /**
@@ -55,7 +56,7 @@ describe('Menu', () => {
     app = {
       mfeRegistry: {
         getExtensionsForDomain: vi.fn().mockReturnValue([tasks]),
-        executeActionsChain: vi.fn().mockResolvedValue(undefined),
+        executeActionsChain: vi.fn().mockReturnValue(undefined),
       },
     };
     mockUseFrontX.mockReturnValue(app);

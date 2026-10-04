@@ -9,20 +9,19 @@
 import React from 'react';
 import { QueryClient } from '@tanstack/react-query';
 import { vi } from 'vitest';
-import {
-  createFrontX,
-  createFrontXApp,
-  FrontXProvider,
-  queryCache,
-  queryCacheShared,
-  RestEndpointProtocol,
-  RestProtocol,
-  type ChildMfeBridge,
-  type EndpointDescriptor,
-  type MfeContextValue,
-  type MutationDescriptor,
-  type StreamDescriptor,
-} from '@gears-frontx/react';
+import type { ChildMfeBridge, EndpointDescriptor, MfeContextValue, MutationDescriptor, StreamDescriptor } from '@gears-frontx/react';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let createFrontX: typeof import('@gears-frontx/react')['createFrontX'];
+let presets: typeof import('@gears-frontx/react')['presets'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let queryCacheShared: typeof import('@gears-frontx/react')['queryCacheShared'];
+let RestEndpointProtocol: typeof import('@gears-frontx/react')['RestEndpointProtocol'];
+let RestProtocol: typeof import('@gears-frontx/react')['RestProtocol'];
+
+export async function loadFreshHelpers(): Promise<void> {
+  ({ createFrontX, presets, FrontXProvider, queryCacheShared, RestEndpointProtocol, RestProtocol } = await import('@gears-frontx/react'));
+}
 
 const APP_QUERY_CLIENT_SYMBOL = Symbol.for('frontx:query-cache:app-client');
 
@@ -87,24 +86,64 @@ export function getAttachedQueryClient(app: import('@gears-frontx/framework').Fr
 }
 
 export function buildAppWithQueryClient(client: QueryClient): import('@gears-frontx/framework').FrontXApp {
-  const app = attachQueryClient(createFrontXApp(), client);
+  const app = attachQueryClient(createFrontX().useAll(presets.full()).build(), client);
+  ownedApps.push(app);
+  return app;
+}
+
+/**
+ * An app that belongs to a different runtime than the test's own, built in its
+ * own fresh module copy (a runtime builds exactly one app). The test's bindings
+ * stay on the copy it loaded.
+ */
+export async function buildAppInOtherRuntime(
+  client?: QueryClient
+): Promise<import('@gears-frontx/framework').FrontXApp> {
+  const otherRuntime = await loadOtherRuntime();
+  // With a client the app mirrors `buildAppWithQueryClient`; without one it has no query cache at all.
+  const builder = otherRuntime.createFrontX();
+  const app = (client ? builder.useAll(otherRuntime.presets.full()) : builder).build();
+  if (client) attachQueryClient(app, client);
   ownedApps.push(app);
   return app;
 }
 
 export function buildPresetApp(): import('@gears-frontx/framework').FrontXApp {
-  const app = createFrontXApp();
+  const app = createFrontX().useAll(presets.full()).build();
   ownedApps.push(app);
   return app;
 }
 
-/** Host + child pattern keeps `retainSharedFetchCache()` active (real queryCache wiring). */
-export function buildHostAppWithQueryCache(
+/**
+ * Load another runtime's copy of the framework and react packages while
+ * sharing the test runtime's `@gears-frontx/state`, the way production shares
+ * it: the event bus is what carries shared-QueryClient availability between a
+ * host and its MFE runtimes.
+ */
+export async function loadOtherRuntime(): Promise<typeof import('@gears-frontx/react')> {
+  const sharedState = await import('@gears-frontx/state');
+  vi.resetModules();
+  vi.doMock('@gears-frontx/state', () => sharedState);
+  try {
+    return await import('@gears-frontx/react');
+  } finally {
+    vi.doUnmock('@gears-frontx/state');
+  }
+}
+
+/**
+ * Host + child pattern keeps `retainSharedFetchCache()` active (real queryCache
+ * wiring). The host is a different runtime from the test's own, so it is built
+ * in its own fresh module copy; the test's bindings stay on the copy it loaded.
+ */
+export async function buildHostAppWithQueryCache(
   staleTime: number
-): import('@gears-frontx/framework').FrontXApp {
-  const app = createFrontX()
+): Promise<import('@gears-frontx/framework').FrontXApp> {
+  const hostRuntime = await loadOtherRuntime();
+  const app = hostRuntime
+    .createFrontX()
     .use(
-      queryCache({
+      hostRuntime.queryCache({
         staleTime,
         gcTime: 300_000,
         refetchOnWindowFocus: false,
@@ -214,7 +253,7 @@ export function makeMockBridge(): ChildMfeBridge {
   return {
     extDomainId: 'gts.frontx.mfes.ext.domain.v1~test.isolation.v1',
     extensionId: 'isolation-test',
-    executeActionsChain: vi.fn().mockResolvedValue(undefined),
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => undefined),
     getProperty: vi.fn().mockReturnValue(undefined),
     registerActionHandler: vi.fn(),

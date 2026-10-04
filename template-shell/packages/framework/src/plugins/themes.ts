@@ -10,7 +10,6 @@
 // @cpt-dod:cpt-frontx-dod-framework-composition-shared-property:p1
 
 import { eventBus } from '@gears-frontx/state';
-import { FRONTX_SHARED_PROPERTY_THEME } from '../mfe/constants';
 import type { FrontXPlugin, ChangeThemePayload, ThemePropagationFailedPayload } from '../types';
 import { createThemeRegistry } from '../registries/themeRegistry';
 
@@ -65,27 +64,16 @@ export function themes(): FrontXPlugin {
 
     // @cpt-begin:cpt-frontx-flow-framework-composition-theme-propagation:p1:inst-2
     // @cpt-begin:cpt-frontx-dod-framework-composition-propagation:p1:inst-1
-    onInit(app) {
+    onInit() {
       // Subscribe to theme changes
       themeChangedSubscription = eventBus.on('theme/changed', (payload: ChangeThemePayload) => {
         themeRegistry.apply(payload.themeId);
-        try {
-          const themeConfig = themeRegistry.get(payload.themeId);
-          if (themeConfig) {
-            app.mfeRegistry?.setTheme(themeConfig.variables);
-          }
-          app.mfeRegistry?.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, payload.themeId);
-        } catch (error) {
-          console.error('[Gears FrontX] Failed to propagate theme to MFE domains', error);
-          eventBus.emit('theme/propagation/failed', { themeId: payload.themeId, error });
-        }
       });
 
       // Bootstrap: Apply the first registered theme (or default)
       const themes = themeRegistry.getAll();
       if (themes.length > 0) {
         themeRegistry.apply(themes[0].id);
-        app.mfeRegistry?.setTheme(themes[0].variables);
       }
     },
     onDestroy() {

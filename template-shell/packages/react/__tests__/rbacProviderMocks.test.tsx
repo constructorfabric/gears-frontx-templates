@@ -11,8 +11,7 @@
 
 import React from 'react';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { auth, createFrontX } from '@gears-frontx/framework';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import type {
   AccessDecision,
   AccessQuery,
@@ -24,9 +23,21 @@ import type {
   AuthTransition,
   FrontXApp,
 } from '@gears-frontx/framework';
-import { CanAccess } from '../src/components/CanAccess';
-import { FrontXProvider } from '../src/FrontXProvider';
-import { useCanAccess } from '../src/hooks/useCanAccess';
+
+// Each test loads a fresh module copy: a runtime builds one app.
+let auth: typeof import('@gears-frontx/framework')['auth'];
+let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
+let CanAccess: typeof import('../src/components/CanAccess')['CanAccess'];
+let FrontXProvider: typeof import('../src/FrontXProvider')['FrontXProvider'];
+let useCanAccess: typeof import('../src/hooks/useCanAccess')['useCanAccess'];
+
+beforeEach(async () => {
+  vi.resetModules();
+  ({ auth, createFrontX } = await import('@gears-frontx/framework'));
+  ({ CanAccess } = await import('../src/components/CanAccess'));
+  ({ FrontXProvider } = await import('../src/FrontXProvider'));
+  ({ useCanAccess } = await import('../src/hooks/useCanAccess'));
+});
 
 type DeferredGate = {
   promise: Promise<void>;

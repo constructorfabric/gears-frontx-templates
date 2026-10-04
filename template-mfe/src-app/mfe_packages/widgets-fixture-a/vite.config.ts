@@ -9,6 +9,13 @@ const sharedDeps = [
   'react',
   'react-dom',
   '@gears-frontx/react',
+  // Shared alongside @gears-frontx/react rather than left to inline: this
+  // MFE imports routing-tanstack hooks (useSearch) directly, and
+  // ExtensionRouter (@gears-frontx/react) builds the router those hooks
+  // read from. Without a shared entry, esbuild/rollup each mint their own
+  // copy of @tanstack/react-router, so the hook's context lookup misses
+  // the router instance ExtensionRouter actually built.
+  '@gears-frontx/routing-tanstack',
   '@gears-frontx/framework',
   '@gears-frontx/state',
   '@gears-frontx/mfes',

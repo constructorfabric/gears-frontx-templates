@@ -102,6 +102,8 @@ function setHeaderVisible(_visible: boolean): void {
  */
 // @cpt-begin:cpt-frontx-dod-framework-composition-layout:p1:inst-1
 export function layout(): FrontXPlugin {
+  // eventBus subscriptions made in onInit, released in onDestroy.
+  let subscriptions: Array<{ unsubscribe: () => void }> = [];
 
   return {
     name: 'layout',
@@ -135,36 +137,41 @@ export function layout(): FrontXPlugin {
       const dispatch = app.store.dispatch as Dispatch<UnknownAction>;
 
       // Popup effects
-      eventBus.on('layout/popup/requested', (payload: ShowPopupPayload) => {
+      subscriptions.push(eventBus.on('layout/popup/requested', (payload: ShowPopupPayload) => {
         dispatch(popupActions.openPopup({
           id: payload.id,
           title: payload.title ?? '',
           component: '', // Payload doesn't include component - this needs review
         }));
-      });
+      }));
 
-      eventBus.on('layout/popup/hidden', () => {
+      subscriptions.push(eventBus.on('layout/popup/hidden', () => {
         dispatch(popupActions.closeAllPopups());
-      });
+      }));
 
       // Overlay effects
-      eventBus.on('layout/overlay/requested', (_payload: { id: string }) => {
+      subscriptions.push(eventBus.on('layout/overlay/requested', (_payload: { id: string }) => {
         dispatch(overlayActions.showOverlay());
-      });
+      }));
 
-      eventBus.on('layout/overlay/hidden', () => {
+      subscriptions.push(eventBus.on('layout/overlay/hidden', () => {
         dispatch(overlayActions.hideOverlay());
-      });
+      }));
 
       // Menu effects
-      eventBus.on('layout/menu/collapsed', (payload: { collapsed: boolean }) => {
+      subscriptions.push(eventBus.on('layout/menu/collapsed', (payload: { collapsed: boolean }) => {
         dispatch(menuActions.setMenuCollapsed(payload.collapsed));
-      });
+      }));
 
       // Sidebar effects
-      eventBus.on('layout/sidebar/collapsed', (payload: { collapsed: boolean }) => {
+      subscriptions.push(eventBus.on('layout/sidebar/collapsed', (payload: { collapsed: boolean }) => {
         dispatch(sidebarActions.setSidebarCollapsed(payload.collapsed));
-      });
+      }));
+    },
+
+    onDestroy() {
+      subscriptions.forEach((subscription) => subscription.unsubscribe());
+      subscriptions = [];
     },
   };
 }
