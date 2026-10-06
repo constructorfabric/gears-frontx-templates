@@ -1,10 +1,9 @@
 # architecture
 
-This directory holds the SDLC artifacts of the templates this repository publishes: what a template or a family of templates is meant to do, and how its templates fit together. One directory per family, or per template when a template stands alone - a feature such as a calendar is one template, its own npm package and its app included - plus `explorations/` for the decision-support documents those artifacts are written from.
+This directory holds the SDLC artifacts of the templates this repository publishes: what a template or a family of templates is meant to do, and how its templates fit together. One directory per family, or per template when a template stands alone - a feature such as a calendar is one template, its own npm package and its app included.
 
 ```
 workspace-templates/    the workspace template family: one shell, four screen features
-explorations/           decision-support documents, not SDLC artifacts
 ```
 
 The placement rules these documents follow: the ecosystem repository holds framework-level libraries only, and a concrete feature is template territory, published from here. A template may use the ecosystem's libraries, `@gears-frontx/ui-kit` included, and a generic component it needs that the kit lacks is added to the kit in the ecosystem repository. A template may carry its own npm package, used by that template and by no other template. Templates spread by copy: a project gets a copy of a template's content and may edit it, while packages are installed as published and not edited, so a vendor that needs a different kit or different logic forks the template. Alternative templates of the same kind, sibling templates, may be published side by side for a project to choose from. Each template carries its manifest, `frontx-template.json`, which declares the files it owns and its metadata, and it may ship its own AI skills and guidelines for working with and evolving it. A feature template stays separate from the microfrontend wrapper: `template-mfe` wraps it into a microfrontend, or a project renders it as a plain React component.
