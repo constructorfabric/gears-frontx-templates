@@ -109,9 +109,10 @@ jobs:
   # Architecture documents of the catalogue (architecture/) and of each
   # template (<template>/architecture): ids, PRD to DESIGN coverage and
   # references, validated the way gears-frontx validates its own. The
-  # registry (.cf-studio/config/artifacts.toml) registers documents only, no
-  # code paths, and shares no ids with gears-frontx - see the comment at its
-  # top for why.
+  # registry (.cf-studio/config/artifacts.toml) lets each template choose its
+  # own slug and register its own code paths, registers no code for the
+  # catalogue, and shares no ids with gears-frontx - see the comment at its
+  # top for the rules.
   studio-validate:
     name: Studio Validate Artifacts
     runs-on: ubuntu-latest
