@@ -1,0 +1,63 @@
+/**
+ * Inbox domain - API service.
+ *
+ * One service backs every screen that reads conversations or people: chat,
+ * contacts, and the dashboard's activity rows. They share one dataset - a
+ * contact is a list row, a thread header, a details-panel lead and a table
+ * row at the same time - so splitting the surface per screen would mean
+ * copies of that dataset kept in step by hand. If the screens ever need
+ * separate surfaces, keep this one data module and put thin services over it.
+ */
+
+import { BaseApiService, RestEndpointProtocol, RestProtocol } from '@gears-frontx/react';
+import { inboxMockMap } from './mocks';
+import { RestMockPlugin } from './RestMockPlugin';
+import type {
+  CreateConversationRequest,
+  CreateConversationResponse,
+  GetAgentResponse,
+  GetChannelsResponse,
+  GetContactsResponse,
+  GetConversationsResponse,
+  GetMessagesResponse,
+  PostMessageRequest,
+  PostMessageResponse,
+} from './types';
+
+export class InboxApiService extends BaseApiService {
+  constructor() {
+    const restProtocol = new RestProtocol({ timeout: 30000 });
+    const restEndpoints = new RestEndpointProtocol(restProtocol);
+
+    super({ baseURL: '/api/inbox' }, restProtocol, restEndpoints);
+
+    // Declares the mock plugin without switching it on: whether mocks answer is
+    // decided outside every service, by the framework's `mock()` plugin each
+    // package's `init.ts` adds (see `registry.ts`).
+    this.registerPlugin(restProtocol, new RestMockPlugin({ mockMap: inboxMockMap, delay: 100 }));
+  }
+
+  readonly getAgent = this.protocol(RestEndpointProtocol).query<GetAgentResponse>('/me');
+
+  readonly getChannels =
+    this.protocol(RestEndpointProtocol).query<GetChannelsResponse>('/channels');
+
+  readonly getConversations =
+    this.protocol(RestEndpointProtocol).query<GetConversationsResponse>('/conversations');
+
+  readonly getMessages =
+    this.protocol(RestEndpointProtocol).query<GetMessagesResponse>('/messages');
+
+  readonly getContacts =
+    this.protocol(RestEndpointProtocol).query<GetContactsResponse>('/contacts');
+
+  readonly postMessage = this.protocol(RestEndpointProtocol).mutation<
+    PostMessageResponse,
+    PostMessageRequest
+  >('POST', '/messages');
+
+  readonly createConversation = this.protocol(RestEndpointProtocol).mutation<
+    CreateConversationResponse,
+    CreateConversationRequest
+  >('POST', '/conversations');
+}

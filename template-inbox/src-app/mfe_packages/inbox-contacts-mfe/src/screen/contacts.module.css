@@ -1,0 +1,154 @@
+/*
+ * The contacts screen's own layout: the directory table cells and the
+ * contact page's columns, checklist and activity timeline.
+ */
+
+/* --- The contacts screen --- */
+.contactsMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.contactsBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.contactsHeaderText {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The shared pane header is one fixed-height line; the directory's also
+ * carries an 18rem search field, which a narrow screen cannot fit beside
+ * the title. So this header wraps, grows with its lines, and the field
+ * drops under the title, at most as wide as the header. The ancestor class
+ * makes the rule outrank the shared one whichever stylesheet loads first.
+ */
+.contactsMain .contactsHeader {
+  flex-wrap: wrap;
+  height: auto;
+  /* The shared header's 3.5rem, less the padding added here. */
+  min-height: calc(3.5rem - 2 * var(--space-2));
+  padding-block: var(--space-2);
+}
+
+/*
+ * The slot the search field fills. The kit's Input with an icon wraps itself
+ * in a full-width span and takes a class only on the inner input, so a width
+ * set there cannot shrink the wrapper; the slot sizes both instead.
+ */
+.searchField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.nameCellLines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nameCellEmail {
+  font-size: var(--text-meta-size);
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+/* --- The contact detail view --- */
+.detailColumns {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr) 16rem;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.detailColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-meta-size);
+}
+
+.checkOn {
+  color: var(--success);
+}
+
+.checkOff {
+  color: var(--muted-foreground);
+}
+
+.timelineItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-meta-size);
+}
+
+.timelineIcon {
+  flex: none;
+  /* 2px: optical alignment with the line's first baseline; the kit's space
+   * scale starts at --space-1 (4px). */
+  margin-top: 0.125rem;
+  color: var(--muted-foreground);
+}
+
+.timelineLines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.timelineMeta {
+  color: var(--muted-foreground);
+}
+
+.ticketRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Priority and status keep their intrinsic width, so the subject beside them
+   * is what gives way when the card is narrow: the label is two short words,
+   * the subject is arbitrarily long. */
+  flex: none;
+}
+
+/* A contact page narrower than 60rem (`SCREEN_BREAKPOINTS_REM.contactColumns`) stacks its columns. */
+@container inbox-screen (width < 60rem) {
+  .detailColumns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The directory stays mounted behind a contact page; its own `display`
+ * would otherwise beat the browser's `[hidden]` rule. */
+.contactsMain[hidden] {
+  display: none;
+}

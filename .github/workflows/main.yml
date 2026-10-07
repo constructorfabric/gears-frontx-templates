@@ -106,6 +106,49 @@ jobs:
     - name: Check guideline index is generated from front matter
       run: npm run policy:guideline-index
 
+  # Architecture documents of the catalogue (architecture/) and of each
+  # template (<template>/architecture): ids, PRD to DESIGN coverage and
+  # references, validated the way gears-frontx validates its own. The
+  # registry (.cf-studio/config/artifacts.toml) registers documents only, no
+  # code paths, and shares no ids with gears-frontx - see the comment at its
+  # top for why.
+  studio-validate:
+    name: Studio Validate Artifacts
+    runs-on: ubuntu-latest
+    # The Constructor Studio release, pinned once here for both the CLI install
+    # and the runtime it materializes.
+    env:
+      CFS_VERSION: v1.6.2
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Install Constructor Studio CLI
+      run: pipx install "git+https://github.com/constructorfabric/studio.git@${{ env.CFS_VERSION }}"
+
+    # .cf-studio/.core is gitignored (Constructor-Studio-owned, regenerated
+    # on demand) - materialize it before invoking studio.py directly. cfs
+    # resolves the pinned tag and downloads it through api.github.com; it
+    # sends GITHUB_TOKEN when set, so the call is not held to the anonymous
+    # per-IP rate limit that shared runners exhaust.
+    - name: Bootstrap Constructor Studio runtime
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: cfs update -y --no-interactive --with-kits yes --version ${{ env.CFS_VERSION }}
+
+    # The bootstrap above also validates the installed sdlc kit (its output
+    # prints `Validate kits: PASS`), and this repository registers no kit of
+    # its own, so no separate kit job runs.
+    - name: Validate artifacts and traceability
+      run: python3 .cf-studio/.core/skills/studio/scripts/studio.py validate
+
   # template-shell and template-mfe carry their own arch:deps / lint /
   # test:unit scripts, and nothing else in this workflow enters them - so
   # without this job their checks are enforced only when someone runs them by
@@ -115,9 +158,9 @@ jobs:
   #   - self-contained (template-shell): root package.json and lockfile of
   #     its own, validated standalone by the glob loop below, which
   #     deliberately avoids hardcoding template names;
-  #   - add-only overlay (template-mfe): no root package.json, no tooling of
-  #     its own. It cannot be validated in place - its packages' file: links
-  #     resolve to template-mfe/../template-shell, and its vite/vitest
+  #   - add-only overlay (template-mfe, template-inbox): no root package.json
+  #     claimed, no tooling of its own. It cannot be validated in place - its
+  #     packages' file: links resolve to ../template-shell, and its vite/vitest
   #     configs import out of the shell. The only way to run its checks is to
   #     compose the pair the way `frontx add` does and validate the result,
   #     which the second step does.
@@ -157,7 +200,7 @@ jobs:
             if (!fs.existsSync(dir + "/frontx-template.json")) continue;
             const b = JSON.parse(fs.readFileSync(dir + "/frontx-template.json", "utf8")).ownershipBoundaries || {};
             if ((b.sharedFiles || []).length) {
-              throw new Error(dir + " declares ownershipBoundaries.sharedFiles, which this job does not classify or compose — extend \"Classify templates\" and \"Validate shell + overlay composition\" to handle it before adding one");
+              throw new Error(dir + " declares ownershipBoundaries.sharedFiles, which this job does not classify or compose - extend \"Classify templates\" and \"Validate shell + overlay composition\" to handle it before adding one");
             }
             const claims = b.exclusiveSubtrees || [];
             (claims.includes("package.json") ? selfContained : overlays).push(dir);
@@ -204,16 +247,21 @@ jobs:
       run: |
         set -euo pipefail
 
-        # shellcheck disable=SC2086
-        set -- $SELF_CONTAINED_TEMPLATES
-        if [ "$#" -ne 1 ]; then
-          echo "::error::composition needs exactly one self-contained template, got: $*"
-          exit 1
-        fi
-        shell="$1"
+        # The overlays are written for template-shell (it is the host their
+        # file: links and config imports point at), so they are composed onto
+        # it by name; any other self-contained template is validated
+        # standalone by the step above and takes no part here.
+        shell="template-shell"
+        case " $SELF_CONTAINED_TEMPLATES " in
+          *" $shell "*) ;;
+          *)
+            echo "::error::composition host $shell is not among the self-contained templates: $SELF_CONTAINED_TEMPLATES"
+            exit 1
+            ;;
+        esac
 
         if [ -z "${OVERLAY_TEMPLATES// /}" ]; then
-          echo "::error::no overlay templates found — this step would be a no-op"
+          echo "::error::no overlay templates found - this step would be a no-op"
           exit 1
         fi
 
@@ -289,11 +337,11 @@ jobs:
         npm install
 
         # FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 on both commands below, because
-        # every MFE package this job composes is one the template ships as an
-        # example and declares "templateExample": true. Without the opt-in the
-        # package scanners skip all of them and this job — the only CI path
-        # that compiles the overlaid MFEs at all — passes having compiled
-        # nothing.
+        # template-mfe's packages are examples it ships and declare
+        # "templateExample": true. Without the opt-in the package scanners
+        # skip them and this job - the only CI path that compiles the overlaid
+        # MFEs at all - passes having compiled none of them. The other
+        # overlays' packages declare no such flag and are compiled either way.
         FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run build
         FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run type-check
         npm run arch:deps

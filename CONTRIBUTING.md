@@ -2,13 +2,14 @@
 
 ## Layout
 
-Every top-level directory carrying `frontx-template.json` is a template (ADR-0018: manifest presence, never a `template-*` name guess - `scripts/template-discovery.mjs` is the one place that rule lives). Today there are three:
+Every top-level directory carrying `frontx-template.json` is a template (ADR-0018: manifest presence, never a `template-*` name guess - `scripts/template-discovery.mjs` is the one place that rule lives). Today there are four:
 
 - **`template-shell/`** - self-contained: a full FrontX host app with its own `package.json`, lockfile, and toolchain (build, lint, type-check, test:unit, arch:deps).
 - **`template-mfe/`** - add-only overlay: example MFE packages meant to be composed onto a shell by `frontx add`. It has no runtime of its own to validate standalone; `template-mfe/package.json` is a monorepo-only dev harness (see its leading `//` comment) that `frontx add` never copies into a seeded project.
 - **`template-design-guardrails/`** - manifest-only overlay: a design-review AI bundle and a verification package, no root `package.json` at all.
+- **`template-inbox/`** - add-only overlay: four microfrontend screens (contacts, dashboard, chat, mail) on `@gears-frontx/ui-kit` and the folder they share, composed onto a shell by `frontx add`. Like `template-mfe`, its root `package.json` is a monorepo-only dev harness that `frontx add` never copies.
 
-`scripts/` holds the guards that keep all three consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
+`scripts/` holds the guards that keep all four consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
 
 ## Versioning and publishing
 
@@ -23,7 +24,7 @@ no `develop` here. `.github/workflows/publish-packages.yml` triggers on pushes t
 | `0.y.z` | `latest` | `main` |
 | any version | `vN` | `release/vN` |
 
-A PR that changes non-documentation source under a governed root's `src/`, or the dependency fields of its `package.json`, must bump that root's own `version` in the same PR and update every exact pin on it (`policy:template-pin-drift`). A governed root is every `template-shell/packages/*` workspace member, and any other non-`private` `@gears-frontx`-scoped template or template workspace member added later - discovered structurally by `scripts/version-bump-on-change-check.mjs`, never a hardcoded list. `template-shell` itself is `"private": true` (a full app template meant to be seeded, not installed as a dependency) and is excluded from governance by that same non-`private` filter: it is never published to npm. `template-mfe`'s fixture MFE packages are `private` too, for the same reason: they pin published versions rather than being one.
+A PR that changes non-documentation source under a governed root's `src/`, or the dependency fields of its `package.json`, must bump that root's own `version` in the same PR and update every exact pin on it (`policy:template-pin-drift`). A governed root is every `template-shell/packages/*` workspace member, and any other non-`private` `@gears-frontx`-scoped template or template workspace member added later - discovered structurally by `scripts/version-bump-on-change-check.mjs`, never a hardcoded list. `template-shell` itself is `"private": true` (a full app template meant to be seeded, not installed as a dependency) and is excluded from governance by that same non-`private` filter: it is never published to npm. `template-mfe`'s fixture MFE packages and `template-inbox`'s screen packages are `private` too, for the same reason: they pin published versions rather than being one.
 
 `policy:version-bump-on-change` (pull requests only) compares the version at the PR's merge base against its head, so a bump later reverted within the same PR does not count.
 
@@ -86,7 +87,26 @@ Each template is also independently validatable:
 cd template-shell && npm ci && npm run build && npm run type-check && npm run lint && npm run test:unit
 ```
 
-`template-mfe` cannot be validated in place - its packages' `file:` links resolve into `template-mfe/../template-shell`, and its own root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes it onto `template-shell` (the way `frontx add` does) and validates the result; there is no equivalent single local command today.
+`template-mfe` and `template-inbox` cannot be validated in place - their root `package.json` is a monorepo-only harness, never something a seeded project sees, whose `overrides` redirect the shell packages the MFE packages pin to `file:` links into `../template-shell`. `main.yml`'s `template-validate` job composes every overlay onto `template-shell` (the way `frontx add` does) and validates the result; `template-inbox/README.md` gives the same composition as local commands. The harness runs the inbox packages' unit tests and type-check in place:
+
+```bash
+cd template-shell && npm ci && npm run build
+cd ../template-inbox && npm ci && npm test && npm run type-check
+```
+
+### Architecture documents
+
+`main.yml`'s `studio-validate` job runs Constructor Studio over the documents registered in `.cf-studio/config/artifacts.toml`: the catalogue's own under `architecture/` and each template's under `<template>/architecture`, documents only, no code paths. It installs the CLI at the pinned release, bootstraps the runtime and the sdlc kit (pinned to `v1.2.1` in `core.toml`) with `cfs update`, which also validates the installed kit, then runs `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate`. The bootstrap step carries `GITHUB_TOKEN` because cfs resolves and downloads the pinned core and kit through the GitHub API. The same check locally:
+
+```bash
+pipx install "git+https://github.com/constructorfabric/studio.git@v1.6.2"
+cfs update -y --no-interactive --with-kits yes --version v1.6.2
+cfs validate
+```
+
+Pass `--version v1.6.2` to every `cfs update`: without it the CLI resolves its latest release, which may differ from the version CI pins. Export `GITHUB_TOKEN` locally if the anonymous GitHub API limit is hit. On a fresh clone the first `cfs update` regenerates agent files before the kit exists and temporarily rewrites `.gitignore` and `core.toml`; a second run restores them, so run it twice before committing.
+
+The catalogue root system, prefix `cpt-templates-*`, describes this repository as a collection of templates. Each template, a top-level directory with a `frontx-template.json` manifest, registers its own system over `<template>/architecture`, and its ids carry the template's own prefix `cpt-template-<name>-`. Each template's `[[systems]]` block is added to `.cf-studio/config/artifacts.toml` by hand; a template without one is skipped silently. This repository shares no ids with gears-frontx: gears-frontx ids are internal to it and may change, so a gears-frontx decision is cited as a link to its file and never as a backticked `cpt-frontx-*` id. cfs flags neither another system's prefix in a template's documents nor a backticked `cpt-frontx-*` reference; review checks both. Every registered kind is `required = false` while its directory holds no documents; the PR that adds a template's PRD and DESIGN sets those two kinds of its system to `required = true`.
 
 ## Known follow-ups
 

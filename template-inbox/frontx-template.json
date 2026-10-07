@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0",
+  "name": "@gears-frontx/frontx-template-inbox",
+  "version": "0.2.0-alpha.0",
+  "description": "Contributes a workspace product to a repository that already has an application shell: four microfrontend screens built from @gears-frontx/ui-kit - contacts (a filterable directory and each person's page), dashboard (KPI cards, charts, workload and recent activity), chat (channels, conversations, a reply-and-note composer and a link to the contact's page) and mail (mailboxes, a reading pane, reply and compose) - each with its own Module Federation build, route tree inside the shell's screen domain, UI strings and mocked @gears-frontx/api services. Contacts, dashboard and chat answer from one page-wide inbox mock store; mail keeps its own. Apply this onto template-shell; the screens appear in the shell's menu without further wiring.",
+  "ownershipBoundaries": {
+    "exclusiveSubtrees": [
+      "src-app/mfe_packages/shared/inbox/",
+      "src-app/mfe_packages/inbox-contacts-mfe/",
+      "src-app/mfe_packages/inbox-dashboard-mfe/",
+      "src-app/mfe_packages/inbox-chat-mfe/",
+      "src-app/mfe_packages/inbox-mail-mfe/",
+      ".frontx/ai/@gears-frontx/frontx-template-inbox/"
+    ],
+    "sharedFiles": []
+  }
+}

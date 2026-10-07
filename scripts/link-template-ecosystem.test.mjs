@@ -236,7 +236,7 @@ function expectSuccess(result) {
 }
 
 /**
- * An `existsSync` that reports one path as absent and defers the rest — the
+ * An `existsSync` that reports one path as absent and defers the rest - the
  * shape every "missing artifact" case below needs.
  *
  * @param {FileSystemLike['existsSync']} original
@@ -339,7 +339,7 @@ describe('linkEcosystemPackages', () => {
   });
 
   // A refusal halfway through would leave part of the tree on local sources and
-  // part on registry tarballs — harder to diagnose than either end state.
+  // part on registry tarballs - harder to diagnose than either end state.
   it('writes nothing at all when a later package fails its build check', () => {
     const { fs, calls, tree } = builtTree();
     fs.existsSync = withMissingPath(fs.existsSync, path.join(repoRoot, 'packages/gts-plugin/dist/index.js'));

@@ -44,7 +44,7 @@ function asManifest(manifest) {
 
 /**
  * The one package the fixtures pin at an exact, unpublished-on-this-branch
- * registry version — mirrors `@gears-frontx/mfes` in the real ecosystem.
+ * registry version - mirrors `@gears-frontx/mfes` in the real ecosystem.
  *
  * @param {string} root
  */

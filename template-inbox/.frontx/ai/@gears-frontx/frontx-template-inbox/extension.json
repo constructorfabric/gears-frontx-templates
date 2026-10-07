@@ -1,0 +1,16 @@
+{
+  "id": "frontx-template-inbox-ai-bundle",
+  "contractVersion": "1.0.0",
+  "entries": [
+    {
+      "id": "inbox-data-contract",
+      "category": "guidelines",
+      "path": "guidelines/inbox-data-contract.md"
+    },
+    {
+      "id": "inbox-chrome-contract",
+      "category": "guidelines",
+      "path": "guidelines/inbox-chrome-contract.md"
+    }
+  ]
+}
