@@ -1,9 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// @cpt-dod:cpt-frontx-dod-framework-composition-reexports:p1
-
-// @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-types
 type TestManifest = {
   manifest: Record<string, unknown>;
   entries: Array<Record<string, unknown>>;
@@ -61,9 +58,7 @@ export type BootstrapMfeTestSpecOptions = {
    */
   reactModulePath?: string;
 };
-// @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-types
 
-// @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-resolve
 function defaultResolve({ specifier, callerUrl }: BootstrapMfeResolveArgs): string {
   if (callerUrl === undefined) {
     throw new Error(
@@ -78,9 +73,7 @@ function defaultResolve({ specifier, callerUrl }: BootstrapMfeResolveArgs): stri
   // ESM-only setups.
   return fileURLToPath(new URL(specifier, callerUrl));
 }
-// @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-resolve
 
-// @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-suite
 export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOptions): void {
   const resolve = options.resolveModule ?? defaultResolve;
   const reactModulePath = options.reactModulePath ?? '@gears-frontx/react';
@@ -119,7 +112,6 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       vi.doUnmock(manifestsModulePath);
     });
 
-    // @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-empty
     it('warns and returns no screens when no manifests exist', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const registry = {
@@ -145,9 +137,7 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       expect(registry.typeSystem.registerSchema).not.toHaveBeenCalled();
       expect(registry.registerExtension).not.toHaveBeenCalled();
     });
-    // @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-empty
 
-    // @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-screens
     it('registers manifests and entries and only returns screen extensions', async () => {
       const register = vi.fn();
       const registerSchema = vi.fn();
@@ -184,9 +174,7 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       expect(registerExtension).toHaveBeenNthCalledWith(1, screenExtension);
       expect(registerExtension).toHaveBeenNthCalledWith(2, helperExtension);
     });
-    // @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-screens
 
-    // @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-schemas
     it('registers MFE-carried schemas before manifests and entries', async () => {
       const callOrder: string[] = [];
       const register = vi.fn(() => {
@@ -223,9 +211,7 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       expect(registerSchema).toHaveBeenNthCalledWith(2, schemaB);
       expect(callOrder).toEqual(['registerSchema', 'registerSchema', 'register', 'register']);
     });
-    // @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-schemas
 
-    // @cpt-begin:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-warn
     it('warns when no screen extensions are available after registration', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const register = vi.fn();
@@ -259,7 +245,5 @@ export function describeBootstrapMfeContract(options: BootstrapMfeTestSpecOption
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0]?.[0]).toContain('No screen extensions available');
     });
-    // @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-it-warn
   });
 }
-// @cpt-end:cpt-frontx-dod-framework-composition-reexports:p1:inst-bootstrap-mfe-contract-suite
