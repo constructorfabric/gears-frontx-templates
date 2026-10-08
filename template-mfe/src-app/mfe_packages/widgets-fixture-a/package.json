@@ -28,7 +28,7 @@
     "@module-federation/vite": "1.20.5",
     "vite": "6.4.3",
     "typescript": "5.9.3",
-    "@gears-frontx/framework": "0.2.0-alpha.10",
+    "@gears-frontx/framework": "0.2.0-alpha.11",
     "@gears-frontx/state": "0.2.0-alpha.1",
     "@gears-frontx/mfes": "0.3.0-alpha.11",
     "@gears-frontx/gts-plugin": "0.3.0-alpha.11",
