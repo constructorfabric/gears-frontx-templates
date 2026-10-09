@@ -128,6 +128,7 @@
     "@vitejs/plugin-react": "4.3.4",
     "@vitest/coverage-v8": "4.1.4",
     "autoprefixer": "10.4.23",
+    "concurrently": "9.2.4",
     "dependency-cruiser": "17.3.10",
     "esbuild": "0.28.2",
     "eslint": "9.27.0",
