@@ -36,7 +36,7 @@ src-app/
 │   ├── App.tsx / main.tsx   # Boot: providers, registries, MFE bootstrap
 │   ├── components/ui/        # App-owned UI primitives (shadcn)
 │   ├── layout/               # CoreLayout: Menu, header, footer, screen container
-│   ├── mfe/                  # bootstrap.ts + generated-mfe-manifests.json
+│   ├── mfe/                  # bootstrap.ts: registers MFEs from public/generated-mfe-manifests.json
 │   ├── themes/               # Theme tokens and registries
 │   └── globals.css           # Tailwind entry + theme CSS variables
 └── mfe_packages/             # Microfrontends (from `frontx-template-mfe`; empty in a shell-only seed)
