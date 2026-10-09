@@ -12,13 +12,20 @@
 
 import { spawn } from 'child_process';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
+import { concurrently } from 'concurrently';
 import {
+  MFE_PACKAGES_DIR,
   buildMfesSequentially,
   getMFEPackages,
   noDiscoveredPackagesNotice,
   type MfeInfo,
 } from './lib/mfe-tools.js';
+
+interface PreviewCommand {
+  command: string;
+  cwd?: string;
+}
 
 // Determine main app command based on available scripts
 function getMainAppCommand(): string {
@@ -37,15 +44,17 @@ function getMainAppCommand(): string {
 }
 
 // Build preview-only commands (no build step — MFEs are pre-built)
-function buildPreviewCommands(mfes: MfeInfo[]): string[] {
-  const commands: string[] = [];
+function buildPreviewCommands(mfes: MfeInfo[]): PreviewCommand[] {
+  const commands: PreviewCommand[] = [];
 
   // Add main app
-  commands.push(getMainAppCommand());
+  commands.push({ command: getMainAppCommand() });
 
-  // MFE preview only (build already done in the sequential step)
+  // MFE preview only (build already done in the sequential step). Each runs
+  // with `cwd` set to its package, as `buildMfesSequentially` builds it,
+  // rather than a `cd` spliced into the command line.
   for (const mfe of mfes) {
-    commands.push(`cd src-app/mfe_packages/${mfe.name} && npm run preview`);
+    commands.push({ command: 'npm run preview', cwd: join(MFE_PACKAGES_DIR, mfe.name) });
   }
 
   return commands;
@@ -92,35 +101,30 @@ async function main() {
   // Step 1: Build all MFEs (produces dist/ with mf-manifest.json)
   await buildMfesSequentially(packages);
 
-  // Step 2: Generate manifests (reads dist/mf-manifest.json, produces generated-mfe-manifests.ts).
+  // Step 2: Generate manifests (reads dist/mf-manifest.json, writes public/generated-mfe-manifests.json).
   // This child is also where the skipped-examples notice is printed, once per run.
   await generateManifests();
 
   // Step 3: Start host + MFE preview servers concurrently
   const commands = buildPreviewCommands(packages);
 
-  // Quote each command properly for concurrently
-  const quotedCommands = commands.map((cmd) => `"${cmd.replace(/"/g, '\\"')}"`);
-
-  // Build concurrently command
-  const concurrentlyCmd = ['concurrently', '--kill-others', ...quotedCommands];
-
-  console.log(`📝 Running: ${concurrentlyCmd.join(' ')}\n`);
-
-  // Execute concurrently
-  const proc = spawn('npx', concurrentlyCmd, {
-    stdio: 'inherit',
-    shell: true,
+  console.log('📝 Running concurrently:');
+  commands.forEach(({ command, cwd }, idx) => {
+    console.log(`  [${idx}] ${command}${cwd ? ` (in ${relative(process.cwd(), cwd)})` : ''}`);
   });
+  console.log();
 
-  proc.on('error', (error) => {
-    console.error(`❌ Failed to start dev:all: ${error.message}`);
-    process.exit(1);
-  });
+  // Called through its API, not `npx concurrently`: the import resolves the
+  // devDependency pinned in package.json, and a project without it fails
+  // `type-check:scripts`. `npx` would instead download whatever version is
+  // latest on the registry, or fail offline.
+  const { result } = concurrently(commands, { killOthersOn: ['success', 'failure'] });
 
-  proc.on('exit', (code) => {
-    process.exit(code || 0);
-  });
+  // Exit as the `concurrently` CLI does: 0 when every command succeeded, 1 otherwise.
+  result.then(
+    () => process.exit(0),
+    () => process.exit(1),
+  );
 }
 
 // The rejection is already phrased as a full report - `buildMfesSequentially`
