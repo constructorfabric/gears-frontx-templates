@@ -57,8 +57,12 @@ describe('isPortFree', () => {
 
 describe('previewCommand', () => {
   it('starts the preview on a strict port, so a port taken after the check fails instead of moving', () => {
-    expect(previewCommand({ name: 'orders-mfe', port: 3010 })).toBe(
-      'cd src-app/mfe_packages/orders-mfe && npm run preview -- --strictPort',
+    expect(previewCommand({ name: 'orders-mfe', port: 3010 }).command).toBe('npm run preview -- --strictPort');
+  });
+
+  it('starts the preview in the package directory', () => {
+    expect(previewCommand({ name: 'orders-mfe', port: 3010 }).cwd).toBe(
+      join(process.cwd(), 'src-app', 'mfe_packages', 'orders-mfe'),
     );
   });
 });

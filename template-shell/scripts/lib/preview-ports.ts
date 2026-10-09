@@ -12,8 +12,9 @@
  */
 
 import { createServer } from 'node:net';
+import { join } from 'node:path';
 
-import type { MfeInfo } from './mfe-tools.js';
+import { MFE_PACKAGES_DIR, type MfeInfo } from './mfe-tools.js';
 
 /** The host a `vite preview` without `--host` listens on, so the probe binds where the preview would. */
 export const PREVIEW_HOST = 'localhost';
@@ -92,7 +93,13 @@ export function takenPreviewPortsMessage(taken: readonly MfeInfo[]): string {
   ].join('\n');
 }
 
-/** The command `dev:all` starts a package's preview server with. */
-export function previewCommand(mfe: MfeInfo): string {
-  return `cd src-app/mfe_packages/${mfe.name} && npm run preview -- --strictPort`;
+/** A command `dev:all` runs, and the directory it runs in when not the shell's own. */
+export interface PreviewCommand {
+  command: string;
+  cwd?: string;
+}
+
+/** The command `dev:all` starts a package's preview server with, in the package's directory. */
+export function previewCommand(mfe: MfeInfo): PreviewCommand {
+  return { command: 'npm run preview -- --strictPort', cwd: join(MFE_PACKAGES_DIR, mfe.name) };
 }
