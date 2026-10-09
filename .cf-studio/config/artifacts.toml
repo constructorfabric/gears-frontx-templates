@@ -206,3 +206,48 @@ required = false
 pattern = "features/*/FEATURE.md"
 traceability = "DOCS-ONLY"
 required = false
+
+# template-dashboard: ids cpt-frontx-dashboard-*. Lists its documents explicitly
+# and registers its own code path.
+[[systems]]
+name = "template-dashboard"
+slug = "frontx-dashboard"
+kit = "sdlc"
+artifacts_dir = "template-dashboard/architecture"
+artifacts = [
+  { name = "FrontX Dashboard Template PRD", path = "template-dashboard/architecture/PRD.md", kind = "PRD", traceability = "DOCS-ONLY" },
+  { name = "FrontX Dashboard Template DESIGN", path = "template-dashboard/architecture/DESIGN.md", kind = "DESIGN", traceability = "DOCS-ONLY" },
+  { name = "ADR-0001: Frontend framework", path = "template-dashboard/architecture/ADR/0001-frontend-framework-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0002: Dashboard layout grid", path = "template-dashboard/architecture/ADR/0002-dashboard-layout-grid-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0003: Shared data types and schemas", path = "template-dashboard/architecture/ADR/0003-shared-data-types-and-schemas-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0004: Charting library", path = "template-dashboard/architecture/ADR/0004-charting-library-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0005: Data grid library", path = "template-dashboard/architecture/ADR/0005-data-grid-library-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0006: Viewer state management", path = "template-dashboard/architecture/ADR/0006-viewer-state-management-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0007: Viewer data query layer", path = "template-dashboard/architecture/ADR/0007-viewer-data-query-layer-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0008: Theme distribution", path = "template-dashboard/architecture/ADR/0008-theme-distribution-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0009: Derived analytics producer", path = "template-dashboard/architecture/ADR/0009-derived-analytics-producer-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0010: Extension domain taxonomy", path = "template-dashboard/architecture/ADR/0010-extension-domain-taxonomy-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0011: Widget kind and MFE realization hierarchy", path = "template-dashboard/architecture/ADR/0011-widget-kind-and-mfe-realization-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0012: Subject-agnostic widget catalog", path = "template-dashboard/architecture/ADR/0012-subject-agnostic-widget-catalog-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0013: Query, operator and CEL", path = "template-dashboard/architecture/ADR/0013-query-operator-cel-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0014: Viewer-host-orchestrated query lifecycle", path = "template-dashboard/architecture/ADR/0014-viewer-host-orchestrated-query-lifecycle-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0015: Live entity source", path = "template-dashboard/architecture/ADR/0015-live-entity-source-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "ADR-0016: Template packaging and host contract", path = "template-dashboard/architecture/ADR/0016-template-packaging-and-host-contract-v1.md", kind = "ADR", traceability = "DOCS-ONLY" },
+  { name = "feature-aspect-catalog", path = "template-dashboard/architecture/features/feature-aspect-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-dashboard-root-types", path = "template-dashboard/architecture/features/feature-dashboard-root-types/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-entity-catalog", path = "template-dashboard/architecture/features/feature-entity-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-extension-domain-catalog", path = "template-dashboard/architecture/features/feature-extension-domain-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-filter-catalog", path = "template-dashboard/architecture/features/feature-filter-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-layout-types", path = "template-dashboard/architecture/features/feature-layout-types/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-mfe-entries", path = "template-dashboard/architecture/features/feature-mfe-entries/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-operator-variants", path = "template-dashboard/architecture/features/feature-operator-variants/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-query-instances", path = "template-dashboard/architecture/features/feature-query-instances/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-renderer-catalog", path = "template-dashboard/architecture/features/feature-renderer-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-widget-catalog", path = "template-dashboard/architecture/features/feature-widget-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-widget-data-catalog", path = "template-dashboard/architecture/features/feature-widget-data-catalog/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+  { name = "feature-worker-contract-types", path = "template-dashboard/architecture/features/feature-worker-contract-types/FEATURE.md", kind = "FEATURE", traceability = "DOCS-ONLY" },
+]
+
+[[systems.codebase]]
+path = "template-dashboard/src-app"
+extensions = [".ts", ".tsx"]
