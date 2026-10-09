@@ -212,9 +212,9 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
   });
 
   it('adopts the rules a host <style> holds only through insertRule, which its text does not carry', () => {
-    // The shape the theme registry writes, and CSS-in-JS libraries such as
-    // emotion and styled-components in production: an empty element whose
-    // sheet is filled through the CSSOM. A copy of its text is an empty <style>.
+    // The shape CSS-in-JS libraries such as emotion and styled-components
+    // write in production: an empty element whose sheet is filled through the
+    // CSSOM. A copy of its text is an empty <style>.
     const hostStyle = appendHostStyle('');
     hostStyle.sheet?.insertRule('._fromCssInJs { color: red; }', 0);
     hostStyle.sheet?.insertRule('._fromCssInJs:hover { color: blue; }', 1);
@@ -249,6 +249,23 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     adoptIntoLifecycle(shadowRoot);
 
     expect(firstAdoptedStyle(shadowRoot)?.nonce).toBe('host-style-nonce');
+  });
+
+  it('carries no other attribute of a host <style>, so a library looking for its own tag in the shadow root does not find the copy', () => {
+    // styled-components, rendering into a shadow root, puts its tag right after
+    // the last style[data-styled] there. A copy carrying the host's attribute
+    // would pull the MFE's rules ahead of the base resets and the MFE's own CSS.
+    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    hostStyle.id = 'host-style';
+    hostStyle.setAttribute('data-styled', 'active');
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(shadowRoot.querySelector('style[data-styled]')).toBeNull();
+    expect(firstAdoptedStyle(shadowRoot)?.getAttributeNames()).toEqual([
+      'data-frontx-adopted-host-style',
+    ]);
   });
 
   it('copies the text of a host <style> that has no sheet, and keeps the copy as inert as the original', () => {
