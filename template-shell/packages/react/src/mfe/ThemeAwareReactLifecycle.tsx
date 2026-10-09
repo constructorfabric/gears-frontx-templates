@@ -38,6 +38,28 @@ const BASE_RESETS_STYLE_ID = '__frontx-base-resets__';
  */
 const SHELL_OWNED_SHADOW_STYLE_IDS = ['__frontx-shadow-isolation__', '__frontx-css-variables__'];
 
+/**
+ * The CSS a host `<style>` applies, read from its stylesheet rather than its
+ * text. Rules added through `sheet.insertRule` never appear in `textContent` -
+ * CSS-in-JS libraries such as emotion and styled-components write every rule
+ * that way in production - so a copy built from the text alone comes out
+ * without them.
+ *
+ * The copy therefore holds the browser's serialisation of the rules, not the
+ * text as written, and a CSP that allows the host `<style>` by its hash does
+ * not allow the copy: the hash no longer matches. Under a CSP the copies are
+ * admitted by a nonce, which they carry, or by `'unsafe-inline'`.
+ *
+ * The text is the fallback only for an element the browser built no sheet
+ * for: one whose `type` is not CSS, which the copy keeps inert by carrying the
+ * same `type`.
+ */
+function readAppliedCss(style: HTMLStyleElement): string {
+  const sheet = style.sheet;
+  if (!sheet) return style.textContent ?? '';
+  return Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
+}
+
 interface ProviderMountOptions {
   mfeBridge?: {
     bridge: ChildMfeBridge;
@@ -229,6 +251,19 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * the head is not fixed: a lazily imported chunk adds stylesheets to it after
    * the first mount, and the second mount has to pick those up.
    *
+   * A `<style>` is copied into a new element that holds the CSS its sheet
+   * applies - see `readAppliedCss` - and takes three things from the host
+   * element: `media`, without which a print-only host style applies on screen
+   * inside the MFE; `type`; and the nonce, without which a nonce-based CSP
+   * blocks the copy. The nonce is read from the `nonce` property, because
+   * browsers blank the attribute in a document served with a CSP header.
+   * Nothing else is carried over, because libraries look for their own
+   * attributes inside the shadow root: styled-components, rendering into it,
+   * puts its tag right after the last `style[data-styled]` there, so a copy of
+   * the host's tag would pull the MFE's rules ahead of the base resets and the
+   * MFE's own CSS. A `<link>` is a deep clone and is loaded from its `href`
+   * again.
+   *
    * The fresh block goes in before the previous one comes out. Removing first
    * leaves the shadow root with no host CSS at all, and everything between that
    * removal and the insertion is synchronous work in this same task - so the gap
@@ -255,10 +290,13 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
     const hostStyleNodes = document.head.querySelectorAll('style, link[rel="stylesheet"]');
     hostStyleNodes.forEach((el) => {
       if (el instanceof HTMLStyleElement) {
-        const clone = document.createElement('style');
-        clone.textContent = el.textContent ?? '';
-        clone.setAttribute(ADOPTED_HOST_STYLE_ATTR, '');
-        adoptedStyles.appendChild(clone);
+        const copy = document.createElement('style');
+        if (el.media) copy.media = el.media;
+        if (el.type) copy.type = el.type;
+        if (el.nonce) copy.nonce = el.nonce;
+        copy.textContent = readAppliedCss(el);
+        copy.setAttribute(ADOPTED_HOST_STYLE_ATTR, '');
+        adoptedStyles.appendChild(copy);
         return;
       }
       const linkClone = el.cloneNode(true) as Element;

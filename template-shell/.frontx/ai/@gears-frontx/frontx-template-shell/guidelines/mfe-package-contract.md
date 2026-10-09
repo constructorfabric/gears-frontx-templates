@@ -85,6 +85,15 @@ what the package owns:
    `ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot()` clones every host
    `<style>`/`<link>` into the shadow root. A package that only uses Tailwind
    utilities and UI-kit components needs no stylesheet of its own.
+   The copy is taken once, at mount, from the host `<head>` as it is then. A
+   stylesheet the host adds or changes later — a lazily loaded chunk's CSS, a
+   rule a CSS-in-JS library inserts after mount, a Vite dev-mode update —
+   reaches a mounted MFE only on its next remount. Everything this path relies
+   on is in the head before any MFE mounts: the shell's entry
+   (`src-app/app/main.tsx`) imports `globals.css`, which holds the compiled
+   Tailwind, and the whole UI kit. Theme changes are not affected: the shell's
+   theme variables reach the shadow root through CSS inheritance, not through
+   the copy.
 2. **Package-owned CSS, the reliable path: `?inline` + `initializeStyles()`.**
    Import the stylesheet as a string (`import styles from './styles.css?inline'`)
    and append it in an `initializeStyles(container)` override (the
