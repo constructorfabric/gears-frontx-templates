@@ -553,6 +553,137 @@ export function formatSharedDepCycleError(cycle: readonly string[]): string {
   );
 }
 
+// ── CommonJS interop between shared chunks ──────────────────────────────────
+
+/**
+ * Finds the `export default …;` statement of a shared chunk that wraps a
+ * CommonJS module, or returns `undefined` for any other chunk.
+ *
+ * esbuild turns a CommonJS entry into a chunk whose only export is
+ * `export default require_xxx();`, the module's `module.exports`. An ESM entry
+ * keeps its own exports, which esbuild writes as an `export { … }` clause.
+ * Both CommonJS patches use this one test: `patchCjsNamedExports` re-exports
+ * the keys of such a chunk, and `patchCjsExternalsInSource` imports such a
+ * chunk by its default.
+ *
+ * Pure; exported for unit tests.
+ */
+export function findCjsWrapperExport(
+  source: string
+): { statement: string; expression: string } | undefined {
+  const defaultMatch = /^export default (.+);$/m.exec(source);
+  if (!defaultMatch) return undefined;
+  if (/^export \{/m.test(source)) return undefined;
+  return { statement: defaultMatch[0], expression: defaultMatch[1] };
+}
+
+/**
+ * Wraps a module namespace the way esbuild's `__toCommonJS` does: an object
+ * marked `__esModule` whose properties are getters on the namespace, so the
+ * values stay live.
+ */
+const TO_COMMONJS_HELPER = [
+  'var __frontx_toCommonJS = (ns) => {',
+  '  const cjs = Object.defineProperty({}, "__esModule", { value: true });',
+  '  for (const key of Object.keys(ns)) {',
+  '    if (key !== "__esModule") Object.defineProperty(cjs, key, { get: () => ns[key], enumerable: true });',
+  '  }',
+  '  return cjs;',
+  '};',
+].join('\n');
+
+/**
+ * Rewrites each `__require("<dep>")` that esbuild left in a shared chunk into
+ * an ESM import of `dep`'s shared chunk.
+ *
+ * esbuild bundles a CommonJS package to ESM with its sibling shared deps left
+ * external, and writes each `require()` of one as `__require("<dep>")`, which
+ * throws in a browser. What that `require()` must return depends on `dep`'s
+ * chunk:
+ *  - When the chunk wraps a CommonJS module (it is in `cjsChunks`), its
+ *    default export is that module's `module.exports`, so a default import
+ *    is exact. `react` and `react-dom` are imported this way.
+ *  - Otherwise the chunk is an ES module. A default import of it would fail
+ *    to link when it has no default export, and would hand the code the
+ *    default instead of the module when it has one. So the namespace is
+ *    imported and wrapped as CommonJS (`TO_COMMONJS_HELPER`). Both
+ *    `require("dep").x` and Babel-style default interop
+ *    (`require("dep").default`) then read the right binding.
+ *
+ * The namespace is what Node's `require()` of an ES module returns, and what
+ * esbuild gives CommonJS code that requires an ES module it bundles. It costs
+ * one case that a default import served. Some packages ship CommonJS as
+ * `module.exports = fn` and ESM as `export default fn`. Code that calls
+ * `require("dep")()` gets the namespace here and throws `TypeError: … is not
+ * a function`. It works when bundled inline, because esbuild then resolves
+ * the `require()` to the package's CommonJS build, while `dep`'s shared chunk
+ * is built from its ESM entry. The shared-import guard cannot catch this:
+ * the import links, and only the call fails.
+ *
+ * Pure; exported for unit tests.
+ */
+export function patchCjsExternalsInSource(
+  source: string,
+  externals: readonly string[],
+  cjsChunks: ReadonlySet<string>
+): string {
+  const importLines: string[] = [];
+  const wrapLines: string[] = [];
+  let patched = source;
+
+  for (const ext of externals) {
+    const escaped = ext.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    const requirePattern = new RegExp(
+      String.raw`__require\(["']${escaped}["']\)`,
+      'g'
+    );
+
+    if (!requirePattern.test(patched)) continue;
+
+    // Reset lastIndex after test()
+    requirePattern.lastIndex = 0;
+
+    const varName = '__ext_' + ext.replace(/\W/g, '_');
+    if (cjsChunks.has(ext)) {
+      importLines.push(`import ${varName} from "${ext}";`);
+    } else {
+      importLines.push(`import * as ${varName}_ns from "${ext}";`);
+      wrapLines.push(`var ${varName} = __frontx_toCommonJS(${varName}_ns);`);
+    }
+    patched = patched.replace(requirePattern, varName);
+  }
+
+  if (importLines.length === 0) return source;
+  if (wrapLines.length > 0) importLines.push(TO_COMMONJS_HELPER, ...wrapLines);
+  return importLines.join('\n') + '\n' + patched;
+}
+
+/** One shared chunk as esbuild emitted it, before any post-processing. */
+interface EmittedSharedChunk {
+  dep: ResolvedSharedDep;
+  outfile: string;
+  /** The chunk's outgoing edges in the shared-chunk graph. */
+  node: SharedChunkNode;
+}
+
+/** One finished shared chunk, as `StandaloneEsmBuilder.build` returns it. */
+export interface MintedSharedChunk {
+  /** The shared dependency's bare specifier, e.g. `react`. */
+  name: string;
+  /** Absolute path of the emitted file. */
+  outfile: string;
+  /**
+   * Why named-export discovery left this CommonJS chunk without named
+   * exports, when it did. `undefined` for an ESM chunk and when discovery
+   * found names.
+   */
+  discoveryFailure?: string;
+}
+
+/**
+ * Mints one standalone ESM file per shared dep with esbuild. Exported for
+ * tests, which build fixture packages with it.
+ */
 class StandaloneEsmBuilder {
   private readonly sharedDeps: string[];
   private readonly outputDir: string;
@@ -567,7 +698,12 @@ class StandaloneEsmBuilder {
   }
 
   /**
-   * Mints one standalone ESM file per shared dep.
+   * Mints one standalone ESM file per shared dep and returns them.
+   *
+   * Two passes: esbuild emits every chunk first, then each chunk is patched.
+   * `patchCjsExternals` has to know whether each sibling chunk a dep requires
+   * wraps a CommonJS module, and a dep can be built before the siblings it
+   * requires, so every chunk must exist before any is patched.
    *
    * `onError` aborts the build (the Rollup plugin context's `this.error`);
    * it is taken as a callback so the pure resolution/cycle logic stays
@@ -576,22 +712,39 @@ class StandaloneEsmBuilder {
    * once every dep is minted — and it only reads, so a healthy graph is
    * bit-for-bit unaffected by it.
    */
-  async build(onError: (message: string) => never): Promise<void> {
+  async build(
+    onError: (message: string) => never
+  ): Promise<MintedSharedChunk[]> {
     fs.mkdirSync(this.outputDir, { recursive: true });
 
     const resolved = this.resolveTransitiveDeps();
 
-    const graph: SharedChunkNode[] = [];
+    const emitted: EmittedSharedChunk[] = [];
     for (const dep of resolved) {
-      graph.push(await this.buildEntry(dep));
+      emitted.push(await this.buildEntry(dep));
     }
+
+    // Tested before any chunk is patched: `patchCjsNamedExports` rewrites
+    // the very `export default` line the test looks for.
+    const cjsChunks = new Set(
+      emitted
+        .filter(
+          (chunk) =>
+            findCjsWrapperExport(fs.readFileSync(chunk.outfile, 'utf-8')) !==
+            undefined
+        )
+        .map((chunk) => chunk.dep.name)
+    );
+    const minted = emitted.map((chunk) => this.patchEntry(chunk, cjsChunks));
 
     // ── Guard: the minted shared chunks must form an acyclic graph ────────
     // Runs on the real emitted import edges, after minting and before the
     // manifest that publishes these chunks is written. Nothing emitted
     // depends on the check, so an acyclic graph is bit-for-bit unaffected.
-    const cycle = findSharedDepCycle(graph);
+    const cycle = findSharedDepCycle(emitted.map((chunk) => chunk.node));
     if (cycle) onError(formatSharedDepCycleError(cycle));
+
+    return minted;
   }
 
   /**
@@ -656,10 +809,12 @@ class StandaloneEsmBuilder {
   }
 
   /**
-   * Mints one shared dep's standalone ESM file and reports the sibling
-   * shared chunks the emitted file actually imports.
+   * Emits one shared dep's standalone ESM file, unpatched, and reports the
+   * sibling shared chunks the emitted file actually imports.
    */
-  private async buildEntry(dep: ResolvedSharedDep): Promise<SharedChunkNode> {
+  private async buildEntry(
+    dep: ResolvedSharedDep
+  ): Promise<EmittedSharedChunk> {
     const outfile = path.join(
       this.outputDir,
       StandaloneEsmBuilder.normalizeDepName(dep.name) + '.js'
@@ -690,16 +845,37 @@ class StandaloneEsmBuilder {
       define: { 'process.env.NODE_ENV': '"production"' },
     });
 
+    return {
+      dep,
+      outfile,
+      node: {
+        name: dep.name,
+        imports: externalImportsOf(result.metafile, outfile),
+      },
+    };
+  }
+
+  /**
+   * Post-processes one emitted shared chunk into its final bytes.
+   * `cjsChunks` names the shared deps whose emitted chunk wraps a CommonJS
+   * module (see `findCjsWrapperExport`).
+   */
+  private patchEntry(
+    chunk: EmittedSharedChunk,
+    cjsChunks: ReadonlySet<string>
+  ): MintedSharedChunk {
+    const { dep, outfile } = chunk;
+
     // CJS packages bundled to ESM use __require() for external deps, which
     // doesn't work in browser ES module context. Post-process to replace
     // __require("dep") with proper ESM imports.
     if (dep.externals.length > 0) {
-      StandaloneEsmBuilder.patchCjsExternals(outfile, dep.externals);
+      StandaloneEsmBuilder.patchCjsExternals(outfile, dep.externals, cjsChunks);
     }
 
     // CJS packages bundled to ESM only get `export default ...`. Add named
     // re-exports so `import { createContext } from "react"` works in blob URLs.
-    this.patchCjsNamedExports(outfile, dep.name);
+    const discoveryFailure = this.patchCjsNamedExports(outfile, dep.name);
 
     // Canonicalize embedded module paths so identical (dep, version,
     // externals) inputs emit byte-identical output across the pnpm-store
@@ -720,10 +896,7 @@ class StandaloneEsmBuilder {
       `  [frontx-mf-gts] ${dep.name} -> ${path.basename(outfile)} ${label}`
     );
 
-    return {
-      name: dep.name,
-      imports: externalImportsOf(result.metafile, outfile),
-    };
+    return { name: dep.name, outfile, discoveryFailure };
   }
 
   /**
@@ -755,43 +928,18 @@ class StandaloneEsmBuilder {
   }
 
   /**
-   * Post-processes esbuild output to fix CJS→ESM external references.
-   *
-   * When esbuild bundles a CJS package to ESM format with external deps,
-   * it generates `__require("react")` calls. This replaces them with ESM
-   * imports.
+   * File-I/O wrapper around {@link patchCjsExternalsInSource}: CJS packages
+   * bundled to ESM reach their external deps through `__require("dep")`,
+   * which this replaces with ESM imports.
    */
   private static patchCjsExternals(
     outfile: string,
-    externals: string[]
+    externals: string[],
+    cjsChunks: ReadonlySet<string>
   ): void {
-    let source = fs.readFileSync(outfile, 'utf-8');
-
-    const importLines: string[] = [];
-    let patched = false;
-
-    for (const ext of externals) {
-      const escaped = ext.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-      const requirePattern = new RegExp(
-        String.raw`__require\(["']${escaped}["']\)`,
-        'g'
-      );
-
-      if (!requirePattern.test(source)) continue;
-
-      // Reset lastIndex after test()
-      requirePattern.lastIndex = 0;
-
-      const varName = '__ext_' + ext.replace(/\W/g, '_');
-      importLines.push(`import ${varName} from "${ext}";`);
-      source = source.replace(requirePattern, varName);
-      patched = true;
-    }
-
-    if (patched) {
-      source = importLines.join('\n') + '\n' + source;
-      fs.writeFileSync(outfile, source, 'utf-8');
-    }
+    const source = fs.readFileSync(outfile, 'utf-8');
+    const patched = patchCjsExternalsInSource(source, externals, cjsChunks);
+    if (patched !== source) fs.writeFileSync(outfile, patched, 'utf-8');
   }
 
   /**
@@ -800,35 +948,39 @@ class StandaloneEsmBuilder {
    * esbuild wraps CJS packages with `export default require_xxx()` which
    * only provides a default export. This detects default-only exports, loads
    * the package to discover named properties, and appends named re-exports.
+   *
+   * Returns why discovery found no names, when it found none. That is not an
+   * error by itself: a package whose `module.exports` is a function has no
+   * names to find, and its chunk is correct. The shared-import guard in
+   * `closeBundle` fails the build only when something imports a name the
+   * chunk does not export, and adds this reason to its message.
    */
   private patchCjsNamedExports(
     outfile: string,
     packageName: string
-  ): void {
+  ): string | undefined {
     let source = fs.readFileSync(outfile, 'utf-8');
 
     // Only patch if the module is a CJS-wrapped default-only export
-    const defaultMatch = source.match(/^export default (.+);$/m);
-    if (!defaultMatch) return;
-
-    // Skip if named exports already exist
-    if (/^export \{/m.test(source)) return;
+    const wrapper = findCjsWrapperExport(source);
+    if (!wrapper) return undefined;
 
     // Load the package at build time to discover its named exports.
-    // Node's `require()` throws `ERR_REQUIRE_ESM` on ESM-only packages and
-    // may throw for packages with environment-gated (Node-vs-browser)
-    // export conditions — warn so silent patch-skipping is visible.
+    // Node's `require()` reads the package's Node entry point, which can
+    // differ from the browser file esbuild bundled, and it throws for a
+    // package that reads browser globals such as `window` at load time.
+    // ESM-only packages never get here: esbuild keeps their exports, so their
+    // chunk is no CommonJS wrapper. (Node 20.19+ and 22.12+ load ESM through
+    // `require()` anyway.)
     let mod: Record<string, unknown>;
     try {
       mod = this.nodeRequire(packageName) as Record<string, unknown>;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[frontx-mf-gts] named-export patching skipped for "${packageName}": ` +
-          `${reason}. Default-only export will be used in the standalone ESM; ` +
-          `consumers that import named symbols may fail at runtime.`
+      return (
+        `named-export discovery failed: require("${packageName}") threw: ` +
+        reason.split('\n')[0]
       );
-      return;
     }
 
     const keys = Object.keys(mod).filter(
@@ -838,24 +990,22 @@ class StandaloneEsmBuilder {
         /^[A-Za-z_$][\w$]*$/u.test(k)
     );
     if (keys.length === 0) {
-      console.warn(
-        `[frontx-mf-gts] named-export patching produced no keys for "${packageName}" — ` +
-          `the package's require() result exposes no valid named bindings. ` +
-          `If consumers import named symbols, this will fail at runtime.`
+      return (
+        `named-export discovery found no names: require("${packageName}") ` +
+        `returned no named keys`
       );
-      return;
     }
 
     // Replace `export default <expr>;` with variable + named re-exports
-    const expr = defaultMatch[1];
     const replacement = [
-      `var __mod_default = ${expr};`,
+      `var __mod_default = ${wrapper.expression};`,
       `export default __mod_default;`,
       `export var { ${keys.join(', ')} } = __mod_default;`,
     ].join('\n');
 
-    source = source.replace(defaultMatch[0], replacement);
+    source = source.replace(wrapper.statement, replacement);
     fs.writeFileSync(outfile, source, 'utf-8');
+    return undefined;
   }
 
   /**
@@ -1202,6 +1352,284 @@ function transformLazyImports(
   return { code: transformer.apply(code), count: transformer.count() };
 }
 
+// ── Shared-chunk import guard ───────────────────────────────────────────────
+
+/**
+ * One emitted chunk and the names it imports, per specifier. `*` stands for a
+ * whole namespace (`import * as`, `export *`). This is the shape of Rollup's
+ * `OutputChunk.importedBindings`, which lists re-exported names too.
+ */
+export interface ImportingChunk {
+  /** The chunk's path in the output directory, used to name it in errors. */
+  fileName: string;
+  imports: Record<string, string[]>;
+}
+
+/** What a parsed chunk exports and imports. See {@link readChunkLinkage}. */
+export interface ChunkLinkage {
+  /** Names the chunk exports itself, `default` included. */
+  exports: string[];
+  /** Specifiers the chunk re-exports everything from (`export * from "<x>"`). */
+  starExports: string[];
+  /** Names it imports per specifier, as in {@link ImportingChunk}. */
+  imports: Record<string, string[]>;
+}
+
+/** One minted shared chunk with its parsed linkage. */
+export interface SharedChunk extends ChunkLinkage {
+  /** The shared dependency's bare specifier, e.g. `react`. */
+  name: string;
+  /** The chunk's path in the output directory, e.g. `shared/react.js`. */
+  fileName: string;
+  /** See {@link MintedSharedChunk.discoveryFailure}. */
+  discoveryFailure?: string;
+}
+
+/** Names a chunk imports from a shared dependency whose chunk lacks them. */
+export interface SharedImportMismatch {
+  /** The importing chunk's path in the output directory. */
+  importer: string;
+  /**
+   * The shared dependency the importing chunk was minted from, when the
+   * importer is a shared chunk rather than one of the MFE's own.
+   */
+  importerPackage?: string;
+  /** The shared dependency it imports from. */
+  packageName: string;
+  /** The names that dependency's chunk does not export. */
+  missing: string[];
+  /** See {@link MintedSharedChunk.discoveryFailure}. */
+  discoveryFailure?: string;
+}
+
+/**
+ * Reads what a chunk exports and imports from its top-level import and export
+ * statements, the only place an ES module declares either.
+ *
+ * `parse` is Rollup's `this.parse` in the plugin and acorn in tests; both
+ * produce ESTree. Pure; exported for unit tests.
+ */
+export function readChunkLinkage(
+  code: string,
+  parse: (code: string) => unknown
+): ChunkLinkage {
+  const program = parse(code) as { body: AstNode[] };
+  const linkage: ChunkLinkage = { exports: [], starExports: [], imports: {} };
+  const addImport = (from: string, name?: string): void => {
+    const names = (linkage.imports[from] ??= []);
+    if (name !== undefined) names.push(name);
+  };
+
+  for (const node of program.body) {
+    if (node.type === 'ImportDeclaration') {
+      const from = nameOf(node.source as AstNode);
+      addImport(from);
+      for (const specifier of node.specifiers as AstNode[]) {
+        if (specifier.type === 'ImportDefaultSpecifier') {
+          addImport(from, 'default');
+        } else if (specifier.type === 'ImportNamespaceSpecifier') {
+          addImport(from, '*');
+        } else {
+          addImport(from, nameOf(specifier.imported as AstNode));
+        }
+      }
+    } else if (node.type === 'ExportNamedDeclaration') {
+      const source = node.source as AstNode | null;
+      if (node.declaration) {
+        linkage.exports.push(...declaredNames(node.declaration as AstNode));
+      }
+      for (const specifier of node.specifiers as AstNode[]) {
+        linkage.exports.push(nameOf(specifier.exported as AstNode));
+        if (source) addImport(nameOf(source), nameOf(specifier.local as AstNode));
+      }
+    } else if (node.type === 'ExportDefaultDeclaration') {
+      linkage.exports.push('default');
+    } else if (node.type === 'ExportAllDeclaration') {
+      const from = nameOf(node.source as AstNode);
+      addImport(from, '*');
+      const exported = node.exported as AstNode | null;
+      if (exported) linkage.exports.push(nameOf(exported));
+      else linkage.starExports.push(from);
+    }
+  }
+
+  return linkage;
+}
+
+/**
+ * An identifier's name, or a string literal's value: module specifiers, and
+ * names such as `export { x as "a-b" }`.
+ */
+function nameOf(node: AstNode): string {
+  return node.type === 'Identifier' ? String(node.name) : String(node.value);
+}
+
+/**
+ * The names a declaration binds. `export var { a, b: [c] } = m;`, the form
+ * `patchCjsNamedExports` writes, binds `a` and `c`.
+ */
+function declaredNames(node: AstNode): string[] {
+  switch (node.type) {
+    case 'Identifier':
+      return [String(node.name)];
+    case 'VariableDeclaration':
+      return (node.declarations as AstNode[]).flatMap((declarator) =>
+        declaredNames(declarator.id as AstNode)
+      );
+    case 'FunctionDeclaration':
+    case 'ClassDeclaration':
+      return declaredNames(node.id as AstNode);
+    case 'ObjectPattern':
+      return (node.properties as AstNode[]).flatMap((property) =>
+        declaredNames(
+          (property.type === 'RestElement'
+            ? property.argument
+            : property.value) as AstNode
+        )
+      );
+    case 'ArrayPattern':
+      return (node.elements as Array<AstNode | null>).flatMap((element) =>
+        element ? declaredNames(element) : []
+      );
+    case 'AssignmentPattern':
+      return declaredNames(node.left as AstNode);
+    case 'RestElement':
+      return declaredNames(node.argument as AstNode);
+    default:
+      return [];
+  }
+}
+
+/**
+ * Finds every name an emitted chunk imports from a shared dependency that the
+ * dependency's shared chunk does not export.
+ *
+ * Failure mode this guards: the handler points each bare import at the shared
+ * chunk for that package, and ES modules link by name. An import of a name
+ * the chunk does not export fails with a SyntaxError before any code runs, so
+ * the importing chunk never loads and the MFE never mounts. esbuild keeps an
+ * ESM package's own exports, but two cases leave a chunk short of names, and
+ * neither fails the build on its own. `patchCjsNamedExports` finds a CommonJS
+ * package's names by loading it with Node's `require()`, which can throw or
+ * read a different file than the one esbuild bundled. And an ESM entry that
+ * does `export * from "./lib.cjs"` leaves a chunk with no exports at all.
+ *
+ * `importers` are the MFE's own chunks, lazy ones included, and the shared
+ * chunks, which import each other. Imports of anything but a shared
+ * dependency are skipped, and so is `*`: a namespace import names nothing to
+ * check.
+ *
+ * A chunk's exports include what it re-exports with `export * from "<x>"`
+ * from another shared chunk, except `default`. esbuild keeps that line when
+ * `x` is a sibling shared dependency. `@tanstack/react-query`, for instance,
+ * starts with `export * from "@tanstack/query-core"`, so a project that
+ * shares both gets one, and `QueryClient` reaches the MFE through it.
+ *
+ * Pure; exported for unit tests.
+ */
+export function findSharedImportMismatches(
+  importers: readonly ImportingChunk[],
+  sharedChunks: readonly SharedChunk[]
+): SharedImportMismatch[] {
+  const byName = new Map(sharedChunks.map((chunk) => [chunk.name, chunk]));
+  const packageOfFile = new Map(
+    sharedChunks.map((chunk) => [chunk.fileName, chunk.name])
+  );
+  const exportCache = new Map<string, ReadonlySet<string>>();
+
+  // `visiting` stops at a cycle of `export *` lines. The cycle guard has
+  // failed such a build already, so what the cut-off names would add does
+  // not matter.
+  const exportsOf = (
+    chunk: SharedChunk,
+    visiting: Set<string>
+  ): ReadonlySet<string> => {
+    const cached = exportCache.get(chunk.name);
+    if (cached) return cached;
+    const names = new Set(chunk.exports);
+    visiting.add(chunk.name);
+    for (const from of chunk.starExports) {
+      const target = byName.get(from);
+      if (!target || visiting.has(from)) continue;
+      for (const name of exportsOf(target, visiting)) {
+        if (name !== 'default') names.add(name);
+      }
+    }
+    visiting.delete(chunk.name);
+    exportCache.set(chunk.name, names);
+    return names;
+  };
+
+  const mismatches: SharedImportMismatch[] = [];
+  for (const importer of importers) {
+    for (const [from, names] of Object.entries(importer.imports)) {
+      const target = byName.get(from);
+      if (!target) continue;
+      const available = exportsOf(target, new Set());
+      const missing = [...new Set(names)].filter(
+        (name) => name !== '*' && !available.has(name)
+      );
+      if (missing.length === 0) continue;
+      mismatches.push({
+        importer: importer.fileName,
+        importerPackage: packageOfFile.get(importer.fileName),
+        packageName: from,
+        missing,
+        discoveryFailure: target.discoveryFailure,
+      });
+    }
+  }
+  return mismatches;
+}
+
+/**
+ * Formats the guard failure: one line per importing chunk and package, with
+ * the reason named-export discovery came up empty when it did. The fix
+ * depends on who asks for the name. The MFE's own code can import something
+ * else, or bundle the package instead of sharing it. A shared chunk's import
+ * comes from that package's own code, which cannot change, so there the
+ * likely cause is two package versions that do not fit each other.
+ */
+export function formatSharedImportMismatchError(
+  mismatches: readonly SharedImportMismatch[]
+): string {
+  const lines = mismatches.map((mismatch) => {
+    const line =
+      `  - '${mismatch.importer}' imports ${mismatch.missing.join(', ')} ` +
+      `from '${mismatch.packageName}'`;
+    return mismatch.discoveryFailure
+      ? `${line}\n    (${mismatch.discoveryFailure})`
+      : line;
+  });
+  const fixes: string[] = [];
+  if (mismatches.some((mismatch) => mismatch.importerPackage === undefined)) {
+    fixes.push(
+      `Fix, where one of the MFE's own chunks imports the name: import only ` +
+        `names the package exports, or stop sharing the package: remove it ` +
+        `from build.rollupOptions.external so Vite bundles it into the MFE. A ` +
+        `CommonJS package whose named exports cannot be found at build time ` +
+        `can be bundled but not shared.`
+    );
+  }
+  if (mismatches.some((mismatch) => mismatch.importerPackage !== undefined)) {
+    fixes.push(
+      `Fix, where a shared chunk imports the name: that package's own code ` +
+        `asks for it. If a discovery failure is listed, the package that ` +
+        `lacks the name can be bundled but not shared: remove it from ` +
+        `build.rollupOptions.external. Otherwise the installed versions of ` +
+        `the two packages most likely do not fit each other: install versions ` +
+        `that do.`
+    );
+  }
+  return (
+    `[frontx-mf-gts] Chunks import names that the shared chunk of the ` +
+    `package does not export. ES modules link by name, so each such import ` +
+    `fails at runtime with a SyntaxError, the importing chunk never loads ` +
+    `and the MFE never mounts:\n${lines.join('\n')}\n` +
+    fixes.join('\n')
+  );
+}
+
 /**
  * Creates the frontx-mf-gts Vite plugin.
  *
@@ -1227,6 +1655,7 @@ export function frontxMfGts(): Plugin {
   let distDirPath = '';
   let resolvedExternals: string[] = [];
   const capturedChunks = new Map<string, CapturedChunk>();
+  const capturedImports = new Map<string, ImportingChunk>();
 
   return {
     name: 'frontx-mf-gts',
@@ -1301,11 +1730,21 @@ export function frontxMfGts(): Plugin {
       }
     },
 
+    // A watch rebuild reuses this plugin instance, and chunk file names carry
+    // a content hash, so facts captured by an earlier build would linger
+    // and the guards would check chunks that no longer exist.
+    buildStart() {
+      capturedChunks.clear();
+      capturedImports.clear();
+    },
+
     // Capture the chunk graph while it is still visible — closeBundle (where
     // the manifests are read) runs after Rollup discards it. `moduleIds`
     // still lists the extracted CSS modules a chunk owned; the CSS-delivery
     // guard below checks them against the federation manifest's per-expose
-    // CSS attribution.
+    // CSS attribution. `importedBindings` lists the names each chunk imports
+    // per specifier; the shared-import guard checks them against the shared
+    // chunks.
     generateBundle(_options, bundle) {
       for (const [fileName, output] of Object.entries(bundle)) {
         if (output.type !== 'chunk') continue;
@@ -1314,6 +1753,10 @@ export function frontxMfGts(): Plugin {
           imports: [...output.imports],
           dynamicImports: [...output.dynamicImports],
           ownCssModules: output.moduleIds.filter(isOwnCssModule),
+        });
+        capturedImports.set(fileName, {
+          fileName,
+          imports: { ...output.importedBindings },
         });
       }
     },
@@ -1372,8 +1815,33 @@ export function frontxMfGts(): Plugin {
           console.log(
             '[frontx-mf-gts] Building shared deps as standalone ESM...'
           );
-          await esmBuilder.build((message) => this.error({ message }));
+          const minted = await esmBuilder.build((message) =>
+            this.error({ message })
+          );
           console.log('[frontx-mf-gts] Shared deps build complete.');
+
+          // ── Guard: every import of a shared chunk must link ─────────────
+          // Runs on the final bytes of every chunk, after minting and before
+          // the manifest that publishes the shared chunks is written. It only
+          // reads, so a healthy build is bit-for-bit unaffected.
+          const sharedChunks: SharedChunk[] = minted.map((chunk) => ({
+            name: chunk.name,
+            fileName: path
+              .relative(distDir, chunk.outfile)
+              .split(path.sep)
+              .join('/'),
+            discoveryFailure: chunk.discoveryFailure,
+            ...readChunkLinkage(fs.readFileSync(chunk.outfile, 'utf-8'), (input) =>
+              this.parse(input)
+            ),
+          }));
+          const mismatches = findSharedImportMismatches(
+            [...capturedImports.values(), ...sharedChunks],
+            sharedChunks
+          );
+          if (mismatches.length > 0) {
+            this.error({ message: formatSharedImportMismatchError(mismatches) });
+          }
         }
 
         // ── Write enriched build-output manifest ─────────────────────────────
@@ -1549,4 +2017,4 @@ export function frontxMfGts(): Plugin {
     };
 }
 
-export { LazyImportTransformer, transformLazyImports };
+export { LazyImportTransformer, StandaloneEsmBuilder, transformLazyImports };
