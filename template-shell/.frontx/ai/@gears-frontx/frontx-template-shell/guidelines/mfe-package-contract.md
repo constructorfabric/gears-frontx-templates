@@ -74,6 +74,31 @@ three, on one shared predicate per rule rather than a copy each.
   `mf-manifest.json` directly, and throws if it is missing or was not built by
   a `frontxMfGts()`-configured pipeline.
 
+## Shared dependencies
+
+The strings in `build.rollupOptions.external` are the package's shared
+dependencies. Rollup leaves their imports bare, `frontxMfGts()` builds each one
+into a standalone ESM file under `dist/shared/`, and at runtime the handler
+points every bare import at that file. ES modules link by name, so
+`frontxMfGts()` fails the build when a chunk imports a name that the shared
+chunk for that package does not export. The error names the chunk, the name
+and the package. When the importing chunk is itself a shared chunk, the two
+packages' installed versions most likely do not fit each other.
+
+A CommonJS package needs one more step. esbuild gives its chunk only a default
+export, the package's whole `module.exports`, so `frontxMfGts()` finds the
+named exports by loading the package with Node's `require()` at build time. A
+package that cannot load in Node, for example because it reads `window` when
+it loads, keeps only the default export. **Such a package can stay shared if
+its users read it through the default import**
+(`import pkg from 'pkg'; pkg.name`). A named import of it
+(`import { name } from 'pkg'`) fails the build. Switch that import to the
+default import, or stop sharing the package: remove it from
+`build.rollupOptions.external` and Vite bundles it into the MFE. Names read
+through a namespace import (`import * as R from 'react'; R.useState`) cannot be
+checked. For a package whose discovery failed they are `undefined`, so the
+build warns about such an import, and the default import fixes it.
+
 ## CSS delivery into shadow roots
 
 MFE screens render inside open shadow roots, and shadow roots do not see the
