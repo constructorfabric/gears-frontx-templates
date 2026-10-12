@@ -62,10 +62,16 @@ function adoptIntoLifecycle(shadowRoot: ShadowRoot): void {
 /** Nothing in these cases reaches the bridge - renderContent ignores it. */
 const noopBridge = {} as ChildMfeBridge;
 
-function appendHostStyle(css: string): void {
+function appendHostStyle(css: string): HTMLStyleElement {
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
+  return style;
+}
+
+/** The adopted block sits at the front of the shadow root, so its first node is the first style. */
+function firstAdoptedStyle(shadowRoot: ShadowRoot): HTMLStyleElement | null {
+  return shadowRoot.querySelector('style');
 }
 
 function appendHostLink(href: string): void {
@@ -167,7 +173,11 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
 
     adoptIntoLifecycle(shadowRoot);
 
-    expect(cascadeOrder(shadowRoot)).toEqual([HOST_LINK_HREF, HOST_PREFLIGHT_CSS, MFE_BUTTON_CSS]);
+    expect(cascadeOrder(shadowRoot)).toEqual([
+      HOST_LINK_HREF,
+      HOST_PREFLIGHT_CSS,
+      MFE_BUTTON_CSS,
+    ]);
   });
 
   it('puts a stylesheet arriving after adoption last, behind both the adopted block and the MFE stylesheet', () => {
@@ -187,6 +197,108 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
       MFE_BUTTON_CSS,
       ':host { color: red; }',
     ]);
+  });
+
+  it('copies the text of a host <style> that has text as written, because serialising its rules can drop declarations', () => {
+    // Serialising this rule from the CSSOM gives margin-top, -right and -bottom
+    // as empty values, so a copy rebuilt from cssRules would lose the 8px
+    // margins. jsdom keeps them, so the case pins the text instead.
+    const hostCss = '._inset { margin: var(--space-2); margin-left: 0; }';
+    appendHostStyle(hostCss);
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(cascadeOrder(shadowRoot)).toEqual([hostCss, MFE_BUTTON_CSS]);
+  });
+
+  it('adopts the rules a host <style> holds only through insertRule, which its text does not carry', () => {
+    // The shape CSS-in-JS libraries such as emotion and styled-components
+    // write in production: an empty element whose sheet is filled through the
+    // CSSOM. A copy of its text is an empty <style>.
+    const hostStyle = appendHostStyle('');
+    hostStyle.sheet?.insertRule('._fromCssInJs { color: red; }', 0);
+    hostStyle.sheet?.insertRule('._fromCssInJs:hover { color: blue; }', 1);
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(hostStyle.textContent).toBe('');
+    const [adopted, mfe] = cascadeOrder(shadowRoot);
+    expect(adopted).toContain('color: red');
+    expect(adopted).toContain('color: blue');
+    // Rule order inside a sheet settles specificity ties, so the copy keeps it.
+    expect(adopted.indexOf('color: red')).toBeLessThan(adopted.indexOf('color: blue'));
+    expect(mfe).toBe(MFE_BUTTON_CSS);
+  });
+
+  it('adopts the inserted rules of a host <style> whose text is only whitespace', () => {
+    // Whitespace parses to no rules, so the sheet holds only what was inserted;
+    // copying the text would carry none of it.
+    const hostStyle = appendHostStyle('\n');
+    hostStyle.sheet?.insertRule('._fromCssInJs { color: red; }', 0);
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    const [adopted, mfe] = cascadeOrder(shadowRoot);
+    expect(adopted).toContain('color: red');
+    expect(mfe).toBe(MFE_BUTTON_CSS);
+  });
+
+  it('keeps the media query of a host <style>, so a print-only host style stays print-only inside the MFE', () => {
+    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    hostStyle.media = 'print';
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(firstAdoptedStyle(shadowRoot)?.media).toBe('print');
+  });
+
+  it('carries the nonce of a host <style>, so a nonce-based CSP admits the copy as it admitted the original', () => {
+    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    hostStyle.nonce = 'host-style-nonce';
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(firstAdoptedStyle(shadowRoot)?.nonce).toBe('host-style-nonce');
+  });
+
+  it('carries no other attribute of a host <style>, so a library looking for its own tag in the shadow root does not find the copy', () => {
+    // styled-components, rendering into a shadow root, puts its tag right after
+    // the last style[data-styled] there. A copy carrying the host's attribute
+    // would pull the MFE's rules ahead of the base resets and the MFE's own CSS.
+    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    hostStyle.id = 'host-style';
+    hostStyle.setAttribute('data-styled', 'active');
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(shadowRoot.querySelector('style[data-styled]')).toBeNull();
+    expect(firstAdoptedStyle(shadowRoot)?.getAttributeNames()).toEqual([
+      'data-frontx-adopted-host-style',
+    ]);
+  });
+
+  it('copies the text of a host <style> that has no sheet, and keeps the copy as inert as the original', () => {
+    // A type other than CSS leaves the element without a sheet, so there are
+    // no rules to read and the text is all there is. Carried over without its
+    // type, that text would be parsed as CSS inside the MFE.
+    const hostStyle = document.createElement('style');
+    hostStyle.type = 'text/plain';
+    hostStyle.textContent = 'not css';
+    document.head.appendChild(hostStyle);
+    const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
+
+    adoptIntoLifecycle(shadowRoot);
+
+    expect(hostStyle.sheet).toBeNull();
+    const adopted = firstAdoptedStyle(shadowRoot);
+    expect(adopted?.textContent).toBe('not css');
+    expect(adopted?.type).toBe('text/plain');
   });
 });
 
