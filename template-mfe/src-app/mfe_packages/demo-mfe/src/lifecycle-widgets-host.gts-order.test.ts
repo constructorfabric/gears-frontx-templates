@@ -9,10 +9,12 @@
  *
  * `lifecycle-widgets-host.test.tsx` never caught this: its `FakeRegistry`'s
  * `typeSystem` is a hand-rolled stub (`register: vi.fn()`) that performs no
- * GTS validation at all. This file uses the REAL `GtsPlugin` (a fresh
- * instance, per its own doc comment: "Tests that need multiple isolated
- * instances should construct new GtsPlugin() directly") so the assertion is
- * about the real validator's behaviour, not a fake's.
+ * GTS validation at all. This file uses the REAL `GtsPlugin`, built with
+ * `{ isolated: true }`: a plain `new GtsPlugin()` joins the realm-wide store
+ * every copy shares, so an earlier registration in the same worker would turn
+ * the "referenced entity not found" ordering check into a pass for the wrong
+ * reason. The assertion is about the real validator's behaviour on an empty
+ * store, not a fake's.
  *
  * `bootstrapWidgetsRuntime` only ever reads `app.mfeRegistry` — it never
  * touches any other part of the `FrontXApp` it's normally passed inside
@@ -77,13 +79,13 @@ const MANIFEST: MfManifest = {
 
 /**
  * A minimal registry double whose `typeSystem` is a REAL, freshly-constructed
- * `GtsPlugin` — every `register`/`registerSchema` call below runs the real
+ * `GtsPlugin` with a private store — every `register`/`registerSchema` call below runs the real
  * validator. `registerDomain`/`registerExtension`/`getDomain`/`getExtension`
  * are faked bookkeeping only: `bootstrapWidgetsRuntime` never inspects their
  * internals, only whether a domain/extension is already present.
  */
 function buildRealTypeSystemRegistry() {
-  const typeSystem = new GtsPlugin();
+  const typeSystem = new GtsPlugin({ isolated: true });
   const domains = new Map<string, ExtensionDomain>();
   const extensions = new Map<string, unknown>();
   return {

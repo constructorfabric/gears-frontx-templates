@@ -201,15 +201,17 @@ export async function bootstrapWidgetsRuntime(
     }
   }
 
-  // This nested type system's GtsStore is wholly independent of the shell's
-  // (each GtsPlugin instance owns its own store — see plugin.ts), and this
-  // runtime never ran the shell-only `main.tsx` registration that puts the
-  // three application-layer derived schemas (theme, language, extension_screen)
-  // onto the shell's own `gtsPlugin` singleton (see
+  // This nested type system is the `gtsPlugin` singleton, which since
+  // gts-plugin 0.3.2 shares one store with every compatible copy in the realm
+  // (the shell's included), so the shell's registrations are already visible
+  // here. This runtime must still not depend on the shell-only `main.tsx`
+  // registration that puts the three application-layer derived schemas
+  // (theme, language, extension_screen) onto the store (see
   // `loader.ts`'s comment: "application-specific derived schemas ...
-  // registered at the application layer"). They MUST be registered here
-  // before ANY domain that references them by `x-gts-ref` in its own
-  // `sharedProperties` — not only the well-known `screenDomain` registered
+  // registered at the application layer"), because a standalone mount has no
+  // shell. Re-registering identical content is silent, so they are registered
+  // here unconditionally. They MUST be registered here before ANY domain that
+  // references them by `x-gts-ref` in its own `sharedProperties` — not only the well-known `screenDomain` registered
   // below, but also the manifest-declared widgets domain in the loop that
   // follows. Registering these three ahead of the manifest-driven domain loop
   // covers the application-level schema ordering rule.

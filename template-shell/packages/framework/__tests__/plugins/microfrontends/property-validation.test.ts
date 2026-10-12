@@ -34,11 +34,12 @@ function getValuePropertySchema(schema: JSONSchema | undefined): JSONSchema {
 }
 
 /**
- * Build a fresh GtsPlugin instance with the application-layer derived schemas registered.
- * Using a fresh instance per describe block keeps tests isolated from singleton state.
+ * Build a GtsPlugin with a private store and the application-layer derived schemas registered.
+ * `isolated: true` keeps these tests off the realm-wide store every other
+ * GtsPlugin copy (including the `gtsPlugin` singleton) shares.
  */
 function buildPluginWithDerivedSchemas(): GtsPlugin {
-  const plugin = new GtsPlugin();
+  const plugin = new GtsPlugin({ isolated: true });
   plugin.registerSchema(themeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
