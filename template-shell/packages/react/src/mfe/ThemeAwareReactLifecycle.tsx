@@ -38,6 +38,34 @@ const BASE_RESETS_STYLE_ID = '__frontx-base-resets__';
  */
 const SHELL_OWNED_SHADOW_STYLE_IDS = ['__frontx-shadow-isolation__', '__frontx-css-variables__'];
 
+/**
+ * The CSS for the copy of a host `<style>`: its text when it holds anything
+ * but whitespace, otherwise the rules of its stylesheet.
+ *
+ * CSS-in-JS libraries such as emotion and styled-components write every rule
+ * into an empty element through `sheet.insertRule` in production. Those rules
+ * never appear in `textContent`, so a copy of the text would be an empty
+ * `<style>`; for an element without text the copy is built from `cssRules`.
+ * Whitespace counts as no text: it holds no rules, so every rule in the sheet
+ * of such an element was inserted, and the text would carry none of them.
+ *
+ * An element with text is copied as written rather than through `cssRules`,
+ * because serialising a rule can lose declarations: for a shorthand set with
+ * `var()` and followed by one of its longhands (`margin: var(--space-2);
+ * margin-left: 0`, as in a ui-kit rule), the other longhands serialise as
+ * empty and drop out of the copy. The text also keeps the copy's hash equal to
+ * the host's, so a CSP that allows the host `<style>` by its hash allows the
+ * copy. A copy built from rules matches no hash; under a CSP only its nonce or
+ * `'unsafe-inline'` admits it. The cost is that a rule inserted into an element
+ * that also has text is not copied.
+ */
+function cssToCopy(style: HTMLStyleElement): string {
+  const text = style.textContent ?? '';
+  const sheet = style.sheet;
+  if (text.trim() || !sheet) return text;
+  return Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
+}
+
 interface ProviderMountOptions {
   mfeBridge?: {
     bridge: ChildMfeBridge;
@@ -229,6 +257,19 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * the head is not fixed: a lazily imported chunk adds stylesheets to it after
    * the first mount, and the second mount has to pick those up.
    *
+   * A `<style>` is copied into a new element that holds the host's CSS - see
+   * `cssToCopy` - and takes three things from the host element: `media`,
+   * without which a print-only host style applies on screen inside the MFE;
+   * `type`, which keeps the copy of a non-CSS element as inert as the original;
+   * and the nonce, without which a nonce-based CSP blocks the copy. The nonce is read from the `nonce` property, because
+   * browsers blank the attribute in a document served with a CSP header.
+   * Nothing else is carried over, because libraries look for their own
+   * attributes inside the shadow root: styled-components, rendering into it,
+   * puts its tag right after the last `style[data-styled]` there, so a copy of
+   * the host's tag would pull the MFE's rules ahead of the base resets and the
+   * MFE's own CSS. A `<link>` is a deep clone and is loaded from its `href`
+   * again.
+   *
    * The fresh block goes in before the previous one comes out. Removing first
    * leaves the shadow root with no host CSS at all, and everything between that
    * removal and the insertion is synchronous work in this same task - so the gap
@@ -255,10 +296,13 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
     const hostStyleNodes = document.head.querySelectorAll('style, link[rel="stylesheet"]');
     hostStyleNodes.forEach((el) => {
       if (el instanceof HTMLStyleElement) {
-        const clone = document.createElement('style');
-        clone.textContent = el.textContent ?? '';
-        clone.setAttribute(ADOPTED_HOST_STYLE_ATTR, '');
-        adoptedStyles.appendChild(clone);
+        const copy = document.createElement('style');
+        if (el.media) copy.media = el.media;
+        if (el.type) copy.type = el.type;
+        if (el.nonce) copy.nonce = el.nonce;
+        copy.textContent = cssToCopy(el);
+        copy.setAttribute(ADOPTED_HOST_STYLE_ATTR, '');
+        adoptedStyles.appendChild(copy);
         return;
       }
       const linkClone = el.cloneNode(true) as Element;
