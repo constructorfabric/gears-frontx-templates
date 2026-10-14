@@ -16,7 +16,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RestPlugin, RestPluginHooks, RestRequestContext } from '@gears-frontx/api';
-import type { AccessEvaluation, AuthProvider, AuthSession, AuthTransition } from '@gears-frontx/auth';
+import type {
+  AccessEvaluation,
+  AuthProvider,
+  AuthSession,
+  AuthState,
+  AuthStateListener,
+  AuthTransition,
+} from '@gears-frontx/auth';
 import type { AuthRuntime, AuthTransportBinder } from '../src/plugins/auth';
 
 // One app per runtime: every test loads its own module copy.
@@ -36,7 +43,7 @@ beforeEach(async () => {
 });
 
 /** Concrete auth transport plugins implement hooks; `RestPlugin` instance type omits optional hook keys. */
-type AuthRestPlugin = RestPlugin & Pick<RestPluginHooks, 'onRequest' | 'onError'>;
+type AuthRestPlugin = RestPlugin & Pick<RestPluginHooks, 'onRequest' | 'onResponse' | 'onError'>;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -550,9 +557,10 @@ describe('auth plugin', () => {
       expect(decision).toBe('allow');
       expect(provider.canAccess).toHaveBeenCalledTimes(1);
 
-      const unsub = app.auth?.subscribe?.(() => undefined);
+      const listener = () => undefined;
+      const unsub = app.auth?.subscribe?.(listener);
       expect(unsub).toBe(unsubscribe);
-      expect(provider.subscribe).toHaveBeenCalledTimes(1);
+      expect(provider.subscribe).toHaveBeenCalledWith(listener);
 
       app.destroy();
     });
@@ -577,6 +585,686 @@ describe('auth plugin', () => {
       expect(() => {
         app.destroy();
       }).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Session changes the provider drives on its own
+  // -------------------------------------------------------------------------
+  describe('provider-driven session changes', () => {
+    type StreamProvider = AuthProvider & {
+      push: (state: AuthState) => void;
+      signInAs: (sub: string) => void;
+      isListening: () => boolean;
+    };
+
+    /**
+     * Provider signed in as `account-a`; `getIdentity` reports the current account when enabled.
+     * With `stream: false` it has no `subscribe`, so the plugin learns the session only from refreshes.
+     */
+    function makeStreamProvider(options: { identity: boolean; stream?: boolean }): StreamProvider {
+      let listener: AuthStateListener | null = null;
+      let sub = 'account-a';
+      const provider: StreamProvider = {
+        ...makeBearerProvider('tok'),
+        login: vi.fn().mockResolvedValue({ type: 'none' }),
+        handleCallback: vi.fn().mockResolvedValue({ type: 'none' }),
+        refresh: vi.fn().mockResolvedValue({ kind: 'bearer', token: 'tok' } satisfies AuthSession),
+        subscribe: vi.fn((next: AuthStateListener) => {
+          listener = next;
+          return () => {
+            listener = null;
+          };
+        }),
+        push: (state) => {
+          listener?.({ state });
+        },
+        signInAs: (next) => {
+          sub = next;
+        },
+        isListening: () => listener !== null,
+      };
+      if (options.identity) {
+        provider.getIdentity = vi.fn(async () => ({ sub }));
+      }
+      if (options.stream === false) {
+        delete provider.subscribe;
+      }
+      return provider;
+    }
+
+    async function buildWithEvents(provider: AuthProvider) {
+      const { eventBus } = await import('@gears-frontx/state');
+      const { AuthEvents } = await import('../src/plugins/auth');
+      const loggedIn = vi.fn();
+      const loggedOut = vi.fn();
+      eventBus.on(AuthEvents.LoggedIn, loggedIn);
+      eventBus.on(AuthEvents.LoggedOut, loggedOut);
+      const app = createFrontX().use(auth({ provider })).build();
+      return { app, loggedIn, loggedOut };
+    }
+
+    /** Let identity lookups started by a state event settle. */
+    async function settle(): Promise<void> {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    function restPlugin(): AuthRestPlugin {
+      return apiRegistry.plugins.getAll(RestProtocol)[0] as AuthRestPlugin;
+    }
+
+    function fail401(plugin: AuthRestPlugin, retry = vi.fn(async () => ({ status: 200, headers: {}, data: {} }))) {
+      const result = plugin.onError?.({
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('/api'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry,
+      });
+      return { result, retry };
+    }
+
+    type Step = AuthState | { switchTo: string };
+
+    it.each<{ name: string; identity: boolean; signedOutAtInit?: boolean; initFails?: boolean; steps: Step[]; loggedIn: number; loggedOut: number }>([
+      { name: 'a session end', identity: true, steps: ['authenticated', 'unauthenticated'], loggedIn: 0, loggedOut: 1 },
+      { name: 'a session start', identity: true, signedOutAtInit: true, steps: ['authenticated'], loggedIn: 1, loggedOut: 0 },
+      {
+        name: 'an account switch',
+        identity: true,
+        steps: ['authenticated', { switchTo: 'account-b' }, 'authenticated'],
+        loggedIn: 1,
+        loggedOut: 0,
+      },
+      { name: 'a repeated event for the same account', identity: true, steps: ['authenticated', 'authenticated'], loggedIn: 0, loggedOut: 0 },
+      { name: 'a session end after an init check that rejected', identity: true, initFails: true, steps: ['unauthenticated'], loggedIn: 0, loggedOut: 1 },
+      { name: 'loading and error states', identity: true, steps: ['authenticated', 'loading', 'error', 'authenticated'], loggedIn: 0, loggedOut: 0 },
+      {
+        name: 'an account switch from a provider without getIdentity',
+        identity: false,
+        steps: ['authenticated', { switchTo: 'account-b' }, 'authenticated'],
+        loggedIn: 0,
+        loggedOut: 0,
+      },
+    ])('follows the provider state stream: $name', async ({ identity, signedOutAtInit, initFails, steps, loggedIn, loggedOut }) => {
+      const provider = makeStreamProvider({ identity });
+      if (signedOutAtInit) vi.mocked(provider.checkAuth).mockResolvedValue({ authenticated: false });
+      if (initFails) vi.mocked(provider.checkAuth).mockRejectedValue(new Error('down'));
+      const events = await buildWithEvents(provider);
+
+      for (const step of steps) {
+        if (typeof step === 'string') {
+          provider.push(step);
+        } else {
+          provider.signInAs(step.switchTo);
+        }
+        await settle();
+      }
+
+      expect(events.loggedIn).toHaveBeenCalledTimes(loggedIn);
+      expect(events.loggedOut).toHaveBeenCalledTimes(loggedOut);
+      events.app.destroy();
+    });
+
+    it.each(['login', 'handleCallback', 'session start'] as const)(
+      'clears for an account switch that lands between the %s clear and its first identity lookup',
+      async (trigger) => {
+      const provider = makeStreamProvider({ identity: true });
+      if (trigger === 'session start') vi.mocked(provider.checkAuth).mockResolvedValue({ authenticated: false });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      await settle();
+
+      const first = deferred<{ sub: string }>();
+      vi.mocked(provider.getIdentity!).mockReturnValueOnce(first.promise);
+      if (trigger === 'login') {
+        await app.auth?.login?.({ type: 'password', payload: {} });
+      } else if (trigger === 'handleCallback') {
+        await app.auth?.handleCallback?.({ params: { code: 'c' } });
+      } else {
+        provider.push('authenticated');
+      }
+      await settle();
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+
+      provider.signInAs('account-b');
+      provider.push('authenticated');
+      await settle();
+      first.resolve({ sub: 'account-a' });
+      await settle();
+
+      expect(loggedIn).toHaveBeenCalledTimes(2);
+      app.destroy();
+    }
+    );
+
+    it.each(['login', 'handleCallback'] as const)(
+      'app.auth.%s clears once more, by design, when the provider echoes the new session',
+      async (method) => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      provider.signInAs('account-b');
+      if (method === 'login') {
+        await app.auth?.login?.({ type: 'password', payload: {} });
+      } else {
+        await app.auth?.handleCallback?.({ params: { code: 'c' } });
+      }
+      provider.push('authenticated');
+      await settle();
+      // A report after the clear and before its identity lookup is not trusted as the baseline.
+      expect(loggedIn).toHaveBeenCalledTimes(2);
+
+      // The echo sets the baseline: a repeat is silent, a switch still clears.
+      provider.push('authenticated');
+      await settle();
+      expect(loggedIn).toHaveBeenCalledTimes(2);
+      provider.signInAs('account-c');
+      provider.push('authenticated');
+      await settle();
+      expect(loggedIn).toHaveBeenCalledTimes(3);
+
+      app.destroy();
+    }
+    );
+
+    it('app.auth.logout clears once even when the provider echoes the session end', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn, loggedOut } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      await app.auth?.logout();
+      provider.push('unauthenticated');
+      await settle();
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+
+      // The stream is still followed after the echo.
+      provider.push('authenticated');
+      await settle();
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+
+      app.destroy();
+    });
+
+    it.each([
+      { name: 'another identity', noSession: false, switchTo: 'account-b', loggedIn: 1, loggedOut: 0 },
+      { name: 'the same identity', noSession: false, switchTo: null, loggedIn: 0, loggedOut: 0 },
+      { name: 'no session', noSession: true, switchTo: null, loggedIn: 0, loggedOut: 1 },
+    ] as const)('app.auth.refresh landing on $name', async ({ noSession, switchTo, loggedIn, loggedOut }) => {
+      const provider = makeStreamProvider({ identity: true });
+      if (noSession) {
+        vi.mocked(provider.refresh!).mockResolvedValue(null);
+      }
+      const events = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      if (switchTo) provider.signInAs(switchTo);
+      await events.app.auth?.refresh?.();
+
+      expect(events.loggedIn).toHaveBeenCalledTimes(loggedIn);
+      expect(events.loggedOut).toHaveBeenCalledTimes(loggedOut);
+      events.app.destroy();
+    });
+
+    it('a 401 refresh that lands on another identity clears before the retry', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+      const plugin = apiRegistry.plugins.getAll(RestProtocol)[0] as AuthRestPlugin;
+
+      provider.signInAs('account-b');
+      const retry = vi.fn(async () => {
+        expect(loggedIn).toHaveBeenCalledTimes(1);
+        return { status: 200, headers: {}, data: {} };
+      });
+      await plugin.onError?.({
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('/api'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry,
+      });
+
+      expect(retry).toHaveBeenCalledTimes(1);
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it.each([
+      { name: 'rejects', fail: (lookup: ReturnType<typeof vi.fn>) => lookup.mockRejectedValueOnce(new Error('down')) },
+      { name: 'resolves to no identity', fail: (lookup: ReturnType<typeof vi.fn>) => lookup.mockResolvedValueOnce(null) },
+      { name: 'resolves without a sub', fail: (lookup: ReturnType<typeof vi.fn>) => lookup.mockResolvedValueOnce({}) },
+    ])('treats an identity lookup that $name during an authenticated session as a change', async ({ fail }) => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      provider.signInAs('account-b');
+      fail(vi.mocked(provider.getIdentity!));
+      provider.push('authenticated');
+      await settle();
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('catches a switch after login when the identity lookup at login failed', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      vi.mocked(provider.getIdentity!).mockRejectedValueOnce(new Error('down'));
+      await app.auth?.login?.({ type: 'password', payload: {} });
+      await settle();
+      provider.signInAs('account-b');
+      provider.push('authenticated');
+      await settle();
+
+      expect(loggedIn).toHaveBeenCalledTimes(2);
+      app.destroy();
+    });
+
+    it('catches a switch that arrives while the first identity lookup is still pending', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const first = deferred<{ sub: string }>();
+      vi.mocked(provider.getIdentity!).mockReturnValueOnce(first.promise);
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+
+      provider.signInAs('account-b');
+      provider.push('authenticated');
+      await settle();
+      first.resolve({ sub: 'account-a' });
+      await settle();
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('drops an identity lookup that a newer state event overtook', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      const stale = deferred<{ sub: string }>();
+      vi.mocked(provider.getIdentity!).mockReturnValueOnce(stale.promise);
+      provider.push('authenticated');
+      provider.signInAs('account-b');
+      provider.push('authenticated');
+      await settle();
+      stale.resolve({ sub: 'account-a' });
+      await settle();
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('times out a hanging identity lookup, clears, and keeps 401 retries flowing', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+      vi.useFakeTimers();
+      try {
+        vi.mocked(provider.getIdentity!).mockImplementation(() => new Promise(() => undefined));
+        const first = fail401(restPlugin());
+        const second = fail401(restPlugin());
+        await vi.advanceTimersByTimeAsync(60_000);
+        await Promise.all([first.result, second.result]);
+
+        expect(first.retry).toHaveBeenCalledTimes(1);
+        expect(second.retry).toHaveBeenCalledTimes(1);
+        expect(loggedIn).toHaveBeenCalledTimes(1);
+
+        const later = fail401(restPlugin());
+        await vi.advanceTimersByTimeAsync(60_000);
+        await later.result;
+        expect(later.retry).toHaveBeenCalledTimes(1);
+        expect(provider.refresh).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+        app.destroy();
+      }
+    });
+
+    it('does not deadlock when the identity lookup after a 401 refresh gets a 401 itself', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+      // No timer advances: only a lookup that really completes can let the retry run.
+      vi.useFakeTimers();
+      try {
+        const innerRetry = vi.fn(async () => ({ status: 200, headers: {}, data: {} }));
+        vi.mocked(provider.getIdentity!).mockImplementationOnce(async () => {
+          await fail401(restPlugin(), innerRetry).result;
+          return { sub: 'account-b' };
+        });
+        const outer = fail401(restPlugin());
+        await outer.result;
+
+        expect(innerRetry).toHaveBeenCalledTimes(1);
+        expect(outer.retry).toHaveBeenCalledTimes(1);
+        expect(loggedIn).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+        app.destroy();
+      }
+    });
+
+    it.each([
+      { name: 'a 401 refresh landing on another account', via: '401', loggedIn: 1, loggedOut: 0 },
+      { name: 'app.auth.refresh resolving to no session', via: 'app.auth.refresh', loggedIn: 0, loggedOut: 1 },
+    ] as const)('without a state stream, compares $name against the session found at init', async ({ via, loggedIn, loggedOut }) => {
+      const provider = makeStreamProvider({ identity: true, stream: false });
+      const events = await buildWithEvents(provider);
+      await settle();
+      expect(events.loggedIn).not.toHaveBeenCalled();
+      expect(events.loggedOut).not.toHaveBeenCalled();
+
+      if (via === '401') {
+        provider.signInAs('account-b');
+        await fail401(restPlugin()).result;
+      } else {
+        vi.mocked(provider.refresh!).mockResolvedValueOnce(null);
+        await events.app.auth?.refresh?.();
+      }
+
+      expect(events.loggedIn).toHaveBeenCalledTimes(loggedIn);
+      expect(events.loggedOut).toHaveBeenCalledTimes(loggedOut);
+      events.app.destroy();
+    });
+
+    it('lets a login made during the init lookup win over the stale baseline', async () => {
+      const provider = makeStreamProvider({ identity: true, stream: false });
+      const initLookup = deferred<{ sub: string }>();
+      vi.mocked(provider.getIdentity!).mockReturnValueOnce(initLookup.promise);
+      const { app, loggedIn } = await buildWithEvents(provider);
+      await settle();
+
+      provider.signInAs('account-b');
+      await app.auth?.login?.({ type: 'password', payload: {} });
+      await settle();
+      initLookup.resolve({ sub: 'account-a' });
+      await settle();
+      await fail401(restPlugin()).result;
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('clears for a refresh that resolves to no session before the init check completes', async () => {
+      const provider = makeStreamProvider({ identity: true, stream: false });
+      const initCheck = deferred<{ authenticated: boolean }>();
+      vi.mocked(provider.checkAuth).mockReturnValueOnce(initCheck.promise);
+      vi.mocked(provider.refresh!).mockResolvedValueOnce(null);
+      const { app, loggedOut } = await buildWithEvents(provider);
+
+      await app.auth?.refresh?.();
+      initCheck.resolve({ authenticated: true });
+      await settle();
+
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('clears for a 401 refresh that lands while another identity check is still running', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      const firstLookup = deferred<{ sub: string }>();
+      vi.mocked(provider.getIdentity!).mockReturnValueOnce(firstLookup.promise);
+      const first = fail401(restPlugin());
+      await settle();
+      provider.signInAs('account-b');
+      const second = fail401(restPlugin());
+      await settle();
+      firstLookup.resolve({ sub: 'account-a' });
+      await Promise.all([first.result, second.result]);
+
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('clears for an older refresh that resolves to no session after a newer one was applied', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app, loggedIn, loggedOut } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      const older = deferred<AuthSession | null>();
+      vi.mocked(provider.refresh!).mockReturnValueOnce(older.promise);
+      const olderRefresh = app.auth?.refresh?.();
+      provider.signInAs('account-b');
+      await app.auth?.refresh?.();
+      older.resolve(null);
+      await olderRefresh;
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      // No session is never dropped for ordering while signed in: it fails closed.
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it.each([
+      {
+        name: 'app.auth.refresh',
+        run: async (_app: { auth?: AuthRuntime }, error: Error) => {
+          await expect(_app.auth!.refresh!()).rejects.toBe(error);
+        },
+      },
+      {
+        name: 'the 401 refresh',
+        run: async (_app: { auth?: AuthRuntime }) => {
+          const failed = fail401(restPlugin());
+          await expect(failed.result).resolves.toBeInstanceOf(Error);
+          expect(failed.retry).not.toHaveBeenCalled();
+        },
+      },
+    ])('clears once when $name rejects while signed in', async ({ run }) => {
+      const provider = makeStreamProvider({ identity: true });
+      const error = new Error('refresh failed');
+      vi.mocked(provider.refresh!).mockRejectedValue(error);
+      const { app, loggedIn, loggedOut } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      await run(app, error);
+      await run(app, error);
+
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+      expect(loggedOut).not.toHaveBeenCalled();
+      app.destroy();
+    });
+
+    it('clears once for an identity that stays unknown, and again when a known one appears', async () => {
+      const provider = makeStreamProvider({ identity: true, stream: false });
+      const { app, loggedIn } = await buildWithEvents(provider);
+      await settle();
+
+      vi.mocked(provider.getIdentity!).mockRejectedValue(new Error('down'));
+      await app.auth?.refresh?.();
+      await app.auth?.refresh?.();
+      await app.auth?.refresh?.();
+      vi.mocked(provider.refresh!).mockRejectedValueOnce(new Error('refresh failed'));
+      await app.auth?.refresh?.().catch(() => undefined);
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+
+      vi.mocked(provider.getIdentity!).mockResolvedValue({ sub: 'account-a' });
+      await app.auth?.refresh?.();
+      expect(loggedIn).toHaveBeenCalledTimes(2);
+      app.destroy();
+    });
+
+    it('stops refreshing on a 401 that persists after refreshes, until a request succeeds', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      vi.mocked(provider.getIdentity!).mockRejectedValue(new Error('userinfo 401'));
+      const { app, loggedIn } = await buildWithEvents(provider);
+      await settle();
+      const plugin = restPlugin();
+
+      const results: unknown[] = [];
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        results.push(await fail401(plugin).result);
+      }
+      expect(provider.refresh).toHaveBeenCalledTimes(2);
+      expect(results.slice(2).every((result) => result instanceof Error)).toBe(true);
+      expect(loggedIn.mock.calls.length).toBeLessThanOrEqual(1);
+
+      await plugin.onResponse?.({ status: 200, headers: {}, data: {} });
+      await fail401(plugin).result;
+      expect(provider.refresh).toHaveBeenCalledTimes(3);
+      app.destroy();
+    });
+
+    it('keeps a sign-out reported during init when a login attempt fails before the init check lands', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const initCheck = deferred<{ authenticated: boolean }>();
+      vi.mocked(provider.checkAuth).mockReturnValueOnce(initCheck.promise);
+      vi.mocked(provider.login!).mockRejectedValueOnce(new Error('bad password'));
+      const { app, loggedOut } = await buildWithEvents(provider);
+
+      provider.push('unauthenticated');
+      await app.auth?.login?.({ type: 'password', payload: {} }).catch(() => undefined);
+      initCheck.resolve({ authenticated: true });
+      await settle();
+
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+      app.destroy();
+    });
+
+    it('moves the query cache scope as soon as a report needs an identity check, without clearing', async () => {
+      const { queryCache, readQueryCacheScopeGeneration, resetSharedQueryClient } = await import('../src/plugins/queryCache');
+      const { peekSharedQueryClient } = await import('../src/testing/queryCacheTestHooks');
+      const provider = makeStreamProvider({ identity: true });
+      const app = createFrontX().use(queryCache()).use(auth({ provider })).build();
+      try {
+        provider.push('authenticated');
+        await settle();
+        const client = peekSharedQueryClient()!;
+        client.setQueryData(['users'], ['a']);
+        const before = readQueryCacheScopeGeneration(client);
+
+        const lookup = deferred<{ sub: string }>();
+        vi.mocked(provider.getIdentity!).mockReturnValueOnce(lookup.promise);
+        provider.push('authenticated');
+        await settle();
+
+        expect(readQueryCacheScopeGeneration(client)).toBeGreaterThan(before);
+        expect(client.getQueryData(['users'])).toEqual(['a']);
+        lookup.resolve({ sub: 'account-a' });
+        await settle();
+        expect(client.getQueryData(['users'])).toEqual(['a']);
+      } finally {
+        app.destroy();
+        resetSharedQueryClient();
+      }
+    });
+
+    it.each([
+      { name: 'login', state: 'authenticated', outcome: 'resolves', loggedIn: 1, loggedOut: 0 },
+      { name: 'login', state: 'authenticated', outcome: 'rejects', loggedIn: 1, loggedOut: 0 },
+      { name: 'logout', state: 'unauthenticated', outcome: 'resolves', loggedIn: 0, loggedOut: 1 },
+    ] as const)(
+      'clears once when the provider reports the new state while $name is running and then $outcome',
+      async ({ name, state, outcome, loggedIn, loggedOut }) => {
+        const provider = makeStreamProvider({ identity: true });
+        const call = deferred<AuthTransition>();
+        vi.mocked(name === 'login' ? provider.login! : provider.logout).mockReturnValueOnce(call.promise);
+        const events = await buildWithEvents(provider);
+        provider.push('authenticated');
+        await settle();
+
+        const running = name === 'login'
+          ? events.app.auth!.login!({ type: 'password', payload: {} })
+          : events.app.auth!.logout();
+        provider.signInAs('account-b');
+        provider.push(state);
+        await settle();
+        if (outcome === 'resolves') call.resolve({ type: 'none' });
+        else call.reject(new Error('cancelled'));
+        await running.catch(() => undefined);
+        await settle();
+
+        expect(events.loggedIn).toHaveBeenCalledTimes(loggedIn);
+        expect(events.loggedOut).toHaveBeenCalledTimes(loggedOut);
+        events.app.destroy();
+      },
+    );
+
+    it.each([
+      { name: 'a refresh', block: (p: AuthProvider, call: Promise<AuthTransition>) => vi.mocked(p.refresh!).mockReturnValueOnce(call.then(() => null)), run: (r: AuthRuntime) => r.refresh!() },
+      { name: 'a login', block: (p: AuthProvider, call: Promise<AuthTransition>) => vi.mocked(p.login!).mockReturnValueOnce(call), run: (r: AuthRuntime) => r.login!({ type: 'password', payload: {} }) },
+      { name: 'a callback', block: (p: AuthProvider, call: Promise<AuthTransition>) => vi.mocked(p.handleCallback!).mockReturnValueOnce(call), run: (r: AuthRuntime) => r.handleCallback!({ params: { code: 'c' } }) },
+      { name: 'a logout', block: (p: AuthProvider, call: Promise<AuthTransition>) => vi.mocked(p.logout).mockReturnValueOnce(call), run: (r: AuthRuntime) => r.logout() },
+    ])('emits nothing for $name that settles after destroy', async ({ block, run }) => {
+      const provider = makeStreamProvider({ identity: true });
+      const call = deferred<AuthTransition>();
+      block(provider, call.promise);
+      const { app, loggedIn, loggedOut } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+
+      const running = run(app.auth!);
+      app.destroy();
+      call.resolve({ type: 'none' });
+      await running;
+      await settle();
+
+      expect(loggedIn).not.toHaveBeenCalled();
+      expect(loggedOut).not.toHaveBeenCalled();
+    });
+
+    it('leaves no identity lookup timer behind after destroy', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const { app } = await buildWithEvents(provider);
+      provider.push('authenticated');
+      await settle();
+      vi.useFakeTimers();
+      try {
+        vi.mocked(provider.getIdentity!).mockImplementation(() => new Promise(() => undefined));
+        provider.push('authenticated');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(vi.getTimerCount()).toBe(1);
+
+        app.destroy();
+
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('subscribes to the provider on init and unsubscribes on destroy', () => {
+      const provider = makeStreamProvider({ identity: true });
+      const app = createFrontX().use(auth({ provider })).build();
+      expect(provider.isListening()).toBe(true);
+
+      app.destroy();
+
+      expect(provider.isListening()).toBe(false);
     });
   });
 

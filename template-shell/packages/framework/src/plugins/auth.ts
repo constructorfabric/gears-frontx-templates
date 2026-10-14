@@ -32,23 +32,57 @@ import type { FrontXPlugin } from '../types';
 /** Auth event names */
 export const AuthEvents = {
   /**
-   * `app.auth.logout()` finished, whether the provider resolved or rejected:
-   * the user meant to leave, so session-bound state is dropped either way.
+   * The session ended, or may have, so session-bound state is dropped.
+   * Emitted when `app.auth.logout()` finishes, whether the provider resolved
+   * or rejected (the user meant to leave), and when the provider reports no
+   * session on its own: its `subscribe` stream reports `unauthenticated`, or
+   * a refresh (`app.auth.refresh()` or the 401 retry) resolves to no
+   * session, unless the last known state was already signed out. A report of
+   * no session while signed in is never dropped for arriving out of order.
    */
   LoggedOut: 'auth/loggedOut',
   /**
-   * `app.auth.login()` resolved without a redirect, or
-   * `app.auth.handleCallback()` resolved: a session began, possibly for
-   * another account, so session-bound state is dropped. A login that resolves
-   * to a redirect has no session yet and does not emit.
+   * A session began, possibly for another account, so session-bound state is
+   * dropped. Emitted when `app.auth.login()` resolves without a redirect (a
+   * redirect has no session yet), when `app.auth.handleCallback()` resolves,
+   * and when the provider reports a session on its own that is not
+   * positively the one already known: its `subscribe` stream or a refresh
+   * reports `authenticated` after a signed-out or unknown state, or lands on
+   * an identity whose `getIdentity().sub` differs from the last known one.
    *
-   * Only those two calls emit. A session that starts any other way (a
-   * provider `subscribe` state event, `refresh`, another tab logging in)
-   * emits nothing and drops nothing: providers must route session starts
-   * through `handleCallback`. An in-page account change the provider detects
-   * on its own is not covered yet.
+   * The plugin fails closed: an extra clear costs a refetch, a missed one
+   * shows one account's data to another. The same `sub` means the same data
+   * owner, so new credentials or claims for the same account do not clear. A
+   * provider without `getIdentity` signals state transitions only. For a
+   * provider with it, an unknown identity counts as a change: a lookup that
+   * rejects, resolves without a `sub` or takes longer than 5 seconds
+   * (`SESSION_CHECK_TIMEOUT_MS`) during an authenticated session emits this
+   * event, and so does a refresh that rejects while signed in. It clears once
+   * per unknown identity: while the identity stays unknown, further failed
+   * lookups and rejected refreshes emit nothing, until a state transition, a
+   * login, callback or logout, or a lookup that finds a known identity (which
+   * emits once more). A refresh that resolves while another session check is
+   * still running is not checked and counts as an unknown identity. On init the
+   * plugin reads `checkAuth()` and `getIdentity()` (same timeout) to set the
+   * baseline without emitting, a signed-out result included; provider
+   * reports wait for it, and when the read fails the first report emits.
+   * After a clear for a session start, a report that arrives before that
+   * clear's identity lookup lands emits this event again, since the account
+   * may have switched in between; a provider echo of a login that arrives
+   * after the call ended therefore clears once more, by design.
    */
   LoggedIn: 'auth/loggedIn',
+  /**
+   * The provider reported that a signed-in session goes on (a state event or
+   * a refresh), and the plugin is checking its identity with `getIdentity()`,
+   * which may take up to 5 seconds. Session-bound work started before this
+   * point may belong to a session the check is about to replace, so the
+   * query cache moves its scope generation: mutation callbacks started
+   * earlier stop writing to the cache. Nothing is cleared; if the check finds
+   * another identity, `LoggedIn` follows. Not emitted for a provider without
+   * `getIdentity`.
+   */
+  SessionCheck: 'auth/sessionCheck',
 } as const;
 
 /** Payload for the logged-out event */
@@ -61,10 +95,16 @@ export interface AuthLoggedInPayload {
   // Empty payload
 }
 
+/** Payload for the session-check event */
+export interface AuthSessionCheckPayload {
+  // Empty payload
+}
+
 declare module '@gears-frontx/state' {
   interface EventPayloadMap {
     'auth/loggedOut': AuthLoggedOutPayload;
     'auth/loggedIn': AuthLoggedInPayload;
+    'auth/sessionCheck': AuthSessionCheckPayload;
   }
 }
 
@@ -103,6 +143,12 @@ export type AuthRuntime = {
   subscribe?: (listener: AuthStateListener) => AuthUnsubscribe;
 };
 
+/** The result of one refresh: the session it resolved to, or the error it rejected with. */
+export type RefreshOutcome = { session: AuthSession | null } | { rejected: unknown };
+
+/** Reports the result of one refresh; see `AuthTransportBinder` `trackRefresh`. */
+export type RefreshReport = (outcome: RefreshOutcome) => Promise<void>;
+
 export type AuthTransportBinding = {
   destroy: () => void;
 };
@@ -111,6 +157,19 @@ export type AuthTransportBinder = (args: {
   provider: AuthProvider;
   csrfHeaderName?: string;
   allowedCookieOrigins?: string[];
+  /**
+   * Call when starting a refresh the binder makes on its own (for example on a
+   * 401) and pass the outcome to the returned function, so the auth plugin can
+   * emit `AuthEvents` when it may have landed on another session. A rejected
+   * refresh while signed in counts as an unknown identity. A session that
+   * resolves after a newer report is ignored; no session while signed in is
+   * never ignored. The returned function never
+   * rejects and settles within 10 seconds at worst, since the init baseline
+   * and the identity lookup each time out after 5; a result that arrives while
+   * another session check runs clears without a lookup and settles at once.
+   * Await it before retrying so the retry runs after the clear.
+   */
+  trackRefresh?: () => RefreshReport;
   addRestPlugin: (plugin: RestPlugin) => void;
   removeRestPlugin: (pluginClass: new (...args: never[]) => RestPlugin) => void;
 }) => AuthTransportBinding;
@@ -489,11 +548,28 @@ function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[]
   return allowedOrigins.includes(origin);
 }
 
-class AuthRestPlugin extends RestPlugin {
-  /** Shared in-flight refresh promise — deduplicates concurrent 401 refresh calls. */
-  private refreshPromise: Promise<AuthSession | null> | null = null;
+type RefreshFlight = {
+  refresh: Promise<AuthSession | null>;
+  /** Settles once the session tracker has seen the result; never rejects. */
+  reported: Promise<void>;
+};
 
-  constructor(private readonly config: AuthPluginConfig) {
+/** Refreshes a 401 may start in a row without any 2xx response in between. */
+const MAX_REFRESHES_WITHOUT_SUCCESS = 2;
+/** How long a 401 stops refreshing once that limit is reached and no 2xx came back. */
+const REFRESH_BACKOFF_MS = 30_000;
+
+class AuthRestPlugin extends RestPlugin {
+  /** Shared in-flight refresh; deduplicates concurrent 401 refresh calls. Reset as soon as the refresh settles. */
+  private flight: RefreshFlight | null = null;
+  /** Refreshes started since the last 2xx response, and when the last one started. */
+  private refreshesWithoutSuccess = 0;
+  private lastRefreshAt = 0;
+
+  constructor(
+    private readonly config: AuthPluginConfig,
+    private readonly trackRefresh?: () => RefreshReport,
+  ) {
     super();
   }
 
@@ -532,6 +608,24 @@ class AuthRestPlugin extends RestPlugin {
     return ctx;
   }
 
+  onResponse(ctx: RestResponseContext): RestResponseContext {
+    if (ctx.status >= 200 && ctx.status < 300) this.refreshesWithoutSuccess = 0;
+    return ctx;
+  }
+
+  /**
+   * A server that keeps answering 401 to a refreshed session would otherwise
+   * refresh on every request it gets: after `MAX_REFRESHES_WITHOUT_SUCCESS`
+   * refreshes with no 2xx response, a 401 fails without refreshing until
+   * `REFRESH_BACKOFF_MS` pass or a request succeeds.
+   */
+  private refreshExhausted(): boolean {
+    if (this.refreshesWithoutSuccess < MAX_REFRESHES_WITHOUT_SUCCESS) return false;
+    if (Date.now() - this.lastRefreshAt < REFRESH_BACKOFF_MS) return true;
+    this.refreshesWithoutSuccess = 0;
+    return false;
+  }
+
   async onError(ctx: ApiPluginErrorContext): Promise<Error | RestResponseContext> {
     // Notify provider of every transport error (informational; called before retry decisions).
     const requestForHook = toAuthTransportRequest(ctx.request);
@@ -552,20 +646,21 @@ class AuthRestPlugin extends RestPlugin {
     // otherwise aborting the first caller would cancel refresh for all concurrent
     // waiters on the same promise. Cancellation of the refresh call itself is the
     // provider's responsibility (timeout / internal lifecycle).
-    if (!this.refreshPromise) {
-      this.refreshPromise = this.config.provider
-        .refresh()
-        .finally(() => {
-          this.refreshPromise = null;
-        });
-    }
+    //
+    // The report runs after the refresh settles, outside the shared promise: an
+    // identity lookup inside it that gets a 401 starts a fresh refresh instead
+    // of waiting on the one that waits for it.
+    if (!this.flight && this.refreshExhausted()) return ctx.error;
+    const flight = this.flight ?? this.startRefresh();
 
     let refreshed: AuthSession | null;
     try {
-      refreshed = await this.refreshPromise;
+      refreshed = await flight.refresh;
     } catch {
+      await flight.reported;
       return ctx.error;
     }
+    await flight.reported;
     if (!refreshed) return ctx.error;
 
     if (refreshed.kind === 'bearer') {
@@ -584,23 +679,263 @@ class AuthRestPlugin extends RestPlugin {
     // Custom sessions: no standard retry mechanism — use a custom transport binder.
     return ctx.error;
   }
+
+  private startRefresh(): RefreshFlight {
+    this.refreshesWithoutSuccess += 1;
+    this.lastRefreshAt = Date.now();
+    const report = this.trackRefresh?.();
+    const refresh = this.config.provider.refresh!();
+    const flight: RefreshFlight = {
+      refresh,
+      reported: refresh.then(
+        (session) => report?.({ session }),
+        (rejected: unknown) => report?.({ rejected }),
+      ),
+    };
+    const reset = () => {
+      if (this.flight === flight) this.flight = null;
+    };
+    void refresh.then(reset, reset);
+    this.flight = flight;
+    return flight;
+  }
 }
 
 export function frontxApiTransport(): AuthTransportBinder {
   return (args) => {
-    const restPlugin = new AuthRestPlugin({
-      provider: args.provider,
-      frontxApi: {
-        allowedCookieOrigins: args.allowedCookieOrigins,
-        csrfHeaderName: args.csrfHeaderName,
+    const restPlugin = new AuthRestPlugin(
+      {
+        provider: args.provider,
+        frontxApi: {
+          allowedCookieOrigins: args.allowedCookieOrigins,
+          csrfHeaderName: args.csrfHeaderName,
+        },
       },
-    });
+      args.trackRefresh,
+    );
     args.addRestPlugin(restPlugin);
     return {
       destroy: () => {
         args.removeRestPlugin(AuthRestPlugin);
       },
     };
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session tracking
+// ---------------------------------------------------------------------------
+
+/** How long a session check (`checkAuth()` at init, `getIdentity()`) may take before it counts as failed. */
+const SESSION_CHECK_TIMEOUT_MS = 5_000;
+
+type SessionTracker = {
+  /** Takes a report ticket; take it when the work that produces the report starts. */
+  ticket: () => number;
+  /** Reports the current state: a provider state event, or a resolved refresh (`fromRefresh`). */
+  observe: (authenticated: boolean, ticket?: number, fromRefresh?: boolean) => Promise<void>;
+  /** Reports a refresh that rejected. */
+  refreshFailed: () => void;
+  /** Reads the session at init to set the baseline; emits nothing. */
+  establish: () => Promise<void>;
+  /** An `app.auth` login, callback or logout starts; provider reports stay silent until it ends. */
+  begin: () => void;
+  /** It ended: emit for `target` and record it, or with `null` (no session change) replay what the provider reported meanwhile. */
+  end: (target: boolean | null) => void;
+  stop: () => void;
+};
+
+/**
+ * Identity the tracker holds for an authenticated session.
+ * - `fresh`: the plugin just emitted for this session under report ticket `since`; the lookup started for
+ *   that same report sets the baseline silently, while a lookup for any later report counts as a change,
+ *   since the session may have moved between the emit and the lookup;
+ * - `known`: the account of the last successful lookup;
+ * - `unknown`: anything else (no lookup landed yet, or the last one failed); the next lookup counts as a change,
+ *   unless `cleared`: the plugin already cleared for this unknown identity, so only a state transition, a
+ *   login, callback or logout, or a lookup that finds a known identity clears again. That stops a 401 loop
+ *   (401, refresh, clear, refetch, 401) while `getIdentity` keeps failing.
+ */
+type TrackedIdentity =
+  | { kind: 'fresh'; since: number }
+  | { kind: 'unknown'; cleared: boolean }
+  | { kind: 'known'; sub: string };
+
+/**
+ * Follows the session the provider reports and emits `AuthEvents` when it
+ * might have changed. It fails closed: an extra clear costs a refetch, a
+ * missed one shows one account's data to another, so it stays silent only
+ * when a report is positively the same signed-in state and identity (`sub`)
+ * as the last known one. An unknown identity clears once, not on every report
+ * while it stays unknown.
+ *
+ * Reports are ordered by the ticket taken when their work started: one older
+ * than the last applied report is dropped, except a report of no session
+ * while signed in, and so is an identity lookup whose report was overtaken.
+ * A report of a signed-in session that goes on emits `SessionCheck` before
+ * its identity lookup. A report waits for the init baseline, except a
+ * refresh that lands while a session check runs: that check may itself wait
+ * on the refreshed request, so the refresh is not checked and clears. Nothing
+ * is emitted after `stop()`, and `stop()` cancels the checks still running.
+ */
+function createSessionTracker(provider: AuthProvider, caps: AuthCapabilitiesResolved): SessionTracker {
+  /** `undefined` until the init baseline or a report lands, or when the init check failed. */
+  let authenticated: boolean | undefined;
+  let identity: TrackedIdentity = { kind: 'unknown', cleared: false };
+  let issued = 0;
+  let applied = 0;
+  let busy = 0;
+  let suppressed: boolean | undefined;
+  let stopped = false;
+  let baseline: Promise<void> = Promise.resolve();
+  /** Cancels each session check still running. */
+  const checks = new Set<() => void>();
+
+  const ticket = () => ++issued;
+
+  function emit(event: (typeof AuthEvents)[keyof typeof AuthEvents]): void {
+    if (!stopped) eventBus.emit(event, {});
+  }
+
+  /** Runs a provider read; `null` when it rejects, takes longer than the timeout or is cancelled. */
+  async function check<T>(read: () => Promise<T> | T): Promise<T | null> {
+    let cancel = (): void => undefined;
+    const bounded = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('session check timed out')), SESSION_CHECK_TIMEOUT_MS);
+      cancel = () => {
+        clearTimeout(timer);
+        reject(new Error('session check cancelled'));
+      };
+    });
+    checks.add(cancel);
+    try {
+      return await Promise.race([Promise.resolve().then(read), bounded]);
+    } catch {
+      return null;
+    } finally {
+      cancel();
+      checks.delete(cancel);
+    }
+  }
+
+  /** The current account, or `null` when the lookup fails or has no `sub`. */
+  async function lookupSub(): Promise<string | null> {
+    const found = await check(() => provider.getIdentity?.());
+    return typeof found?.sub === 'string' && found.sub !== '' ? found.sub : null;
+  }
+
+  /** The identity is unknown: clear, unless the plugin already cleared for this unknown identity. */
+  function clearForUnknownIdentity(): void {
+    if (identity.kind === 'unknown' && identity.cleared) return;
+    identity = { kind: 'unknown', cleared: true };
+    emit(AuthEvents.LoggedIn);
+  }
+
+  async function resolveIdentity(current: number): Promise<void> {
+    if (!caps.hasGetIdentity) return;
+    const sub = await lookupSub();
+    if (stopped || current !== applied || authenticated !== true) return;
+    const before = identity;
+    if (sub === null) {
+      // A `fresh` session was cleared for this very report, so its unknown identity counts as cleared.
+      if (before.kind === 'fresh' && before.since === current) identity = { kind: 'unknown', cleared: true };
+      else clearForUnknownIdentity();
+      return;
+    }
+    identity = { kind: 'known', sub };
+    const changed = before.kind === 'unknown'
+      || (before.kind === 'fresh' && before.since !== current)
+      || (before.kind === 'known' && before.sub !== sub);
+    if (changed) emit(AuthEvents.LoggedIn);
+  }
+
+  async function observe(next: boolean, current: number = ticket(), fromRefresh = false): Promise<void> {
+    const unchecked = fromRefresh && checks.size > 0;
+    if (!unchecked) await baseline;
+    if (stopped) return;
+    // A report older than the last applied one is dropped, except no session while signed in: that one
+    // fails closed, since the newer report may have been the stale one.
+    if (current < applied && (next || authenticated !== true)) return;
+    applied = Math.max(applied, current);
+    if (busy > 0) {
+      suppressed = next;
+      return;
+    }
+    const previous = authenticated;
+    authenticated = next;
+    if (!next) {
+      // Only signed out followed by signed out is positively the same.
+      if (previous !== false) emit(AuthEvents.LoggedOut);
+      return;
+    }
+    if (unchecked) {
+      // A state transition always clears; otherwise this is one more unknown identity.
+      if (previous !== true) identity = { kind: 'unknown', cleared: false };
+      clearForUnknownIdentity();
+      return;
+    }
+    if (previous !== true) {
+      identity = { kind: 'fresh', since: current };
+      emit(AuthEvents.LoggedIn);
+    } else if (caps.hasGetIdentity) {
+      // The lookup may take up to the timeout: move the cache scope now so work started before this
+      // report cannot write into a cache the lookup may yet decide to clear.
+      emit(AuthEvents.SessionCheck);
+    }
+    await resolveIdentity(current);
+  }
+
+  /** A refresh rejected. While signed in the identity is no longer known, so it counts as unknown. */
+  function refreshFailed(): void {
+    if (stopped || busy > 0 || authenticated !== true) return;
+    clearForUnknownIdentity();
+  }
+
+  async function establish(): Promise<void> {
+    const current = ticket();
+    const result = await check(() => provider.checkAuth());
+    const sub = result?.authenticated === true ? await lookupSub() : null;
+    // Any report, login or logout since init is newer than this baseline.
+    if (stopped || applied > current) return;
+    applied = current;
+    // A failed check leaves the state unknown, so the first report clears.
+    authenticated = result === null ? undefined : result?.authenticated === true;
+    identity = sub === null ? { kind: 'unknown', cleared: false } : { kind: 'known', sub };
+  }
+
+  return {
+    ticket,
+    observe,
+    refreshFailed,
+    establish() {
+      baseline = establish();
+      return baseline;
+    },
+    begin() {
+      busy += 1;
+    },
+    end(target) {
+      busy -= 1;
+      if (stopped) return;
+      if (target !== null) {
+        authenticated = target;
+        suppressed = undefined;
+        const current = (applied = ticket());
+        identity = { kind: 'fresh', since: current };
+        emit(target ? AuthEvents.LoggedIn : AuthEvents.LoggedOut);
+        if (target) void resolveIdentity(current);
+        return;
+      }
+      if (busy === 0 && suppressed !== undefined) {
+        const replay = suppressed;
+        suppressed = undefined;
+        void observe(replay);
+      }
+    },
+    stop() {
+      stopped = true;
+      for (const cancel of checks) cancel();
+    },
   };
 }
 
@@ -617,6 +952,9 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
   const transport = config.transport ?? frontxApiTransport();
   let binding: AuthTransportBinding | null = null;
   const caps = buildCapabilities(config.provider);
+  const session = createSessionTracker(config.provider, caps);
+  let unsubscribe: AuthUnsubscribe | null = null;
+  const refresh = config.provider.refresh?.bind(config.provider);
 
   return {
     name: 'auth',
@@ -628,30 +966,54 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
           getSession: (ctx?: AuthContext) => config.provider.getSession(ctx),
           checkAuth: (ctx?: AuthContext) => config.provider.checkAuth(ctx),
           logout: async (ctx?: AuthContext) => {
+            session.begin();
             try {
               return await config.provider.logout(ctx);
             } finally {
-              eventBus.emit(AuthEvents.LoggedOut, {});
+              session.end(false);
             }
           },
           login: config.provider.login
             ? async (input: AuthLoginInput, ctx?: AuthContext) => {
-                const transition = await config.provider.login!(input, ctx);
-                // A redirect starts the flow without a session yet; handleCallback emits when it completes.
-                if (transition.type !== 'redirect') {
-                  eventBus.emit(AuthEvents.LoggedIn, {});
+                session.begin();
+                let target: boolean | null = null;
+                try {
+                  const transition = await config.provider.login!(input, ctx);
+                  // A redirect starts the flow without a session yet; handleCallback emits when it completes.
+                  if (transition.type !== 'redirect') target = true;
+                  return transition;
+                } finally {
+                  session.end(target);
                 }
-                return transition;
               }
             : undefined,
           handleCallback: config.provider.handleCallback
             ? async (input: AuthCallbackInput, ctx?: AuthContext) => {
-                const transition = await config.provider.handleCallback!(input, ctx);
-                eventBus.emit(AuthEvents.LoggedIn, {});
-                return transition;
+                session.begin();
+                let target: boolean | null = null;
+                try {
+                  const transition = await config.provider.handleCallback!(input, ctx);
+                  target = true;
+                  return transition;
+                } finally {
+                  session.end(target);
+                }
               }
             : undefined,
-          refresh: config.provider.refresh?.bind(config.provider),
+          refresh: refresh
+            ? async (ctx?: AuthContext) => {
+                const current = session.ticket();
+                let refreshed: AuthSession | null;
+                try {
+                  refreshed = await refresh(ctx);
+                } catch (error) {
+                  session.refreshFailed();
+                  throw error;
+                }
+                await session.observe(refreshed !== null, current, true);
+                return refreshed;
+              }
+            : undefined,
           getIdentity: config.provider.getIdentity?.bind(config.provider),
           getPermissions: config.provider.getPermissions?.bind(config.provider),
           canAccess: <TRecord extends AccessRecord = AccessRecord>(
@@ -677,9 +1039,25 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
         csrfHeaderName: config.frontxApi?.csrfHeaderName,
         addRestPlugin: (plugin) => app.apiRegistry.plugins.add(RestProtocol, plugin),
         removeRestPlugin: (pluginClass) => app.apiRegistry.plugins.remove(RestProtocol, pluginClass),
+        trackRefresh: () => {
+          const current = session.ticket();
+          return async (outcome) => {
+            if ('rejected' in outcome) session.refreshFailed();
+            else await session.observe(outcome.session !== null, current, true);
+          };
+        },
       });
+      unsubscribe = config.provider.subscribe?.((event) => {
+        if (event.state === 'authenticated' || event.state === 'unauthenticated') {
+          void session.observe(event.state === 'authenticated');
+        }
+      }) ?? null;
+      void session.establish();
     },
     onDestroy(_app) {
+      unsubscribe?.();
+      unsubscribe = null;
+      session.stop();
       binding?.destroy();
       binding = null;
       const providerDestroyResult = config.provider.destroy?.();

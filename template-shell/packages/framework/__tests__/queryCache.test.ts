@@ -16,6 +16,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/query-core';
+import type { AuthProvider } from '@gears-frontx/auth';
 import type { FrontXApp, FrontXPlugin } from '../src/types';
 
 // One app per runtime: every test loads its own module copy.
@@ -865,6 +866,45 @@ describe('clears the cache on every cache scope change', () => {
     client.setQueryData(['users'], 'account-b');
     await app.auth?.handleCallback?.({ params: { code: 'c' } });
     expect(client.getQueryData(['users'])).toBeUndefined();
+
+    app.destroy();
+    await flushQueryCacheClear();
+  });
+
+  it('clears through createFrontX() when the auth provider ends or switches the session on its own', async () => {
+    const { createFrontX: createFrontXInGraph } = await import('../src/createFrontX');
+    const { auth } = await import('../src/plugins/auth');
+    type Listener = Parameters<NonNullable<AuthProvider['subscribe']>>[0];
+    let listener: Listener | null = null;
+    let sub = 'account-a';
+    const provider: AuthProvider = {
+      getSession: vi.fn().mockResolvedValue(null),
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+      logout: vi.fn().mockResolvedValue({ type: 'none' }),
+      getIdentity: vi.fn(async () => ({ sub })),
+      subscribe: (next) => {
+        listener = next;
+        return () => {
+          listener = null;
+        };
+      },
+    };
+    const push = (state: 'authenticated' | 'unauthenticated') => listener?.({ state });
+    const app = createFrontXInGraph().use(queryCache()).use(auth({ provider })).build();
+    const client = requireSharedQueryClient();
+    push('authenticated');
+    await flushQueryCacheClear();
+
+    client.setQueryData(['users'], 'account-a');
+    push('unauthenticated');
+    await waitForQueryDataGone(client, ['users']);
+
+    push('authenticated');
+    await flushQueryCacheClear();
+    client.setQueryData(['users'], 'account-a');
+    sub = 'account-b';
+    push('authenticated');
+    await waitForQueryDataGone(client, ['users']);
 
     app.destroy();
     await flushQueryCacheClear();

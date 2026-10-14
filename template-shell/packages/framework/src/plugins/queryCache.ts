@@ -671,6 +671,10 @@ function createCacheScopeTracking(queryClient: QueryClient): () => void {
     }),
     eventBus.on(AuthEvents.LoggedOut, onScopeChanged),
     eventBus.on(AuthEvents.LoggedIn, onScopeChanged),
+    // The session may be about to change: earlier work stops writing, nothing is cleared.
+    eventBus.on(AuthEvents.SessionCheck, () => {
+      bumpQueryCacheScopeGeneration(queryClient);
+    }),
   ];
 
   return () => {
