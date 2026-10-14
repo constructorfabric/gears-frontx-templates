@@ -5,8 +5,6 @@
  * pages. Each page remains a standard service descriptor so MFE code does not
  * need raw TanStack query keys or query functions.
  */
-// @cpt-dod:cpt-frontx-dod-request-lifecycle-use-api-query:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-use-api-query:p2
 
 import type { EndpointDescriptor } from '@gears-frontx/framework';
 import type { ApiInfiniteQueryResult } from '../types';

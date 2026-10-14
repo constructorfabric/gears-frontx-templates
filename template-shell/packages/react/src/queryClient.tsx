@@ -31,13 +31,6 @@ import type { UseApiMutationOptions } from './hooks/useApiMutation';
 import { createQueryCache, type MutationCallbackContext, type QueryCacheKey } from './hooks/QueryCache';
 import { useLatest } from './hooks/useLatest';
 
-// @cpt-FEATURE:implement-endpoint-descriptors:p3
-// @cpt-dod:cpt-frontx-dod-request-lifecycle-query-provider:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-use-api-query:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-use-api-mutation:p2
-
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-react-query-client-symbols
 const APP_QUERY_CLIENT_SYMBOL = Symbol.for('frontx:query-cache:app-client');
 const APP_QUERY_CLIENT_RESOLVER_SYMBOL = Symbol.for('frontx:query-cache:app-client-resolver');
 const APP_QUERY_CLIENT_ACTIVATOR_SYMBOL = Symbol.for('frontx:query-cache:app-client-activator');
@@ -49,9 +42,7 @@ type QueryClientApp = FrontXApp & {
 };
 
 const FrontXQueryClientContext = createContext<QueryClient | undefined>(undefined);
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-react-query-client-symbols
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-resolve-app-query-client
 type RuntimeAwareEndpointDescriptor<TData> = EndpointDescriptor<TData> & {
   fetch(options?: { signal?: AbortSignal; staleTime?: number }): Promise<TData>;
 };
@@ -76,9 +67,7 @@ export function activateFrontXQueryClient(app: FrontXApp): QueryClient | undefin
   const clientApp = app as QueryClientApp;
   return clientApp[APP_QUERY_CLIENT_SYMBOL] ?? clientApp[APP_QUERY_CLIENT_ACTIVATOR_SYMBOL]?.();
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-resolve-app-query-client
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-imperative-cache-bootstrap
 /**
  * Imperatively invalidates cache entries for `target` on the QueryClient bound to `app`.
  * Use from non-React code (e.g. MFE actions); in components prefer `useQueryCache().invalidate`.
@@ -100,9 +89,7 @@ export async function invalidateQueryCacheForApp(
 export function bootstrapFrontXQueryClient(app: FrontXApp): QueryClient | undefined {
   return resolveFrontXQueryClient(app);
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-imperative-cache-bootstrap
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-use-bootstrapped-query-client
 export function useBootstrappedFrontXQueryClient(app: FrontXApp): QueryClient | undefined {
   const fromApp = useMemo(() => bootstrapFrontXQueryClient(app), [app]);
   const [eventResolvedClient, setEventResolvedClient] = useState<AppResolvedQueryClient | undefined>(
@@ -146,9 +133,7 @@ export function useBootstrappedFrontXQueryClient(app: FrontXApp): QueryClient | 
 
   return queryClient;
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-use-bootstrapped-query-client
 
-// @cpt-begin:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-frontx-query-client-provider
 export function FrontXQueryClientProvider({
   queryClient,
   children,
@@ -170,9 +155,7 @@ export function FrontXQueryClientProvider({
     </FrontXQueryClientContext.Provider>
   );
 }
-// @cpt-end:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-frontx-query-client-provider
 
-// @cpt-begin:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-query-client-context-hooks
 export function useOptionalFrontXQueryClient(): QueryClient | undefined {
   return useContext(FrontXQueryClientContext);
 }
@@ -187,9 +170,7 @@ export function useRequiredFrontXQueryClient(): QueryClient {
 
   return queryClient;
 }
-// @cpt-end:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-query-client-context-hooks
 
-// @cpt-begin:implement-endpoint-descriptors:p3:inst-descriptor-fetch-stale-helpers
 function buildPageContext<TPage>(
   page: TPage,
   pages: readonly TPage[],
@@ -230,9 +211,7 @@ function fetchDescriptor<TData>(
 ): Promise<TData> {
   return (descriptor as RuntimeAwareEndpointDescriptor<TData>).fetch(options);
 }
-// @cpt-end:implement-endpoint-descriptors:p3:inst-descriptor-fetch-stale-helpers
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-query
 export function useFrontXQuery<TData = unknown, TError = Error>(
   descriptor: EndpointDescriptor<TData>,
   overrides?: ApiQueryOverrides
@@ -255,9 +234,7 @@ export function useFrontXQuery<TData = unknown, TError = Error>(
     refetch: result.refetch,
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-query
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-suspense-query
 export function useFrontXSuspenseQuery<TData = unknown, TError = Error>(
   descriptor: EndpointDescriptor<TData>,
   overrides?: ApiQueryOverrides
@@ -280,9 +257,7 @@ export function useFrontXSuspenseQuery<TData = unknown, TError = Error>(
     },
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-suspense-query
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-infinite-query
 export function useFrontXInfiniteQuery<TPage = unknown, TError = Error>(
   options: ApiInfiniteQueryOptions<TPage>
 ) {
@@ -353,9 +328,7 @@ export function useFrontXInfiniteQuery<TPage = unknown, TError = Error>(
     },
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-infinite-query
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-suspense-infinite-query
 export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
   options: ApiInfiniteQueryOptions<TPage>
 ) {
@@ -424,9 +397,7 @@ export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
     },
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-frontx-use-suspense-infinite-query
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-mutation:p2:inst-delegate-frontx-use-mutation
 export function useFrontXMutation<
   TData = unknown,
   TError = Error,
@@ -545,4 +516,3 @@ export function useFrontXMutation<
     reset: mutation.reset,
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-mutation:p2:inst-delegate-frontx-use-mutation

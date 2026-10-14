@@ -1,9 +1,3 @@
-// @cpt-FEATURE:implement-endpoint-descriptors:p2
-// @cpt-dod:cpt-frontx-dod-request-lifecycle-query-provider:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-flux-escape-hatch:p2
-// @cpt-algo:cpt-frontx-algo-request-lifecycle-query-client-defaults:p2
-
 /**
  * QueryCache Plugin - shared QueryClient lifecycle management
  *
@@ -132,7 +126,6 @@ type ResolvedQueryCacheConfig = Required<QueryCacheConfig>;
 
 const cacheEffectsByClient = new WeakMap<QueryClient, CacheEffectsEntry>();
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-shared-query-runtime-helpers
 function finalizeCacheEffectsEntry(queryClient: QueryClient, entry: CacheEffectsEntry): void {
   if (entry.disposed) {
     return;
@@ -492,12 +485,6 @@ export interface QueryCacheConfig {
   refetchOnWindowFocus?: boolean;
 }
 
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-shared-query-runtime-helpers
-
-// @cpt-begin:implement-endpoint-descriptors:p2:inst-1
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-mock-cache-clear
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-flux-cache-invalidate
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-flux-escape-hatch:p2:inst-invalidate-after-flux
 async function cancelQueriesForTeardown(queryClient: QueryClient): Promise<void> {
   let cancelError: unknown;
 
@@ -631,15 +618,7 @@ function retainCacheEffects(queryClient: QueryClient): () => void {
     }
   };
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-mock-cache-clear
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-flux-cache-invalidate
-// @cpt-end:cpt-frontx-flow-request-lifecycle-flux-escape-hatch:p2:inst-invalidate-after-flux
-// @cpt-end:implement-endpoint-descriptors:p2:inst-1
 
-// @cpt-begin:implement-endpoint-descriptors:p2:inst-2
-// @cpt-begin:cpt-frontx-algo-request-lifecycle-query-client-defaults:p2:inst-create-in-plugin
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-create-query-client
-// @cpt-begin:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-plugin-factory
 export function queryCache(config?: QueryCacheConfig): FrontXPlugin {
   let queryClient: QueryClient | undefined;
   let cleanup: (() => void) | null = null;
@@ -729,10 +708,6 @@ export function queryCache(config?: QueryCacheConfig): FrontXPlugin {
 
   return plugin;
 }
-// @cpt-end:cpt-frontx-algo-request-lifecycle-query-client-defaults:p2:inst-create-in-plugin
-// @cpt-end:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2:inst-create-query-client
-// @cpt-end:cpt-frontx-dod-request-lifecycle-query-provider:p2:inst-plugin-factory
-// @cpt-end:implement-endpoint-descriptors:p2:inst-2
 
 export function queryCacheShared(): FrontXPlugin {
   let queryClient: QueryClient | undefined;

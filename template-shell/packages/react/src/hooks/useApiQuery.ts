@@ -9,10 +9,6 @@
  * Omit overrides to rely on the descriptor's staleTime/gcTime, which in turn
  * fall back to the plugin-level query-cache defaults.
  */
-// @cpt-dod:cpt-frontx-dod-request-lifecycle-use-api-query:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-use-api-query:p2
-// @cpt-state:cpt-frontx-state-request-lifecycle-query:p2
-// @cpt-FEATURE:implement-endpoint-descriptors:p3
 
 import type { EndpointDescriptor } from '@gears-frontx/framework';
 import type { ApiQueryResult } from '../types';
@@ -26,11 +22,9 @@ export interface ApiQueryOverrides {
   gcTime?: number;
 }
 
-// @cpt-begin:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-use-query
 export function useApiQuery<TData = unknown, TError = Error>(
   descriptor: EndpointDescriptor<TData>,
   overrides?: ApiQueryOverrides
 ): ApiQueryResult<TData, TError> {
   return useFrontXQuery(descriptor, overrides);
 }
-// @cpt-end:cpt-frontx-flow-request-lifecycle-use-api-query:p2:inst-delegate-use-query

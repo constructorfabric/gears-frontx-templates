@@ -5,8 +5,6 @@
  * page load is handled by a Suspense boundary while pagination stays
  * descriptor-driven.
  */
-// @cpt-dod:cpt-frontx-dod-request-lifecycle-use-api-query:p2
-// @cpt-flow:cpt-frontx-flow-request-lifecycle-use-api-query:p2
 
 import type { ApiSuspenseInfiniteQueryResult } from '../types';
 import type {

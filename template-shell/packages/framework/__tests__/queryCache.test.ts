@@ -12,12 +12,6 @@
  *
  * @packageDocumentation
  * @vitest-environment jsdom
- *
- * @cpt-FEATURE:implement-endpoint-descriptors:p2
- * @cpt-dod:cpt-frontx-dod-request-lifecycle-query-provider:p2
- * @cpt-flow:cpt-frontx-flow-request-lifecycle-query-client-lifecycle:p2
- * @cpt-flow:cpt-frontx-flow-request-lifecycle-flux-escape-hatch:p2
- * @cpt-algo:cpt-frontx-algo-request-lifecycle-query-client-defaults:p2
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
