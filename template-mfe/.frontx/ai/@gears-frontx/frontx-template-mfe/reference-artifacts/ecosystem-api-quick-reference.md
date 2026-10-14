@@ -66,6 +66,7 @@ declare module '@gears-frontx/react' {
 emit<K extends keyof TEvents>(event: K, ...args: TEvents[K] extends void ? [] : [TEvents[K]]): void;
 on<K extends keyof TEvents>(event: K, handler: EventHandler<TEvents[K]>): Subscription;  // { unsubscribe(): void }
 once(...): Subscription;  clear(event: string): void;  clearAll(): void;
+// emit runs every handler and never awaits one; a handler that throws or returns a rejected promise is logged, not rethrown
 ```
 
 Actions emit, effects subscribe and dispatch, components call actions. **No shipped file

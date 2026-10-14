@@ -99,7 +99,7 @@ declare module '@gears-frontx/state' {
 2. **Components call Actions** - Components never use `eventBus` directly
 3. **Effects subscribe and dispatch** - Effects listen to events, dispatch to reducers
 4. **One-way flow** - Actions → Events → Effects → State updates
-5. **Subscribers are isolated** - `emit()` runs every handler even when one throws; the error is logged with `console.error` and never reaches the emitter; a `once()` handler is unsubscribed before it runs, so it fires once even when it throws
+5. **Subscribers are isolated** - `emit()` runs every handler even when one throws; the error is logged with `console.error` and never reaches the emitter; a `once()` handler is unsubscribed before it runs, so it fires once even when it throws. `emit()` stays synchronous and never awaits a handler: when a handler (`on` or `once`) returns a promise, its rejection is logged the same way instead of becoming an unhandled rejection
 
 ## Exports
 

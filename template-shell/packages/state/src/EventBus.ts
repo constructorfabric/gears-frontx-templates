@@ -14,6 +14,18 @@ import type {
   EventBus as IEventBus,
 } from './types';
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function')
+    && value !== null
+    && typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
+function logSubscriberError(eventType: PropertyKey, error: unknown): void {
+  console.error(`[Gears FrontX] A ${String(eventType)} subscriber threw`, error);
+}
+
 /**
  * EventBus Implementation
  *
@@ -43,7 +55,8 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
    * Payload is optional for void events.
    * Every handler runs even when an earlier one throws: each error is logged
    * and emit never rethrows, so one failing subscriber cannot skip the rest
-   * or fail the emitter.
+   * or fail the emitter. A handler that returns a promise is not awaited; its
+   * rejection is logged the same way, so it never becomes unhandled.
    */
   emit<K extends keyof TEvents>(
     eventType: K,
@@ -54,9 +67,14 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
       const payload = args[0];
       handlers.forEach((handler) => {
         try {
-          handler(payload);
+          const result: unknown = handler(payload);
+          if (isThenable(result)) {
+            result.then(undefined, (error: unknown) => {
+              logSubscriberError(eventType, error);
+            });
+          }
         } catch (error) {
-          console.error(`[Gears FrontX] A ${String(eventType)} subscriber threw`, error);
+          logSubscriberError(eventType, error);
         }
       });
     }
@@ -102,9 +120,10 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
     eventType: K,
     handler: EventHandler<TEvents[K]>
   ): Subscription {
+    // Returns the handler's result so emit can log an async rejection.
     const wrappedHandler = (payload: TEvents[K]): void => {
       subscription.unsubscribe();
-      handler(payload);
+      return handler(payload);
     };
 
     const subscription = this.on(eventType, wrappedHandler);
