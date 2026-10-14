@@ -14,9 +14,11 @@
  * expose that imports that stylesheet itself (federation lists its file, and
  * the plugin keeps it as main does), and a build without per-chunk CSS whose
  * exposes share a PostCSS stylesheet (`shared.pcss`) the CSS-delivery guard
- * must catch. Two more exposes cover a direct dynamic stylesheet import
- * (`import('./theme.css')`, a CSS-only chunk Vite removes) and stylesheets
- * imported only as `?raw` and `?url`, which Vite does not extract.
+ * must catch. Further exposes cover a direct dynamic stylesheet import
+ * (`import('./theme.css')`, a CSS-only chunk Vite removes) written plain,
+ * with a comment, spaced with double quotes, and through a module that only
+ * imports the stylesheet, and stylesheets imported only as `?raw` and
+ * `?url`, which Vite does not extract.
  *
  * The build runs `vite build` in a child process, with NODE_ENV unset and
  * `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's documented
@@ -71,6 +73,16 @@ function buildFixture(exposes: string, cssCodeSplit = true): string {
 function unhashed(lists: CssLists): CssLists {
   const strip = (f: string): string => f.replace(/-[A-Za-z0-9_-]{8}\.css$/, '.css');
   return { sync: lists.sync.map(strip), async: lists.async.map(strip) };
+}
+
+/**
+ * Every `import(...)` and `__frontx_lazy(...)` call with a string argument,
+ * in any quote style, with any spacing and comments around it.
+ */
+function dynamicImportCalls(code: string): Array<{ callee: string; target: string }> {
+  const gap = String.raw`(?:\s|/\*[\s\S]*?\*/)*`;
+  const call = new RegExp(String.raw`\b(import|__frontx_lazy)${gap}\(${gap}(['"\`])([^'"\`]+)\2`, 'g');
+  return [...code.matchAll(call)].map((m) => ({ callee: m[1], target: m[3] }));
 }
 
 function readJson<T>(file: string): T {
@@ -134,24 +146,50 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     expect(fs.readFileSync(listedFile, 'utf-8')).toContain('data-sonner-toaster');
   }, BUILD_TEST_TIMEOUT_MS);
 
-  it('lists the CSS of a directly imported lazy stylesheet as async, resolves its import, and builds an expose whose stylesheets are ?raw and ?url only', () => {
-    const outDir = buildFixture('a,b,j,k');
-    const raw = readJson<{ exposes: Array<{ path: string; assets: { css: CssLists } }> }>(
+  it('lists the CSS of a directly imported lazy stylesheet as async, leaves no dynamic import of a removed file, and builds an expose whose stylesheets are ?raw and ?url only', () => {
+    const outDir = buildFixture('a,b,j,k,l,m,n');
+    const raw = readJson<{ exposes: Array<{ path: string; assets: { css: CssLists; js: { sync: string[] } } }> }>(
       path.join(outDir, 'mf-manifest.json')
     );
+    const exposeCalls = (expose: string): Array<{ callee: string; target: string; exists: boolean }> => {
+      const files = raw.exposes.find((e) => e.path === expose)?.assets.js.sync ?? [];
+      expect(files.length).toBeGreaterThan(0);
+      return files.flatMap((file) => {
+        const code = fs.readFileSync(path.join(outDir, file), 'utf-8');
+        expect(code).not.toMatch(/theme(-[lmn])?-[A-Za-z0-9_-]{8}\.js/);
+        return dynamicImportCalls(code).map((c) => ({
+          ...c,
+          exists: fs.existsSync(path.join(outDir, path.dirname(file), c.target)),
+        }));
+      });
+    };
     const css = Object.fromEntries(raw.exposes.map((e) => [e.path, unhashed(e.assets.css)]));
     expect(css['./lifecycle-j']).toEqual({ sync: [], async: ['assets/theme.css'] });
+    expect(css['./lifecycle-l']).toEqual({ sync: [], async: ['assets/theme-l.css'] });
+    expect(css['./lifecycle-m']).toEqual({ sync: [], async: ['assets/theme-m.css'] });
+    expect(css['./lifecycle-n']).toEqual({ sync: [], async: ['assets/theme-n.css'] });
     expect(css['./lifecycle-k']).toEqual({ sync: [], async: [] });
 
-    const assetsDir = path.join(outDir, 'assets');
-    const lazyTargets = fs
-      .readdirSync(assetsDir)
-      .filter((f) => f.endsWith('.js'))
-      .flatMap((f) =>
-        [...fs.readFileSync(path.join(assetsDir, f), 'utf-8').matchAll(/__frontx_lazy\('([^']+)'\)/g)].map((m) => m[1])
-      );
-    expect(lazyTargets.length).toBeGreaterThan(0);
-    for (const target of lazyTargets) expect(fs.existsSync(path.join(assetsDir, target))).toBe(true);
+    // Plain, commented and spaced, double-quoted forms of `import('./theme*.css')`,
+    // and an `import()` of a module that only imports a stylesheet.
+    for (const expose of ['./lifecycle-j', './lifecycle-l', './lifecycle-m', './lifecycle-n']) {
+      expect(exposeCalls(expose)).toEqual([]);
+    }
+    // A lazy chunk that stays still loads through the runtime resolver.
+    const lazyPanel = exposeCalls('./lifecycle-b');
+    expect(lazyPanel.length).toBeGreaterThan(0);
+    for (const call of lazyPanel) expect(call).toMatchObject({ callee: '__frontx_lazy', exists: true });
+  }, BUILD_TEST_TIMEOUT_MS);
+
+  it('fails the build, naming the import, when a lazily imported stylesheet compiles to no CSS and Vite keeps its chunk', () => {
+    let stderr: string | undefined;
+    try {
+      buildFixture('a,b,o');
+    } catch (error) {
+      stderr = String((error as { stderr?: Buffer }).stderr ?? '');
+    }
+    expect(stderr).toBeDefined();
+    expect(stderr).toMatch(/lifecycle-o-\S+' imports '\S*empty-\S+\.js', a chunk of stylesheets only/);
   }, BUILD_TEST_TIMEOUT_MS);
 
   it('fails a build without per-chunk CSS when exposes need a shared PostCSS stylesheet no list names', () => {

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import type { Plugin } from 'vite';
+import type { Plugin, Rollup } from 'vite';
 import type { MfManifestShared as PublishedMfManifestShared } from '@gears-frontx/mfes';
 
 /**
@@ -932,9 +932,23 @@ function isExtractedStylesheet(moduleId: string): boolean {
   );
 }
 
-/** Escapes a literal string for use inside a regular expression. */
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Whether Vite removes a rendered chunk as CSS-only in `generateBundle` and
+ * rewrites every `import()` of it to an empty promise: a chunk that exports
+ * nothing, holds extracted stylesheets and no CSS Module, and whose other
+ * modules render to no code (a dynamic entry that only imports a
+ * stylesheet).
+ */
+function isCssOnlyChunk(chunk: Rollup.RenderedChunk): boolean {
+  const stylesheets = chunk.moduleIds.filter(isExtractedStylesheet);
+  return (
+    chunk.exports.length === 0 &&
+    stylesheets.length > 0 &&
+    !stylesheets.some((id) => /\.module\.[a-z]+$/.test(id.split('?', 1)[0])) &&
+    chunk.moduleIds.every(
+      (id) => isExtractedStylesheet(id) || (!chunk.isEntry && chunk.modules[id]?.renderedLength === 0)
+    )
+  );
 }
 
 /**
@@ -1146,7 +1160,10 @@ class LazyImportTransformer {
   private transformedCount = 0;
   private readonly nonStatic: { node: AstNode }[] = [];
 
-  constructor(private readonly code: string) {}
+  constructor(
+    private readonly code: string,
+    private readonly leaveAlone: (specifier: string) => boolean = () => false
+  ) {}
 
   visit(node: unknown): void {
     if (!node || typeof node !== 'object') return;
@@ -1177,6 +1194,8 @@ class LazyImportTransformer {
   private handleImportExpression(node: ImportExpressionNode): void {
     const source = node.source;
     if (LazyImportTransformer.isStaticallyResolvable(source)) {
+      const specifier = LazyImportTransformer.literalValue(source);
+      if (specifier !== undefined && this.leaveAlone(specifier)) return;
       this.replacements.push({
         start: node.start,
         end: node.start + 'import'.length,
@@ -1193,6 +1212,16 @@ class LazyImportTransformer {
       return;
     }
     this.nonStatic.push({ node: source });
+  }
+
+  /** The specifier of a string literal or a template literal without expressions. */
+  private static literalValue(node: AstNode): string | undefined {
+    if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+    if (node.type === 'TemplateLiteral' && Array.isArray(node.quasis) && node.quasis.length === 1) {
+      const cooked = (node.quasis[0] as { value?: { cooked?: unknown } }).value?.cooked;
+      return typeof cooked === 'string' ? cooked : undefined;
+    }
+    return undefined;
   }
 
   private static isStaticallyResolvable(node: AstNode): boolean {
@@ -1279,16 +1308,20 @@ function isFederationControlChunk(fileName: string): boolean {
  *
  * Non-static dynamic imports are surfaced via the caller-provided `error`
  * callback (Rollup's `this.error`); the caller decides how to format
- * file/position context for the message.
+ * file/position context for the message. A literal import whose specifier
+ * `leaveAlone` accepts keeps its `import()` untouched.
  */
 function transformLazyImports(
   code: string,
   parse: (input: string) => unknown,
   error: (message: string, pos: number) => never,
-  chunkFileName: string
+  chunkFileName: string,
+  leaveAlone?: (specifier: string) => boolean
 ): { code: string; count: number } | null {
-  // Fast skip — nothing to do for chunks without a dynamic import.
-  if (!code.includes('import(')) return null;
+  // Fast skip: nothing to do for chunks without an `import` followed by a
+  // parenthesis or a comment (`import('./x')`, `import ('./x')`,
+  // `import /* c */ ('./x')`); the parser then finds the dynamic imports.
+  if (!/\bimport\s*(?:\(|\/[*/])/.test(code)) return null;
 
   let ast: unknown;
   try {
@@ -1299,7 +1332,7 @@ function transformLazyImports(
     return null;
   }
 
-  const transformer = new LazyImportTransformer(code);
+  const transformer = new LazyImportTransformer(code, leaveAlone);
   transformer.visit(ast);
 
   for (const { node } of transformer.nonStaticNodes()) {
@@ -1351,6 +1384,11 @@ export function frontxMfGts(): Plugin {
   const chunkOwnCss = new Map<string, string[]>();
   const chunkDynamicImports = new Map<string, string[]>();
   const chunkOwnCssModules = new Map<string, string[]>();
+  // The CSS-only chunks (by preliminary file name) each transformed chunk
+  // left its `import()` of for Vite to rewrite.
+  const chunkCssOnlyImports = new Map<string, Set<string>>();
+  // Set when `generateBundle` fails the build, which still runs `closeBundle`.
+  let outputFailed = false;
   let resolvedExternals: string[] = [];
   const capturedChunks = new Map<string, CapturedChunk>();
 
@@ -1368,7 +1406,9 @@ export function frontxMfGts(): Plugin {
       chunkOwnCss.clear();
       chunkDynamicImports.clear();
       chunkOwnCssModules.clear();
+      chunkCssOnlyImports.clear();
       capturedChunks.clear();
+      outputFailed = false;
     },
 
     // ── Lazy-import AST transform (build-time half of ADR-0022) ─────────
@@ -1386,7 +1426,7 @@ export function frontxMfGts(): Plugin {
     // splitting while still performing an AST-level rewrite at build
     // time — matching the ADR's intent ("build-time AST rewrite, not
     // runtime regex on compiled output").
-    renderChunk(code, chunk) {
+    renderChunk(code, chunk, _options, meta) {
       const ownCss = [...(chunk.viteMetadata?.importedCss ?? [])];
       chunkOwnCss.set(chunk.fileName, ownCss);
       const sources = chunk.moduleIds.filter(isExtractedStylesheet);
@@ -1404,11 +1444,24 @@ export function frontxMfGts(): Plugin {
       // federation's share-init and remote-entry mechanics.
       if (isFederationControlChunk(chunk.fileName)) return null;
 
+      // An `import()` of a CSS-only chunk stays as it is: Vite removes that
+      // chunk in `generateBundle` and rewrites the call to an empty promise
+      // itself, keeping the source map, which it cannot do once the call is
+      // renamed. `generateBundle` below still lists the chunk's CSS.
+      const cssOnlyImports = new Set<string>();
+      chunkCssOnlyImports.set(chunk.fileName, cssOnlyImports);
       const result = transformLazyImports(
         code,
         (input) => this.parse(input),
         (message, pos) => this.error({ message, pos }),
-        chunk.fileName
+        chunk.fileName,
+        (specifier) => {
+          const target = path.posix.join(path.posix.dirname(chunk.fileName), specifier);
+          const targetChunk = meta.chunks[target];
+          if (targetChunk === undefined || !isCssOnlyChunk(targetChunk)) return false;
+          cssOnlyImports.add(target);
+          return true;
+        }
       );
       if (result === null) return null;
       console.log(
@@ -1454,20 +1507,45 @@ export function frontxMfGts(): Plugin {
       for (const [fileName, output] of Object.entries(bundle)) {
         if (output.type !== 'chunk') continue;
         // A CSS-only chunk reached by a dynamic import (`import('./x.css')`)
-        // is removed by Vite too, but no importer gets its CSS: Vite only
-        // rewrites the `import()` to an empty promise, which it cannot find
-        // once the lazy-import transform renamed the call. Rollup builds
+        // is removed by Vite, which rewrites the `import()` to an empty
+        // promise but gives no importer its CSS. Rollup builds
         // `dynamicImports` by finalizing the preliminary names seen in
         // `renderChunk`, in the same order, so the two lists pair up. Each
         // removed target becomes a captured chunk of its own CSS, reached
-        // through the importer's dynamic import (so its CSS is async), and
-        // its `__frontx_lazy` call resolves to an empty module, as Vite's
-        // rewrite would.
+        // through the importer's dynamic import (so its CSS is async). The
+        // lazy-import transform must have left exactly those imports alone:
+        // a renamed call to a removed chunk would fetch a missing file, and
+        // a plain `import()` of a kept chunk cannot resolve from the blob
+        // URL the screen runs from.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
+        const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
+        if (preliminaryDynamic.length !== output.dynamicImports.length && leftAlone?.size) {
+          outputFailed = true;
+          this.error(
+            `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
+              `when it was rendered, so its imports of CSS-only chunks cannot be checked.`
+          );
+        }
         if (preliminaryDynamic.length === output.dynamicImports.length) {
           output.dynamicImports.forEach((target, i) => {
-            if (bundle[target] !== undefined) return;
-            const removedCss = chunkOwnCss.get(preliminaryDynamic[i]);
+            const removedCss = bundle[target] === undefined ? chunkOwnCss.get(preliminaryDynamic[i]) : undefined;
+            const isLeftAlone = leftAlone?.has(preliminaryDynamic[i]);
+            if (isLeftAlone === true && removedCss === undefined) {
+              outputFailed = true;
+              this.error(
+                `[frontx-mf-gts] '${fileName}' imports '${target}', a chunk of stylesheets only, ` +
+                  `which Vite kept (a stylesheet that compiles to no CSS?). Its import() cannot ` +
+                  `load from the screen's blob URL; remove that import.`
+              );
+            }
+            if (isLeftAlone === false && removedCss !== undefined) {
+              outputFailed = true;
+              this.error(
+                `[frontx-mf-gts] '${fileName}' loads '${target}' through __frontx_lazy, but Vite ` +
+                  `removed that chunk as CSS-only; the frontx-mf-gts CSS-only chunk rule needs ` +
+                  `to match Vite's.`
+              );
+            }
             if (removedCss === undefined) return;
             capturedChunks.set(target, {
               fileName: target,
@@ -1476,10 +1554,6 @@ export function frontxMfGts(): Plugin {
               dynamicImports: [],
               ownCssModules: chunkOwnCssModules.get(preliminaryDynamic[i]) ?? [],
             });
-            const rel = path.posix.relative(path.posix.dirname(fileName), target);
-            const spec = rel.startsWith('.') ? rel : `./${rel}`;
-            const call = new RegExp(`__frontx_lazy\\((['"\`])${escapeRegExp(spec)}\\1\\)`, 'g');
-            output.code = output.code.replace(call, 'Promise.resolve({})');
           });
         }
         // By now Vite has removed CSS-only chunks and added their CSS files
@@ -1501,7 +1575,10 @@ export function frontxMfGts(): Plugin {
       }
     },
 
-    async closeBundle() {
+    async closeBundle(error) {
+      // A build that failed in this plugin wrote no manifests; let its own
+      // error surface instead of a missing-manifest one.
+      if (error || outputFailed) return;
       const distDir = path.isAbsolute(distDirPath)
         ? distDirPath
         : path.join(packageRoot, distDirPath);

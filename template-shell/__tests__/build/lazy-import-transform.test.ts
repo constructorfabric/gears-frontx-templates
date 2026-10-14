@@ -37,6 +37,12 @@ describe('transformLazyImports (ADR-0022 plugin half)', () => {
     expect(result!.count).toBe(1);
   });
 
+  it('rewrites dynamic imports written with spacing or a comment before the parenthesis', () => {
+    const code = `const a = import ('./A.js');\nconst b = import /* c */ ("./B.js");`;
+    const result = transformLazyImports(code, parse, neverError, 'chunk.js');
+    expect(result?.code).toBe(`const a = __frontx_lazy ('./A.js');\nconst b = __frontx_lazy /* c */ ("./B.js");`);
+  });
+
   it('rewrites constant template-literal dynamic import', () => {
     const code = 'const x = import(`./X.js`);';
     const result = transformLazyImports(code, parse, neverError, 'chunk.js');
