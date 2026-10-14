@@ -76,23 +76,6 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_THEME, 'dark');
     });
 
-    it('should not throw when theme/changed fires even if updateSharedProperty throws', () => {
-      const app = createFrontX()
-        .use(effects())
-        .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
-        throw new Error('GTS validation failed');
-      });
-
-      expect(() => {
-        eventBus.emit('theme/changed', { themeId: 'bad-theme' });
-      }).not.toThrow();
-    });
-
     it('should emit theme/propagation/failed when updateSharedProperty throws', () => {
       const app = createFrontX()
         .use(effects())
@@ -115,31 +98,6 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
         themeId: 'bad-theme',
         error: propagationError,
       });
-    });
-
-    it('should still apply the theme even if updateSharedProperty throws', () => {
-      const app = createFrontX()
-        .use(effects())
-        .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      // Register a theme so apply() has something to work with
-      app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
-
-      vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
-        throw new Error('GTS validation failed');
-      });
-
-      // Theme registry apply should still be called — propagation failure must not prevent it
-      const applySpy = vi.spyOn(app.themeRegistry, 'apply');
-
-      expect(() => {
-        eventBus.emit('theme/changed', { themeId: 'dark' });
-      }).not.toThrow();
-
-      expect(applySpy).toHaveBeenCalledWith('dark');
     });
 
     it('should unsubscribe theme propagation when the plugin app is destroyed', () => {
@@ -284,10 +242,10 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
       const applySpy = vi.spyOn(app.themeRegistry, 'apply');
 
-      // Must not throw — optional chaining skips updateSharedProperty silently
-      expect(() => {
-        eventBus.emit('theme/changed', { themeId: 'dark' });
-      }).not.toThrow();
+      // Optional chaining skips updateSharedProperty silently: no subscriber fails.
+      const consoleError = vi.spyOn(console, 'error');
+      eventBus.emit('theme/changed', { themeId: 'dark' });
+      expect(consoleError).not.toHaveBeenCalled();
 
       // Theme registry must still apply the theme
       expect(applySpy).toHaveBeenCalledWith('dark');

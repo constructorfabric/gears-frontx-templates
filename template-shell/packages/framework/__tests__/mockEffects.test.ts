@@ -139,12 +139,10 @@ describe('mockEffects', () => {
       apiRegistry.register(ServiceWithoutPluginMgmt);
       trackCleanup(initMockEffects());
 
-      expect(() => {
-        toggleMockMode(true);
-      }).not.toThrow();
-      expect(() => {
-        toggleMockMode(false);
-      }).not.toThrow();
+      const consoleError = vi.spyOn(console, 'error');
+      toggleMockMode(true);
+      toggleMockMode(false);
+      expect(consoleError).not.toHaveBeenCalled();
     });
   });
 

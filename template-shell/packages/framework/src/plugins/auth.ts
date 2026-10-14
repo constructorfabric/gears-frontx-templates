@@ -68,15 +68,6 @@ declare module '@gears-frontx/state' {
   }
 }
 
-/** A throwing subscriber is logged and does not change what the auth call returns. */
-function emitAuthEvent(type: (typeof AuthEvents)[keyof typeof AuthEvents]): void {
-  try {
-    eventBus.emit(type, {});
-  } catch (error) {
-    console.error(`[Gears FrontX] An ${type} subscriber threw`, error);
-  }
-}
-
 export type AuthRuntime = {
   provider: AuthProvider;
   /** Resolved capability flags built by method-presence probe at provider-attach time. */
@@ -640,7 +631,7 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
             try {
               return await config.provider.logout(ctx);
             } finally {
-              emitAuthEvent(AuthEvents.LoggedOut);
+              eventBus.emit(AuthEvents.LoggedOut, {});
             }
           },
           login: config.provider.login
@@ -648,7 +639,7 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
                 const transition = await config.provider.login!(input, ctx);
                 // A redirect starts the flow without a session yet; handleCallback emits when it completes.
                 if (transition.type !== 'redirect') {
-                  emitAuthEvent(AuthEvents.LoggedIn);
+                  eventBus.emit(AuthEvents.LoggedIn, {});
                 }
                 return transition;
               }
@@ -656,7 +647,7 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
           handleCallback: config.provider.handleCallback
             ? async (input: AuthCallbackInput, ctx?: AuthContext) => {
                 const transition = await config.provider.handleCallback!(input, ctx);
-                emitAuthEvent(AuthEvents.LoggedIn);
+                eventBus.emit(AuthEvents.LoggedIn, {});
                 return transition;
               }
             : undefined,

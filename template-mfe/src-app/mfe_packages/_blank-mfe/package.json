@@ -33,7 +33,7 @@
     "typescript": "5.9.3",
     "@gears-frontx/framework": "0.2.0-alpha.13",
     "@gears-frontx/auth": "0.2.0-alpha.2",
-    "@gears-frontx/state": "0.2.0-alpha.1",
+    "@gears-frontx/state": "0.2.0-alpha.2",
     "@gears-frontx/mfes": "0.3.2",
     "@gears-frontx/gts-plugin": "0.3.3",
     "@gears-frontx/api": "0.3.0-alpha.3",

@@ -41,6 +41,9 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
    * Emit an event with payload.
    * Type-safe: payload must match event type in EventPayloadMap.
    * Payload is optional for void events.
+   * Every handler runs even when an earlier one throws: each error is logged
+   * and emit never rethrows, so one failing subscriber cannot skip the rest
+   * or fail the emitter.
    */
   emit<K extends keyof TEvents>(
     eventType: K,
@@ -49,7 +52,13 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
     const handlers = this.handlers.get(eventType as string);
     if (handlers) {
       const payload = args[0];
-      handlers.forEach((handler) => handler(payload));
+      handlers.forEach((handler) => {
+        try {
+          handler(payload);
+        } catch (error) {
+          console.error(`[Gears FrontX] A ${String(eventType)} subscriber threw`, error);
+        }
+      });
     }
   }
 
@@ -86,14 +95,16 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
   /**
    * Subscribe to event, but only fire once then auto-unsubscribe.
    * Type-safe: handler receives correct payload type for event.
+   * The subscription is removed before the handler runs, so a handler that
+   * throws still fires only once.
    */
   once<K extends keyof TEvents>(
     eventType: K,
     handler: EventHandler<TEvents[K]>
   ): Subscription {
     const wrappedHandler = (payload: TEvents[K]): void => {
-      handler(payload);
       subscription.unsubscribe();
+      handler(payload);
     };
 
     const subscription = this.on(eventType, wrappedHandler);

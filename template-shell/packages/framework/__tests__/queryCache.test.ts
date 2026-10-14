@@ -465,15 +465,15 @@ describe('queryCache() — onInit subscribes to events', () => {
     await waitForQueryDataGone(client, ['toggle-sentinel']);
   });
 
-  it('MockEvents.Toggle on an empty cache does not throw and leaves the client usable', async () => {
+  it('MockEvents.Toggle on an empty cache does not fail and leaves the client usable', async () => {
     const plugin = queryCache();
     plugin.onInit!(stubApp());
     const client = requireSharedQueryClient();
+    const consoleError = vi.spyOn(console, 'error');
 
-    expect(() => {
-      eventBus.emit(MockEvents.Toggle, { enabled: true });
-    }).not.toThrow();
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
     await flushQueryCacheClear();
+    expect(consoleError).not.toHaveBeenCalled();
 
     // Listener is still alive — seeding + firing again still clears.
     client.setQueryData(['later'], 'value');
@@ -481,14 +481,14 @@ describe('queryCache() — onInit subscribes to events', () => {
     await waitForQueryDataGone(client, ['later']);
   });
 
-  it('cache/invalidate against an empty cache does not throw and the listener stays armed', () => {
+  it('cache/invalidate against an empty cache does not fail and the listener stays armed', () => {
     const plugin = queryCache();
     plugin.onInit!(stubApp());
     const client = requireSharedQueryClient();
+    const consoleError = vi.spyOn(console, 'error');
 
-    expect(() => {
-      eventBus.emit('cache/invalidate', { queryKey: ['someKey'] });
-    }).not.toThrow();
+    eventBus.emit('cache/invalidate', { queryKey: ['someKey'] });
+    expect(consoleError).not.toHaveBeenCalled();
 
     // Seed post-hoc and re-emit — listener still invalidates.
     client.setQueryData(['someKey'], 'value');
@@ -741,6 +741,30 @@ describe('clears the cache on every cache scope change', () => {
     cancellation.resolve();
     await flushQueryCacheClear();
     expect(client.getQueryData(['users'])).toEqual([{ id: 2 }]);
+  });
+
+  it.each([
+    { ...scopeChanges[0], event: () => TenantEvents.Changed },
+    { ...scopeChanges[2], event: () => AuthEvents.LoggedOut },
+    {
+      name: 'a mock toggle',
+      change: () => eventBus.emit(MockEvents.Toggle, { enabled: true }),
+      event: () => MockEvents.Toggle,
+    },
+  ])('clears on $name even when a subscriber registered before queryCache() throws', async ({ change, event }) => {
+    await withSilencedConsoleError(async () => {
+      eventBus.on(event(), () => {
+        throw new Error('subscriber failed');
+      });
+      const plugin = queryCache();
+      plugin.onInit!(stubApp());
+      const client = requireSharedQueryClient();
+      await seedForTenantA(client, vi.fn().mockResolvedValue('first'));
+
+      change();
+
+      expect(client.getQueryData(['users'])).toBeUndefined();
+    });
   });
 
   it('keeps the cache when a tenant event does not change the tenant', async () => {
