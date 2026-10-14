@@ -8,7 +8,10 @@ export { i18n } from './i18n';
 export { effects } from './effects';
 export {
   auth,
+  AuthEvents,
   frontxApiTransport,
+  type AuthLoggedInPayload,
+  type AuthLoggedOutPayload,
   type AuthPluginConfig,
   type AuthRuntime,
   type AuthTransportBinding,
@@ -20,6 +23,7 @@ export {
   queryCache,
   queryCacheShared,
   subscribeQueryCacheRuntimeChanged,
+  readQueryCacheScopeGeneration,
   type QueryCacheConfig,
 } from './queryCache';
 export {

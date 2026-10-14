@@ -23,10 +23,16 @@ import {
   makeQueryDescriptor,
   buildPresetApp,
   getAttachedQueryClient,
+  buildHostAppWithQueryCache,
+  buildAppWithQueryClient,
+  buildAppInOtherRuntime,
 } from './queryHooks.helpers';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let AuthEvents: typeof import('@gears-frontx/framework')['AuthEvents'];
+let TenantEvents: typeof import('@gears-frontx/framework')['TenantEvents'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
 let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
 let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
 let useApiMutation: typeof import('../src/hooks/useApiMutation')['useApiMutation'];
@@ -35,7 +41,9 @@ let createQueryCache: typeof import('../src/hooks/QueryCache')['createQueryCache
 beforeEach(async () => {
   vi.resetModules();
   await loadFreshHelpers();
-  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ eventBus, AuthEvents, TenantEvents, resetSharedFetchCache, resetSharedQueryClient } =
+    await import('@gears-frontx/framework'));
+  ({ FrontXProvider } = await import('@gears-frontx/react'));
   ({ useApiMutation } = await import('../src/hooks/useApiMutation'));
   ({ createQueryCache } = await import('../src/hooks/QueryCache'));
 });
@@ -584,6 +592,192 @@ describe('useApiMutation', () => {
       resolveGate2();
       await expect(secondPromise).resolves.toBe(2);
     });
+  });
+});
+
+// ============================================================================
+// useApiMutation across a cache scope change
+// ============================================================================
+
+describe('useApiMutation when the cache scope changes while a mutation is in flight', () => {
+  const QUERY_KEY = ['@test', 'scoped-entity'];
+
+  async function renderOnHost<TResult>(useHook: () => TResult) {
+    const hostApp = await buildHostAppWithQueryCache(60_000);
+    const client = getAttachedQueryClient(hostApp);
+    const rendered = renderHook(useHook, {
+      wrapper: ({ children }) => <FrontXProvider app={hostApp}>{children}</FrontXProvider>,
+    });
+    return { client, result: rendered.result };
+  }
+
+  it('drops an onSuccess write of the old scope response', async () => {
+    let resolveMutation!: (value: string) => void;
+    const endpoint = makeMutationDescriptor<string, void>(
+      ['scopedSave'],
+      () => new Promise<string>((resolve) => {
+        resolveMutation = resolve;
+      })
+    );
+
+    const { client, result } = await renderOnHost(() =>
+      useApiMutation<string, Error, void>({
+        endpoint,
+        onSuccess: (data, _variables, _context, { queryCache }) => {
+          queryCache.set(QUERY_KEY, data);
+        },
+      })
+    );
+
+    let mutatePromise!: Promise<string>;
+    await act(async () => {
+      mutatePromise = result.current.mutateAsync();
+    });
+    act(() => {
+      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+    });
+    await act(async () => {
+      resolveMutation('tenant A response');
+      await mutatePromise;
+    });
+
+    expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+  });
+
+  it('drops an onError snapshot restore of the old scope data', async () => {
+    let rejectMutation!: (error: Error) => void;
+    const endpoint = makeMutationDescriptor<void, void>(
+      ['scopedFailingSave'],
+      () => new Promise<void>((_resolve, reject) => {
+        rejectMutation = reject;
+      })
+    );
+
+    const { client, result } = await renderOnHost(() =>
+      useApiMutation<void, Error, void, { snapshot: unknown }>({
+        endpoint,
+        onMutate: (_variables, { queryCache }) => {
+          const snapshot = queryCache.get(QUERY_KEY);
+          queryCache.set(QUERY_KEY, 'optimistic');
+          return { snapshot };
+        },
+        onError: (_error, _variables, context, { queryCache }) => {
+          queryCache.set(QUERY_KEY, context?.snapshot);
+        },
+      })
+    );
+    client.setQueryData(QUERY_KEY, 'old session data');
+
+    let mutatePromise!: Promise<void>;
+    await act(async () => {
+      mutatePromise = result.current.mutateAsync();
+    });
+    expect(client.getQueryData(QUERY_KEY)).toBe('optimistic');
+    act(() => {
+      eventBus.emit(AuthEvents.LoggedOut, {});
+    });
+    await act(async () => {
+      rejectMutation(new Error('server error'));
+      await expect(mutatePromise).rejects.toThrow('server error');
+    });
+
+    expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+  });
+
+  it('drops an onError write when the scope changed before an async onMutate threw', async () => {
+    let releaseOnMutate!: () => void;
+    const onMutateGate = new Promise<void>((resolve) => {
+      releaseOnMutate = resolve;
+    });
+    const endpoint = makeMutationDescriptor<void, void>(['scopedOnMutateThrow'], async () => undefined);
+
+    const { client, result } = await renderOnHost(() =>
+      useApiMutation<void, Error, void>({
+        endpoint,
+        onMutate: async () => {
+          await onMutateGate;
+          throw new Error('onMutate failed');
+        },
+        onError: (_error, _variables, _context, { queryCache }) => {
+          queryCache.set(QUERY_KEY, 'old scope write');
+        },
+      })
+    );
+
+    let mutatePromise!: Promise<void>;
+    await act(async () => {
+      mutatePromise = result.current.mutateAsync();
+    });
+    act(() => {
+      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+    });
+    await act(async () => {
+      releaseOnMutate();
+      await expect(mutatePromise).rejects.toThrow('onMutate failed');
+    });
+
+    expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+  });
+
+  it('lands an onSuccess write of a mutation started after the scope changed', async () => {
+    const endpoint = makeMutationDescriptor<string, void>(['newScopeSave'], async () => 'tenant B response');
+
+    const { client, result } = await renderOnHost(() =>
+      useApiMutation<string, Error, void>({
+        endpoint,
+        onSuccess: (data, _variables, _context, { queryCache }) => {
+          queryCache.set(QUERY_KEY, data);
+        },
+      })
+    );
+
+    act(() => {
+      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+    });
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(client.getQueryData(QUERY_KEY)).toBe('tenant B response');
+  });
+
+  it('writes to the QueryClient it started under when the provider swaps its client', async () => {
+    let resolveMutation!: (value: string) => void;
+    const endpoint = makeMutationDescriptor<string, void>(
+      ['swappedClientSave'],
+      () => new Promise<string>((resolve) => {
+        resolveMutation = resolve;
+      })
+    );
+    const startClient = buildMutationCacheTestQueryClient();
+    const nextClient = buildMutationCacheTestQueryClient();
+    let app = buildAppWithQueryClient(startClient);
+    const nextApp = await buildAppInOtherRuntime(nextClient);
+
+    const { result, rerender } = renderHook(
+      () =>
+        useApiMutation<string, Error, void>({
+          endpoint,
+          onSuccess: (data, _variables, _context, { queryCache }) => {
+            queryCache.set(QUERY_KEY, data);
+          },
+        }),
+      { wrapper: ({ children }) => <FrontXProvider app={app}>{children}</FrontXProvider> }
+    );
+
+    let mutatePromise!: Promise<string>;
+    await act(async () => {
+      mutatePromise = result.current.mutateAsync();
+    });
+    app = nextApp;
+    rerender();
+    await act(async () => {
+      resolveMutation('start client response');
+      await mutatePromise;
+    });
+
+    expect(nextClient.getQueryData(QUERY_KEY)).toBeUndefined();
+    expect(startClient.getQueryData(QUERY_KEY)).toBe('start client response');
   });
 });
 

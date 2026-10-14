@@ -10,6 +10,11 @@ import { useOptionalFrontXQueryClient } from '../queryClient';
  * - useApiQuery() for declarative reads
  * - useApiMutation() for writes
  * - useQueryCache() for controlled imperative cache inspection and invalidation
+ *
+ * The returned handle is not bound to the cache scope (mock mode, tenant,
+ * session): it writes to whatever scope is current. A write after an await or
+ * inside a mutation callback must use the `queryCache` that callback receives,
+ * which drops writes once the scope changed since the mutation started.
  */
 export function useQueryCache() {
   const queryClient = useOptionalFrontXQueryClient();

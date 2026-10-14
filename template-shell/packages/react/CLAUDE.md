@@ -98,6 +98,8 @@ function ProfileScreen() {
 Cache keys are derived automatically by the service — `QueryCache` methods accept
 endpoint descriptors directly (e.g., `queryCache.get(service.getCurrentUser)`).
 
+The `queryCache` a mutation callback receives is bound to the cache scope (mock mode, tenant, session) the mutation started under: once that scope changes, its writes (`set`, `remove`, `invalidate`, `invalidateMany`, `cancel`) do nothing and reads still work, so a response or snapshot from the old scope never lands in the new cache. Nothing else is scope-bound: a `useQueryCache()` handle, the raw `QueryClient`, `cache/*` eventBus emits and per-call `mutate(vars, { onSuccess })` options write to whatever scope is current, so a write after an `await` or inside a mutation callback must go through the callback's `queryCache`.
+
 ### SSE Streaming with Stream Descriptors
 
 Services declare SSE endpoints as stream descriptors. Components consume them via `useApiStream`, which manages the connection lifecycle automatically (connect on mount, disconnect on unmount).

@@ -144,6 +144,7 @@ export const billingMockMap: MockMap = { 'GET /api/billing/status': (): GetStatu
 apiRegistry.register(BillingApiService);   // register<T extends BaseApiService>(serviceClass: new () => T): void
 apiRegistry.initialize();
 const mfeApp = createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
+// The host's queryCache() clears the shared cache on a mock mode or tenant change and on login or logout; an MFE never clears it itself
 registerSlice(homeSlice, initHomeEffects);
 ```
 

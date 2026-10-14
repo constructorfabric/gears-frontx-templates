@@ -8,8 +8,8 @@
  *     not call the descriptor again
  *   - a staleTime from setQueryDefaults (all matching key prefixes, merged as
  *     TanStack merges them) reaches the shared fetch cache too, so the fetch
- *     cache and the query agree; a function staleTime is not resolved to the
- *     global default
+ *     cache and the query agree; a function staleTime keeps the fetch cache
+ *     from serving a response older than the query would accept
  *   - `enabled: false` keeps useApiQuery and useApiInfiniteQuery idle; an
  *     omitted `enabled` leaves the QueryClient default in force; the suspense
  *     variants reject `enabled` carried by a value typed with the non-suspense
@@ -27,6 +27,8 @@ import type {
   EndpointDescriptor,
 } from '@gears-frontx/react';
 import {
+  buildHostAppWithQueryCache,
+  getAttachedQueryClient,
   loadFreshHelpers,
   ownedApps,
   makeQueryWrapper,
@@ -39,6 +41,9 @@ let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
 let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
 let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
 let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
+let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
+let RestProtocol: typeof import('@gears-frontx/react')['RestProtocol'];
+let RestEndpointProtocol: typeof import('@gears-frontx/react')['RestEndpointProtocol'];
 let useApiSuspenseQuery: typeof import('@gears-frontx/react')['useApiSuspenseQuery'];
 let useApiInfiniteQuery: typeof import('@gears-frontx/react')['useApiInfiniteQuery'];
 let useApiSuspenseInfiniteQuery: typeof import('@gears-frontx/react')['useApiSuspenseInfiniteQuery'];
@@ -47,8 +52,15 @@ beforeEach(async () => {
   vi.resetModules();
   await loadFreshHelpers();
   ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
-  ({ useApiQuery, useApiSuspenseQuery, useApiInfiniteQuery, useApiSuspenseInfiniteQuery } =
-    await import('@gears-frontx/react'));
+  ({
+    useApiQuery,
+    useApiSuspenseQuery,
+    useApiInfiniteQuery,
+    useApiSuspenseInfiniteQuery,
+    FrontXProvider,
+    RestProtocol,
+    RestEndpointProtocol,
+  } = await import('@gears-frontx/react'));
 });
 
 afterEach(() => {
@@ -212,19 +224,30 @@ describe.each(hookCases)('$name with setQueryDefaults staleTime', ({ suspense, u
 });
 
 describe('setQueryDefaults with a function staleTime', () => {
-  it('leaves the fetch cache without a staleTime instead of the global default', async () => {
-    const client = buildClientWithDefaults();
-    const key = ['per-key-function-stale-time'];
-    client.setQueryDefaults(key, { staleTime: () => 5_000 });
-    const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
-    const descriptor = makeQueryDescriptor(key, fetchFn);
+  it('refetches fresh data past the function window instead of the shared fetch cache copy', async () => {
+    const hostApp = await buildHostAppWithQueryCache(DEFAULT_STALE_TIME);
+    const client = getAttachedQueryClient(hostApp);
+    const rest = new RestProtocol();
+    rest.initialize({ baseURL: '/api/test' });
+    const responses = ['first', 'second'];
+    rest.setRequestDispatcherForTest(() =>
+      Promise.resolve({ status: 200, headers: {}, data: responses.shift() })
+    );
+    const endpoints = new RestEndpointProtocol(rest);
+    endpoints.initialize({ baseURL: '/api/test' });
+    const descriptor = endpoints.query<string>('/function-stale-time');
+    client.setQueryDefaults(descriptor.key as unknown[], { staleTime: () => 5_000 });
 
     const { result } = renderHook(() => useApiQuery(descriptor), {
-      wrapper: makeQueryWrapper(client),
+      wrapper: ({ children }) => <FrontXProvider app={hostApp}>{children}</FrontXProvider>,
     });
-    await waitFor(() => expect(result.current.data).toBeDefined());
+    await waitFor(() => expect(result.current.data).toBe('first'));
 
-    expect(fetchFn).toHaveBeenCalledWith(expect.objectContaining({ staleTime: undefined }));
+    advanceClock(10_000);
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.data).toBe('second'));
   });
 });
 

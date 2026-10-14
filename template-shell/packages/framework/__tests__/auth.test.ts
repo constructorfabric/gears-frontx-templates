@@ -16,8 +16,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RestPlugin, RestPluginHooks, RestRequestContext } from '@gears-frontx/api';
-import type { AccessEvaluation, AuthProvider, AuthSession } from '@gears-frontx/auth';
-import type { AuthTransportBinder } from '../src/plugins/auth';
+import type { AccessEvaluation, AuthProvider, AuthSession, AuthTransition } from '@gears-frontx/auth';
+import type { AuthRuntime, AuthTransportBinder } from '../src/plugins/auth';
 
 // One app per runtime: every test loads its own module copy.
 let apiRegistry: typeof import('@gears-frontx/api').apiRegistry;
@@ -433,6 +433,109 @@ describe('auth plugin', () => {
 
       app.destroy();
     });
+
+    it('app.auth.logout emits AuthEvents.LoggedOut once the provider logout resolves', async () => {
+      const { eventBus } = await import('@gears-frontx/state');
+      const { AuthEvents } = await import('../src/plugins/auth');
+      let finishLogout!: () => void;
+      const provider: AuthProvider = {
+        ...makeBearerProvider('tok'),
+        logout: vi.fn(
+          () =>
+            new Promise<AuthTransition>((resolve) => {
+              finishLogout = () => resolve({ type: 'none' });
+            }),
+        ),
+      };
+      const loggedOut = vi.fn();
+      eventBus.on(AuthEvents.LoggedOut, loggedOut);
+      const app = createFrontX().use(auth({ provider })).build();
+
+      const logout = app.auth?.logout();
+      await Promise.resolve();
+      expect(loggedOut).not.toHaveBeenCalled();
+
+      finishLogout();
+      await expect(logout).resolves.toEqual({ type: 'none' });
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+
+      app.destroy();
+    });
+
+    it('app.auth.logout emits AuthEvents.LoggedOut and rethrows when the provider logout rejects', async () => {
+      const { eventBus } = await import('@gears-frontx/state');
+      const { AuthEvents } = await import('../src/plugins/auth');
+      const provider: AuthProvider = {
+        ...makeBearerProvider('tok'),
+        logout: vi.fn().mockRejectedValue(new Error('identity provider down')),
+      };
+      const loggedOut = vi.fn();
+      eventBus.on(AuthEvents.LoggedOut, loggedOut);
+      const app = createFrontX().use(auth({ provider })).build();
+
+      await expect(app.auth?.logout()).rejects.toThrow('identity provider down');
+      expect(loggedOut).toHaveBeenCalledTimes(1);
+
+      app.destroy();
+    });
+
+    it.each([
+      {
+        method: 'login' as const,
+        call: (runtime: AuthRuntime | undefined) =>
+          runtime?.login?.({ type: 'password', payload: { user: 'b' } }),
+      },
+      {
+        method: 'handleCallback' as const,
+        call: (runtime: AuthRuntime | undefined) =>
+          runtime?.handleCallback?.({ params: { code: 'c' } }),
+      },
+    ])('app.auth.$method emits AuthEvents.LoggedIn only when the provider call resolves', async ({ method, call }) => {
+      const { eventBus } = await import('@gears-frontx/state');
+      const { AuthEvents } = await import('../src/plugins/auth');
+      const providerCall = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('bad credentials'))
+        .mockResolvedValueOnce({ type: 'none' });
+      const loggedIn = vi.fn();
+      eventBus.on(AuthEvents.LoggedIn, loggedIn);
+      const app = createFrontX()
+        .use(auth({ provider: { ...makeBearerProvider('tok'), [method]: providerCall } }))
+        .build();
+
+      await expect(call(app.auth)).rejects.toThrow('bad credentials');
+      expect(loggedIn).not.toHaveBeenCalled();
+
+      await expect(call(app.auth)).resolves.toEqual({ type: 'none' });
+      expect(loggedIn).toHaveBeenCalledTimes(1);
+
+      app.destroy();
+    });
+
+    it.each([
+      { method: 'login' as const, transition: { type: 'redirect' as const, redirectUrl: '/idp/authorize' }, emits: false },
+      { method: 'handleCallback' as const, transition: { type: 'redirect' as const, redirectUrl: '/app' }, emits: true },
+    ])(
+      'app.auth.$method resolving to a redirect emits AuthEvents.LoggedIn: $emits',
+      async ({ method, transition, emits }) => {
+        const { eventBus } = await import('@gears-frontx/state');
+        const { AuthEvents } = await import('../src/plugins/auth');
+        const loggedIn = vi.fn();
+        eventBus.on(AuthEvents.LoggedIn, loggedIn);
+        const app = createFrontX()
+          .use(auth({ provider: { ...makeBearerProvider('tok'), [method]: vi.fn().mockResolvedValue(transition) } }))
+          .build();
+
+        const result =
+          method === 'login'
+            ? app.auth?.login?.({ type: 'oauth', payload: {} })
+            : app.auth?.handleCallback?.({ params: { code: 'c' } });
+        await expect(result).resolves.toEqual(transition);
+        expect(loggedIn).toHaveBeenCalledTimes(emits ? 1 : 0);
+
+        app.destroy();
+      }
+    );
 
     it('passes through optional canAccess and subscribe when implemented', async () => {
       const unsubscribe = vi.fn();

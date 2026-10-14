@@ -13,7 +13,7 @@
 // @cpt-FEATURE:cpt-frontx-dod-request-lifecycle-use-api-query:p2
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import {
   loadFreshHelpers,
@@ -29,6 +29,9 @@ import {
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
+let AuthEvents: typeof import('@gears-frontx/framework')['AuthEvents'];
+let MockEvents: typeof import('@gears-frontx/framework')['MockEvents'];
+let TenantEvents: typeof import('@gears-frontx/framework')['TenantEvents'];
 let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
 let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
 let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
@@ -37,7 +40,8 @@ let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
 beforeEach(async () => {
   vi.resetModules();
   await loadFreshHelpers();
-  ({ eventBus, resetSharedFetchCache, resetSharedQueryClient } = await import('@gears-frontx/framework'));
+  ({ eventBus, AuthEvents, MockEvents, TenantEvents, resetSharedFetchCache, resetSharedQueryClient } =
+    await import('@gears-frontx/framework'));
   ({ FrontXProvider, useApiQuery } = await import('@gears-frontx/react'));
 });
 
@@ -284,5 +288,47 @@ describe('useApiQuery', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(2);
     secondRender.unmount();
+  });
+});
+
+describe('useApiQuery on a mounted screen when the cache scope changes', () => {
+  it.each([
+    { name: 'a tenant switch', change: () => eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } }) },
+    { name: 'a logout', change: () => eventBus.emit(AuthEvents.LoggedOut, {}) },
+    { name: 'a login', change: () => eventBus.emit(AuthEvents.LoggedIn, {}) },
+    { name: 'a mock toggle', change: () => eventBus.emit(MockEvents.Toggle, { enabled: true }) },
+  ])('drops the old scope data at once on $name and refetches under the new scope', async ({ change }) => {
+    const hostApp = await buildHostAppWithQueryCache(60_000);
+    let resolveNewScope!: (value: string) => void;
+    const fetchFn = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('old scope')
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveNewScope = resolve;
+          })
+      );
+    const descriptor = makeQueryDescriptor(['scoped-screen'], fetchFn);
+
+    const { result } = renderHook(() => useApiQuery<string>(descriptor), {
+      wrapper: ({ children }) => <FrontXProvider app={hostApp}>{children}</FrontXProvider>,
+    });
+    await waitFor(() => expect(result.current.data).toBe('old scope'));
+
+    await act(async () => {
+      change();
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+
+    expect(result.current.data).toBeUndefined();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveNewScope('new scope');
+    });
+    await waitFor(() => expect(result.current.data).toBe('new scope'));
   });
 });

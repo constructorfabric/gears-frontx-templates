@@ -18,6 +18,7 @@ import {
   type MutationFunctionContext,
 } from '@tanstack/react-query';
 import {
+  readQueryCacheScopeGeneration,
   subscribeQueryCacheRuntimeChanged,
   type EndpointDescriptor,
   type FrontXApp,
@@ -29,7 +30,12 @@ import type {
   ApiSuspenseInfiniteQueryOptions,
 } from './hooks/useApiInfiniteQuery';
 import type { UseApiMutationOptions } from './hooks/useApiMutation';
-import { createQueryCache, type MutationCallbackContext, type QueryCacheKey } from './hooks/QueryCache';
+import {
+  createQueryCache,
+  type MutationCallbackContext,
+  type QueryCache,
+  type QueryCacheKey,
+} from './hooks/QueryCache';
 import { useLatest } from './hooks/useLatest';
 
 const APP_QUERY_CLIENT_SYMBOL = Symbol.for('frontx:query-cache:app-client');
@@ -189,6 +195,12 @@ function buildPageContext<TPage>(
 function normalizeFetchStaleTime(staleTime: unknown): number | undefined {
   if (staleTime === 'static') {
     return Number.POSITIVE_INFINITY;
+  }
+
+  // A function staleTime is resolved per query by TanStack; 0 keeps the fetch
+  // cache from serving a response older than the query would accept.
+  if (typeof staleTime === 'function') {
+    return 0;
   }
 
   return typeof staleTime === 'number' ? staleTime : undefined;
@@ -454,6 +466,57 @@ export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
   };
 }
 
+/** The cache scope a mutation started under: its QueryClient and that client's scope generation. */
+type MutationScope = {
+  queryClient: QueryClient;
+  generation: number;
+};
+
+/**
+ * The scope each mutation run started under, keyed by the context object
+ * TanStack builds once per run and passes as the last argument to onMutate,
+ * onSuccess, onError and onSettled. Recorded before the caller's onMutate
+ * runs, so the callbacks find it even when that onMutate throws and TanStack
+ * keeps no onMutate result.
+ */
+const mutationScopes = new WeakMap<MutationFunctionContext, MutationScope>();
+
+/**
+ * A queryCache whose writes do nothing once the cache scope (mock mode,
+ * tenant, session) has changed since the mutation started, so a response or a
+ * snapshot from the old scope never lands in the new scope's cache. Reads
+ * still go through.
+ */
+function scopeBoundQueryCache(queryCache: QueryCache, scope: MutationScope): QueryCache {
+  const scopeChanged = () => readQueryCacheScopeGeneration(scope.queryClient) !== scope.generation;
+  return {
+    get: queryCache.get,
+    getState: queryCache.getState,
+    set: (key, dataOrUpdater) => {
+      if (!scopeChanged()) queryCache.set(key, dataOrUpdater);
+    },
+    cancel: (key) => (scopeChanged() ? Promise.resolve() : queryCache.cancel(key)),
+    invalidate: (key) => (scopeChanged() ? Promise.resolve() : queryCache.invalidate(key)),
+    invalidateMany: (filters) => (scopeChanged() ? Promise.resolve() : queryCache.invalidateMany(filters)),
+    remove: (key) => {
+      if (!scopeChanged()) queryCache.remove(key);
+    },
+  };
+}
+
+// The cache is built from the recorded QueryClient, not the latest render's,
+// so the scope check and the writes always target the same client even when
+// the provider swaps its QueryClient mid-flight. No scope only for a run that
+// skipped onMutate (TanStack resuming a restored paused mutation).
+function scopeBoundCallbackCtx(
+  callbackCtx: MutationCallbackContext,
+  scope: MutationScope | undefined
+): MutationCallbackContext {
+  return scope
+    ? { queryCache: scopeBoundQueryCache(createQueryCache(scope.queryClient), scope) }
+    : callbackCtx;
+}
+
 export function useFrontXMutation<
   TData = unknown,
   TError = Error,
@@ -463,9 +526,9 @@ export function useFrontXMutation<
   options: UseApiMutationOptions<TData, TError, TVariables, TContext>,
   callbackCtx: MutationCallbackContext
 ) {
-  useRequiredFrontXQueryClient();
+  const queryClient = useRequiredFrontXQueryClient();
 
-  const latestRef = useLatest({ options, callbackCtx });
+  const latestRef = useLatest({ options, callbackCtx, queryClient });
   const fetchAbortControllersRef = React.useRef<Set<AbortController>>(new Set());
 
   // Effect event: reads abortOnUnmount from the most recent render, not
@@ -516,33 +579,63 @@ export function useFrontXMutation<
     // callback on every render.
   }, [latestRef]);
 
-  const onMutate = React.useCallback((variables: TVariables, _context: MutationFunctionContext) => {
+  // onMutate always runs: it records the scope the mutation starts under,
+  // and every callback gets a queryCache bound to that scope.
+  const onMutate = React.useCallback(async (
+    variables: TVariables,
+    mutationFnContext: MutationFunctionContext
+  ): Promise<TContext | undefined> => {
     const current = latestRef.current;
-    if (!current.options.onMutate) {
-      return undefined as TContext;
-    }
-
-    return current.options.onMutate(variables, current.callbackCtx);
-    // latestRef's identity never changes — see mutationFn above.
+    const scope: MutationScope = {
+      queryClient: current.queryClient,
+      generation: readQueryCacheScopeGeneration(current.queryClient),
+    };
+    mutationScopes.set(mutationFnContext, scope);
+    return current.options.onMutate?.(
+      variables,
+      scopeBoundCallbackCtx(current.callbackCtx, scope)
+    );
+    // latestRef's identity never changes - see mutationFn above.
   }, [latestRef]);
 
-  const onSuccess = React.useCallback((data: TData, variables: TVariables, context: TContext | undefined) => {
+  const onSuccess = React.useCallback((
+    data: TData,
+    variables: TVariables,
+    context: TContext | undefined,
+    mutationFnContext: MutationFunctionContext
+  ) => {
     const current = latestRef.current;
-    return current.options.onSuccess?.(data, variables, context, current.callbackCtx);
-    // latestRef's identity never changes — see mutationFn above.
+    return current.options.onSuccess?.(
+      data,
+      variables,
+      context,
+      scopeBoundCallbackCtx(current.callbackCtx, mutationScopes.get(mutationFnContext))
+    );
+    // latestRef's identity never changes - see mutationFn above.
   }, [latestRef]);
 
-  const onError = React.useCallback((error: TError, variables: TVariables, context: TContext | undefined) => {
+  const onError = React.useCallback((
+    error: TError,
+    variables: TVariables,
+    context: TContext | undefined,
+    mutationFnContext: MutationFunctionContext
+  ) => {
     const current = latestRef.current;
-    return current.options.onError?.(error, variables, context, current.callbackCtx);
-    // latestRef's identity never changes — see mutationFn above.
+    return current.options.onError?.(
+      error,
+      variables,
+      context,
+      scopeBoundCallbackCtx(current.callbackCtx, mutationScopes.get(mutationFnContext))
+    );
+    // latestRef's identity never changes - see mutationFn above.
   }, [latestRef]);
 
   const onSettled = React.useCallback((
     data: TData | undefined,
     error: TError | null,
     variables: TVariables,
-    context: TContext | undefined
+    context: TContext | undefined,
+    mutationFnContext: MutationFunctionContext
   ) => {
     const current = latestRef.current;
     return current.options.onSettled?.(
@@ -550,14 +643,14 @@ export function useFrontXMutation<
       error,
       variables,
       context,
-      current.callbackCtx
+      scopeBoundCallbackCtx(current.callbackCtx, mutationScopes.get(mutationFnContext))
     );
-    // latestRef's identity never changes — see mutationFn above.
+    // latestRef's identity never changes - see mutationFn above.
   }, [latestRef]);
 
-  const mutation = useMutation<TData, TError, TVariables, TContext>({
+  const mutation = useMutation<TData, TError, TVariables, TContext | undefined>({
     mutationFn,
-    onMutate: options.onMutate ? onMutate : undefined,
+    onMutate,
     onSuccess: options.onSuccess ? onSuccess : undefined,
     onError: options.onError ? onError : undefined,
     onSettled: options.onSettled ? onSettled : undefined,

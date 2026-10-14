@@ -53,9 +53,10 @@ const minimalApp = createFrontX()
 | `microfrontends()` | `mfeRegistry` (MFE-enabled), MFE actions, selectors, domain constants | - |
 | `i18n()` | i18nRegistry, setLanguage action | - |
 | `effects()` | Core effect coordination | - |
-| `queryCache()` | Host-owned shared `QueryClient` lifecycle, Flux `cache/*` events, mock toggle + destroy cleanup, L1 `sharedFetchCache` retain/release and invalidation sync | - |
+| `queryCache()` | Host-owned shared `QueryClient` lifecycle, Flux `cache/*` events, clearing on mock mode, tenant or session change and on destroy, L1 `sharedFetchCache` retain/release and invalidation sync | - |
 | `queryCacheShared()` | Joins the host `QueryClient` from `queryCache()` for MFE / child roots (no second client) | host `queryCache()` runtime must exist |
 | `mock()` | mockSlice, toggleMockMode action | effects |
+| `auth()` | `app.auth` (provider wrapper, fail-closed access checks), REST transport binding. `app.auth.logout()` emits `AuthEvents.LoggedOut` once the provider call settles, also when it rejects (the error is rethrown); `app.auth.handleCallback()` emits `AuthEvents.LoggedIn` once the provider call resolves, and `app.auth.login()` once it resolves to anything but a redirect (the callback emits for a redirect flow); neither emits when the call rejects; a call made on the provider directly emits nothing. A session that starts outside `app.auth.login()`/`handleCallback()` (a provider `subscribe` state event, `refresh`, another tab logging in) emits no `LoggedIn`, so it does not clear the query cache: providers must route session starts through `handleCallback`; an in-page account change the provider detects on its own is not covered yet | - |
 
 ### Query Cache Plugin
 
@@ -70,7 +71,8 @@ const app = createFrontX().useAll(presets.full()).build();
 // The plugin attaches the shared QueryClient to the app for React bindings
 // and shared child roots via queryCacheShared().
 
-// Cache is cleared when mock mode changes (query cache + shared fetch layer)
+// Cache is cleared when mock mode or the tenant changes and on login and logout
+// (query cache + shared fetch layer)
 // Flux effects can drive cache via eventBus, e.g.:
 //   eventBus.emit('cache/invalidate', { queryKey })
 //   eventBus.emit('cache/set', { queryKey, dataOrUpdater })
@@ -90,7 +92,7 @@ const app = createFrontX()
 The plugin:
 - Creates or joins a shared `QueryClient` with configurable defaults (`staleTime`, `gcTime`, `retry: 0`, `refetchOnWindowFocus`)
 - Calls `retainSharedFetchCache()` on init and `releaseSharedFetchCache()` after teardown on destroy (balances in-flight shared fetch retention)
-- When mock mode changes (host `queryCache()` only; a toggle that repeats the mode already in force is ignored): cancels queries, clears the shared `QueryClient`, then clears `peekSharedFetchCache()` when present. A change made while only `queryCacheShared()` runtimes hold the client is cleared by the next host `queryCache()` that joins
+- When the cache scope changes (host `queryCache()` only): synchronously cancels queries (in-flight results never land), resets every query so mounted screens drop the old data at once and refetch under the new scope, clears the shared `QueryClient`, then clears `peekSharedFetchCache()` when present; nothing waits for cancellation to settle, so data written after the change survives. The scope is mock mode (`MockEvents.Toggle`), the tenant (`TenantEvents.Changed`, `TenantEvents.Cleared`) and the session (`AuthEvents.LoggedIn`, `AuthEvents.LoggedOut`). An event that repeats the scope already in force is ignored: a toggle to the mode already in force, a tenant change to the same tenant id, a tenant clear with no tenant set. Every login and logout clears. A change made while only `queryCacheShared()` runtimes hold the client is cleared by the next host `queryCache()` that joins. Each change also bumps the client's scope generation (`readQueryCacheScopeGeneration()`), whether it clears at once or is deferred; `useApiMutation` callbacks get a `queryCache` whose writes do nothing once it moved past the value at the mutation's start, so an old-scope response or snapshot never lands in the new cache. Nothing else is scope-bound: a `useQueryCache()` handle, the raw `QueryClient`, `cache/*` eventBus emits and per-call `mutate(vars, { onSuccess })` options write to whatever scope is current, so a write after an `await` or inside a mutation callback must go through the callback's `queryCache`
 - Subscribes to `cache/invalidate`, `cache/set`, and `cache/remove` — updates the shared `QueryClient` **and** mirrors invalidation to `sharedFetchCache` for matching keys (avoiding stale transport dedup vs React observers)
 - Attaches the shared `QueryClient` to each app instance so `@gears-frontx/react` can resolve it internally
 - On destroy: unsubscribes listeners, cancels and clears the client when the last retainer is released, then releases shared-fetch retention

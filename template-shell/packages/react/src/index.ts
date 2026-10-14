@@ -216,6 +216,7 @@ export {
 
   // Auth
   auth,
+  AuthEvents,
   frontxApiTransport,
 
   // API
@@ -279,6 +280,8 @@ export type {
   SetLanguagePayload,
   AuthPluginConfig,
   AuthRuntime,
+  AuthLoggedInPayload,
+  AuthLoggedOutPayload,
 
   // Auth contract types
   AuthProvider,

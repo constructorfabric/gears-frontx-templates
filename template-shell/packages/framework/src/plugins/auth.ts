@@ -26,7 +26,56 @@ import {
   type RestRequestContext,
   type RestResponseContext,
 } from '@gears-frontx/api';
+import { eventBus } from '@gears-frontx/state';
 import type { FrontXPlugin } from '../types';
+
+/** Auth event names */
+export const AuthEvents = {
+  /**
+   * `app.auth.logout()` finished, whether the provider resolved or rejected:
+   * the user meant to leave, so session-bound state is dropped either way.
+   */
+  LoggedOut: 'auth/loggedOut',
+  /**
+   * `app.auth.login()` resolved without a redirect, or
+   * `app.auth.handleCallback()` resolved: a session began, possibly for
+   * another account, so session-bound state is dropped. A login that resolves
+   * to a redirect has no session yet and does not emit.
+   *
+   * Only those two calls emit. A session that starts any other way (a
+   * provider `subscribe` state event, `refresh`, another tab logging in)
+   * emits nothing and drops nothing: providers must route session starts
+   * through `handleCallback`. An in-page account change the provider detects
+   * on its own is not covered yet.
+   */
+  LoggedIn: 'auth/loggedIn',
+} as const;
+
+/** Payload for the logged-out event */
+export interface AuthLoggedOutPayload {
+  // Empty payload
+}
+
+/** Payload for the logged-in event */
+export interface AuthLoggedInPayload {
+  // Empty payload
+}
+
+declare module '@gears-frontx/state' {
+  interface EventPayloadMap {
+    'auth/loggedOut': AuthLoggedOutPayload;
+    'auth/loggedIn': AuthLoggedInPayload;
+  }
+}
+
+/** A throwing subscriber is logged and does not change what the auth call returns. */
+function emitAuthEvent(type: (typeof AuthEvents)[keyof typeof AuthEvents]): void {
+  try {
+    eventBus.emit(type, {});
+  } catch (error) {
+    console.error(`[Gears FrontX] An ${type} subscriber threw`, error);
+  }
+}
 
 export type AuthRuntime = {
   provider: AuthProvider;
@@ -587,9 +636,30 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
           capabilities: caps,
           getSession: (ctx?: AuthContext) => config.provider.getSession(ctx),
           checkAuth: (ctx?: AuthContext) => config.provider.checkAuth(ctx),
-          logout: (ctx?: AuthContext) => config.provider.logout(ctx),
-          login: config.provider.login?.bind(config.provider),
-          handleCallback: config.provider.handleCallback?.bind(config.provider),
+          logout: async (ctx?: AuthContext) => {
+            try {
+              return await config.provider.logout(ctx);
+            } finally {
+              emitAuthEvent(AuthEvents.LoggedOut);
+            }
+          },
+          login: config.provider.login
+            ? async (input: AuthLoginInput, ctx?: AuthContext) => {
+                const transition = await config.provider.login!(input, ctx);
+                // A redirect starts the flow without a session yet; handleCallback emits when it completes.
+                if (transition.type !== 'redirect') {
+                  emitAuthEvent(AuthEvents.LoggedIn);
+                }
+                return transition;
+              }
+            : undefined,
+          handleCallback: config.provider.handleCallback
+            ? async (input: AuthCallbackInput, ctx?: AuthContext) => {
+                const transition = await config.provider.handleCallback!(input, ctx);
+                emitAuthEvent(AuthEvents.LoggedIn);
+                return transition;
+              }
+            : undefined,
           refresh: config.provider.refresh?.bind(config.provider),
           getIdentity: config.provider.getIdentity?.bind(config.provider),
           getPermissions: config.provider.getPermissions?.bind(config.provider),
