@@ -13,7 +13,6 @@
  * CSS-modules from node_modules that the host delivers by style adoption),
  * and graph traversal through static and dynamic imports.
  */
-// @cpt-FEATURE:frontx-mf-gts-plugin:p1
 
 import { describe, expect, it } from 'vitest';
 import {
