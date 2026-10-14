@@ -70,7 +70,7 @@ const app = createFrontX().useAll(presets.full()).build();
 // The plugin attaches the shared QueryClient to the app for React bindings
 // and shared child roots via queryCacheShared().
 
-// Cache is cleared on mock mode toggle (query cache + shared fetch layer)
+// Cache is cleared when mock mode changes (query cache + shared fetch layer)
 // Flux effects can drive cache via eventBus, e.g.:
 //   eventBus.emit('cache/invalidate', { queryKey })
 //   eventBus.emit('cache/set', { queryKey, dataOrUpdater })
@@ -90,7 +90,7 @@ const app = createFrontX()
 The plugin:
 - Creates or joins a shared `QueryClient` with configurable defaults (`staleTime`, `gcTime`, `retry: 0`, `refetchOnWindowFocus`)
 - Calls `retainSharedFetchCache()` on init and `releaseSharedFetchCache()` after teardown on destroy (balances in-flight shared fetch retention)
-- On mock toggle: cancels queries, clears the shared `QueryClient`, then clears `peekSharedFetchCache()` when present
+- When mock mode changes (host `queryCache()` only; a toggle that repeats the mode already in force is ignored): cancels queries, clears the shared `QueryClient`, then clears `peekSharedFetchCache()` when present. A change made while only `queryCacheShared()` runtimes hold the client is cleared by the next host `queryCache()` that joins
 - Subscribes to `cache/invalidate`, `cache/set`, and `cache/remove` — updates the shared `QueryClient` **and** mirrors invalidation to `sharedFetchCache` for matching keys (avoiding stale transport dedup vs React observers)
 - Attaches the shared `QueryClient` to each app instance so `@gears-frontx/react` can resolve it internally
 - On destroy: unsubscribes listeners, cancels and clears the client when the last retainer is released, then releases shared-fetch retention

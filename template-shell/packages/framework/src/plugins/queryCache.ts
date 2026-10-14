@@ -4,7 +4,8 @@
  * Framework Layer: L2
  *
  * Owns the shared QueryClient lifecycle, cache invalidation via Flux events,
- * cache clearing on mock toggle, and cleanup on destroy.
+ * cache clearing when mock mode changes (host queryCache() only), and cleanup
+ * on destroy.
  * Zero React imports — this plugin is headless.
  */
 
@@ -14,7 +15,7 @@ import {
   retainSharedFetchCache,
 } from '@gears-frontx/api';
 import { QueryClient } from '@tanstack/query-core';
-import { eventBus, type Subscription } from '@gears-frontx/state';
+import { eventBus, getStore, type Subscription } from '@gears-frontx/state';
 import type { FrontXApp, FrontXPlugin } from '../types';
 import { MockEvents } from '../effects/mockEffects';
 
@@ -125,15 +126,33 @@ type CacheRemovePayloadInput = {
 type ResolvedQueryCacheConfig = Required<QueryCacheConfig>;
 
 const cacheEffectsByClient = new WeakMap<QueryClient, CacheEffectsEntry>();
+// Host-only: queryCacheShared() never retains an entry here, so a child runtime
+// cannot clear the host's cache.
+const mockToggleEffectsByClient = new WeakMap<QueryClient, CacheEffectsEntry>();
 
-function finalizeCacheEffectsEntry(queryClient: QueryClient, entry: CacheEffectsEntry): void {
+type MockModeState = {
+  // Mock mode the cached data was fetched under.
+  enabled: boolean;
+  // The mode changed while no host was present to clear the cache.
+  stale: boolean;
+};
+
+// Lives with the cache effects entry, which host and child runtimes both
+// retain, so a mode change survives a host leaving and rejoining.
+const mockModeByClient = new WeakMap<QueryClient, MockModeState>();
+
+function finalizeCacheEffectsEntry(
+  entries: WeakMap<QueryClient, CacheEffectsEntry>,
+  queryClient: QueryClient,
+  entry: CacheEffectsEntry
+): void {
   if (entry.disposed) {
     return;
   }
 
   entry.disposed = true;
   entry.cleanup();
-  cacheEffectsByClient.delete(queryClient);
+  entries.delete(queryClient);
 }
 
 function emitSharedQueryClientRuntimeChanged(available: boolean): void {
@@ -357,9 +376,11 @@ export function resetSharedQueryClient(): void {
   const host = globalThis as SharedQueryClientHost;
   const client = host[SHARED_QUERY_CLIENT_SYMBOL];
   if (client) {
-    const cacheEffects = cacheEffectsByClient.get(client);
-    if (cacheEffects) {
-      finalizeCacheEffectsEntry(client, cacheEffects);
+    for (const entries of [cacheEffectsByClient, mockToggleEffectsByClient]) {
+      const cacheEffects = entries.get(client);
+      if (cacheEffects) {
+        finalizeCacheEffectsEntry(entries, client, cacheEffects);
+      }
     }
 
     client.clear();
@@ -523,19 +544,76 @@ function runQueryTeardown(
     });
 }
 
-function createCacheEffects(queryClient: QueryClient): () => void {
-  const mockToggleSub = eventBus.on(MockEvents.Toggle, () => {
-    runQueryTeardown(
-      queryClient,
-      {
-        onSettled: () => {
-          queryClient.clear();
-          peekSharedFetchCache()?.clear();
-        },
+function readMockEnabled(): boolean {
+  const state: unknown = getStore().getState();
+  if (state === null || typeof state !== 'object' || !('mock' in state)) {
+    return false;
+  }
+
+  const mockState: unknown = state.mock;
+  return (
+    mockState !== null &&
+    typeof mockState === 'object' &&
+    'enabled' in mockState &&
+    mockState.enabled === true
+  );
+}
+
+function clearForMockModeChange(queryClient: QueryClient): void {
+  runQueryTeardown(
+    queryClient,
+    {
+      onSettled: () => {
+        queryClient.clear();
+        peekSharedFetchCache()?.clear();
       },
-      '[Gears FrontX] Failed to clear query cache after mock toggle'
-    );
+    },
+    '[Gears FrontX] Failed to clear query cache after mock toggle'
+  );
+}
+
+/**
+ * Tracks the mock mode the cached data belongs to. A toggle that repeats the
+ * mode already in force (every mock() runtime with enabledByDefault emits one
+ * on init) changes nothing. A real change clears the query cache and the
+ * shared fetch cache when a host queryCache() is present; otherwise the cache
+ * is marked stale and the next host to join clears it.
+ */
+function createMockModeTracking(queryClient: QueryClient): () => void {
+  const mode: MockModeState = { enabled: readMockEnabled(), stale: false };
+  mockModeByClient.set(queryClient, mode);
+
+  const mockToggleSub = eventBus.on(MockEvents.Toggle, (payload) => {
+    if (payload.enabled === mode.enabled) {
+      return;
+    }
+
+    mode.enabled = payload.enabled;
+    if (mockToggleEffectsByClient.has(queryClient)) {
+      clearForMockModeChange(queryClient);
+    } else {
+      mode.stale = true;
+    }
   });
+
+  return () => {
+    mockToggleSub.unsubscribe();
+    mockModeByClient.delete(queryClient);
+  };
+}
+
+function createMockToggleEffects(queryClient: QueryClient): () => void {
+  const mode = mockModeByClient.get(queryClient);
+  if (mode?.stale) {
+    mode.stale = false;
+    clearForMockModeChange(queryClient);
+  }
+
+  return () => {};
+}
+
+function createCacheEffects(queryClient: QueryClient): () => void {
+  const releaseMockModeTracking = createMockModeTracking(queryClient);
 
   const invalidateSub = eventBus.on('cache/invalidate', (payload: unknown) => {
     const filters = toScopedInvalidateFilters(payload);
@@ -577,46 +655,49 @@ function createCacheEffects(queryClient: QueryClient): () => void {
   });
 
   return () => {
-    mockToggleSub.unsubscribe();
     invalidateSub.unsubscribe();
     setSub.unsubscribe();
     removeSub.unsubscribe();
+    releaseMockModeTracking();
+  };
+}
+
+function retainPerClientEffects(
+  entries: WeakMap<QueryClient, CacheEffectsEntry>,
+  queryClient: QueryClient,
+  create: (queryClient: QueryClient) => () => void
+): () => void {
+  let entry = entries.get(queryClient);
+  if (entry) {
+    entry.retainers += 1;
+  } else {
+    entry = {
+      retainers: 1,
+      cleanup: create(queryClient),
+      disposed: false,
+    };
+    entries.set(queryClient, entry);
+  }
+
+  const retained = entry;
+  return () => {
+    if (retained.disposed) {
+      return;
+    }
+
+    retained.retainers -= 1;
+    if (retained.retainers === 0) {
+      finalizeCacheEffectsEntry(entries, queryClient, retained);
+    }
   };
 }
 
 function retainCacheEffects(queryClient: QueryClient): () => void {
-  const existingEntry = cacheEffectsByClient.get(queryClient);
-  if (existingEntry) {
-    existingEntry.retainers += 1;
-    return () => {
-      if (existingEntry.disposed) {
-        return;
-      }
+  return retainPerClientEffects(cacheEffectsByClient, queryClient, createCacheEffects);
+}
 
-      existingEntry.retainers -= 1;
-      if (existingEntry.retainers === 0) {
-        finalizeCacheEffectsEntry(queryClient, existingEntry);
-      }
-    };
-  }
-
-  const entry: CacheEffectsEntry = {
-    retainers: 1,
-    cleanup: createCacheEffects(queryClient),
-    disposed: false,
-  };
-  cacheEffectsByClient.set(queryClient, entry);
-
-  return () => {
-    if (entry.disposed) {
-      return;
-    }
-
-    entry.retainers -= 1;
-    if (entry.retainers === 0) {
-      finalizeCacheEffectsEntry(queryClient, entry);
-    }
-  };
+function retainMockToggleEffects(queryClient: QueryClient): () => void {
+  return retainPerClientEffects(mockToggleEffectsByClient, queryClient, createMockToggleEffects);
 }
 
 export function queryCache(config?: QueryCacheConfig): FrontXPlugin {
@@ -667,7 +748,12 @@ export function queryCache(config?: QueryCacheConfig): FrontXPlugin {
         queryClient = retainSharedQueryClient(config);
         retainSharedFetchCache();
         sharedFetchCacheRetained = true;
-        cleanup = retainCacheEffects(queryClient);
+        const releaseCacheEffects = retainCacheEffects(queryClient);
+        const releaseMockToggleEffects = retainMockToggleEffects(queryClient);
+        cleanup = () => {
+          releaseMockToggleEffects();
+          releaseCacheEffects();
+        };
       }
       attachQueryClientToApp(app, queryClient);
     },

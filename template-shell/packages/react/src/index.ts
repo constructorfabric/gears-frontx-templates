@@ -40,9 +40,10 @@ export {
 } from './hooks';
 export { useCanAccess } from './hooks/useCanAccess';
 
-export type { ApiQueryOverrides } from './hooks/useApiQuery';
+export type { ApiQueryOverrides, ApiSuspenseQueryOverrides } from './hooks/useApiQuery';
 export type {
   ApiInfiniteQueryOptions,
+  ApiSuspenseInfiniteQueryOptions,
   ApiInfiniteQueryPageContext,
 } from './hooks/useApiInfiniteQuery';
 export type { UseApiMutationOptions } from './hooks/useApiMutation';

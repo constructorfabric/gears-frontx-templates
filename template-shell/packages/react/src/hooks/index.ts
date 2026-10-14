@@ -9,11 +9,12 @@ export { useScreenTranslations } from './useScreenTranslations';
 export { useFormatters } from './useFormatters';
 export { useTheme } from './useTheme';
 export { useApiQuery } from './useApiQuery';
-export type { ApiQueryOverrides } from './useApiQuery';
+export type { ApiQueryOverrides, ApiSuspenseQueryOverrides } from './useApiQuery';
 export { useApiSuspenseQuery } from './useApiSuspenseQuery';
 export { useApiInfiniteQuery } from './useApiInfiniteQuery';
 export type {
   ApiInfiniteQueryOptions,
+  ApiSuspenseInfiniteQueryOptions,
   ApiInfiniteQueryPageContext,
 } from './useApiInfiniteQuery';
 export { useApiSuspenseInfiniteQuery } from './useApiSuspenseInfiniteQuery';

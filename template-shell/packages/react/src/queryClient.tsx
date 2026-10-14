@@ -22,10 +22,11 @@ import {
   type EndpointDescriptor,
   type FrontXApp,
 } from '@gears-frontx/framework';
-import type { ApiQueryOverrides } from './hooks/useApiQuery';
+import type { ApiQueryOverrides, ApiSuspenseQueryOverrides } from './hooks/useApiQuery';
 import type {
   ApiInfiniteQueryOptions,
   ApiInfiniteQueryPageContext,
+  ApiSuspenseInfiniteQueryOptions,
 } from './hooks/useApiInfiniteQuery';
 import type { UseApiMutationOptions } from './hooks/useApiMutation';
 import { createQueryCache, type MutationCallbackContext, type QueryCacheKey } from './hooks/QueryCache';
@@ -193,16 +194,41 @@ function normalizeFetchStaleTime(staleTime: unknown): number | undefined {
   return typeof staleTime === 'number' ? staleTime : undefined;
 }
 
+/**
+ * The staleTime the shared fetch cache uses, resolved the way TanStack
+ * resolves it for the query: call site, then descriptor, then the
+ * QueryClient defaults for the query key (global defaults with every
+ * matching setQueryDefaults prefix spread over them).
+ */
 function resolveFetchStaleTime<TData>(
   queryClient: QueryClient,
+  queryKey: readonly unknown[],
   descriptor: EndpointDescriptor<TData>,
   overrideStaleTime?: number
 ): number | undefined {
+  const clientDefaults = {
+    ...queryClient.getDefaultOptions().queries,
+    ...queryClient.getQueryDefaults(queryKey),
+  };
   return normalizeFetchStaleTime(
-    overrideStaleTime ??
-      descriptor.staleTime ??
-      queryClient.getDefaultOptions().queries?.staleTime
+    overrideStaleTime ?? descriptor.staleTime ?? clientDefaults.staleTime
   );
+}
+
+/**
+ * staleTime/gcTime for a query, with only the keys that are set. An explicit
+ * `undefined` would override the QueryClient defaults (TanStack spreads the
+ * query options over them), so a screen that remounts would refetch instead of
+ * painting from cache.
+ */
+function cacheTimeOptions(
+  staleTime: number | undefined,
+  gcTime: number | undefined
+): { staleTime?: number; gcTime?: number } {
+  return {
+    ...(staleTime === undefined ? {} : { staleTime }),
+    ...(gcTime === undefined ? {} : { gcTime }),
+  };
 }
 
 function fetchDescriptor<TData>(
@@ -217,12 +243,20 @@ export function useFrontXQuery<TData = unknown, TError = Error>(
   overrides?: ApiQueryOverrides
 ) {
   const queryClient = useRequiredFrontXQueryClient();
-  const staleTime = resolveFetchStaleTime(queryClient, descriptor, overrides?.staleTime);
+  const staleTime = resolveFetchStaleTime(
+    queryClient,
+    descriptor.key,
+    descriptor,
+    overrides?.staleTime
+  );
   const result = useQuery<TData, TError>({
     queryKey: descriptor.key as unknown[],
     queryFn: ({ signal }) => fetchDescriptor(descriptor, { signal, staleTime }),
-    staleTime: overrides?.staleTime ?? descriptor.staleTime,
-    gcTime: overrides?.gcTime ?? descriptor.gcTime,
+    ...cacheTimeOptions(
+      overrides?.staleTime ?? descriptor.staleTime,
+      overrides?.gcTime ?? descriptor.gcTime
+    ),
+    ...(overrides?.enabled === undefined ? {} : { enabled: overrides.enabled }),
   });
 
   return {
@@ -237,15 +271,22 @@ export function useFrontXQuery<TData = unknown, TError = Error>(
 
 export function useFrontXSuspenseQuery<TData = unknown, TError = Error>(
   descriptor: EndpointDescriptor<TData>,
-  overrides?: ApiQueryOverrides
+  overrides?: ApiSuspenseQueryOverrides
 ) {
   const queryClient = useRequiredFrontXQueryClient();
-  const staleTime = resolveFetchStaleTime(queryClient, descriptor, overrides?.staleTime);
+  const staleTime = resolveFetchStaleTime(
+    queryClient,
+    descriptor.key,
+    descriptor,
+    overrides?.staleTime
+  );
   const result = useSuspenseQuery<TData, TError>({
     queryKey: descriptor.key as unknown[],
     queryFn: ({ signal }) => fetchDescriptor(descriptor, { signal, staleTime }),
-    staleTime: overrides?.staleTime ?? descriptor.staleTime,
-    gcTime: overrides?.gcTime ?? descriptor.gcTime,
+    ...cacheTimeOptions(
+      overrides?.staleTime ?? descriptor.staleTime,
+      overrides?.gcTime ?? descriptor.gcTime
+    ),
   });
 
   return {
@@ -274,7 +315,12 @@ export function useFrontXInfiniteQuery<TPage = unknown, TError = Error>(
     queryFn: ({ pageParam, signal }) =>
       fetchDescriptor(pageParam, {
         signal,
-        staleTime: resolveFetchStaleTime(queryClient, pageParam, options.staleTime),
+        staleTime: resolveFetchStaleTime(
+          queryClient,
+          options.initialPage.key,
+          pageParam,
+          options.staleTime
+        ),
       }),
     getNextPageParam: (
       lastPage,
@@ -302,9 +348,12 @@ export function useFrontXInfiniteQuery<TPage = unknown, TError = Error>(
           )
       : undefined,
     select: (data) => data.pages,
-    staleTime: options.staleTime ?? options.initialPage.staleTime,
-    gcTime: options.gcTime ?? options.initialPage.gcTime,
+    ...cacheTimeOptions(
+      options.staleTime ?? options.initialPage.staleTime,
+      options.gcTime ?? options.initialPage.gcTime
+    ),
     maxPages: options.maxPages,
+    ...(options.enabled === undefined ? {} : { enabled: options.enabled }),
   });
 
   return {
@@ -330,7 +379,7 @@ export function useFrontXInfiniteQuery<TPage = unknown, TError = Error>(
 }
 
 export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
-  options: ApiInfiniteQueryOptions<TPage>
+  options: ApiSuspenseInfiniteQueryOptions<TPage>
 ) {
   const queryClient = useRequiredFrontXQueryClient();
   const result = useSuspenseInfiniteQuery<
@@ -345,7 +394,12 @@ export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
     queryFn: ({ pageParam, signal }) =>
       fetchDescriptor(pageParam, {
         signal,
-        staleTime: resolveFetchStaleTime(queryClient, pageParam, options.staleTime),
+        staleTime: resolveFetchStaleTime(
+          queryClient,
+          options.initialPage.key,
+          pageParam,
+          options.staleTime
+        ),
       }),
     getNextPageParam: (
       lastPage,
@@ -373,8 +427,10 @@ export function useFrontXSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
           )
       : undefined,
     select: (data) => data.pages,
-    staleTime: options.staleTime ?? options.initialPage.staleTime,
-    gcTime: options.gcTime ?? options.initialPage.gcTime,
+    ...cacheTimeOptions(
+      options.staleTime ?? options.initialPage.staleTime,
+      options.gcTime ?? options.initialPage.gcTime
+    ),
     maxPages: options.maxPages,
   });
 

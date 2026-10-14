@@ -151,6 +151,7 @@ registerSlice(homeSlice, initHomeEffects);
 
 ```ts
 useApiQuery<TData = unknown, TError = Error>(descriptor: EndpointDescriptor<TData>, overrides?: ApiQueryOverrides): ApiQueryResult<TData, TError>;
+// overrides: { staleTime?, gcTime?, enabled? }; enabled: false keeps the query idle until it turns true
 // ApiQueryResult: { data, error, isLoading, isFetching, isError, refetch }
 useApiMutation<TData = unknown, TError = Error, TVariables = void, TContext = unknown>(options): ApiMutationResult<TData, TError, TVariables>;
 // options: { endpoint, cancelOnSupersede?, abortOnUnmount?, onMutate?, onSuccess?, onError?, onSettled? }

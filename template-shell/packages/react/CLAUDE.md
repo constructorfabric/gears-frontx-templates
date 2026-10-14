@@ -87,6 +87,11 @@ function ProfileScreen() {
 
   // Per-endpoint cache override (rare)
   const { data: config } = useApiQuery(service.getConfig, { staleTime: 0 });
+
+  // Conditional query: stays idle until enabled (not on the suspense hooks).
+  // The hook still needs a descriptor on every render, so one is built with a
+  // stand-in id; while enabled is false it is never fetched.
+  const { data: team } = useApiQuery(service.getTeam({ id: teamId ?? '' }), { enabled: Boolean(teamId) });
 }
 ```
 

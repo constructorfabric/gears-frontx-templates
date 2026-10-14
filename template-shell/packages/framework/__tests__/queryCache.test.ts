@@ -522,16 +522,145 @@ describe('queryCache() — MockEvents.Toggle clears the cache', () => {
     await waitForQueryDataGone(client, ['profile']);
   });
 
-  it('clears cache on toggle regardless of enabled flag value', async () => {
+  it('clears the cache on every real mode change, in both directions', async () => {
+    const plugin = queryCache();
+    plugin.onInit!(stubApp());
+    const client = requireSharedQueryClient();
+
+    client.setQueryData(['key'], 'on');
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await waitForQueryDataGone(client, ['key']);
+
+    client.setQueryData(['key'], 'off');
+    eventBus.emit(MockEvents.Toggle, { enabled: false });
+    await waitForQueryDataGone(client, ['key']);
+  });
+
+  it('keeps the cache when a toggle repeats the mode already in force', async () => {
+    const plugin = queryCache();
+    plugin.onInit!(stubApp());
+    const client = requireSharedQueryClient();
+    const sharedFetchCache = getSharedFetchCache();
+    const fetcher = vi.fn().mockResolvedValue('first');
+
+    // Mock mode starts off: a toggle to "off" changes nothing.
+    client.setQueryData(['key'], 'value');
+    await sharedFetchCache.getOrFetch(['shared'], fetcher, { staleTime: 1_000 });
+    eventBus.emit(MockEvents.Toggle, { enabled: false });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('value');
+    await sharedFetchCache.getOrFetch(['shared'], fetcher, { staleTime: 1_000 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await waitForQueryDataGone(client, ['key']);
+
+    // A second mock() runtime enabling mock mode by default re-emits "on".
+    client.setQueryData(['key'], 'value');
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('value');
+  });
+
+  it('takes the starting mode from the store when the mock slice is registered', async () => {
+    const { createStore, registerSlice, getStore } = await import('@gears-frontx/state');
+    const { mockSlice, setMockEnabled } = await import('../src/slices/mockSlice');
+    createStore({});
+    registerSlice(mockSlice);
+    getStore().dispatch(setMockEnabled(true));
+
     const plugin = queryCache();
     plugin.onInit!(stubApp());
     const client = requireSharedQueryClient();
 
     client.setQueryData(['key'], 'value');
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('value');
 
     eventBus.emit(MockEvents.Toggle, { enabled: false });
-
     await waitForQueryDataGone(client, ['key']);
+  });
+
+  it('queryCacheShared() never clears the cache on a mock toggle', async () => {
+    const hostPlugin = queryCache();
+    const sharedPlugin = queryCacheShared();
+    hostPlugin.onInit!(stubApp());
+    sharedPlugin.onInit!(stubApp());
+    const client = requireSharedQueryClient();
+
+    // The host leaves; the child runtime keeps the shared client alive.
+    hostPlugin.onDestroy!(stubApp());
+    await flushQueryCacheClear();
+    expect(peekSharedQueryClient()).toBe(client);
+
+    client.setQueryData(['key'], 'value');
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('value');
+
+    sharedPlugin.onDestroy!(stubApp());
+    await flushQueryCacheClear();
+  });
+
+  it('a host that rejoins clears data cached under a mode that changed while no host was present', async () => {
+    const { createStore, registerSlice, getStore } = await import('@gears-frontx/state');
+    const { mockSlice, setMockEnabled } = await import('../src/slices/mockSlice');
+    createStore({});
+    registerSlice(mockSlice);
+
+    const firstHost = queryCache();
+    const sharedPlugin = queryCacheShared();
+    firstHost.onInit!(stubApp());
+    sharedPlugin.onInit!(stubApp());
+    const client = requireSharedQueryClient();
+    firstHost.onDestroy!(stubApp());
+    await flushQueryCacheClear();
+
+    // Fetched under mock off; then mock mode turns on with no host listening.
+    client.setQueryData(['key'], 'real');
+    getStore().dispatch(setMockEnabled(true));
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('real');
+
+    const secondHost = queryCache();
+    secondHost.onInit!(stubApp());
+    await waitForQueryDataGone(client, ['key']);
+
+    // The rejoined host keeps the startup-repeat rule.
+    client.setQueryData(['key'], 'mock');
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('mock');
+
+    secondHost.onDestroy!(stubApp());
+    sharedPlugin.onDestroy!(stubApp());
+    await flushQueryCacheClear();
+  });
+
+  it('a host that rejoins clears data cached during a mode round trip while no host was present', async () => {
+    const hostPlugin = queryCache();
+    const sharedPlugin = queryCacheShared();
+    hostPlugin.onInit!(stubApp());
+    sharedPlugin.onInit!(stubApp());
+    const client = requireSharedQueryClient();
+    hostPlugin.onDestroy!(stubApp());
+    await flushQueryCacheClear();
+
+    eventBus.emit(MockEvents.Toggle, { enabled: true });
+    client.setQueryData(['key'], 'mock');
+    eventBus.emit(MockEvents.Toggle, { enabled: false });
+    await flushQueryCacheClear();
+    expect(client.getQueryData(['key'])).toBe('mock');
+
+    const nextHost = queryCache();
+    nextHost.onInit!(stubApp());
+    await waitForQueryDataGone(client, ['key']);
+
+    nextHost.onDestroy!(stubApp());
+    sharedPlugin.onDestroy!(stubApp());
+    await flushQueryCacheClear();
   });
 
   it('clears the shared fetch cache on mock toggle', async () => {
@@ -606,6 +735,45 @@ describe('queryCache() — MockEvents.Toggle clears the cache', () => {
       expect(fetcher).toHaveBeenCalledTimes(2);
     });
   });
+});
+
+describe('queryCache() with mock() through the builder', () => {
+  type PluginOrder = 'queryCache before mock' | 'mock before queryCache';
+
+  async function buildWithMockOnByDefault(order: PluginOrder): Promise<FrontXApp> {
+    // Same module graph as queryCache, eventBus and the store the tests read.
+    const { createFrontX: createFrontXInGraph } = await import('../src/createFrontX');
+    const { effects } = await import('../src/plugins/effects');
+    const { mock } = await import('../src/plugins/mock');
+    const mockPlugin = mock({ enabledByDefault: true });
+    const builder = createFrontXInGraph().use(effects());
+    return order === 'queryCache before mock'
+      ? builder.use(queryCache()).use(mockPlugin).build()
+      : builder.use(mockPlugin).use(queryCache()).build();
+  }
+
+  it.each<PluginOrder>(['queryCache before mock', 'mock before queryCache'])(
+    'keeps data seeded after startup and clears on a real toggle (%s)',
+    async (order) => {
+      const app = await buildWithMockOnByDefault(order);
+      await flushQueryCacheClear();
+      const client = requireSharedQueryClient();
+
+      client.setQueryData(['users'], [{ id: 1 }]);
+      const clearSpy = vi.spyOn(client, 'clear');
+      await flushQueryCacheClear();
+
+      expect(clearSpy).not.toHaveBeenCalled();
+      expect(client.getQueryData(['users'])).toEqual([{ id: 1 }]);
+
+      app.actions.toggleMockMode(false);
+      await waitForQueryDataGone(client, ['users']);
+      expect(clearSpy).toHaveBeenCalledTimes(1);
+
+      app.destroy();
+      await flushQueryCacheClear();
+    }
+  );
 });
 
 // ============================================================================

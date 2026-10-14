@@ -7,13 +7,11 @@
  */
 
 import type { ApiSuspenseInfiniteQueryResult } from '../types';
-import type {
-  ApiInfiniteQueryOptions,
-} from './useApiInfiniteQuery';
+import type { ApiSuspenseInfiniteQueryOptions } from './useApiInfiniteQuery';
 import { useFrontXSuspenseInfiniteQuery } from '../queryClient';
 
 export function useApiSuspenseInfiniteQuery<TPage = unknown, TError = Error>(
-  options: ApiInfiniteQueryOptions<TPage>
+  options: ApiSuspenseInfiniteQueryOptions<TPage>
 ): ApiSuspenseInfiniteQueryResult<TPage, TError> {
   return useFrontXSuspenseInfiniteQuery<TPage, TError>(options);
 }
