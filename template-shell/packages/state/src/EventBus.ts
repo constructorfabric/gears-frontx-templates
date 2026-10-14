@@ -34,8 +34,6 @@ import type {
  * subscription.unsubscribe();
  * ```
  */
-// @cpt-dod:cpt-frontx-dod-state-management-eventbus:p1
-// @cpt-state:cpt-frontx-state-state-management-handler-registration:p1
 class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements IEventBus<TEvents> {
   private handlers: Map<string, Set<EventHandler<unknown>>> = new Map();
 
@@ -44,7 +42,6 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
    * Type-safe: payload must match event type in EventPayloadMap.
    * Payload is optional for void events.
    */
-  // @cpt-algo:cpt-frontx-algo-state-management-eventbus-emit:p1
   emit<K extends keyof TEvents>(
     eventType: K,
     ...args: TEvents[K] extends void ? [] : [TEvents[K]]
@@ -61,8 +58,6 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
    * Type-safe: handler receives correct payload type for event.
    * Returns subscription object with unsubscribe method.
    */
-  // @cpt-algo:cpt-frontx-algo-state-management-eventbus-subscribe:p1
-  // @cpt-flow:cpt-frontx-flow-state-management-type-augmentation:p1
   on<K extends keyof TEvents>(
     eventType: K,
     handler: EventHandler<TEvents[K]>
@@ -92,7 +87,6 @@ class EventBusImpl<TEvents extends EventPayloadMap = EventPayloadMap> implements
    * Subscribe to event, but only fire once then auto-unsubscribe.
    * Type-safe: handler receives correct payload type for event.
    */
-  // @cpt-algo:cpt-frontx-algo-state-management-eventbus-subscribe-once:p2
   once<K extends keyof TEvents>(
     eventType: K,
     handler: EventHandler<TEvents[K]>
