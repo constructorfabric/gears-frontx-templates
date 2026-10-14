@@ -1447,7 +1447,8 @@ export function frontxMfGts(): Plugin {
       // An `import()` of a CSS-only chunk stays as it is: Vite removes that
       // chunk in `generateBundle` and rewrites the call to an empty promise
       // itself, keeping the source map, which it cannot do once the call is
-      // renamed. `generateBundle` below still lists the chunk's CSS.
+      // renamed. `generateBundle` below still lists the chunk's CSS, and
+      // renames the call after all when Vite kept the chunk.
       const cssOnlyImports = new Set<string>();
       chunkCssOnlyImports.set(chunk.fileName, cssOnlyImports);
       const result = transformLazyImports(
@@ -1513,10 +1514,11 @@ export function frontxMfGts(): Plugin {
         // `renderChunk`, in the same order, so the two lists pair up. Each
         // removed target becomes a captured chunk of its own CSS, reached
         // through the importer's dynamic import (so its CSS is async). The
-        // lazy-import transform must have left exactly those imports alone:
-        // a renamed call to a removed chunk would fetch a missing file, and
-        // a plain `import()` of a kept chunk cannot resolve from the blob
-        // URL the screen runs from.
+        // lazy-import transform left alone the imports it predicted removed;
+        // a renamed call to a chunk Vite removed would fetch a missing file
+        // and fails the build. A chunk it predicted removed that Vite kept
+        // (a lazily imported stylesheet that compiles to no CSS) is renamed
+        // to `__frontx_lazy` below, as every other kept chunk is.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
         const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
         if (preliminaryDynamic.length !== output.dynamicImports.length && leftAlone?.size) {
@@ -1530,14 +1532,6 @@ export function frontxMfGts(): Plugin {
           output.dynamicImports.forEach((target, i) => {
             const removedCss = bundle[target] === undefined ? chunkOwnCss.get(preliminaryDynamic[i]) : undefined;
             const isLeftAlone = leftAlone?.has(preliminaryDynamic[i]);
-            if (isLeftAlone === true && removedCss === undefined) {
-              outputFailed = true;
-              this.error(
-                `[frontx-mf-gts] '${fileName}' imports '${target}', a chunk of stylesheets only, ` +
-                  `which Vite kept (a stylesheet that compiles to no CSS?). Its import() cannot ` +
-                  `load from the screen's blob URL; remove that import.`
-              );
-            }
             if (isLeftAlone === false && removedCss !== undefined) {
               outputFailed = true;
               this.error(
@@ -1555,6 +1549,29 @@ export function frontxMfGts(): Plugin {
               ownCssModules: chunkOwnCssModules.get(preliminaryDynamic[i]) ?? [],
             });
           });
+        }
+        // A plain `import()` left for a chunk Vite kept cannot load from the
+        // screen's blob URL. Vite's CSS plugin has run its `generateBundle`
+        // (removed chunks are gone from the bundle) and its import analysis,
+        // which rewrites the `import()` of a removed chunk to an empty
+        // promise, has not; so every `import()` still in the code is renamed
+        // here unless its target was removed. Like the `renderChunk` rename,
+        // this shifts the source map by 5 columns per renamed call.
+        if (leftAlone?.size) {
+          const kept = transformLazyImports(
+            output.code,
+            (input) => this.parse(input),
+            (message, pos) => this.error({ message, pos }),
+            fileName,
+            (specifier) =>
+              bundle[path.posix.join(path.posix.dirname(fileName), specifier)] === undefined
+          );
+          if (kept !== null) {
+            output.code = kept.code;
+            console.log(
+              `[frontx-mf-gts] transformed ${kept.count} dynamic import(s) of kept chunks in ${fileName}`
+            );
+          }
         }
         // By now Vite has removed CSS-only chunks and added their CSS files
         // to each importer's `importedCss`; those go ahead of the importer's

@@ -106,8 +106,8 @@ what the package owns:
    Vite removes; its file is listed in `css.async` for every expose that
    reaches the import, and Vite turns the import itself into an empty
    module (the lazy-import transform leaves it to Vite). A stylesheet
-   imported that way that compiles to no CSS fails the build: Vite keeps
-   its empty chunk, which the screen could not load.
+   imported that way that compiles to no CSS gets an empty chunk Vite
+   keeps; its import goes through `__frontx_lazy` like any other lazy chunk.
    For the files the plugin adds from the chunks an expose reaches, the
    decision is per CSS file: a file
    built only from `node_modules` stylesheets (UI-kit component styles) is

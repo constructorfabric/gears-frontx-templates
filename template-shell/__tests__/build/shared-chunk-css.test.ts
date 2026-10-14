@@ -17,8 +17,10 @@
  * must catch. Further exposes cover a direct dynamic stylesheet import
  * (`import('./theme.css')`, a CSS-only chunk Vite removes) written plain,
  * with a comment, spaced with double quotes, and through a module that only
- * imports the stylesheet, and stylesheets imported only as `?raw` and
- * `?url`, which Vite does not extract.
+ * imports the stylesheet, a lazily imported stylesheet that compiles to no
+ * CSS (Vite keeps its empty chunk, which loads like any other lazy chunk),
+ * and stylesheets imported only as `?raw` and `?url`, which Vite does not
+ * extract.
  *
  * The build runs `vite build` in a child process, with NODE_ENV unset and
  * `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's documented
@@ -181,15 +183,22 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     for (const call of lazyPanel) expect(call).toMatchObject({ callee: '__frontx_lazy', exists: true });
   }, BUILD_TEST_TIMEOUT_MS);
 
-  it('fails the build, naming the import, when a lazily imported stylesheet compiles to no CSS and Vite keeps its chunk', () => {
-    let stderr: string | undefined;
-    try {
-      buildFixture('a,b,o');
-    } catch (error) {
-      stderr = String((error as { stderr?: Buffer }).stderr ?? '');
-    }
-    expect(stderr).toBeDefined();
-    expect(stderr).toMatch(/lifecycle-o-\S+' imports '\S*empty-\S+\.js', a chunk of stylesheets only/);
+  it('builds an expose that lazily imports a stylesheet compiling to no CSS and loads the chunk Vite keeps through __frontx_lazy', () => {
+    const outDir = buildFixture('a,b,o');
+    const raw = readJson<{ exposes: Array<{ path: string; assets: { js: { sync: string[] } } }> }>(
+      path.join(outDir, 'mf-manifest.json')
+    );
+    const files = raw.exposes.find((e) => e.path === './lifecycle-o')?.assets.js.sync ?? [];
+    expect(files.length).toBeGreaterThan(0);
+    const calls = files.flatMap((file) =>
+      dynamicImportCalls(fs.readFileSync(path.join(outDir, file), 'utf-8')).map((c) => ({
+        ...c,
+        exists: fs.existsSync(path.join(outDir, path.dirname(file), c.target)),
+      }))
+    );
+    expect(calls).toEqual([
+      { callee: '__frontx_lazy', target: expect.stringMatching(/empty-[A-Za-z0-9_-]{8}\.js$/), exists: true },
+    ]);
   }, BUILD_TEST_TIMEOUT_MS);
 
   it('fails a build without per-chunk CSS when exposes need a shared PostCSS stylesheet no list names', () => {
