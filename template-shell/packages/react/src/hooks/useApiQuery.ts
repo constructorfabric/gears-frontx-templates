@@ -37,8 +37,9 @@ export interface ApiSuspenseQueryOverrides extends ApiQueryCacheOverrides {
 /** Per-call overrides for useApiQuery. */
 export interface ApiQueryOverrides extends ApiQueryCacheOverrides {
   /**
-   * `false` keeps the query idle: nothing is fetched and `isLoading` stays
-   * false until it turns `true`. Defaults to `true`.
+   * `false` keeps the query idle: it is not fetched automatically and
+   * `isLoading` stays false until it turns `true`. An explicit `refetch`
+   * still fetches. Defaults to `true`.
    */
   enabled?: boolean;
 }
