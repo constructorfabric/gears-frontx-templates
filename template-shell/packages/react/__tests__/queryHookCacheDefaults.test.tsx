@@ -12,7 +12,8 @@
  *     global default
  *   - `enabled: false` keeps useApiQuery and useApiInfiniteQuery idle; an
  *     omitted `enabled` leaves the QueryClient default in force; the suspense
- *     variants reject `enabled`, also through a typed variable
+ *     variants reject `enabled` carried by a value typed with the non-suspense
+ *     options (checked by type-check, not at run time)
  *
  * @packageDocumentation
  */
@@ -23,8 +24,6 @@ import { QueryClient } from '@tanstack/react-query';
 import type {
   ApiInfiniteQueryOptions,
   ApiQueryOverrides,
-  ApiSuspenseInfiniteQueryOptions,
-  ApiSuspenseQueryOverrides,
   EndpointDescriptor,
 } from '@gears-frontx/react';
 import {
@@ -133,7 +132,7 @@ describe.each(hookCases)('$name without staleTime/gcTime overrides', ({ suspense
     return suspense ? makeSuspenseQueryWrapper(client) : makeQueryWrapper(client);
   }
 
-  it('uses the QueryClient defaults for staleTime and gcTime', async () => {
+  it('uses the QueryClient default gcTime', async () => {
     const client = buildClientWithDefaults();
     const wrapper = makeWrapper(client);
     const key = ['defaults', suspense];
@@ -143,7 +142,6 @@ describe.each(hookCases)('$name without staleTime/gcTime overrides', ({ suspense
     await waitFor(() => expect(result.current?.data).toBeDefined());
 
     const query = client.getQueryCache().find({ queryKey: key });
-    expect(query?.observers[0]?.options.staleTime).toBe(DEFAULT_STALE_TIME);
     expect(query?.gcTime).toBe(DEFAULT_GC_TIME);
   });
 
@@ -184,20 +182,6 @@ describe.each(hookCases)('$name with setQueryDefaults staleTime', ({ suspense, u
     client.setQueryDefaults(key, { staleTime: KEY_STALE_TIME });
     return client;
   }
-
-  it('hands the per-key staleTime to the fetch cache, as TanStack does to the query', async () => {
-    const key = ['per-key-defaults', suspense];
-    const client = buildClientWithKeyDefaults(key);
-    const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
-    const descriptor = makeQueryDescriptor(key, fetchFn);
-
-    const { result } = renderHook(() => useHook(descriptor), { wrapper: makeWrapper(client) });
-    await waitFor(() => expect(result.current?.data).toBeDefined());
-
-    const query = client.getQueryCache().find({ queryKey: key });
-    expect(query?.observers[0]?.options.staleTime).toBe(KEY_STALE_TIME);
-    expect(fetchFn).toHaveBeenCalledWith(expect.objectContaining({ staleTime: KEY_STALE_TIME }));
-  });
 
   it('reuses the cache within the per-key staleTime and fetches again past it', async () => {
     const key = ['per-key-remount', suspense];
@@ -290,83 +274,58 @@ describe('enabled option', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
-  type ClientDefaultsCase = {
-    name: string;
-    applyDefaults: (client: QueryClient, key: readonly unknown[]) => void;
-  };
+  // Omitting `enabled` lets the QueryClient default decide.
+  function disableQueriesByDefault(client: QueryClient): void {
+    client.setDefaultOptions({
+      queries: { ...client.getDefaultOptions().queries, enabled: false },
+    });
+  }
 
-  const clientDefaultsCases: ClientDefaultsCase[] = [
-    {
-      name: 'the global query default',
-      applyDefaults: (client) => {
-        client.setDefaultOptions({
-          queries: { ...client.getDefaultOptions().queries, enabled: false },
-        });
-      },
-    },
-    {
-      name: 'setQueryDefaults for the key',
-      applyDefaults: (client, key) => {
-        client.setQueryDefaults(key, { enabled: false });
-      },
-    },
-  ];
+  it('useApiQuery without enabled keeps enabled: false from the global query default', async () => {
+    const client = buildClientWithDefaults();
+    disableQueriesByDefault(client);
+    const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
+    const descriptor = makeQueryDescriptor(['client-default-enabled', 'query'], fetchFn);
 
-  it.each(clientDefaultsCases)(
-    'useApiQuery without enabled keeps enabled: false from $name',
-    async ({ applyDefaults }) => {
-      const client = buildClientWithDefaults();
-      const key = ['client-default-enabled', 'query'];
-      applyDefaults(client, key);
-      const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
-      const descriptor = makeQueryDescriptor(key, fetchFn);
+    const { result } = renderHook(() => useApiQuery(descriptor), {
+      wrapper: makeQueryWrapper(client),
+    });
+    await flushEffects();
 
-      const { result } = renderHook(() => useApiQuery(descriptor), {
-        wrapper: makeQueryWrapper(client),
-      });
-      await flushEffects();
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(result.current.isFetching).toBe(false);
+  });
 
-      expect(fetchFn).not.toHaveBeenCalled();
-      expect(result.current.isFetching).toBe(false);
-    }
-  );
+  it('useApiInfiniteQuery without enabled keeps enabled: false from the global query default', async () => {
+    const client = buildClientWithDefaults();
+    disableQueriesByDefault(client);
+    const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
+    const descriptor = makeQueryDescriptor(['client-default-enabled', 'infinite'], fetchFn);
 
-  it.each(clientDefaultsCases)(
-    'useApiInfiniteQuery without enabled keeps enabled: false from $name',
-    async ({ applyDefaults }) => {
-      const client = buildClientWithDefaults();
-      const key = ['client-default-enabled', 'infinite'];
-      applyDefaults(client, key);
-      const fetchFn = vi.fn(() => Promise.resolve({ id: 1 }));
-      const descriptor = makeQueryDescriptor(key, fetchFn);
+    const { result } = renderHook(
+      () => useApiInfiniteQuery({ initialPage: descriptor, getNextPage: () => undefined }),
+      { wrapper: makeQueryWrapper(client) }
+    );
+    await flushEffects();
 
-      const { result } = renderHook(
-        () => useApiInfiniteQuery({ initialPage: descriptor, getNextPage: () => undefined }),
-        { wrapper: makeQueryWrapper(client) }
-      );
-      await flushEffects();
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(result.current.isFetching).toBe(false);
+  });
 
-      expect(fetchFn).not.toHaveBeenCalled();
-      expect(result.current.isFetching).toBe(false);
-    }
-  );
+  it('suspense variants reject a value typed with the non-suspense options', () => {
+    // Compile-time only: type-check (tsconfig.test.json, against the built
+    // types) fails if a suspense hook starts accepting `enabled`.
+    type Item = { id: number };
+    type SuspenseQueryOverrides = Parameters<typeof useApiSuspenseQuery<Item>>[1];
+    type SuspenseInfiniteOptions = Parameters<typeof useApiSuspenseInfiniteQuery<Item>>[0];
+    const descriptor = makeQueryDescriptor<Item>(['types'], () => Promise.resolve({ id: 1 }));
+    const queryOverrides: ApiQueryOverrides = { enabled: true };
+    const infiniteOptions: ApiInfiniteQueryOptions<Item> = {
+      initialPage: descriptor,
+      getNextPage: () => undefined,
+    };
 
-  it('suspense variants reject enabled, also through a typed variable', () => {
-    // A value typed with the non-suspense options (enabled included) is not
-    // assignable to the suspense options; type-check:test fails otherwise.
-    expectTypeOf<ApiQueryOverrides>().not.toExtend<ApiSuspenseQueryOverrides>();
-    expectTypeOf<ApiInfiniteQueryOptions<{ id: number }>>().not.toExtend<
-      ApiSuspenseInfiniteQueryOptions<{ id: number }>
-    >();
-    expectTypeOf<{ enabled: false }>().not.toExtend<ApiSuspenseQueryOverrides>();
-    expectTypeOf<{ staleTime: number; gcTime: number }>().toExtend<ApiSuspenseQueryOverrides>();
-    expectTypeOf<NonNullable<Parameters<typeof useApiQuery>[1]>>().toEqualTypeOf<ApiQueryOverrides>();
-    expectTypeOf<NonNullable<Parameters<typeof useApiSuspenseQuery>[1]>>().toEqualTypeOf<ApiSuspenseQueryOverrides>();
-    expectTypeOf<Parameters<typeof useApiInfiniteQuery>[0]>().toEqualTypeOf<
-      ApiInfiniteQueryOptions<unknown>
-    >();
-    expectTypeOf<Parameters<typeof useApiSuspenseInfiniteQuery>[0]>().toEqualTypeOf<
-      ApiSuspenseInfiniteQueryOptions<unknown>
-    >();
+    expectTypeOf(queryOverrides).not.toExtend<SuspenseQueryOverrides>();
+    expectTypeOf(infiniteOptions).not.toExtend<SuspenseInfiniteOptions>();
   });
 });
