@@ -14,7 +14,9 @@
  * expose that imports that stylesheet itself (federation lists its file, and
  * the plugin keeps it as main does), and a build without per-chunk CSS whose
  * exposes share a PostCSS stylesheet (`shared.pcss`) the CSS-delivery guard
- * must catch.
+ * must catch. Two more exposes cover a direct dynamic stylesheet import
+ * (`import('./theme.css')`, a CSS-only chunk Vite removes) and stylesheets
+ * imported only as `?raw` and `?url`, which Vite does not extract.
  *
  * The build runs `vite build` in a child process, with NODE_ENV unset and
  * `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's documented
@@ -130,6 +132,26 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     expect(exposeG && unhashed(exposeG.assets.css)).toEqual({ sync: ['assets/lifecycle-g.css'], async: [] });
     const listedFile = path.join(outDir, (exposeG as { assets: { css: CssLists } }).assets.css.sync[0]);
     expect(fs.readFileSync(listedFile, 'utf-8')).toContain('data-sonner-toaster');
+  }, BUILD_TEST_TIMEOUT_MS);
+
+  it('lists the CSS of a directly imported lazy stylesheet as async, resolves its import, and builds an expose whose stylesheets are ?raw and ?url only', () => {
+    const outDir = buildFixture('a,b,j,k');
+    const raw = readJson<{ exposes: Array<{ path: string; assets: { css: CssLists } }> }>(
+      path.join(outDir, 'mf-manifest.json')
+    );
+    const css = Object.fromEntries(raw.exposes.map((e) => [e.path, unhashed(e.assets.css)]));
+    expect(css['./lifecycle-j']).toEqual({ sync: [], async: ['assets/theme.css'] });
+    expect(css['./lifecycle-k']).toEqual({ sync: [], async: [] });
+
+    const assetsDir = path.join(outDir, 'assets');
+    const lazyTargets = fs
+      .readdirSync(assetsDir)
+      .filter((f) => f.endsWith('.js'))
+      .flatMap((f) =>
+        [...fs.readFileSync(path.join(assetsDir, f), 'utf-8').matchAll(/__frontx_lazy\('([^']+)'\)/g)].map((m) => m[1])
+      );
+    expect(lazyTargets.length).toBeGreaterThan(0);
+    for (const target of lazyTargets) expect(fs.existsSync(path.join(assetsDir, target))).toBe(true);
   }, BUILD_TEST_TIMEOUT_MS);
 
   it('fails a build without per-chunk CSS when exposes need a shared PostCSS stylesheet no list names', () => {

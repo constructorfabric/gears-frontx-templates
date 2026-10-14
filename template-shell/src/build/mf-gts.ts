@@ -891,8 +891,9 @@ class StandaloneEsmBuilder {
  * Rollup's chunk graph. `ownCssModules` holds the module ids of stylesheets
  * this chunk owns that came from the package's own source: module ids of
  * every language Vite compiles to CSS (see {@link isExtractedStylesheet}),
- * excluding `?inline` imports (those travel inside the JS as strings, nothing
- * to deliver separately) and excluding `node_modules` (the UI kit's
+ * excluding imports Vite does not extract (`?inline` and `?raw` travel inside
+ * the JS as strings, `?url` is an asset URL, nothing to deliver as a
+ * stylesheet) and excluding `node_modules` (the UI kit's
  * CSS-module styles are delivered by `adoptHostStylesIntoShadowRoot()` from
  * the host document, by design - see the `mfe-package-contract` guideline).
  * `cssAssets` holds the emitted CSS files this chunk delivers
@@ -917,12 +918,23 @@ export function isOwnCssModule(moduleId: string): boolean {
 
 /**
  * Whether a module id is a stylesheet Vite extracts into a CSS file: any
- * language Vite compiles to CSS, except `?inline` imports.
+ * language Vite compiles to CSS, except the queries Vite's CSS plugins leave
+ * out of the extracted CSS: `?inline` (a string export), `?raw` and `?url`
+ * (handled by the asset plugin as a string and a URL), `?worker`,
+ * `?sharedworker`, `?commonjs-proxy` and `?transform-only`.
  */
 function isExtractedStylesheet(moduleId: string): boolean {
   const [pathPart, query] = moduleId.split('?', 2);
   if (!/\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)$/.test(pathPart)) return false;
-  return query === undefined || !/(^|&)inline(=|&|$)/.test(query);
+  return (
+    query === undefined ||
+    !/(^|&)(inline|raw|url|worker|sharedworker|commonjs-proxy|transform-only)(=|&|$)/.test(query)
+  );
+}
+
+/** Escapes a literal string for use inside a regular expression. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -1331,10 +1343,14 @@ export function frontxMfGts(): Plugin {
   let distDirPath = '';
   // Filled in `renderChunk`, after Vite's CSS plugin emitted each chunk's
   // CSS file and before it removes CSS-only chunks in `generateBundle`:
-  // the stylesheet modules each emitted CSS file was built from, and the
-  // CSS files each chunk (by preliminary file name) emitted itself.
+  // the stylesheet modules each emitted CSS file was built from, the CSS
+  // files each chunk (by preliminary file name) emitted itself, and each
+  // chunk's dynamic imports and own stylesheet modules, by preliminary file
+  // name.
   const cssAssetSources = new Map<string, string[]>();
   const chunkOwnCss = new Map<string, string[]>();
+  const chunkDynamicImports = new Map<string, string[]>();
+  const chunkOwnCssModules = new Map<string, string[]>();
   let resolvedExternals: string[] = [];
   const capturedChunks = new Map<string, CapturedChunk>();
 
@@ -1350,6 +1366,8 @@ export function frontxMfGts(): Plugin {
     renderStart() {
       cssAssetSources.clear();
       chunkOwnCss.clear();
+      chunkDynamicImports.clear();
+      chunkOwnCssModules.clear();
       capturedChunks.clear();
     },
 
@@ -1373,6 +1391,8 @@ export function frontxMfGts(): Plugin {
       chunkOwnCss.set(chunk.fileName, ownCss);
       const sources = chunk.moduleIds.filter(isExtractedStylesheet);
       for (const cssFile of ownCss) cssAssetSources.set(cssFile, sources);
+      chunkDynamicImports.set(chunk.fileName, [...chunk.dynamicImports]);
+      chunkOwnCssModules.set(chunk.fileName, chunk.moduleIds.filter(isOwnCssModule));
 
       // Skip federation control chunks: `@module-federation/vite` generates
       // its own runtime chunks (`hostInit`, `virtualExposes`,
@@ -1433,6 +1453,35 @@ export function frontxMfGts(): Plugin {
     generateBundle(_options, bundle) {
       for (const [fileName, output] of Object.entries(bundle)) {
         if (output.type !== 'chunk') continue;
+        // A CSS-only chunk reached by a dynamic import (`import('./x.css')`)
+        // is removed by Vite too, but no importer gets its CSS: Vite only
+        // rewrites the `import()` to an empty promise, which it cannot find
+        // once the lazy-import transform renamed the call. Rollup builds
+        // `dynamicImports` by finalizing the preliminary names seen in
+        // `renderChunk`, in the same order, so the two lists pair up. Each
+        // removed target becomes a captured chunk of its own CSS, reached
+        // through the importer's dynamic import (so its CSS is async), and
+        // its `__frontx_lazy` call resolves to an empty module, as Vite's
+        // rewrite would.
+        const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
+        if (preliminaryDynamic.length === output.dynamicImports.length) {
+          output.dynamicImports.forEach((target, i) => {
+            if (bundle[target] !== undefined) return;
+            const removedCss = chunkOwnCss.get(preliminaryDynamic[i]);
+            if (removedCss === undefined) return;
+            capturedChunks.set(target, {
+              fileName: target,
+              cssAssets: removedCss.filter((f) => !isVendorCssAsset(cssAssetSources.get(f))),
+              imports: [],
+              dynamicImports: [],
+              ownCssModules: chunkOwnCssModules.get(preliminaryDynamic[i]) ?? [],
+            });
+            const rel = path.posix.relative(path.posix.dirname(fileName), target);
+            const spec = rel.startsWith('.') ? rel : `./${rel}`;
+            const call = new RegExp(`__frontx_lazy\\((['"\`])${escapeRegExp(spec)}\\1\\)`, 'g');
+            output.code = output.code.replace(call, 'Promise.resolve({})');
+          });
+        }
         // By now Vite has removed CSS-only chunks and added their CSS files
         // to each importer's `importedCss`; those go ahead of the importer's
         // own file, as the dependencies they are.

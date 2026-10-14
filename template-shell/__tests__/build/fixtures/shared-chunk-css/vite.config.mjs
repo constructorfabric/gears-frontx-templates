@@ -2,7 +2,7 @@
 // `__tests__/build/shared-chunk-css.test.ts` in a child process: the
 // federation plugin turns itself off under Vitest. FIXTURE_EXPOSES picks
 // which of the exposes the build declares; `mfe.json` has entries for a and
-// b only, so every build declares those two and c to i are exposes without
+// b only, so every build declares those two and c to k are exposes without
 // an entry. FIXTURE_CSS_CODE_SPLIT=false builds without per-chunk CSS.
 import { defineConfig } from 'vite';
 import { federation } from '@module-federation/vite';
@@ -18,6 +18,8 @@ const allExposes = {
   './lifecycle-g': './src/lifecycle-g.js',
   './lifecycle-h': './src/lifecycle-h.js',
   './lifecycle-i': './src/lifecycle-i.js',
+  './lifecycle-j': './src/lifecycle-j.js',
+  './lifecycle-k': './src/lifecycle-k.js',
 };
 const picked = (process.env.FIXTURE_EXPOSES ?? 'a,b,c').split(',');
 

@@ -67,6 +67,12 @@ describe('isOwnCssModule', () => {
     expect(isOwnCssModule('/app/src/globals.css?used&inline=')).toBe(false);
   });
 
+  it('rejects the other imports Vite does not extract into a CSS file', () => {
+    for (const query of ['raw', 'url', 'worker', 'sharedworker', 'commonjs-proxy', 'transform-only']) {
+      expect(isOwnCssModule(`/app/src/globals.css?${query}`)).toBe(false);
+    }
+  });
+
   it('rejects node_modules CSS — the host delivers it by style adoption', () => {
     expect(isOwnCssModule('/app/node_modules/@gears-frontx/ui-kit/dist/input.module.css')).toBe(false);
   });

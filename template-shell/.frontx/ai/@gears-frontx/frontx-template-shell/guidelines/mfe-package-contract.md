@@ -101,8 +101,12 @@ what the package owns:
    and `css.sync` ends with the expose's own CSS. A CSS-only module several
    chunks share (a plain `.css` file imported from more than one place) gets a
    file Vite folds into every importer; it is listed wherever an importer is
-   reached, ahead of that importer's own file. For the files the plugin adds
-   from the chunks an expose reaches, the decision is per CSS file: a file
+   reached, ahead of that importer's own file. A stylesheet imported directly
+   through a dynamic import (`import('./theme.css')`) gets a CSS-only chunk
+   Vite removes; its file is listed in `css.async` for every expose that
+   reaches the import, and the import itself resolves to an empty module.
+   For the files the plugin adds from the chunks an expose reaches, the
+   decision is per CSS file: a file
    built only from `node_modules` stylesheets (UI-kit component styles) is
    left out, since the host delivers that by style adoption, path 1. A file
    that mixes package-own and `node_modules` stylesheets is listed whole,
@@ -115,7 +119,8 @@ what the package owns:
    into one file no chunk names) fails the build for an expose that would get
    no CSS at all; that check covers every stylesheet language Vite compiles to
    CSS (`.css`, `.less`, `.sass`, `.scss`, `.styl`, `.stylus`, `.pcss`,
-   `.postcss`, `.sss`), not only `.css`.
+   `.postcss`, `.sss`), not only `.css`. Imports Vite does not extract
+   (`?inline`, `?raw`, `?url`) are not CSS to deliver and never fail it.
 3. **`?inline` + `initializeStyles()`, for a plain stylesheet one lifecycle
    owns.** Import the stylesheet as a string (`import styles from
    './styles.css?inline'`) and append it in an `initializeStyles(container)`
