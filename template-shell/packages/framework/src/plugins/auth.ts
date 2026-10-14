@@ -1,6 +1,3 @@
-// @cpt-FEATURE:cpt-frontx-feature-auth-plugin:p1
-// @cpt-begin:cpt-frontx-dod-auth-plugin:p1:inst-module
-// @cpt-begin:cpt-frontx-state-auth-plugin-refresh:p1:inst-module
 import type {
   AuthCallbackInput,
   AuthCheckResult,
@@ -186,11 +183,9 @@ function isAccessMeta(value: unknown): value is NonNullable<AccessEvaluation['me
 }
 
 function normalizeEvaluation(value: unknown): AccessEvaluation {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-shape-guard
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return { decision: 'deny', reason: 'provider_error' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-shape-guard
 
   const maybeEvaluation = value as {
     decision?: unknown;
@@ -198,31 +193,22 @@ function normalizeEvaluation(value: unknown): AccessEvaluation {
     reason?: unknown;
     meta?: unknown;
   };
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-decision-guard
   if (!isAccessDecision(maybeEvaluation.decision)) {
     return { decision: 'deny', reason: 'provider_error' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-decision-guard
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-constraints-guard
   if (maybeEvaluation.constraints !== undefined && !isAccessConstraints(maybeEvaluation.constraints)) {
     return { decision: 'deny', reason: 'provider_error' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-constraints-guard
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-reason-guard
   if (maybeEvaluation.reason !== undefined && !isAccessReason(maybeEvaluation.reason)) {
     return { decision: 'deny', reason: 'provider_error' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-reason-guard
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-meta-guard
   if (maybeEvaluation.meta !== undefined && !isAccessMeta(maybeEvaluation.meta)) {
     return { decision: 'deny', reason: 'provider_error' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-meta-guard
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-build-normalized
   const normalized: AccessEvaluation = { decision: maybeEvaluation.decision };
   if (maybeEvaluation.constraints !== undefined) {
     normalized.constraints = maybeEvaluation.constraints;
@@ -234,7 +220,6 @@ function normalizeEvaluation(value: unknown): AccessEvaluation {
     normalized.meta = maybeEvaluation.meta;
   }
   return normalized;
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-normalize:p1:inst-build-normalized
 }
 
 async function safeCanAccess(
@@ -267,18 +252,13 @@ async function safeEvaluateAccess(
   query: AccessQuery,
   ctx?: AuthContext,
 ): Promise<AccessEvaluation> {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-query-guard
   if (!query.action || !query.resource) {
     return { decision: 'deny', reason: 'malformed' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-query-guard
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-capability-guard
   if (!caps.hasEvaluateAccess) {
     return { decision: 'deny', reason: 'unsupported' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-capability-guard
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-session-guard
   let session: AuthSession | null;
   try {
     session = await provider.getSession(ctx);
@@ -288,20 +268,15 @@ async function safeEvaluateAccess(
   if (session === null) {
     return { decision: 'deny', reason: 'unauthenticated' };
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-session-guard
 
   try {
-    // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-delegate-normalize
     return normalizeEvaluation(await provider.evaluateAccess?.(query, ctx));
-    // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-delegate-normalize
   } catch {
-    // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-error-classify
     const signal = ctx?.signal;
     if (signal?.aborted) {
       return { decision: 'deny', reason: classifyAbortReason(signal) };
     }
     return { decision: 'deny', reason: 'provider_error' };
-    // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-error-classify
   }
 }
 
@@ -370,7 +345,6 @@ async function safeEvaluateMany(
     return evaluations;
   }
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-many-fallback
   if (caps.hasEvaluateMany) {
     let session: AuthSession | null;
     try {
@@ -403,7 +377,6 @@ async function safeEvaluateMany(
     results.push(await safeEvaluateAccess(provider, caps, query, ctx));
   }
   return results;
-  // @cpt-end:cpt-frontx-algo-auth-plugin-rbac-safe-evaluate:p1:inst-many-fallback
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +386,6 @@ async function safeEvaluateMany(
 function isSupportedAuthTransportMethod(
   method: RestRequestContext['method']
 ): method is AuthTransportRequest['method'] {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-method-guard
   return method === 'GET'
     || method === 'POST'
     || method === 'PUT'
@@ -421,13 +393,11 @@ function isSupportedAuthTransportMethod(
     || method === 'PATCH'
     || method === 'HEAD'
     || method === 'OPTIONS';
-  // @cpt-end:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-method-guard
 }
 
 function toAuthTransportRequest(request: RestRequestContext): AuthTransportRequest | null {
   if (!isSupportedAuthTransportMethod(request.method)) return null;
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-body-serialize
   let body: string | undefined;
   if (typeof request.body === 'string') {
     body = request.body;
@@ -438,9 +408,7 @@ function toAuthTransportRequest(request: RestRequestContext): AuthTransportReque
       body = undefined;
     }
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-body-serialize
 
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-request-shape
   return {
     url: request.url,
     method: request.method,
@@ -448,35 +416,27 @@ function toAuthTransportRequest(request: RestRequestContext): AuthTransportReque
     body,
     signal: request.signal,
   };
-  // @cpt-end:cpt-frontx-algo-auth-plugin-transport-request:p1:inst-request-shape
 }
 
 function isRelativeUrl(url: string): boolean {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-relative-url
   return url.startsWith('/') && !url.startsWith('//');
-  // @cpt-end:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-relative-url
 }
 
 function getOrigin(url: string): string | null {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-get-origin
   try {
     return new URL(url).origin;
   } catch {
     return null;
   }
-  // @cpt-end:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-get-origin
 }
 
 function getRuntimeOrigin(): string | null {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-runtime-origin
   const maybeLocation = (globalThis as { location?: { origin?: string } }).location;
   if (!maybeLocation?.origin || maybeLocation.origin === 'null') return null;
   return maybeLocation.origin;
-  // @cpt-end:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-runtime-origin
 }
 
 function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[] | undefined): boolean {
-  // @cpt-begin:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-scope-check
   if (isRelativeUrl(url)) return true;
 
   const origin = getOrigin(url);
@@ -487,7 +447,6 @@ function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[]
 
   if (!allowedOrigins || allowedOrigins.length === 0) return false;
   return allowedOrigins.includes(origin);
-  // @cpt-end:cpt-frontx-algo-auth-plugin-credentials-scope:p1:inst-scope-check
 }
 
 class AuthRestPlugin extends RestPlugin {
@@ -499,12 +458,9 @@ class AuthRestPlugin extends RestPlugin {
   }
 
   async onRequest(ctx: RestRequestContext): Promise<RestRequestContext> {
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-session-fetch
     const session = await this.config.provider.getSession({ signal: ctx.signal });
     if (!session) return ctx;
-    // @cpt-end:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-session-fetch
 
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-cookie-credentials
     if (session.kind === 'cookie') {
       if (!shouldIncludeCredentials(ctx.url, this.config.frontxApi?.allowedCookieOrigins)) return ctx;
 
@@ -521,9 +477,7 @@ class AuthRestPlugin extends RestPlugin {
       }
       return next;
     }
-    // @cpt-end:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-cookie-credentials
 
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-bearer-header
     if (session.kind === 'bearer' && session.token) {
       return {
         ...ctx,
@@ -533,16 +487,12 @@ class AuthRestPlugin extends RestPlugin {
         },
       };
     }
-    // @cpt-end:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-bearer-header
 
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-custom-passthrough
     // Custom sessions: no standard transport mechanism — use a custom transport binder for retry.
     return ctx;
-    // @cpt-end:cpt-frontx-flow-auth-plugin-session-attach:p1:inst-custom-passthrough
   }
 
   async onError(ctx: ApiPluginErrorContext): Promise<Error | RestResponseContext> {
-    // @cpt-begin:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-error-notify
     // Notify provider of every transport error (informational; called before retry decisions).
     const requestForHook = toAuthTransportRequest(ctx.request);
     if (requestForHook) {
@@ -552,13 +502,11 @@ class AuthRestPlugin extends RestPlugin {
         status: ctx.response?.status,
       });
     }
-    // @cpt-end:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-error-notify
 
     if (ctx.response?.status !== 401) return ctx.error;
     if (ctx.retryCount !== 0) return ctx.error;
     if (!this.config.provider.refresh) return ctx.error;
 
-    // @cpt-begin:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-refresh-dedup
     // Dedup concurrent 401 refresh calls into a single in-flight promise.
     // NOTE: shared refresh must NOT be bound to any single request's AbortSignal —
     // otherwise aborting the first caller would cancel refresh for all concurrent
@@ -571,9 +519,7 @@ class AuthRestPlugin extends RestPlugin {
           this.refreshPromise = null;
         });
     }
-    // @cpt-end:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-refresh-dedup
 
-    // @cpt-begin:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-refresh-await
     let refreshed: AuthSession | null;
     try {
       refreshed = await this.refreshPromise;
@@ -581,31 +527,25 @@ class AuthRestPlugin extends RestPlugin {
       return ctx.error;
     }
     if (!refreshed) return ctx.error;
-    // @cpt-end:cpt-frontx-algo-auth-plugin-refresh-dedup:p1:inst-refresh-await
 
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-retry-bearer
     if (refreshed.kind === 'bearer') {
       if (!refreshed.token) return ctx.error;
       return ctx.retry({
         headers: { Authorization: `Bearer ${refreshed.token}` },
       });
     }
-    // @cpt-end:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-retry-bearer
 
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-retry-cookie
     if (refreshed.kind === 'cookie') {
       // Cookie credentials are sent automatically via withCredentials.
       // No Authorization header override needed after refresh.
       return ctx.retry();
     }
-    // @cpt-end:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-retry-cookie
 
     // Custom sessions: no standard retry mechanism — use a custom transport binder.
     return ctx.error;
   }
 }
 
-// @cpt-begin:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-plugin-factory
 export function frontxApiTransport(): AuthTransportBinder {
   return (args) => {
     const restPlugin = new AuthRestPlugin({
@@ -623,7 +563,6 @@ export function frontxApiTransport(): AuthTransportBinder {
     };
   };
 }
-// @cpt-end:cpt-frontx-flow-auth-plugin-refresh-retry:p1:inst-plugin-factory
 
 /**
  * Auth plugin.
@@ -641,7 +580,6 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
 
   return {
     name: 'auth',
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-provides
     provides: {
       app: {
         auth: {
@@ -671,8 +609,6 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
         } satisfies AuthRuntime,
       },
     },
-    // @cpt-end:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-provides
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-on-init
     onInit(app) {
       binding = transport({
         provider: config.provider,
@@ -682,8 +618,6 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
         removeRestPlugin: (pluginClass) => app.apiRegistry.plugins.remove(RestProtocol, pluginClass),
       });
     },
-    // @cpt-end:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-on-init
-    // @cpt-begin:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-on-destroy
     onDestroy(_app) {
       binding?.destroy();
       binding = null;
@@ -692,12 +626,8 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
         void providerDestroyResult.catch(() => undefined);
       }
     },
-    // @cpt-end:cpt-frontx-flow-auth-plugin-transport-binding:p1:inst-on-destroy
   };
 }
-
-// @cpt-end:cpt-frontx-state-auth-plugin-refresh:p1:inst-module
-// @cpt-end:cpt-frontx-dod-auth-plugin:p1:inst-module
 
 declare module '../types' {
   interface FrontXAppRuntimeExtensions {
