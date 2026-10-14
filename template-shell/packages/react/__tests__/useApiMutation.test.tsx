@@ -10,9 +10,6 @@
  * @packageDocumentation
  */
 
-// @cpt-FEATURE:implement-endpoint-descriptors:p3
-// @cpt-FEATURE:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2
-
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { MutationCallbackContext } from '../src/hooks/QueryCache';
@@ -58,7 +55,6 @@ afterEach(() => {
 // ============================================================================
 
 describe('useApiMutation', () => {
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-calls-fn
   it('calls endpoint.fetch with the variables passed to mutate()', async () => {
     const client = buildTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -84,9 +80,7 @@ describe('useApiMutation', () => {
     );
     expect(result.current.isPending).toBe(false);
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-calls-fn
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-on-success
   it('calls onSuccess callback with { queryCache } injected as final argument', async () => {
     const client = buildTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -122,9 +116,7 @@ describe('useApiMutation', () => {
     expect(typeof callbackCtx.queryCache.cancel).toBe('function');
     expect(typeof callbackCtx.queryCache.remove).toBe('function');
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-on-success
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-query-cache-get-set
   it('queryCache.get and queryCache.set read and write to the QueryClient cache', async () => {
     const client = buildMutationCacheTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -165,7 +157,6 @@ describe('useApiMutation', () => {
     // The underlying QueryClient also holds the updated value
     expect(client.getQueryData(QUERY_KEY)).toEqual({ count: 99 });
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-query-cache-get-set
 
   it('queryCache methods accept EndpointDescriptor in place of raw QueryKey', async () => {
     const client = buildMutationCacheTestQueryClient();
@@ -201,7 +192,6 @@ describe('useApiMutation', () => {
     expect(client.getQueryData([...QUERY_KEY])).toEqual({ v: 42 });
   });
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-set-updater
   it('queryCache.set supports an updater function for atomic read-modify-write', async () => {
     const client = buildMutationCacheTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -229,9 +219,7 @@ describe('useApiMutation', () => {
     // Updater appended 'c' atomically.
     expect(client.getQueryData(QUERY_KEY)).toEqual(['a', 'b', 'c']);
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-set-updater
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-query-cache-invalidate
   it('queryCache.invalidate in onSettled marks cached queries as stale', async () => {
     const client = buildMutationCacheTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -259,7 +247,6 @@ describe('useApiMutation', () => {
     const queryState = client.getQueryState(QUERY_KEY);
     expect(queryState?.isInvalidated).toBe(true);
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-query-cache-invalidate
 
   it('uses the latest lifecycle callback closures after rerender while a mutation is in flight', async () => {
     const client = buildMutationCacheTestQueryClient();
@@ -314,7 +301,6 @@ describe('useApiMutation', () => {
     expect(client.getQueryState(FIRST_QUERY_KEY)?.isInvalidated).not.toBe(true);
   });
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-on-error-rollback
   it('onError receives { queryCache } for snapshot rollback on mutation failure', async () => {
     const client = buildMutationCacheTestQueryClient();
     const wrapper = makeQueryWrapper(client);
@@ -352,9 +338,7 @@ describe('useApiMutation', () => {
     // After rollback, the original value is restored.
     expect(client.getQueryData(QUERY_KEY)).toEqual({ value: 'original' });
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-on-error-rollback
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-abort-unmount
   it('does not abort the descriptor fetch signal on unmount by default', async () => {
     expect.assertions(2);
     const client = buildTestQueryClient();
@@ -393,7 +377,6 @@ describe('useApiMutation', () => {
     });
     expect(ranPastGate).toBe(true);
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-abort-unmount
 
   it('aborts the descriptor fetch signal on unmount when abortOnUnmount is enabled', async () => {
     expect.assertions(2);
@@ -493,7 +476,6 @@ describe('useApiMutation', () => {
     expect(secondRanPastGate).toBe(false);
   });
 
-  // @cpt-begin:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-abort-supersede
   it('does not abort the prior in-flight fetch when a new mutateAsync starts by default', async () => {
     expect.assertions(3);
     const client = buildTestQueryClient();
@@ -548,7 +530,6 @@ describe('useApiMutation', () => {
       await expect(secondPromise).resolves.toBe(2);
     });
   });
-  // @cpt-end:cpt-frontx-dod-request-lifecycle-use-api-mutation:p2:inst-test-abort-supersede
 
   it('aborts the prior in-flight fetch when cancelOnSupersede is enabled', async () => {
     expect.assertions(3);
