@@ -85,21 +85,44 @@ what the package owns:
    `ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot()` clones every host
    `<style>`/`<link>` into the shadow root. A package that only uses Tailwind
    utilities and UI-kit components needs no stylesheet of its own.
-2. **Package-owned CSS, the reliable path: `?inline` + `initializeStyles()`.**
-   Import the stylesheet as a string (`import styles from './styles.css?inline'`)
-   and append it in an `initializeStyles(container)` override (the
-   `ThemeAwareReactLifecycle` hook) via a `<style>` element. Delivery then
-   travels with the lifecycle chunk itself and cannot be lost.
-3. **Manifest-attributed CSS (fragile — guarded).** A plain
-   `import './styles.css'` works only while the federation build keeps the
-   extracted CSS attributed to the expose in `mf-manifest.json`
-   (`exposeAssets.css`); the host injects exactly those files. Rollup may
-   instead hoist the CSS into a chunk shared across exposes, the attribution
-   list comes out empty, and the screen renders unstyled with no error
-   anywhere. `frontxMfGts()` now fails the build when an expose that declares
-   no CSS at all has package-own stylesheets in its chunk graph — the fix it
-   prescribes is path 2. (UI-kit CSS-modules from `node_modules` are exempt:
-   the host delivers those by style adoption, path 1.)
+2. **Package-owned CSS imported plainly (the default).** A plain
+   `import './styles.css'` or a CSS Module (`import styles from
+   './x.module.css'`) is extracted by Vite into a CSS file per chunk
+   (`build.cssCodeSplit: true`, which every package in `template-mfe` sets),
+   and the host injects into the shadow root exactly the CSS files
+   `dist/mfe-manifest.json` lists for the expose (`exposeAssets.css`).
+   `@module-federation/vite` lists only the CSS of the expose's own chunk; when
+   several exposes import one styled module, Rollup puts its CSS into a chunk
+   they share, and federation lists that file for none of them.
+   `frontxMfGts()` completes the lists: every expose gets the CSS files of the
+   chunks it reaches, static imports in `css.sync`, chunks reached only
+   through a dynamic import in `css.async`. The host appends the files in list
+   order, so each list puts a chunk's CSS after the CSS of what it imports,
+   and `css.sync` ends with the expose's own CSS. A CSS-only module several
+   chunks share (a plain `.css` file imported from more than one place) gets a
+   file Vite folds into every importer; it is listed wherever an importer is
+   reached, ahead of that importer's own file. For the files the plugin adds
+   from the chunks an expose reaches, the decision is per CSS file: a file
+   built only from `node_modules` stylesheets (UI-kit component styles) is
+   left out, since the host delivers that by style adoption, path 1. A file
+   that mixes package-own and `node_modules` stylesheets is listed whole,
+   vendor rules included, because Vite emits one file per chunk and the
+   package-own rules must arrive; import vendor CSS from a module of its own,
+   not from the expose module, to keep it out. Files federation already lists
+   for an expose stay in its list unfiltered, so a stylesheet the expose module
+   imports itself, from `node_modules` or not, is delivered. Whatever
+   package-own CSS is still unlisted (with `cssCodeSplit: false` all CSS goes
+   into one file no chunk names) fails the build for an expose that would get
+   no CSS at all; that check covers every stylesheet language Vite compiles to
+   CSS (`.css`, `.less`, `.sass`, `.scss`, `.styl`, `.stylus`, `.pcss`,
+   `.postcss`, `.sss`), not only `.css`.
+3. **`?inline` + `initializeStyles()`, for a plain stylesheet one lifecycle
+   owns.** Import the stylesheet as a string (`import styles from
+   './styles.css?inline'`) and append it in an `initializeStyles(container)`
+   override (the `ThemeAwareReactLifecycle` hook) via a `<style>` element.
+   Delivery then travels with the lifecycle chunk itself. It does not suit a CSS
+   Module: the string carries no class map, so components reading
+   `styles.frame` get `undefined`.
 
 **Package-owned CSS must never carry Tailwind's preflight (`@tailwind base` /
 the `@import "tailwindcss"` base layer).** A second preflight inside the shadow

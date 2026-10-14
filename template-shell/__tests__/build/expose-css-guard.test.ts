@@ -30,6 +30,7 @@ function chunk(
     fileName,
     {
       fileName,
+      cssAssets: [],
       imports: [],
       dynamicImports: [],
       ownCssModules: [],
