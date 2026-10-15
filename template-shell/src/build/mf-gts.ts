@@ -1527,6 +1527,8 @@ export function frontxMfGts(): Plugin {
         // two lists no longer pair up, the build fails if the chunk left an
         // import alone or dynamically imports a chunk that was removed: either
         // could leave a call to a missing file and CSS no list names.
+        // `chunkOwnCss` has an entry for every rendered chunk, with CSS or
+        // without, so checking it only leaves out external imports.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
         const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
         if (
