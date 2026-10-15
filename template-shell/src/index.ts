@@ -1,4 +1,14 @@
 export { themeSchema, languageSchema, extensionScreenSchema } from './gts';
+export {
+  defineShellScreens,
+  resolveShellScreens,
+  registerShellScreenSchemas,
+  readFlatScreenMenuItem,
+  type ShellScreensConfig,
+  type ResolvedShellScreens,
+  type ScreenMenuItem,
+  type ScreenMenuItemReader,
+} from './gts/shell-screens';
 export { LayoutDomain } from './layout-domain';
 export { RestMockPlugin, type RestMockConfig } from './api/plugins/RestMockPlugin';
 export { SseMockPlugin, type SseMockConfig } from './api/plugins/SseMockPlugin';

@@ -2,7 +2,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FrontXProvider, apiRegistry, createFrontX, presets, microfrontends, MfeHandlerMF, gtsPlugin, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/react';
-import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import { themeSchema, languageSchema, registerShellScreenSchemas } from '@gears-frontx/frontx-template-shell';
+import { shellScreens } from '@/app/mfe/shellScreens';
 import { Toaster } from '@/app/components/ui/sonner';
 import { AccountsApiService } from '@/app/api';
 import '@gears-frontx/ui-kit/theme.css'; // UI-kit design tokens (imported exactly once, at the app entry)
@@ -23,10 +24,12 @@ import { applyPersistedTheme } from '@/app/themes/themePersistence';
 // Register application-specific GTS schemas before constructing the FrontX app.
 // These derived schemas encode application-level constraints (valid theme names,
 // supported languages, screen extension shape) and are not part of the core
-// type system in @gears-frontx/gts-plugin.
+// type system in @gears-frontx/gts-plugin. The screen schemas come from the
+// project's `src-app/shell-config/screens.ts` when it supplies any, ahead of the
+// shell's default: the first definition of a type id wins on the shared store.
 gtsPlugin.registerSchema(themeSchema);
 gtsPlugin.registerSchema(languageSchema);
-gtsPlugin.registerSchema(extensionScreenSchema);
+registerShellScreenSchemas(gtsPlugin, shellScreens);
 
 // Register accounts service (application-level service for user info)
 apiRegistry.register(AccountsApiService);

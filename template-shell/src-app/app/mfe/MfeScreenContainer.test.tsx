@@ -13,6 +13,14 @@ const mockUseDomainRouteStatus = vi.fn(
 const mockScreenDomain = { id: 'screen-domain' };
 const FRONTX_SCREEN_DOMAIN = 'screen-domain';
 
+const projectScreens = vi.hoisted(() => ({ enabled: true }));
+
+vi.mock('./shellScreens', () => ({
+  get shellScreens() {
+    return { enabled: projectScreens.enabled };
+  },
+}));
+
 vi.mock('./bootstrap', () => ({
   bootstrapMFE: (...args: never[]) => mockBootstrapMFE(...args),
 }));
@@ -75,6 +83,7 @@ describe('MfeScreenContainer', () => {
     mockUseMountedExtensions.mockReturnValue([]);
     mockUseDomainRouteStatus.mockReset();
     mockUseDomainRouteStatus.mockReturnValue({ entries: 0, unresolved: 0 });
+    projectScreens.enabled = true;
   });
 
   afterEach(() => {
@@ -116,6 +125,35 @@ describe('MfeScreenContainer', () => {
     expect(slot.dataset.domainId).toBe(mockScreenDomain.id);
     expect(slot.dataset.registryPresent).toBe('yes');
     expect(slot.dataset.className).toContain('h-full');
+  });
+
+  it('still bootstraps but renders no screen slot and reads no screen status when the project turned screens off', async () => {
+    projectScreens.enabled = false;
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+
+    render(<MfeScreenContainer />);
+    await settleBootstrap();
+
+    expect(mockBootstrapMFE).toHaveBeenCalledWith(app);
+    expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
+    expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(undefined, FRONTX_SCREEN_DOMAIN);
+  });
+
+  it('shows no error state when the project turned screens off, for a failed bootstrap or a reported screen failure', async () => {
+    projectScreens.enabled = false;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+    const { screenLoadFailure } = await import('./screenLoadFailure');
+
+    render(<MfeScreenContainer />);
+    await act(async () => {
+      bootstrap.reject(new Error('boom'));
+    });
+    act(() => screenLoadFailure.report('ext.orders', 'push'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
   });
 
   it('reads the screen domain status only once bootstrap has settled, not before', async () => {

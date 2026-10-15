@@ -2,11 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScreenExtension } from '@gears-frontx/react';
+import { resolveShellScreens, type ResolvedShellScreens } from '@gears-frontx/frontx-template-shell';
 import { Menu } from './Menu';
 
 const mockUseFrontX = vi.fn();
 const mockUseMountedExtensions = vi.fn();
 const mockBootstrapOnce = vi.fn();
+const projectScreens = vi.hoisted(() => ({ current: undefined as ResolvedShellScreens | undefined }));
+
+vi.mock('@/app/mfe/shellScreens', () => ({
+  get shellScreens() {
+    return projectScreens.current;
+  },
+}));
 
 vi.mock('@/app/mfe/bootstrapOnce', () => ({
   bootstrapOnce: (...args: unknown[]) => mockBootstrapOnce(...args),
@@ -33,9 +41,9 @@ const screenExtension = (
 });
 
 /**
- * An extension the registry accepts and the menu cannot render: `presentation`
- * is asserted by a cast rather than validated anywhere on the registration
- * path, so this shape reaches the menu in a real boot.
+ * An extension the registry accepts and the default reader cannot render:
+ * `presentation` is not validated anywhere on the registration path when the
+ * target domain pins no extension type, so this shape can reach the menu.
  */
 const withoutPresentation = (id: string) => ({ id, domain: 'screen-domain', entry: `${id}.entry` });
 
@@ -67,6 +75,7 @@ describe('Menu', () => {
     mockUseFrontX.mockReturnValue(app);
     mockUseMountedExtensions.mockReturnValue([]);
     mockBootstrapOnce.mockResolvedValue(undefined);
+    projectScreens.current = resolveShellScreens();
   });
 
   const emptyState = () => screen.queryByText(/No screens yet/);
@@ -139,9 +148,7 @@ describe('Menu', () => {
   });
 
   it('still lists the well-formed screens when a sibling extension carries no presentation metadata', async () => {
-    // `presentation` is asserted by a cast and checked nowhere on the path from
-    // the manifest to `registry.registerExtension`; one such sibling must cost
-    // only itself. Paired with a well-formed extension because a one-element
+    // One extension the reader cannot read must cost only itself. Paired with a well-formed extension because a one-element
     // sort never calls the comparator that would dereference it.
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, withoutPresentation('broken')]);
 
@@ -160,5 +167,36 @@ describe('Menu', () => {
     await renderSettled();
 
     expect(emptyState()).not.toBeNull();
+  });
+
+  it("lists what the project's reader returns, built from a field its derived screen type adds", async () => {
+    const inbox = {
+      ...screenExtension(`${tasks.id}.inbox`, '/inbox', 10, 'Inbox'),
+      presentation: { label: 'Inbox', order: 10, group: 'Mail' },
+    };
+    const readMenuItem = vi.fn((ext: { presentation: { label: string; group: string; order: number } }) => ({
+      label: `${ext.presentation.group} / ${ext.presentation.label}`,
+      order: ext.presentation.order,
+    }));
+    projectScreens.current = { ...resolveShellScreens(), readMenuItem: readMenuItem as never };
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
+
+    await renderSettled();
+
+    expect(readMenuItem).toHaveBeenCalledWith(inbox);
+    expect(screen.getByText('Mail / Inbox')).toBeTruthy();
+    // The reader's own order puts the inbox (10) ahead of tasks (20).
+    const items = screen.getAllByTestId(/^menu-item-/).map((el) => el.getAttribute('data-testid'));
+    expect(items).toEqual([`menu-item-${inbox.id}`, `menu-item-${tasks.id}`]);
+  });
+
+  it('lists no screens and shows no hint when the project turned the screen domain off', async () => {
+    projectScreens.current = resolveShellScreens({ enabled: false });
+
+    await renderSettled();
+
+    expect(app.mfeRegistry.getExtensionsForDomain).not.toHaveBeenCalled();
+    expect(screen.queryByTestId(/^menu-item-/)).toBeNull();
+    expect(emptyState()).toBeNull();
   });
 });

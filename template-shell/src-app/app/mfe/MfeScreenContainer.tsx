@@ -35,6 +35,7 @@ import {
 import { bootstrapOnce } from './bootstrapOnce';
 import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
+import { shellScreens } from './shellScreens';
 
 /**
  * The error state without a UI kit, for projects created without one. The
@@ -63,7 +64,10 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const loadFailure = useScreenLoadFailure();
   const mountedScreens = useMountedExtensions(FRONTX_SCREEN_DOMAIN);
-  const status = useDomainRouteStatus(bootstrapped ? app.mfeRegistry : undefined, FRONTX_SCREEN_DOMAIN);
+  // A project that turned the screen domain off has no screen domain to read
+  // or render; bootstrap still runs for every other domain and the manifests.
+  const screensOn = shellScreens.enabled;
+  const status = useDomainRouteStatus(bootstrapped && screensOn ? app.mfeRegistry : undefined, FRONTX_SCREEN_DOMAIN);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,15 +117,18 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   };
 
   // One error state at a time: a failed bootstrap wins, since no screen can
-  // mount without it.
+  // mount without it. With the screen domain off there is no screen area, so
+  // there is no error state either; a failed bootstrap is still logged.
   let retryFailed: (() => void) | undefined;
-  if (bootstrapFailed) retryFailed = () => window.location.reload();
-  else if (loadFailure) retryFailed = retryScreen;
+  if (screensOn) {
+    if (bootstrapFailed) retryFailed = () => window.location.reload();
+    else if (loadFailure) retryFailed = retryScreen;
+  }
 
   return (
     <div className="flex-1 overflow-auto" data-mfe-screen-container>
       {retryFailed ? <LoadFailed onRetry={retryFailed} /> : null}
-      {bootstrapped && app.mfeRegistry ? (
+      {bootstrapped && screensOn && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}
           domainId={screenDomain.id}

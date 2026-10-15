@@ -14,8 +14,8 @@ import {
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type MenuState,
-  type ScreenExtension,
 } from '@gears-frontx/react';
+import type { ScreenMenuItem } from '@gears-frontx/frontx-template-shell';
 import {
   Sidebar,
   SidebarContent,
@@ -27,11 +27,17 @@ import {
 } from '@/app/components/ui/sidebar';
 import { Icon } from '@iconify/react';
 import { bootstrapOnce } from '@/app/mfe/bootstrapOnce';
+import { shellScreens } from '@/app/mfe/shellScreens';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
 
 export interface MenuProps {
   children?: React.ReactNode;
+}
+
+interface MenuEntry {
+  id: string;
+  item: ScreenMenuItem;
 }
 
 const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
@@ -75,28 +81,28 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // `undefined` until bootstrap has settled: bootstrap registers every screen
   // extension, so the list is read once, after it, and an empty list before
   // that point means "not known yet", not "no screens".
-  const [extensions, setExtensions] = useState<ScreenExtension[] | undefined>(undefined);
+  const [entries, setEntries] = useState<MenuEntry[] | undefined>(undefined);
 
   useEffect(() => {
-    if (!mfeRegistry) return;
+    if (!mfeRegistry || !shellScreens.enabled) return;
     let cancelled = false;
     bootstrapOnce(app).then(
       () => {
         if (cancelled) return;
-        // The cast asserts `presentation` rather than checking it, and nothing
-        // between the manifest and `registry.registerExtension` does either, so
-        // an extension without it is dropped here instead of throwing mid-sort.
-        const screenExts = mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as ScreenExtension[];
-        setExtensions(
-          screenExts
-            .filter((ext) => ext?.presentation)
-            .sort((a, b) => (a.presentation.order ?? 999) - (b.presentation.order ?? 999)),
-        );
+        // The project's reader turns each extension into a menu item, or
+        // leaves it out by returning nothing; the default reads the flat
+        // `presentation` of the shell's own screen schema.
+        const read: MenuEntry[] = [];
+        for (const ext of mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)) {
+          const item = shellScreens.readMenuItem(ext);
+          if (item) read.push({ id: ext.id, item });
+        }
+        setEntries(read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999)));
       },
       // `MfeScreenContainer` logs the bootstrap failure; the menu only shows
       // that there is nothing to list.
       () => {
-        if (!cancelled) setExtensions([]);
+        if (!cancelled) setEntries([]);
       },
     );
     return () => {
@@ -104,8 +110,11 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     };
   }, [app, mfeRegistry]);
 
-  // No registry means no microfrontends plugin: nothing is ever coming.
-  const screens = mfeRegistry ? extensions : [];
+  // No registry means no microfrontends plugin: nothing is ever coming. A
+  // project that turned the screen domain off has no screen items to list and
+  // gets no hint about adding them.
+  const screens = mfeRegistry ? entries : [];
+  const showEmptyHint = shellScreens.enabled && screens?.length === 0;
 
   const handleToggleCollapse = () => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
@@ -141,7 +150,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
       <SidebarContent>
         <SidebarMenu>
           {/* Before bootstrap settles `screens` is undefined and the menu stays blank. */}
-          {screens?.length === 0 ? (
+          {showEmptyHint ? (
             // Reached from two different states, so the hint names the step that
             // tells them apart: a shell-only seed has no `src-app/mfe_packages/`
             // at all until the MFE template is added, and pointing such a
@@ -158,23 +167,22 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
               <code className={hintCodeClass}>mfe.json</code> so it reaches this menu.
             </li>
           ) : (
-            screens?.map((ext) => {
-              const isActive = ext.id === mountedId;
-              const pres = ext.presentation;
+            screens?.map(({ id, item }) => {
+              const isActive = id === mountedId;
               return (
-                <SidebarMenuItem key={ext.id}>
+                <SidebarMenuItem key={id}>
                   <SidebarMenuButton
-                    data-testid={menuItemTestId(ext.id)}
+                    data-testid={menuItemTestId(id)}
                     isActive={isActive}
-                    onClick={() => handleMenuItemClick(ext.id)}
-                    tooltip={collapsed ? pres.label : undefined}
+                    onClick={() => handleMenuItemClick(id)}
+                    tooltip={collapsed ? item.label : undefined}
                   >
-                    {pres.icon && (
+                    {item.icon && (
                       <SidebarMenuIcon>
-                        <Icon icon={pres.icon} className="w-4 h-4" />
+                        <Icon icon={item.icon} className="w-4 h-4" />
                       </SidebarMenuIcon>
                     )}
-                    <span>{pres.label}</span>
+                    <span>{item.label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
