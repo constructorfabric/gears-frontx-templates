@@ -1352,6 +1352,35 @@ function transformLazyImports(
 }
 
 /**
+ * The string specifier of every `__frontx_lazy('<path>')` call in a parsed
+ * chunk, as the runtime resolver will fetch it.
+ */
+function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
+  if (!node || typeof node !== 'object') return found;
+  if (Array.isArray(node)) {
+    for (const child of node) lazyCallSpecifiers(child, found);
+    return found;
+  }
+  const astNode = node as AstNode;
+  if (astNode.type === 'CallExpression') {
+    const callee = astNode.callee as AstNode | undefined;
+    const arg = (astNode.arguments as AstNode[] | undefined)?.[0];
+    if (
+      callee?.type === 'Identifier' &&
+      callee.name === '__frontx_lazy' &&
+      arg?.type === 'Literal' &&
+      typeof arg.value === 'string'
+    ) {
+      found.push(arg.value);
+    }
+  }
+  for (const key of Object.keys(astNode)) {
+    if (key !== 'type' && key !== 'start' && key !== 'end') lazyCallSpecifiers(astNode[key], found);
+  }
+  return found;
+}
+
+/**
  * Creates the frontx-mf-gts Vite plugin.
  *
  * Runs in `closeBundle` after `@module-federation/vite`. Builds standalone
@@ -1505,11 +1534,6 @@ export function frontxMfGts(): Plugin {
     // guard below checks them against the federation manifest's per-expose
     // CSS attribution.
     generateBundle(_options, bundle) {
-      // Preliminary names of the chunks still in the bundle; a rendered
-      // chunk missing here was removed after rendering.
-      const remainingChunks = new Set(
-        Object.values(bundle).flatMap((o) => (o.type === 'chunk' ? [o.preliminaryFileName] : []))
-      );
       for (const [fileName, output] of Object.entries(bundle)) {
         if (output.type !== 'chunk') continue;
         // A CSS-only chunk reached by a dynamic import (`import('./x.css')`)
@@ -1525,22 +1549,29 @@ export function frontxMfGts(): Plugin {
         // (a lazily imported stylesheet that compiles to no CSS) is renamed
         // to `__frontx_lazy` below, as every other kept chunk is. When the
         // two lists no longer pair up, the build fails if the chunk left an
-        // import alone or dynamically imports a chunk that was removed: either
-        // could leave a call to a missing file and CSS no list names.
-        // `chunkOwnCss` has an entry for every rendered chunk, with CSS or
-        // without, so checking it only leaves out external imports.
+        // import alone, or if its code loads through `__frontx_lazy` a file
+        // the bundle no longer has: that call would fetch a missing file.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
         const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
-        if (
-          preliminaryDynamic.length !== output.dynamicImports.length &&
-          (leftAlone?.size ||
-            preliminaryDynamic.some((p) => chunkOwnCss.has(p) && !remainingChunks.has(p)))
-        ) {
-          outputFailed = true;
-          this.error(
-            `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
-              `when it was rendered, so its imports of removed CSS-only chunks cannot be checked.`
+        if (preliminaryDynamic.length !== output.dynamicImports.length) {
+          if (leftAlone?.size) {
+            outputFailed = true;
+            this.error(
+              `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
+                `when it was rendered, so its imports of CSS-only chunks cannot be checked.`
+            );
+          }
+          const missing = lazyCallSpecifiers(this.parse(output.code)).filter(
+            (specifier) =>
+              bundle[path.posix.join(path.posix.dirname(fileName), specifier)] === undefined
           );
+          if (missing.length) {
+            outputFailed = true;
+            this.error(
+              `[frontx-mf-gts] '${fileName}' loads ${missing.map((m) => `'${m}'`).join(', ')} ` +
+                `through __frontx_lazy, but the bundle has no such file.`
+            );
+          }
         }
         if (preliminaryDynamic.length === output.dynamicImports.length) {
           output.dynamicImports.forEach((target, i) => {

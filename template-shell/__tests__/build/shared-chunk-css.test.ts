@@ -213,13 +213,18 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     expect(stderr).toMatch(/expose '\.\/lifecycle-i' needs: \S*shared\.pcss/);
   }, BUILD_TEST_TIMEOUT_MS);
 
-  it('fails the build when a chunk with no CSS-only imports changed its dynamic imports after rendering and loads a chunk that was removed', () => {
+  it('fails the build when a chunk whose dynamic imports changed after rendering still loads a chunk that was deleted', () => {
     let stderr = '';
     try {
-      buildFixture('a,b', true, { FIXTURE_SKEW_LAZY_PANEL: 'true' });
+      buildFixture('a,b', true, { FIXTURE_SKEW_LAZY_PANEL: 'keep-call' });
     } catch (error) {
       stderr = String((error as { stderr?: Buffer }).stderr ?? '');
     }
-    expect(stderr).toMatch(/has a different number of dynamic imports than when it was rendered/);
+    expect(stderr).toMatch(/loads '\.\/lazy-panel-[A-Za-z0-9_-]{8}\.js' through __frontx_lazy, but the bundle has no such file/);
+  }, BUILD_TEST_TIMEOUT_MS);
+
+  it('builds when a chunk whose dynamic imports changed after rendering no longer loads the chunk that was deleted', () => {
+    const outDir = buildFixture('a,b', true, { FIXTURE_SKEW_LAZY_PANEL: 'drop-call' });
+    expect(fs.existsSync(path.join(outDir, 'mfe-manifest.json'))).toBe(true);
   }, BUILD_TEST_TIMEOUT_MS);
 });

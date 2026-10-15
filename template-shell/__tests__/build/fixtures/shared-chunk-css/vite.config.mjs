@@ -4,10 +4,11 @@
 // which of the exposes the build declares; `mfe.json` has entries for a and
 // b only, so every build declares those two and c to o are exposes without
 // an entry. FIXTURE_CSS_CODE_SPLIT=false builds without per-chunk CSS.
-// FIXTURE_SKEW_LAZY_PANEL=true adds a plugin that, before frontx-mf-gts
-// sees the bundle, removes the lazy-panel chunk the way Vite removes a
-// CSS-only chunk and gives its importer one more dynamic import than it
-// rendered with.
+// FIXTURE_SKEW_LAZY_PANEL adds a plugin that, before frontx-mf-gts sees the
+// bundle, deletes the lazy-panel chunk and changes how many dynamic imports
+// its importer lists: `keep-call` leaves the importer's call to the deleted
+// file and lists one import more, `drop-call` replaces that call with an
+// empty promise and lists one import less.
 import { defineConfig } from 'vite';
 import { federation } from '@module-federation/vite';
 import { frontxMfGts } from '../../../../src/build/mf-gts.ts';
@@ -31,6 +32,7 @@ const allExposes = {
 };
 const picked = (process.env.FIXTURE_EXPOSES ?? 'a,b,c').split(',');
 
+const skewMode = process.env.FIXTURE_SKEW_LAZY_PANEL;
 const skewLazyPanel = {
   name: 'fixture-skew-lazy-panel',
   enforce: 'post',
@@ -38,9 +40,16 @@ const skewLazyPanel = {
     const removed = Object.keys(bundle).find((f) => /lazy-panel-[A-Za-z0-9_-]{8}\.js$/.test(f));
     if (removed === undefined) throw new Error('fixture: no lazy-panel chunk to remove');
     delete bundle[removed];
+    const base = removed.split('/').pop();
     for (const output of Object.values(bundle)) {
-      if (output.type === 'chunk' && output.dynamicImports.includes(removed)) {
+      if (output.type !== 'chunk' || !output.dynamicImports.includes(removed)) continue;
+      if (skewMode === 'keep-call') {
         output.dynamicImports.push('assets/fixture-extra.js');
+      } else {
+        const call = new RegExp(`__frontx_lazy\\(\\s*['"]\\./${base.replace(/[.-]/g, '\\$&')}['"]\\s*\\)`);
+        if (!call.test(output.code)) throw new Error(`fixture: no call to ${base} in ${output.fileName}`);
+        output.code = output.code.replace(call, 'Promise.resolve({})');
+        output.dynamicImports = output.dynamicImports.filter((f) => f !== removed);
       }
     }
   },
@@ -60,7 +69,7 @@ export default defineConfig({
       manifest: true,
       dts: false,
     }),
-    ...(process.env.FIXTURE_SKEW_LAZY_PANEL === 'true' ? [skewLazyPanel] : []),
+    ...(skewMode ? [skewLazyPanel] : []),
     frontxMfGts(),
   ],
   build: {
