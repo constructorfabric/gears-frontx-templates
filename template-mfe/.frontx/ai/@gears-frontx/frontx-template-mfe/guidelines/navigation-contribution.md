@@ -61,7 +61,8 @@ differently, or turn the screen domain off, in its
 guideline). When that file exists, declare what its schema requires, use its
 derived type id as your extension id prefix when it pins one, and check that it
 does not set `enabled: false`: then no screen is mounted or listed, though each
-is still validated and a malformed one still stops the shell at startup.
+is still validated, and a malformed one fails MFE bootstrap (the error is
+logged and the packages after it are not registered).
 
 ## Beyond the menu: extensions that do not target the screen domain
 

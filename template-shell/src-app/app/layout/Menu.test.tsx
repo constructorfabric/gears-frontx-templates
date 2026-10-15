@@ -174,13 +174,15 @@ describe('Menu', () => {
   });
 
   it("lists what the project's reader returns, including a field beyond the flat presentation", async () => {
+    // The flat order (30) sorts the inbox after tasks (20); only the reader's
+    // own order (10) puts it first.
     const inbox = {
-      ...screenExtension(`${tasks.id}.inbox`, '/inbox', 10, 'Inbox'),
-      presentation: { label: 'Inbox', order: 10, group: 'Mail' },
+      ...screenExtension(`${tasks.id}.inbox`, '/inbox', 30, 'Inbox'),
+      presentation: { label: 'Inbox', order: 30, group: 'Mail', menuOrder: 10 },
     };
     const readMenuItem = vi.fn<ScreenMenuItemReader>((ext) => {
-      const p = (ext as { presentation?: { label: string; group?: string; order?: number } }).presentation;
-      return p && { label: p.group ? `${p.group} / ${p.label}` : p.label, order: p.order };
+      const p = (ext as { presentation?: { label: string; group?: string; menuOrder?: number } }).presentation;
+      return p && { label: p.group ? `${p.group} / ${p.label}` : p.label, order: p.menuOrder ?? 20 };
     });
     projectScreens.current = { ...resolveShellScreens(), readMenuItem };
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
@@ -189,7 +191,6 @@ describe('Menu', () => {
 
     expect(readMenuItem).toHaveBeenCalledWith(inbox);
     expect(screen.getByText('Mail / Inbox')).toBeTruthy();
-    // The reader's own order puts the inbox (10) ahead of tasks (20).
     const items = screen.getAllByTestId(/^menu-item-/).map((el) => el.getAttribute('data-testid'));
     expect(items).toEqual([`menu-item-${inbox.id}`, `menu-item-${tasks.id}`]);
   });
