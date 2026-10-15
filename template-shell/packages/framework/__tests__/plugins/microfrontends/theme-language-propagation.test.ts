@@ -100,6 +100,28 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       });
     });
 
+    it('should still apply the theme when updateSharedProperty throws', () => {
+      // microfrontends() first, so its failing subscriber runs before the one that applies the theme.
+      const app = createFrontX()
+        .use(effects())
+        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(themes())
+        .build();
+      apps.push(app);
+
+      app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
+      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
+        throw new Error('GTS validation failed');
+      });
+      const applySpy = vi.spyOn(app.themeRegistry, 'apply');
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      eventBus.emit('theme/changed', { themeId: 'dark' });
+
+      expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_THEME, 'dark');
+      expect(applySpy).toHaveBeenCalledWith('dark');
+    });
+
     it('should unsubscribe theme propagation when the plugin app is destroyed', () => {
       const app = createFrontX()
         .use(effects())
