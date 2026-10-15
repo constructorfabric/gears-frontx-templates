@@ -44,8 +44,10 @@ const skewLazyPanel = {
     if (removed === undefined) throw new Error('fixture: no lazy-panel chunk to remove');
     delete bundle[removed];
     const base = removed.split('/').pop();
+    let importers = 0;
     for (const output of Object.values(bundle)) {
       if (output.type !== 'chunk' || !output.dynamicImports.includes(removed)) continue;
+      importers++;
       if (skewMode === 'keep-call') {
         output.dynamicImports.push('assets/fixture-extra.js');
       } else {
@@ -55,6 +57,7 @@ const skewLazyPanel = {
         output.dynamicImports = output.dynamicImports.filter((f) => f !== removed);
       }
     }
+    if (importers === 0) throw new Error(`fixture: no chunk imports ${removed}`);
   },
 };
 
