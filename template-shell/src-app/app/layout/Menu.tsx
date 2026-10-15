@@ -92,10 +92,15 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
         // The project's reader turns each extension into a menu item, or
         // leaves it out by returning nothing; the default reads the flat
         // `presentation` of the shell's own screen schema.
+        // A reader that throws on one extension costs only that extension.
         const read: MenuEntry[] = [];
         for (const ext of mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)) {
-          const item = shellScreens.readMenuItem(ext);
-          if (item) read.push({ id: ext.id, item });
+          try {
+            const item = shellScreens.readMenuItem(ext);
+            if (item) read.push({ id: ext.id, item });
+          } catch (error) {
+            console.error(`[Menu] readMenuItem failed for ${ext.id}; the screen is left out of the menu`, error);
+          }
         }
         setEntries(read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999)));
       },

@@ -445,7 +445,8 @@ async function registerMfePackage(
  * (ADR 0036, D10/D11) — this function builds no routing wiring at all.
  *
  * @param app - FrontX application instance
- * @param screens - The project's resolved screens config
+ * @param screens - The project's resolved screens config. Defaults to the
+ * one `Menu` and `MfeScreenContainer` read; tests pass their own.
  */
 export async function bootstrapMFE(app: FrontXApp, screens: ResolvedShellScreens = shellScreens): Promise<void> {
   const registry = app.mfeRegistry;

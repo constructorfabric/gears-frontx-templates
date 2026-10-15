@@ -66,6 +66,13 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   };
 });
 
+// The shipped tests must not read whatever `src-app/shell-config/screens.ts`
+// a project adds: the default path runs against the defaults.
+vi.mock('./shellScreens', async () => {
+  const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');
+  return { shellScreens: resolveShellScreens() };
+});
+
 describe('bootstrapMFE (host-app)', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
@@ -140,30 +147,27 @@ describe('bootstrapMFE (host-app)', () => {
       );
     });
 
-    it('pins the shell screen type on the screen domain by default', async () => {
-      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
-
-      const { bootstrapMFE } = await import('./bootstrap');
-      await bootstrapMFE(mockApp as never);
-
-      const [screenDeclaration] = registerDomain.mock.calls[0];
-      expect(screenDeclaration.id).toBe('screen-domain');
-      expect(screenDeclaration.extensionsTypeId).toBe(SCREEN_TYPE);
-    });
-
     it('pins the derived screen type the project names', async () => {
       fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
       const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');
       const screens = resolveShellScreens({
-        schemas: [{ $id: `gts://${SITE_SCREEN_TYPE}`, $schema: 'https://json-schema.org/draft/2020-12/schema' }],
+        schemas: [
+          {
+            $id: `gts://${SITE_SCREEN_TYPE}`,
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            allOf: [{ $ref: `gts://${SCREEN_TYPE}` }],
+          },
+        ],
         extensionsTypeId: SITE_SCREEN_TYPE,
       });
 
       const { bootstrapMFE } = await import('./bootstrap');
       await bootstrapMFE(mockApp as never, screens);
 
+      const { CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } = await import('./chrome-actions');
       const [screenDeclaration] = registerDomain.mock.calls[0];
       expect(screenDeclaration.extensionsTypeId).toBe(SITE_SCREEN_TYPE);
+      expect(screenDeclaration.actions).toEqual([CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED]);
     });
 
     it('registers no screen domain when the project turned it off, and still boots the rest', async () => {

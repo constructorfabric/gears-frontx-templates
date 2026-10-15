@@ -15,4 +15,25 @@ const projectModules = import.meta.glob<{ default: ShellScreensConfig }>('../../
   eager: true,
 });
 
-export const shellScreens = resolveShellScreens(Object.values(projectModules)[0]?.default);
+const PROJECT_FILE = 'src-app/shell-config/screens.ts';
+
+function loadProjectScreens(): ShellScreensConfig | undefined {
+  const [projectModule] = Object.values(projectModules);
+  if (!projectModule) return undefined;
+  if (projectModule.default === undefined) {
+    throw new Error(`[shell screens] ${PROJECT_FILE} has no default export; export the config with \`export default defineShellScreens({...})\``);
+  }
+  return projectModule.default;
+}
+
+/**
+ * Resolved when the module loads, so a config mistake stops the shell before
+ * it renders, with the file named in the error.
+ */
+export const shellScreens = (() => {
+  try {
+    return resolveShellScreens(loadProjectScreens());
+  } catch (error) {
+    throw new Error(`${PROJECT_FILE}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+})();

@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScreenExtension } from '@gears-frontx/react';
-import { resolveShellScreens, type ResolvedShellScreens } from '@gears-frontx/frontx-template-shell';
+import {
+  resolveShellScreens,
+  type ResolvedShellScreens,
+  type ScreenMenuItemReader,
+} from '@gears-frontx/frontx-template-shell';
 import { Menu } from './Menu';
 
 const mockUseFrontX = vi.fn();
@@ -169,16 +173,16 @@ describe('Menu', () => {
     expect(emptyState()).not.toBeNull();
   });
 
-  it("lists what the project's reader returns, built from a field its derived screen type adds", async () => {
+  it("lists what the project's reader returns, including a field beyond the flat presentation", async () => {
     const inbox = {
       ...screenExtension(`${tasks.id}.inbox`, '/inbox', 10, 'Inbox'),
       presentation: { label: 'Inbox', order: 10, group: 'Mail' },
     };
-    const readMenuItem = vi.fn((ext: { presentation: { label: string; group: string; order: number } }) => ({
-      label: `${ext.presentation.group} / ${ext.presentation.label}`,
-      order: ext.presentation.order,
-    }));
-    projectScreens.current = { ...resolveShellScreens(), readMenuItem: readMenuItem as never };
+    const readMenuItem = vi.fn<ScreenMenuItemReader>((ext) => {
+      const p = (ext as { presentation?: { label: string; group?: string; order?: number } }).presentation;
+      return p && { label: p.group ? `${p.group} / ${p.label}` : p.label, order: p.order };
+    });
+    projectScreens.current = { ...resolveShellScreens(), readMenuItem };
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
 
     await renderSettled();
@@ -190,11 +194,33 @@ describe('Menu', () => {
     expect(items).toEqual([`menu-item-${inbox.id}`, `menu-item-${tasks.id}`]);
   });
 
+  it('leaves out only the screen a project reader throws on, and logs it', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const broken = screenExtension(`${tasks.id}.broken`, '/broken', 5, 'Broken');
+    projectScreens.current = {
+      ...resolveShellScreens(),
+      readMenuItem: (ext) => {
+        if (ext.id === broken.id) throw new Error('no group');
+        return { label: 'Tasks' };
+      },
+    };
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([broken, tasks]);
+
+    await renderSettled();
+
+    expect(screen.getByTestId(`menu-item-${tasks.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`menu-item-${broken.id}`)).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(broken.id), expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
   it('lists no screens and shows no hint when the project turned the screen domain off', async () => {
     projectScreens.current = resolveShellScreens({ enabled: false });
 
     await renderSettled();
 
+    // Bootstrap still runs, from the screen container; the menu has nothing to wait for.
+    expect(mockBootstrapOnce).not.toHaveBeenCalled();
     expect(app.mfeRegistry.getExtensionsForDomain).not.toHaveBeenCalled();
     expect(screen.queryByTestId(/^menu-item-/)).toBeNull();
     expect(emptyState()).toBeNull();

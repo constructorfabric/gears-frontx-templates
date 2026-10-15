@@ -14,10 +14,9 @@
 
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import type { Extension } from '@gears-frontx/mfes';
-import extensionScreenSchemaJson from './schemas/extension_screen.v1.json';
+import { extensionScreenSchema as defaultScreenSchema } from './index';
 
 const GTS_SCHEMA_ID_PREFIX = 'gts://';
-const defaultScreenSchema = extensionScreenSchemaJson as JSONSchema;
 const SCREEN_EXTENSION_TYPE_ID = defaultScreenSchema.$id!.slice(GTS_SCHEMA_ID_PREFIX.length);
 
 /** What the shell menu shows for one screen extension. */
@@ -84,8 +83,9 @@ export const readFlatScreenMenuItem: ScreenMenuItemReader = (extension) => {
   };
 };
 
+/** A type id (trailing `~`) that is the screen type or derives from it. */
 function isScreenTypeId(typeId: string): boolean {
-  return typeId.startsWith(SCREEN_EXTENSION_TYPE_ID);
+  return typeId.startsWith(SCREEN_EXTENSION_TYPE_ID) && typeId.endsWith('~');
 }
 
 function typeIdOf(schema: JSONSchema): string | undefined {
@@ -93,12 +93,27 @@ function typeIdOf(schema: JSONSchema): string | undefined {
   return typeof id === 'string' && id.startsWith(GTS_SCHEMA_ID_PREFIX) ? id.slice(GTS_SCHEMA_ID_PREFIX.length) : undefined;
 }
 
+/** The type ids a schema's top-level `allOf` references. */
+function allOfRefs(schema: JSONSchema): string[] {
+  const allOf = schema.allOf;
+  if (!Array.isArray(allOf)) return [];
+  return allOf
+    .map((part: unknown) => (typeof part === 'object' && part !== null ? (part as { $ref?: unknown }).$ref : undefined))
+    .filter((ref): ref is string => typeof ref === 'string' && ref.startsWith(GTS_SCHEMA_ID_PREFIX))
+    .map((ref) => ref.slice(GTS_SCHEMA_ID_PREFIX.length));
+}
+
+function fail(message: string): never {
+  throw new Error(`[shell screens] ${message}`);
+}
+
 /**
  * Checks a project's screens config and fills in the defaults.
  *
  * @throws Error when a schema is not a screen type, a replacement drops the
- * required `route`, or `extensionsTypeId` names a type that is neither the
- * screen type nor one of the project's own schemas
+ * required `route`, a derived type does not inherit from a screen type it
+ * derives from, or `extensionsTypeId` names a type that is neither the screen
+ * type nor one of the project's own schemas
  */
 export function resolveShellScreens(config: ShellScreensConfig = {}): ResolvedShellScreens {
   const projectSchemas = config.schemas ?? [];
@@ -106,22 +121,38 @@ export function resolveShellScreens(config: ShellScreensConfig = {}): ResolvedSh
   for (const schema of projectSchemas) {
     const typeId = typeIdOf(schema);
     if (!typeId || !isScreenTypeId(typeId)) {
-      throw new Error(
-        `[shell screens] schema '${String(schema.$id)}' is not a screen type: its $id must be gts://${SCREEN_EXTENSION_TYPE_ID} or a type derived from it`,
-      );
-    }
-    if (typeId === SCREEN_EXTENSION_TYPE_ID && !(schema.required ?? []).includes('route')) {
-      throw new Error(
-        `[shell screens] the replacement screen schema must keep 'route' in its top-level required list`,
+      fail(
+        `schema '${String(schema.$id)}' is not a screen type: its $id must be gts://${SCREEN_EXTENSION_TYPE_ID} or gts://<a type id derived from it, ending in ~>`,
       );
     }
     projectTypeIds.add(typeId);
   }
 
+  for (const schema of projectSchemas) {
+    const typeId = typeIdOf(schema)!;
+    if (typeId === SCREEN_EXTENSION_TYPE_ID) {
+      if (!(schema.required ?? []).includes('route')) {
+        fail(`the replacement screen schema must keep 'route' in its top-level required list`);
+      }
+      continue;
+    }
+    // A derived type is validated against its own schema only; the base
+    // schema's rules (route, presentation) hold under it only through allOf.
+    const inherits = allOfRefs(schema).some(
+      (parent) =>
+        parent !== typeId &&
+        typeId.startsWith(parent) &&
+        (parent === SCREEN_EXTENSION_TYPE_ID || projectTypeIds.has(parent)),
+    );
+    if (!inherits) {
+      fail(`derived screen schema '${String(schema.$id)}' must list { "$ref": "gts://<the screen type it derives from>" } in its allOf`);
+    }
+  }
+
   const extensionsTypeId = config.extensionsTypeId ?? SCREEN_EXTENSION_TYPE_ID;
   if (extensionsTypeId !== SCREEN_EXTENSION_TYPE_ID && !projectTypeIds.has(extensionsTypeId)) {
-    throw new Error(
-      `[shell screens] extensionsTypeId '${extensionsTypeId}' must be ${SCREEN_EXTENSION_TYPE_ID} or the $id of one of the configured schemas`,
+    fail(
+      `extensionsTypeId '${extensionsTypeId}' must be ${SCREEN_EXTENSION_TYPE_ID} or the type id of one of the configured schemas`,
     );
   }
 
