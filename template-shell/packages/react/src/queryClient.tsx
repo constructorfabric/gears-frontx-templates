@@ -19,6 +19,7 @@ import {
 } from '@tanstack/react-query';
 import {
   readQueryCacheScopeGeneration,
+  recordQueryCacheScopeWriteDropped,
   subscribeQueryCacheRuntimeChanged,
   type EndpointDescriptor,
   type FrontXApp,
@@ -489,17 +490,24 @@ const mutationScopes = new WeakMap<MutationFunctionContext, MutationScope>();
  */
 function scopeBoundQueryCache(queryCache: QueryCache, scope: MutationScope): QueryCache {
   const scopeChanged = () => readQueryCacheScopeGeneration(scope.queryClient) !== scope.generation;
+  // A dropped write that would change the cache is recorded, so a session check that keeps the
+  // session knows it has something to refresh. A dropped cancel changes nothing.
+  const dropped = (): boolean => {
+    if (!scopeChanged()) return false;
+    recordQueryCacheScopeWriteDropped(scope.queryClient, scope.generation);
+    return true;
+  };
   return {
     get: queryCache.get,
     getState: queryCache.getState,
     set: (key, dataOrUpdater) => {
-      if (!scopeChanged()) queryCache.set(key, dataOrUpdater);
+      if (!dropped()) queryCache.set(key, dataOrUpdater);
     },
     cancel: (key) => (scopeChanged() ? Promise.resolve() : queryCache.cancel(key)),
-    invalidate: (key) => (scopeChanged() ? Promise.resolve() : queryCache.invalidate(key)),
-    invalidateMany: (filters) => (scopeChanged() ? Promise.resolve() : queryCache.invalidateMany(filters)),
+    invalidate: (key) => (dropped() ? Promise.resolve() : queryCache.invalidate(key)),
+    invalidateMany: (filters) => (dropped() ? Promise.resolve() : queryCache.invalidateMany(filters)),
     remove: (key) => {
-      if (!scopeChanged()) queryCache.remove(key);
+      if (!dropped()) queryCache.remove(key);
     },
   };
 }

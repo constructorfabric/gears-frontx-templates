@@ -39,6 +39,7 @@ export {
   queryCacheShared,
   subscribeQueryCacheRuntimeChanged,
   readQueryCacheScopeGeneration,
+  recordQueryCacheScopeWriteDropped,
   mock,
   microfrontends,
   type MockPluginConfig,

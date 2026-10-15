@@ -14,7 +14,7 @@ import {
   releaseSharedFetchCache,
   retainSharedFetchCache,
 } from '@gears-frontx/api';
-import { QueryClient } from '@tanstack/query-core';
+import { QueryClient, type Mutation } from '@tanstack/query-core';
 import { eventBus, getStore, type Subscription } from '@gears-frontx/state';
 import type { FrontXApp, FrontXPlugin } from '../types';
 import { MockEvents } from '../effects/mockEffects';
@@ -71,6 +71,7 @@ const SHARED_QUERY_CLIENT_TEARDOWN_TOKEN_SYMBOL = Symbol.for(
 const QUERY_CLIENT_BROADCAST_TARGET_SYMBOL = Symbol.for('frontx:query-cache:broadcast-target');
 const QUERY_CLIENT_BROADCAST_COUNTER_SYMBOL = Symbol.for('frontx:query-cache:broadcast-counter');
 const QUERY_CLIENT_SCOPE_GENERATION_SYMBOL = Symbol.for('frontx:query-cache:scope-generation');
+const QUERY_CLIENT_DROPPED_WRITE_GENERATION_SYMBOL = Symbol.for('frontx:query-cache:dropped-write-generation');
 const APP_QUERY_CLIENT_SYMBOL = Symbol.for('frontx:query-cache:app-client');
 const APP_QUERY_CLIENT_RESOLVER_SYMBOL = Symbol.for('frontx:query-cache:app-client-resolver');
 const APP_QUERY_CLIENT_ACTIVATOR_SYMBOL = Symbol.for('frontx:query-cache:app-client-activator');
@@ -79,6 +80,7 @@ const DUPLICATE_PLUGIN_CLEANUP_SYMBOL = Symbol.for('frontx:plugin:duplicate-clea
 type QueryClientWithMetadata = QueryClient & {
   [QUERY_CLIENT_BROADCAST_TARGET_SYMBOL]?: string;
   [QUERY_CLIENT_SCOPE_GENERATION_SYMBOL]?: number;
+  [QUERY_CLIENT_DROPPED_WRITE_GENERATION_SYMBOL]?: number;
 };
 
 type QueryClientApp = FrontXApp & {
@@ -170,6 +172,28 @@ function finalizeCacheEffectsEntry(
  */
 export function readQueryCacheScopeGeneration(queryClient: QueryClient): number {
   return (queryClient as QueryClientWithMetadata)[QUERY_CLIENT_SCOPE_GENERATION_SYMBOL] ?? 0;
+}
+
+/**
+ * Records that a write meant for this QueryClient was dropped because the
+ * cache scope moved since the work started at `startGeneration` (a mutation
+ * callback's write after a session check, for one). When a session check
+ * keeps the session, the cache refreshes only if work started under the scope
+ * that check found had a write dropped; a drop from work that predates an
+ * earlier clear needs no repair. Kept on the client, like the scope
+ * generation.
+ */
+export function recordQueryCacheScopeWriteDropped(queryClient: QueryClient, startGeneration: number): void {
+  const client = queryClient as QueryClientWithMetadata;
+  client[QUERY_CLIENT_DROPPED_WRITE_GENERATION_SYMBOL] = Math.max(
+    client[QUERY_CLIENT_DROPPED_WRITE_GENERATION_SYMBOL] ?? -1,
+    startGeneration
+  );
+}
+
+/** The latest start generation among dropped writes, or -1 when none was dropped. */
+function readLatestDroppedWriteGeneration(queryClient: QueryClient): number {
+  return (queryClient as QueryClientWithMetadata)[QUERY_CLIENT_DROPPED_WRITE_GENERATION_SYMBOL] ?? -1;
 }
 
 function bumpQueryCacheScopeGeneration(queryClient: QueryClient): void {
@@ -618,6 +642,106 @@ function clearForScopeChange(queryClient: QueryClient): void {
 }
 
 /**
+ * Mutations a session check stopped from writing. Their callbacks cannot roll
+ * back or refresh what they changed, such as an optimistic value, and a check
+ * that keeps the session clears nothing. So once every held mutation has
+ * settled, the cache refreshes, if a write of work started under the checked
+ * scope was dropped meanwhile (`recordQueryCacheScopeWriteDropped()`); with
+ * no such drop there is nothing to repair. It waits because a refetch while one still runs would
+ * read the server before it applied the mutation. A mutation started after
+ * the check is not waited for: its own callbacks still write, so it cleans up
+ * after itself as after any invalidation.
+ *
+ * Every read still running at the refresh may predate a held mutation, so the
+ * refresh cancels them all first; then the shared fetch cache drops its
+ * entries, queries without observers are removed, so their next use fetches,
+ * and the rest are invalidated, so active ones refetch.
+ *
+ * It does not wait for the identity check. A scope change, or a newer check
+ * that holds mutations, stops a refresh still waiting to cancel reads. A held
+ * mutation removed from the cache still reports its progress to it, so it is
+ * waited for like any other.
+ *
+ * Known limits: an observed `staleTime: 'static'` query (TanStack never
+ * refetches one) and a query whose observers are all disabled keep an
+ * optimistic value until they are next fetched; the wait has no bound, so a
+ * held mutation that stays pending (paused offline, or a request that never
+ * settles) delays the refresh; a cancelled read of a query with no data yet
+ * rejects its `fetchQuery()` or `ensureQueryData()` caller with a
+ * CancelledError.
+ */
+function createHeldBackMutations(queryClient: QueryClient): {
+  /** Holds the mutations running now; their callbacks write nothing from here on. */
+  hold(): void;
+  /** The cache scope changed, so nothing of theirs is left to refresh: let them go. */
+  release(): void;
+} {
+  const mutationCache = queryClient.getMutationCache();
+  const held = new Set<Mutation>();
+  let unwatch: (() => void) | null = null;
+  /** The generation the watch started at: a drop of work started under it or later is owed a refresh. */
+  let generationAtHold = 0;
+  /** A refresh is due: a write was dropped, and no refresh has run since. */
+  let owed = false;
+  /** Counts scope changes, so a refresh that spans one stops. */
+  let releases = 0;
+
+  const stopWatching = (): void => {
+    if (readLatestDroppedWriteGeneration(queryClient) >= generationAtHold) owed = true;
+    held.clear();
+    unwatch?.();
+    unwatch = null;
+  };
+
+  const refresh = async (): Promise<void> => {
+    const startedAt = releases;
+    // A cancel lands asynchronously; invalidating before it would reuse the cancelled fetch.
+    await queryClient.cancelQueries();
+    // A scope change in the meantime cleared the cache, so there is nothing left to refresh.
+    if (releases !== startedAt) return;
+    // A newer session check holds mutations: the refresh is still owed, once they settle.
+    if (held.size > 0) {
+      owed = true;
+      return;
+    }
+    peekSharedFetchCache()?.clear();
+    // Observers decide, not isActive(): a mounted query whose observers are disabled is not active,
+    // and removing it would leave those observers on a query the cache no longer updates.
+    queryClient.removeQueries({ predicate: (query) => query.getObserversCount() === 0 });
+    await queryClient.invalidateQueries();
+  };
+
+  const refreshIfSettled = (): void => {
+    held.forEach((mutation) => {
+      if (mutation.state.status !== 'pending') held.delete(mutation);
+    });
+    if (held.size > 0) return;
+    stopWatching();
+    if (!owed) return;
+    owed = false;
+    refresh().catch((error: unknown) => {
+      console.error('[Gears FrontX] Failed to refresh queries after a session check', error);
+    });
+  };
+
+  return {
+    hold() {
+      mutationCache.getAll().forEach((mutation) => {
+        if (mutation.state.status === 'pending') held.add(mutation);
+      });
+      if (held.size === 0 || unwatch) return;
+      generationAtHold = readQueryCacheScopeGeneration(queryClient);
+      unwatch = mutationCache.subscribe(refreshIfSettled);
+    },
+    release() {
+      releases += 1;
+      stopWatching();
+      owed = false;
+    },
+  };
+}
+
+/**
  * Tracks the scope the cached data belongs to: mock mode, tenant and session.
  * An event that repeats the scope already in force (every mock() runtime with
  * enabledByDefault emits a toggle on init; a tenant change to the same tenant
@@ -632,6 +756,7 @@ function createCacheScopeTracking(queryClient: QueryClient): () => void {
     stale: false,
   };
   cacheScopeByClient.set(queryClient, scope);
+  const heldBack = createHeldBackMutations(queryClient);
 
   // The generation moves at the change itself, whether the cache is cleared
   // now or only marked stale: work started before it belongs to the old
@@ -639,6 +764,7 @@ function createCacheScopeTracking(queryClient: QueryClient): () => void {
   // so it leaves the generation alone and work started after the change keeps
   // writing.
   const onScopeChanged = (): void => {
+    heldBack.release();
     bumpQueryCacheScopeGeneration(queryClient);
     if (hostClearEffectsByClient.has(queryClient)) {
       clearForScopeChange(queryClient);
@@ -671,13 +797,16 @@ function createCacheScopeTracking(queryClient: QueryClient): () => void {
     }),
     eventBus.on(AuthEvents.LoggedOut, onScopeChanged),
     eventBus.on(AuthEvents.LoggedIn, onScopeChanged),
-    // The session may be about to change: earlier work stops writing, nothing is cleared.
+    // The session may be about to change: earlier work stops writing, nothing is cleared. The
+    // mutations it stopped get a refresh once they settle.
     eventBus.on(AuthEvents.SessionCheck, () => {
+      heldBack.hold();
       bumpQueryCacheScopeGeneration(queryClient);
     }),
   ];
 
   return () => {
+    heldBack.release();
     subscriptions.forEach((subscription) => {
       subscription.unsubscribe();
     });

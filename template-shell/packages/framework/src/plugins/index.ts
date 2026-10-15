@@ -24,6 +24,7 @@ export {
   queryCacheShared,
   subscribeQueryCacheRuntimeChanged,
   readQueryCacheScopeGeneration,
+  recordQueryCacheScopeWriteDropped,
   type QueryCacheConfig,
 } from './queryCache';
 export {

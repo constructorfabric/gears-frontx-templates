@@ -10,7 +10,7 @@
  * @packageDocumentation
  */
 
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach, onTestFinished } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { MutationCallbackContext } from '../src/hooks/QueryCache';
 import {
@@ -682,6 +682,250 @@ describe('useApiMutation when the cache scope changes while a mutation is in fli
     });
 
     expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+  });
+
+  async function renderHeldBackRollback() {
+    let rejectMutation!: (error: Error) => void;
+    const endpoint = makeMutationDescriptor<void, void>(
+      ['checkedFailingSave'],
+      () => new Promise<void>((_resolve, reject) => {
+        rejectMutation = reject;
+      })
+    );
+    const rendered = await renderOnHost(() =>
+      useApiMutation<void, Error, void, { snapshot: unknown }>({
+        endpoint,
+        onMutate: (_variables, { queryCache }) => {
+          const snapshot = queryCache.get(QUERY_KEY);
+          queryCache.set(QUERY_KEY, 'optimistic');
+          return { snapshot };
+        },
+        onError: (_error, _variables, context, { queryCache }) => {
+          queryCache.set(QUERY_KEY, context?.snapshot);
+        },
+      })
+    );
+    let serverReads = 0;
+    const { QueryObserver } = await import('@tanstack/query-core');
+    const observer = new QueryObserver(rendered.client, {
+      queryKey: QUERY_KEY,
+      // Each read is numbered, so a refetch is told apart from a rollback to the first read.
+      queryFn: async () => `server read ${++serverReads}`,
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    onTestFinished(observer.subscribe(() => undefined));
+    await waitFor(() => {
+      expect(rendered.client.getQueryData(QUERY_KEY)).toBe('server read 1');
+    });
+    let mutatePromise!: Promise<void>;
+    await act(async () => {
+      mutatePromise = rendered.result.current.mutateAsync();
+    });
+    expect(rendered.client.getQueryData(QUERY_KEY)).toBe('optimistic');
+    const settle = async () => {
+      await act(async () => {
+        rejectMutation(new Error('server error'));
+        await expect(mutatePromise).rejects.toThrow('server error');
+      });
+    };
+    return { client: rendered.client, settle };
+  }
+
+  /** Lets the mutation cache deliver its notifications, which TanStack batches into a macrotask. */
+  async function flushNotifications() {
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+  }
+
+  it('refreshes the cache once a held mutation whose rollback was dropped has settled, cancelling running reads and keeping observed queries', async () => {
+    const { client, settle } = await renderHeldBackRollback();
+    // A refresh starts by cancelling running reads, synchronously from the mutation cache notification.
+    const cancelQueries = vi.spyOn(client, 'cancelQueries');
+    onTestFinished(() => {
+      cancelQueries.mockRestore();
+    });
+    const UNOBSERVED_KEY = ['@test', 'unmounted-entity'];
+    client.setQueryData(UNOBSERVED_KEY, 'optimistic elsewhere');
+    const DISABLED_KEY = ['@test', 'disabled-entity'];
+    client.setQueryData(DISABLED_KEY, 'optimistic too');
+    const { QueryObserver } = await import('@tanstack/query-core');
+    onTestFinished(new QueryObserver(client, { queryKey: DISABLED_KEY, enabled: false }).subscribe(() => undefined));
+    let finishFetch!: (value: string) => void;
+    // A read of the mounted but disabled query, running when the mutation settles: it may predate the
+    // mutation. The outcome is captured at once, so a rejection is handled even if an assertion fails.
+    const runningFetch = client
+      .fetchQuery({
+        queryKey: DISABLED_KEY,
+        staleTime: 0,
+        queryFn: () => new Promise<string>((resolve) => {
+          finishFetch = resolve;
+        }),
+      })
+      .then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error })
+      );
+
+    act(() => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+      // Removed from the cache, the mutation still runs and is still waited for.
+      const mutationCache = client.getMutationCache();
+      mutationCache.getAll().forEach((mutation) => {
+        mutationCache.remove(mutation);
+      });
+    });
+    await flushNotifications();
+    // A refetch now would read the server before the mutation is done.
+    expect(cancelQueries).not.toHaveBeenCalled();
+    expect(client.getQueryData(QUERY_KEY)).toBe('optimistic');
+    expect(client.getQueryData(UNOBSERVED_KEY)).toBe('optimistic elsewhere');
+    await settle();
+    await flushNotifications();
+    expect(cancelQueries).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(client.getQueryData(QUERY_KEY)).toBe('server read 2');
+    });
+    expect(client.getQueryCache().find({ queryKey: UNOBSERVED_KEY })).toBeUndefined();
+    // The running read is cancelled and cannot land; the mounted query stays, marked for a refetch.
+    finishFetch('pre-mutation read');
+    expect(await runningFetch).toEqual({ value: 'optimistic too' });
+    expect(client.getQueryData(DISABLED_KEY)).toBe('optimistic too');
+    expect(client.getQueryState(DISABLED_KEY)?.isInvalidated).toBe(true);
+  });
+
+  it('lets held mutations go when the session check ends in a clear', async () => {
+    const { client, settle } = await renderHeldBackRollback();
+
+    act(() => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+      eventBus.emit(AuthEvents.LoggedIn, {});
+    });
+    expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+    // The clear already dropped everything; a refresh on top would only refetch the new session's data.
+    // A refresh starts by cancelling running reads, synchronously from the mutation cache notification.
+    const cancelQueries = vi.spyOn(client, 'cancelQueries');
+    onTestFinished(() => {
+      cancelQueries.mockRestore();
+    });
+    await settle();
+    await flushNotifications();
+
+    expect(cancelQueries).not.toHaveBeenCalled();
+  });
+
+  it('leaves a refresh to a newer session check that holds mutations while it cancels running reads', async () => {
+    const { client, settle } = await renderHeldBackRollback();
+    act(() => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+    });
+    let finishLater!: () => void;
+    const later = client
+      .getMutationCache()
+      .build(client, {
+        mutationFn: () => new Promise<void>((resolve) => {
+          finishLater = resolve;
+        }),
+      })
+      .execute(undefined);
+    const cancelQueries = client.cancelQueries.bind(client);
+    let refreshCancel: Promise<void> | undefined;
+    const cancelSpy = vi.spyOn(client, 'cancelQueries').mockImplementationOnce((...args) => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+      refreshCancel = cancelQueries(...args);
+      return refreshCancel;
+    });
+    const invalidateQueries = vi.spyOn(client, 'invalidateQueries');
+    onTestFinished(() => {
+      cancelSpy.mockRestore();
+      invalidateQueries.mockRestore();
+    });
+    await settle();
+    await flushNotifications();
+    // The refresh resumes right after its own cancel, ahead of this await.
+    await act(async () => {
+      await refreshCancel;
+    });
+    // The newer check holds the later mutation, so a refetch now would read the server before it is done.
+    expect(cancelSpy).toHaveBeenCalled();
+    expect(invalidateQueries).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishLater();
+      await later;
+    });
+    await flushNotifications();
+    await waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('stops a refresh when the scope changes while it cancels running reads', async () => {
+    const { client, settle } = await renderHeldBackRollback();
+    act(() => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+    });
+    // The scope changes while the refresh waits for its cancel: the clear already dropped everything.
+    const cancelQueries = client.cancelQueries.bind(client);
+    let refreshCancel: Promise<void> | undefined;
+    const cancelSpy = vi.spyOn(client, 'cancelQueries').mockImplementationOnce((...args) => {
+      eventBus.emit(AuthEvents.LoggedIn, {});
+      refreshCancel = cancelQueries(...args);
+      return refreshCancel;
+    });
+    const invalidateQueries = vi.spyOn(client, 'invalidateQueries');
+    const removeQueries = vi.spyOn(client, 'removeQueries');
+    onTestFinished(() => {
+      cancelSpy.mockRestore();
+      invalidateQueries.mockRestore();
+      removeQueries.mockRestore();
+    });
+    await settle();
+    await flushNotifications();
+    // The refresh resumes right after its own cancel, ahead of this await.
+    await act(async () => {
+      await refreshCancel;
+    });
+
+    expect(cancelSpy).toHaveBeenCalled();
+    expect(removeQueries).not.toHaveBeenCalled();
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh after a held mutation that had no write dropped', async () => {
+    const { client, settle } = await renderHeldBackRollback();
+    // The hook's mutation settles before the check, so its rollback lands and nothing of it is held.
+    await settle();
+    let finishPlain!: () => void;
+    const plain = client
+      .getMutationCache()
+      .build(client, {
+        mutationFn: () => new Promise<void>((resolve) => {
+          finishPlain = resolve;
+        }),
+      })
+      .execute(undefined);
+    await waitFor(() => {
+      expect(finishPlain).toBeTypeOf('function');
+    });
+    // A mutation without cache callbacks: holding it drops no write.
+    const cancelQueries = vi.spyOn(client, 'cancelQueries');
+    onTestFinished(() => {
+      cancelQueries.mockRestore();
+    });
+    act(() => {
+      eventBus.emit(AuthEvents.SessionCheck, {});
+    });
+    await act(async () => {
+      finishPlain();
+      await plain;
+    });
+    await flushNotifications();
+
+    expect(cancelQueries).not.toHaveBeenCalled();
   });
 
   it('drops an onError write when the scope changed before an async onMutate threw', async () => {
