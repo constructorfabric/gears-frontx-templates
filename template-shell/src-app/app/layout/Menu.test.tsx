@@ -207,12 +207,15 @@ describe('Menu', () => {
     };
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([broken, tasks]);
 
-    await renderSettled();
+    try {
+      await renderSettled();
 
-    expect(screen.getByTestId(`menu-item-${tasks.id}`)).toBeTruthy();
-    expect(screen.queryByTestId(`menu-item-${broken.id}`)).toBeNull();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(broken.id), expect.any(Error));
-    errorSpy.mockRestore();
+      expect(screen.getByTestId(`menu-item-${tasks.id}`)).toBeTruthy();
+      expect(screen.queryByTestId(`menu-item-${broken.id}`)).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(broken.id), expect.any(Error));
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('lists no screens and shows no hint when the project turned the screen domain off', async () => {
