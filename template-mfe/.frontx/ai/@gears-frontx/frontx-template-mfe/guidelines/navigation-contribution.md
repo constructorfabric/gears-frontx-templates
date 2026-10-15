@@ -54,6 +54,13 @@ with a thrown registration error, not a silent skip):
 `order` is a flat number per domain — there is no grouping or nesting, so
 coordinate values across packages if relative position matters.
 
+This table is the shell's default. A project may replace the screen schema,
+derive its own screen type with more `presentation` fields, or read the menu
+item differently, in its `src-app/shell-config/screens.ts` (the shell bundle's
+`navigation-composition` guideline). When that file exists, declare what its
+schema requires, and use its derived type id as your extension id prefix when
+it pins one.
+
 ## Beyond the menu: extensions that do not target the screen domain
 
 A package may also *own* a domain (declared in its `mfe.json` `domains[]`) and

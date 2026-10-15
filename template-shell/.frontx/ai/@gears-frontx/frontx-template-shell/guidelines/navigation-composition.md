@@ -21,6 +21,8 @@ Authoritative files:
   the concrete implementation of the `mfes` runtime's router port, injected
   into every registry `microfrontends()` builds
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
+- `src/gts/shell-screens.ts`, `src-app/app/mfe/shellScreens.ts` - the project's
+  screens config and its defaults (see "The project's screen type" below)
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
   the four well-known domain instances
 - `scripts/generate-mfe-manifests.ts`, `src/build/mf-gts.ts` — the build-time
@@ -28,9 +30,11 @@ Authoritative files:
 
 ## The menu is registry-driven
 
-`Menu.tsx` renders exactly what
-`mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, sorted by
-`presentation.order` (a missing `order` defaults to `999`, i.e. last). The list
+`Menu.tsx` renders one item per extension
+`mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, as the
+screens config's `readMenuItem` reads it (`label`, `icon`, `order`; by default
+the flat `presentation` fields), sorted by `order` (a missing `order` defaults
+to `999`, i.e. last). An extension the reader returns nothing for is left out. The list
 is re-read on a 500 ms interval, so extensions registered after first paint
 appear without a reload — this is why a fresh boot may briefly show an empty
 menu.
@@ -127,6 +131,7 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 2. Register the four well-known domains — `screen` (with
    `ExclusiveMountStrategy`: one mounted screen at a time), `sidebar`, `popup`,
    `overlay` — each admitted by the router automatically as it registers.
+   `screen` is skipped when the project's screens config turns it off.
 3. Broadcast initial shared properties (`theme`, `language`).
 4. Fetch the manifest aggregate.
 5. First pass over **all** packages: register every non-action schema (derived
@@ -163,11 +168,50 @@ top-level `route` and its `presentation`:
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
 
+This table is the default. A project can change it (next section).
+
 The screen domain instance
 (`…/instances/domains/screen.v1.json`) pins that type via `extensionsTypeId`,
 declares the shared properties (`theme`, `language`) and actions (`load_ext`,
 `mount_ext`) it supports, a 30 s default action timeout, and the lifecycle
 stages it drives.
+
+## The project's screen type
+
+The screen type id stays
+`gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~`; its
+schema, the menu's reading of it, and whether the screen domain exists at all
+are the project's. The project states them in `src-app/shell-config/screens.ts`,
+a file the template neither ships nor overwrites (it sits outside the
+template's `exclusiveSubtrees`). Without the file every default applies and
+nothing changes. Its default export, typed by `defineShellScreens` from
+`@gears-frontx/frontx-template-shell`, has four optional fields:
+
+| Field | Default | Effect |
+|---|---|---|
+| `schemas` | none | Registered before the shell's own screen schema. A schema under the screen type id is registered instead of the default (and, the first definition of a type id winning on the shared GTS store, stands against any copy an MFE offers later) and must keep `route` required; a type derived from the screen type adds fields. Any other `$id` is refused at startup. |
+| `extensionsTypeId` | the screen type id | The type the screen domain pins: the screen type id or one of `schemas`. A derived type here makes every screen extension declare it. |
+| `readMenuItem` | the flat reader | `(extension) => { label, icon?, order? } \| undefined`, called for each admitted screen extension. |
+| `enabled` | `true` | `false` registers no screen domain: no screen slot, no screen menu items, no empty-menu hint. The screen schemas are still registered, so an MFE that declares a screen extension is kept on the type system and not mounted. |
+
+```ts
+// src-app/shell-config/screens.ts
+import { defineShellScreens } from '@gears-frontx/frontx-template-shell';
+import siteScreen from './site_screen.v1.json'; // allOf the screen type, adds presentation.group
+
+export default defineShellScreens({
+  schemas: [siteScreen],
+  extensionsTypeId: 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~acme.site.layout.screen.v1~',
+  readMenuItem: (ext) => {
+    const p = (ext as { presentation?: { label: string; group: string; order?: number } }).presentation;
+    return p && { label: `${p.group} / ${p.label}`, order: p.order };
+  },
+});
+```
+
+`src/build/mf-gts.ts` reads no screen fields: an extension's `route` and
+`presentation` pass through the build as written, and only the schema the
+screen domain pins judges them, at registration.
 
 ## Mounting and isolation
 
@@ -183,9 +227,9 @@ host and MFEs.
   pipeline at all is the `mfe-package-contract` guideline in this bundle.
 - The ID taxonomy used in every declaration is the `gts-id-conventions`
   guideline in the `template-mfe` AI bundle.
-- Known limitations (no menu i18n, no audience targeting, flat `order`) are
-  properties of the current schemas, tracked upstream in the platform's
-  navigation-service planning — not bugs in this shell. Routing itself has its
+- Known limitations of the default schema and reader (no menu i18n, no
+  audience targeting, flat `order`) are the project's to change through its
+  screens config; the menu itself still renders one level. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema
   set. Observer-originated mounts acknowledge their current URL only: a late
   mount after Back cannot restore a stale entry.
