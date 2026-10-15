@@ -46,7 +46,7 @@
  * run it - it is a tool this repo's own tooling needs, not a template pin,
  * and it cannot follow whatever version happens to be checked out in a
  * sibling `gears-frontx` working tree (which may well be an unpublished
- * `develop` snapshot `npm ci` could never install). So the root manifest's
+ * in-development snapshot `npm ci` could never install). So the root manifest's
  * pins are ALWAYS verified against the npm registry directly - in BOTH
  * modes - never against sibling-checkout truth. See `rootNpmViewVersion`
  * and `rootManifestPinSites` in `check()` below.
@@ -203,7 +203,7 @@ function check({ rootDir, log, logError, npmViewVersion, env }) {
   // in both modes - never against a sibling checkout's `packages/*`. That
   // devDependency installs the PUBLISHED CLI so `validate-templates.mjs` can
   // run it; it cannot follow whatever version an ecosystem sibling checkout
-  // happens to have on disk (an unpublished `develop` version would break
+  // happens to have on disk (an unpublished, in-development version would break
   // `npm ci` here), and it is not a template pin site in the first place - a
   // template ships to a seeded project, this repo's own tooling manifest
   // does not. Comparing it against sibling-mode truth used to report a false

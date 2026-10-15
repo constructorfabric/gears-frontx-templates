@@ -11,7 +11,7 @@
 # on purpose.
 #
 # This job covers that gap without changing what template validation itself
-# validates: it checks out `gears-frontx`'s `develop` branch into a sibling
+# validates: it checks out `gears-frontx`'s `main` branch into a sibling
 # path, builds its packages, points the template's pins at that checkout
 # (`scripts/pin-template-ecosystem-to-local.mjs`, sibling mode), relinks
 # (`dev:template:link`), and runs the template's build and type-check against
@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   template-drift:
-    name: Template vs gears-frontx develop
+    name: Template vs gears-frontx main
     runs-on: ubuntu-latest
 
     steps:
@@ -54,11 +54,11 @@ jobs:
     # needs a path with `packages/*` in it, and a plain checkout is the
     # simplest thing that provides one without committing anything into this
     # repo's own tree.
-    - name: Checkout gears-frontx develop
+    - name: Checkout gears-frontx main
       uses: actions/checkout@v5
       with:
         repository: constructorfabric/gears-frontx
-        ref: develop
+        ref: main
         path: gears-frontx
         persist-credentials: false
 
@@ -129,7 +129,7 @@ jobs:
     # versions. This runs LAST, after the build and type-check this workflow
     # exists for, and with continue-on-error: by the release order documented
     # in publish-packages.yml (bump the ecosystem, publish, THEN bump the
-    # pins here), develop is expected to run ahead of the pins for the whole
+    # pins here), main is expected to run ahead of the pins for the whole
     # window between those two events - a failing step here must not abort
     # the job and hide a real build/type-check break behind a normal,
     # temporary pin gap. Pin correctness itself is already covered on every

@@ -57,7 +57,7 @@ Two ways to lose the links without meaning to:
 
 ### Why Template Drift CI installs without a lockfile
 
-[`template-drift.yml`](.github/workflows/template-drift.yml) checks out `gears-frontx`'s `develop` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install --no-package-lock` instead of `npm ci`. Both departures from the ordinary install exist for reasons that are easy to re-break without this record.
+[`template-drift.yml`](.github/workflows/template-drift.yml) checks out `gears-frontx`'s `main` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install --no-package-lock` instead of `npm ci`. Both departures from the ordinary install exist for reasons that are easy to re-break without this record.
 
 **Why not `npm ci` against the rewritten manifests.** Rewriting the pins ahead of install desyncs the template's `package-lock.json` from its `package.json` by construction, and `npm ci` refuses to run against a desynced lockfile. `npm install` reconciles it instead - which is exactly the operation that trips `--no-package-lock`'s reason below.
 
