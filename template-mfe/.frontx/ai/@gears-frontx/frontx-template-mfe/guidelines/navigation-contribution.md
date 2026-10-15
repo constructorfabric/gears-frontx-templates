@@ -60,7 +60,8 @@ differently, or turn the screen domain off, in its
 `src-app/shell-config/screens.ts` (the shell bundle's `navigation-composition`
 guideline). When that file exists, declare what its schema requires, use its
 derived type id as your extension id prefix when it pins one, and check that it
-does not set `enabled: false`: then no screen is mounted or listed.
+does not set `enabled: false`: then no screen is mounted or listed, though each
+is still validated and a malformed one still stops the shell at startup.
 
 ## Beyond the menu: extensions that do not target the screen domain
 

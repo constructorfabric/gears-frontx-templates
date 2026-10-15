@@ -17,6 +17,7 @@ import type { Extension } from '@gears-frontx/mfes';
 import { extensionScreenSchema as defaultScreenSchema } from './index';
 
 const GTS_SCHEMA_ID_PREFIX = 'gts://';
+const BASE_EXTENSION_TYPE_ID = 'gts.frontx.mfes.ext.extension.v1~';
 const SCREEN_EXTENSION_TYPE_ID = defaultScreenSchema.$id!.slice(GTS_SCHEMA_ID_PREFIX.length);
 
 /** What the shell menu shows for one screen extension. */
@@ -110,8 +111,8 @@ function fail(message: string): never {
 /**
  * Checks a project's screens config and fills in the defaults.
  *
- * @throws Error when a schema is not a screen type, a replacement drops the
- * required `route`, a derived type does not inherit from a screen type it
+ * @throws Error when a schema is not a screen type or is listed twice, a
+ * replacement drops the required `route` or the base extension, a derived type does not inherit from a screen type it
  * derives from, or `extensionsTypeId` names a type that is neither the screen
  * type nor one of the project's own schemas
  */
@@ -125,6 +126,9 @@ export function resolveShellScreens(config: ShellScreensConfig = {}): ResolvedSh
         `schema '${String(schema.$id)}' is not a screen type: its $id must be gts://${SCREEN_EXTENSION_TYPE_ID} or gts://<a type id derived from it, ending in ~>`,
       );
     }
+    if (projectTypeIds.has(typeId)) {
+      fail(`schema '${String(schema.$id)}' is listed more than once; the first definition of a type id wins`);
+    }
     projectTypeIds.add(typeId);
   }
 
@@ -133,6 +137,9 @@ export function resolveShellScreens(config: ShellScreensConfig = {}): ResolvedSh
     if (typeId === SCREEN_EXTENSION_TYPE_ID) {
       if (!(schema.required ?? []).includes('route')) {
         fail(`the replacement screen schema must keep 'route' in its top-level required list`);
+      }
+      if (!allOfRefs(schema).includes(BASE_EXTENSION_TYPE_ID)) {
+        fail(`the replacement screen schema must list { "$ref": "gts://${BASE_EXTENSION_TYPE_ID}" } in its allOf`);
       }
       continue;
     }

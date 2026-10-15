@@ -9,7 +9,11 @@
  * domain on).
  */
 
-import { resolveShellScreens, type ShellScreensConfig } from '@gears-frontx/frontx-template-shell';
+import {
+  resolveShellScreens,
+  type ResolvedShellScreens,
+  type ShellScreensConfig,
+} from '@gears-frontx/frontx-template-shell';
 
 const projectModules = import.meta.glob<{ default: ShellScreensConfig }>('../../shell-config/screens.ts', {
   eager: true,
@@ -21,19 +25,22 @@ function loadProjectScreens(): ShellScreensConfig | undefined {
   const [projectModule] = Object.values(projectModules);
   if (!projectModule) return undefined;
   if (projectModule.default === undefined) {
-    throw new Error(`[shell screens] ${PROJECT_FILE} has no default export; export the config with \`export default defineShellScreens({...})\``);
+    throw new Error(`${PROJECT_FILE} has no default export; export the config with \`export default defineShellScreens({...})\``);
   }
   return projectModule.default;
 }
 
-/**
- * Resolved when the module loads, so a config mistake stops the shell before
- * it renders, with the file named in the error.
- */
-export const shellScreens = (() => {
+function resolveProjectScreens(config: ShellScreensConfig | undefined): ResolvedShellScreens {
   try {
-    return resolveShellScreens(loadProjectScreens());
+    return resolveShellScreens(config);
   } catch (error) {
+    // Name the file the mistake is in; the message keeps the rule it broke.
     throw new Error(`${PROJECT_FILE}: ${error instanceof Error ? error.message : String(error)}`);
   }
-})();
+}
+
+/**
+ * Resolved when the module loads, so a config the checks in
+ * `resolveShellScreens` refuse stops the shell before it renders.
+ */
+export const shellScreens = resolveProjectScreens(loadProjectScreens());

@@ -66,7 +66,7 @@ function screen(typeId: string, name: string, presentation: Record<string, unkno
 
 describe('shell screens', () => {
   describe('without a project config', () => {
-    it('registers only the shell default schema, pins the screen type and reads the flat presentation', () => {
+    it('resolves to the shell default schema, screen type and flat reader', () => {
       const screens = resolveShellScreens();
 
       expect(screens.enabled).toBe(true);
@@ -103,6 +103,18 @@ describe('shell screens', () => {
 
       expect(() => resolveShellScreens({ schemas: [withoutRoute] })).toThrow(/keep 'route'/);
     });
+
+    it('is refused when it drops the base extension schema', () => {
+      const detached = { ...labelsScreenSchema, allOf: [] };
+
+      expect(() => resolveShellScreens({ schemas: [detached] })).toThrow(/must list .* in its allOf/);
+    });
+
+    it('is refused when listed twice', () => {
+      expect(() => resolveShellScreens({ schemas: [labelsScreenSchema, labelsScreenSchema] })).toThrow(
+        /listed more than once/,
+      );
+    });
   });
 
   describe('a project-derived screen type', () => {
@@ -112,6 +124,16 @@ describe('shell screens', () => {
       const plugin = storeFor(config);
 
       expect(() => plugin.register(screen(SITE_SCREEN_TYPE, 'inbox', { label: 'Inbox', group: 'Mail' }))).not.toThrow();
+    });
+
+    it('accepts a type derived from another configured screen type', () => {
+      const nested: JSONSchema = {
+        $id: `gts://${SITE_SCREEN_TYPE}acme.site.layout.admin.v1~`,
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        allOf: [{ $ref: `gts://${SITE_SCREEN_TYPE}` }],
+      };
+
+      expect(() => resolveShellScreens({ schemas: [groupedScreenSchema, nested] })).not.toThrow();
     });
 
     it('still holds the base schema under it: a screen without the base label is refused', () => {
@@ -145,18 +167,29 @@ describe('shell screens', () => {
     expect(() => resolveShellScreens({ schemas: [instanceId] })).toThrow(/is not a screen type/);
   });
 
-  it('still validates screen extensions when the screen domain is off', () => {
+  it('keeps the screen schemas, and so validates screen extensions, when the screen domain is off', () => {
+    expect(resolveShellScreens({ enabled: false })).toMatchObject({ enabled: false, schemas: [extensionScreenSchema] });
     const plugin = storeFor({ enabled: false });
 
     expect(() => plugin.register(screen(SCREEN_TYPE, 'inbox', { label: 'Inbox' }))).not.toThrow();
     expect(() => plugin.register(screen(SCREEN_TYPE, 'outbox', {}))).toThrow(/GTS validation failed/);
   });
 
-  it('reads label, icon and order with the flat reader', () => {
-    expect(readFlatScreenMenuItem(screen(SCREEN_TYPE, 'a', { label: 'A', icon: 'lucide:a', order: 3 }))).toEqual({
-      label: 'A',
-      icon: 'lucide:a',
-      order: 3,
-    });
+  it('hands the project reader through to the menu', () => {
+    const readMenuItem = () => ({ label: 'x' });
+
+    expect(resolveShellScreens({ readMenuItem }).readMenuItem).toBe(readMenuItem);
+  });
+
+  it.each([
+    ['all three fields', { label: 'A', icon: 'lucide:a', order: 3 }, { label: 'A', icon: 'lucide:a', order: 3 }],
+    ['an icon and order of the wrong type dropped', { label: 'A', icon: 1, order: '3' }, { label: 'A' }],
+    ['no string label: left out', { label: 7 }, undefined],
+  ])('the flat reader reads %s', (_name, presentation, item) => {
+    expect(readFlatScreenMenuItem(screen(SCREEN_TYPE, 'a', presentation))).toEqual(item);
+  });
+
+  it('the flat reader leaves out a screen without presentation', () => {
+    expect(readFlatScreenMenuItem({ id: 'x', domain: 'd', entry: 'e' } as Extension)).toBeUndefined();
   });
 });

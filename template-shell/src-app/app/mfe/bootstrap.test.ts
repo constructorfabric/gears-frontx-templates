@@ -147,6 +147,17 @@ describe('bootstrapMFE (host-app)', () => {
       );
     });
 
+    it("pins the framework's own screen type on the screen domain by default", async () => {
+      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      const { FRONTX_SCREEN_EXTENSION_TYPE } = await import('@gears-frontx/react');
+
+      const { bootstrapMFE } = await import('./bootstrap');
+      await bootstrapMFE(mockApp as never);
+
+      const [screenDeclaration] = registerDomain.mock.calls[0];
+      expect(screenDeclaration.extensionsTypeId).toBe(FRONTX_SCREEN_EXTENSION_TYPE);
+    });
+
     it('pins the derived screen type the project names', async () => {
       fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
       const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');

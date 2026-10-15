@@ -149,8 +149,9 @@ Two outcomes at the `extensions` step are deliberately different:
   screen schema an extension without `presentation` is a malformed contribution
   and fails here, at registration, not silently later in the UI.
 - **Skip.** An extension whose target domain the host does not own (checked via
-  `hostOwnsDomain()`) is skipped without validation and reaches the owning
-  runtime instead — e.g. widget extensions targeting a domain a nested MFE
+  `hostOwnsDomain()`) is not admitted or mounted here: it is only registered on
+  the type system, which still validates it against its own type's schema, and
+  it reaches the owning runtime instead, e.g. widget extensions targeting a domain a nested MFE
   app declares itself. Rejection means "malformed contribution to my slot";
   skipping means "not my slot". Composition is recursive, not just
   shell → MFE.
@@ -186,17 +187,19 @@ schema, the menu's reading of it, and whether the screen domain exists at all
 are the project's. The project states them in `src-app/shell-config/screens.ts`,
 a file the template neither ships nor overwrites (it sits outside the
 template's `exclusiveSubtrees`). Without the file every default applies and
-nothing changes. A config mistake stops the shell at startup with an error that names the
-file; a file without a default export is such a mistake. Its default export,
+nothing changes. A config the checks below refuse, or a file without a default export, stops
+the shell at startup with an error that names the file. Field types are not
+checked at runtime, and a schema the GTS store itself refuses fails at
+registration in `main.tsx`. Its default export,
 typed by `defineShellScreens` from
 `@gears-frontx/frontx-template-shell`, has four optional fields:
 
 | Field | Default | Effect |
 |---|---|---|
-| `schemas` | none | Each `$id` is `gts://` plus a type id (ending in `~`). A schema under the screen type id is registered instead of the default (the first definition of a type id wins on the shared GTS store, so it also stands against any copy an MFE offers later) and must keep `route` in its top-level `required`; if it drops the flat `presentation.label`, supply `readMenuItem` too, or the default reader lists nothing. A type derived from the screen type adds fields and must name the type it derives from in its top-level `allOf` (`{ "$ref": "gts://<parent type id>" }`), since a derived type is validated against its own schema only. Any other `$id` is refused at startup. |
+| `schemas` | none | Each `$id` is `gts://` plus a type id (ending in `~`), listed once. A schema under the screen type id is registered instead of the default (the first definition of a type id wins on the shared GTS store, so it also stands against any copy an MFE offers later); it must keep `route` in its own top-level `required` and `{ "$ref": "gts://gts.frontx.mfes.ext.extension.v1~" }` in its top-level `allOf`; if it drops the flat `presentation.label`, supply `readMenuItem` too, or the default reader lists nothing. A type derived from the screen type adds fields and must name the type it derives from in its top-level `allOf` (`{ "$ref": "gts://<parent type id>" }`), since a derived type is validated against its own schema only. Any other `$id` is refused at startup. |
 | `extensionsTypeId` | the screen type id | The type the screen domain pins: the screen type id or one of `schemas`. A derived type here makes every screen extension declare it. |
 | `readMenuItem` | the flat reader | `(extension) => { label, icon?, order? } \| undefined`, called once per admitted screen extension after bootstrap. It gets no language or user, and is not called again when either changes. |
-| `enabled` | `true` | `false` registers no screen domain: no screen slot, no screen menu items, no empty-menu hint. The screen schemas are still registered, so a screen extension an MFE still declares is validated and kept on the type system, never mounted. |
+| `enabled` | `true` | `false` registers no screen domain: no screen slot, no screen menu items, no empty-menu hint. The screen schemas are still registered, so a screen extension an MFE still declares is validated (a malformed one still stops startup) and kept on the type system, never mounted. |
 
 ```ts
 // src-app/shell-config/screens.ts
