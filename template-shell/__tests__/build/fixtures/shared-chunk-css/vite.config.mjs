@@ -33,6 +33,9 @@ const allExposes = {
 const picked = (process.env.FIXTURE_EXPOSES ?? 'a,b,c').split(',');
 
 const skewMode = process.env.FIXTURE_SKEW_LAZY_PANEL;
+if (skewMode && skewMode !== 'keep-call' && skewMode !== 'drop-call') {
+  throw new Error(`fixture: unknown FIXTURE_SKEW_LAZY_PANEL '${skewMode}'`);
+}
 const skewLazyPanel = {
   name: 'fixture-skew-lazy-panel',
   enforce: 'post',

@@ -1375,7 +1375,8 @@ function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
     }
   }
   for (const key of Object.keys(astNode)) {
-    if (key !== 'type' && key !== 'start' && key !== 'end') lazyCallSpecifiers(astNode[key], found);
+    if (key === 'loc' || key === 'range' || key === 'start' || key === 'end' || key === 'type') continue;
+    lazyCallSpecifiers(astNode[key], found);
   }
   return found;
 }
@@ -1548,19 +1549,21 @@ export function frontxMfGts(): Plugin {
         // and fails the build. A chunk it predicted removed that Vite kept
         // (a lazily imported stylesheet that compiles to no CSS) is renamed
         // to `__frontx_lazy` below, as every other kept chunk is. When the
-        // two lists no longer pair up, the build fails if the chunk left an
-        // import alone, or if its code loads through `__frontx_lazy` a file
-        // the bundle no longer has: that call would fetch a missing file.
+        // two lists no longer pair up and the chunk left an import alone, the
+        // build fails: that import cannot be matched to its CSS.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
         const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
-        if (preliminaryDynamic.length !== output.dynamicImports.length) {
-          if (leftAlone?.size) {
-            outputFailed = true;
-            this.error(
-              `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
-                `when it was rendered, so its imports of CSS-only chunks cannot be checked.`
-            );
-          }
+        if (preliminaryDynamic.length !== output.dynamicImports.length && leftAlone?.size) {
+          outputFailed = true;
+          this.error(
+            `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
+              `when it was rendered, so its imports of CSS-only chunks cannot be checked.`
+          );
+        }
+        // Whatever another plugin did to the bundle or the import lists, a
+        // `__frontx_lazy` call to a file the bundle no longer has would fetch
+        // a missing file at runtime, so it fails the build.
+        if (output.code.includes('__frontx_lazy')) {
           const missing = lazyCallSpecifiers(this.parse(output.code)).filter(
             (specifier) =>
               bundle[path.posix.join(path.posix.dirname(fileName), specifier)] === undefined
