@@ -211,10 +211,11 @@ export async function bootstrapWidgetsRuntime(
   // registered at the application layer"), because a standalone mount has no
   // shell. Re-registering identical content is silent, so they are registered
   // here unconditionally. They MUST be registered here before ANY domain that
-  // references them by `x-gts-ref` in its own `sharedProperties` — not only the well-known `screenDomain` registered
-  // below, but also the manifest-declared widgets domain in the loop that
-  // follows. Registering these three ahead of the manifest-driven domain loop
-  // covers the application-level schema ordering rule.
+  // references them by `x-gts-ref` in its own `sharedProperties` — not only
+  // the well-known `screenDomain` registered below, but also any
+  // manifest-declared domain in the loop that follows. Registering these
+  // three ahead of the manifest-driven domain loop covers the
+  // application-level schema ordering rule.
   registry.typeSystem.registerSchema(themeSchema);
   registry.typeSystem.registerSchema(languageSchema);
   registry.typeSystem.registerSchema(extensionScreenSchema);
@@ -248,7 +249,18 @@ export async function bootstrapWidgetsRuntime(
   // admission validation for that action checks referenced entities against
   // THIS store before the action ever reaches cross-hop routing). Its own
   // four referenced schemas were already registered above.
-  registry.typeSystem.register(screenDomain);
+  //
+  // Registered only when the store does not hold it yet: the store is shared
+  // with the shell, whose own `screenDomain` declaration adds its chrome
+  // actions, and writing the plain framework one over it would replace the
+  // shell's record (the store keeps the last write). A standalone mount, with
+  // no shell, still gets it here. The type system has no lookup for an
+  // instance, so a passing validation stands in for "already there": every
+  // write is validated before it lands and types are never removed, so a
+  // record that is there validates.
+  if (!registry.typeSystem.validateInstance(screenDomain.id).valid) {
+    registry.typeSystem.register(screenDomain);
+  }
 
   // Guarded against a cached registry: every mount of the host lifecycle
   // runs this bootstrap against the same nested `MfeRegistry`, so a remount
@@ -266,11 +278,11 @@ export async function bootstrapWidgetsRuntime(
       // on this nested type system — not just the widgets-domain ones this
       // registry owns and mounts below — so `x-gts-ref` validation for an
       // action referencing a foreign-domain extension instance (e.g. the
-      // shell's Hello World screen extension) resolves against this
-      // registry's own independent GtsStore. This registration is
-      // type-system-only: it does not admit the extension for mounting in
-      // this registry (that stays gated by the WIDGETS_DOMAIN_ID check
-      // below, via `registerExtension`).
+      // shell's Hello World screen extension) resolves on this registry's
+      // type system whether or not the shell registered it first. This
+      // registration is type-system-only: it does not admit the extension
+      // for mounting in this registry (that stays gated by the
+      // WIDGETS_DOMAIN_ID check below, via `registerExtension`).
       registry.typeSystem.register(extension);
       if (extension.domain === WIDGETS_DOMAIN_ID && !registry.getExtension(extension.id)) {
         await registry.registerExtension(extension);

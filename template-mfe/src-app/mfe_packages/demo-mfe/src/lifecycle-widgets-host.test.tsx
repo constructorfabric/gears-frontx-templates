@@ -111,6 +111,7 @@ class FakeRegistry {
   typeSystem = {
     register: vi.fn(),
     registerSchema: vi.fn(),
+    validateInstance: vi.fn(() => ({ valid: false, errors: [] })),
     // Widened beyond `undefined` so the ping tests below can give it a
     // per-test implementation returning a schema shape.
     getSchema: vi.fn((): { actions?: readonly string[] } | undefined => undefined),
