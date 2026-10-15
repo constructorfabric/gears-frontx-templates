@@ -52,13 +52,14 @@ afterEach(() => {
 /** One child build may take up to its 120 s limit; the global test timeout is shorter. */
 const BUILD_TEST_TIMEOUT_MS = 150_000;
 
-function buildFixture(exposes: string, cssCodeSplit = true): string {
+function buildFixture(exposes: string, cssCodeSplit = true, extraEnv: Record<string, string> = {}): string {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-chunk-css-'));
   outDirs.push(outDir);
   const env: Record<string, string | undefined> = {
     ...process.env,
     FIXTURE_EXPOSES: exposes,
     FIXTURE_CSS_CODE_SPLIT: String(cssCodeSplit),
+    ...extraEnv,
   };
   delete env.NODE_ENV;
   env.MFE_VITE_NO_TEST_ENV_CHECK = 'true';
@@ -210,5 +211,15 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     }
     expect(stderr).toMatch(/expose '\.\/lifecycle-h' needs: \S*shared\.pcss/);
     expect(stderr).toMatch(/expose '\.\/lifecycle-i' needs: \S*shared\.pcss/);
+  }, BUILD_TEST_TIMEOUT_MS);
+
+  it('fails the build when a chunk with no CSS-only imports changed its dynamic imports after rendering and loads a chunk that was removed', () => {
+    let stderr = '';
+    try {
+      buildFixture('a,b', true, { FIXTURE_SKEW_LAZY_PANEL: 'true' });
+    } catch (error) {
+      stderr = String((error as { stderr?: Buffer }).stderr ?? '');
+    }
+    expect(stderr).toMatch(/has a different number of dynamic imports than when it was rendered/);
   }, BUILD_TEST_TIMEOUT_MS);
 });

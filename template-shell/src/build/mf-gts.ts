@@ -1505,6 +1505,11 @@ export function frontxMfGts(): Plugin {
     // guard below checks them against the federation manifest's per-expose
     // CSS attribution.
     generateBundle(_options, bundle) {
+      // Preliminary names of the chunks still in the bundle; a rendered
+      // chunk missing here was removed after rendering.
+      const remainingChunks = new Set(
+        Object.values(bundle).flatMap((o) => (o.type === 'chunk' ? [o.preliminaryFileName] : []))
+      );
       for (const [fileName, output] of Object.entries(bundle)) {
         if (output.type !== 'chunk') continue;
         // A CSS-only chunk reached by a dynamic import (`import('./x.css')`)
@@ -1518,14 +1523,21 @@ export function frontxMfGts(): Plugin {
         // a renamed call to a chunk Vite removed would fetch a missing file
         // and fails the build. A chunk it predicted removed that Vite kept
         // (a lazily imported stylesheet that compiles to no CSS) is renamed
-        // to `__frontx_lazy` below, as every other kept chunk is.
+        // to `__frontx_lazy` below, as every other kept chunk is. When the
+        // two lists no longer pair up, the build fails if the chunk left an
+        // import alone or dynamically imports a chunk that was removed: either
+        // could leave a call to a missing file and CSS no list names.
         const preliminaryDynamic = chunkDynamicImports.get(output.preliminaryFileName) ?? [];
         const leftAlone = chunkCssOnlyImports.get(output.preliminaryFileName);
-        if (preliminaryDynamic.length !== output.dynamicImports.length && leftAlone?.size) {
+        if (
+          preliminaryDynamic.length !== output.dynamicImports.length &&
+          (leftAlone?.size ||
+            preliminaryDynamic.some((p) => chunkOwnCss.has(p) && !remainingChunks.has(p)))
+        ) {
           outputFailed = true;
           this.error(
             `[frontx-mf-gts] '${fileName}' has a different number of dynamic imports than ` +
-              `when it was rendered, so its imports of CSS-only chunks cannot be checked.`
+              `when it was rendered, so its imports of removed CSS-only chunks cannot be checked.`
           );
         }
         if (preliminaryDynamic.length === output.dynamicImports.length) {
