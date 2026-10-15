@@ -1352,7 +1352,26 @@ function transformLazyImports(
 }
 
 /**
- * The string specifier of every `__frontx_lazy('<path>')` call in a parsed
+ * The string an argument the lazy-import transform renames evaluates to: a
+ * string literal, a template literal without expressions, or a `+` of those.
+ */
+function constantString(node: AstNode | undefined): string | undefined {
+  if (node === undefined) return undefined;
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node.type === 'TemplateLiteral' && Array.isArray(node.quasis) && node.quasis.length === 1) {
+    const cooked = (node.quasis[0] as { value?: { cooked?: unknown } }).value?.cooked;
+    return typeof cooked === 'string' ? cooked : undefined;
+  }
+  if (node.type === 'BinaryExpression' && node.operator === '+') {
+    const left = constantString(node.left as AstNode | undefined);
+    const right = constantString(node.right as AstNode | undefined);
+    return left !== undefined && right !== undefined ? left + right : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The constant specifier of every `__frontx_lazy(...)` call in a parsed
  * chunk, as the runtime resolver will fetch it.
  */
 function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
@@ -1364,15 +1383,11 @@ function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
   const astNode = node as AstNode;
   if (astNode.type === 'CallExpression') {
     const callee = astNode.callee as AstNode | undefined;
-    const arg = (astNode.arguments as AstNode[] | undefined)?.[0];
-    if (
-      callee?.type === 'Identifier' &&
-      callee.name === '__frontx_lazy' &&
-      arg?.type === 'Literal' &&
-      typeof arg.value === 'string'
-    ) {
-      found.push(arg.value);
-    }
+    const specifier =
+      callee?.type === 'Identifier' && callee.name === '__frontx_lazy'
+        ? constantString((astNode.arguments as AstNode[] | undefined)?.[0])
+        : undefined;
+    if (specifier !== undefined) found.push(specifier);
   }
   for (const key of Object.keys(astNode)) {
     if (key === 'loc' || key === 'range' || key === 'start' || key === 'end' || key === 'type') continue;

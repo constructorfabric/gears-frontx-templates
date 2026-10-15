@@ -2,7 +2,7 @@
 // `__tests__/build/shared-chunk-css.test.ts` in a child process: the
 // federation plugin turns itself off under Vitest. FIXTURE_EXPOSES picks
 // which of the exposes the build declares; `mfe.json` has entries for a and
-// b only, so every build declares those two and c to o are exposes without
+// b only, so every build declares those two and c to p are exposes without
 // an entry. FIXTURE_CSS_CODE_SPLIT=false builds without per-chunk CSS.
 // FIXTURE_SKEW_LAZY_PANEL adds a plugin that, before frontx-mf-gts sees the
 // bundle, deletes the lazy-panel chunk and changes how many dynamic imports
@@ -29,6 +29,7 @@ const allExposes = {
   './lifecycle-m': './src/lifecycle-m.js',
   './lifecycle-n': './src/lifecycle-n.js',
   './lifecycle-o': './src/lifecycle-o.js',
+  './lifecycle-p': './src/lifecycle-p.js',
 };
 const picked = (process.env.FIXTURE_EXPOSES ?? 'a,b,c').split(',');
 

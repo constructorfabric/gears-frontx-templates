@@ -20,7 +20,9 @@
  * imports the stylesheet, a lazily imported stylesheet that compiles to no
  * CSS (Vite keeps its empty chunk, which loads like any other lazy chunk),
  * and stylesheets imported only as `?raw` and `?url`, which Vite does not
- * extract.
+ * extract. The last cases fail builds whose code loads through
+ * `__frontx_lazy` a file the bundle does not have: a chunk another plugin
+ * deleted after rendering, and a concatenated path no chunk was built for.
  *
  * The build runs `vite build` in a child process, with NODE_ENV unset and
  * `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's documented
@@ -230,5 +232,18 @@ describe('frontxMfGts shared-chunk CSS attribution', () => {
     const outDir = buildFixture('a,b', true, { FIXTURE_SKEW_LAZY_PANEL: 'drop-call' });
     expect(fs.existsSync(path.join(outDir, 'mfe-manifest.json'))).toBe(true);
     expect(fs.readdirSync(path.join(outDir, 'assets')).filter((f) => /^lazy-panel-.*\.js$/.test(f))).toEqual([]);
+  }, BUILD_TEST_TIMEOUT_MS);
+
+  it('fails the build when a chunk loads through __frontx_lazy a concatenated path no chunk has', () => {
+    let stderr = '';
+    let failed = false;
+    try {
+      buildFixture('a,b,p');
+    } catch (error) {
+      failed = true;
+      stderr = String((error as { stderr?: Buffer }).stderr ?? '');
+    }
+    expect(failed).toBe(true);
+    expect(stderr).toMatch(/loads '\.\/missing-lazy\.js' through __frontx_lazy, but the bundle has no such file/);
   }, BUILD_TEST_TIMEOUT_MS);
 });
