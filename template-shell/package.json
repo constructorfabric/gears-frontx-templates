@@ -71,8 +71,8 @@
   },
   "dependencies": {
     "@gears-frontx/api": "0.3.0-alpha.3",
-    "@gears-frontx/gts-plugin": "0.3.2",
-    "@gears-frontx/mfes": "0.3.1",
+    "@gears-frontx/gts-plugin": "0.3.3",
+    "@gears-frontx/mfes": "0.3.2",
     "@gears-frontx/routing": "0.3.0-alpha.2",
     "@gears-frontx/ui-kit": "0.4.0-alpha.3",
     "@hookform/resolvers": "5.2.2",
