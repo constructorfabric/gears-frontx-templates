@@ -104,6 +104,12 @@ describe('shell screens', () => {
       expect(() => resolveShellScreens({ schemas: [withoutRoute] })).toThrow(/keep 'route'/);
     });
 
+    it('is refused when its required list is a string', () => {
+      const requiredAsString = { ...labelsScreenSchema, required: 'route' } as unknown as JSONSchema;
+
+      expect(() => resolveShellScreens({ schemas: [requiredAsString] })).toThrow(/keep 'route'/);
+    });
+
     it('is refused when it drops the base extension schema', () => {
       const detached = { ...labelsScreenSchema, allOf: [] };
 

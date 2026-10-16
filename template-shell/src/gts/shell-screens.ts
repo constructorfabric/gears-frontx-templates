@@ -135,7 +135,10 @@ export function resolveShellScreens(config: ShellScreensConfig = {}): ResolvedSh
   for (const schema of projectSchemas) {
     const typeId = typeIdOf(schema)!;
     if (typeId === SCREEN_EXTENSION_TYPE_ID) {
-      if (!(schema.required ?? []).includes('route')) {
+      // A schema loaded from JSON can carry `required` as a string, which
+      // `includes` would match as a substring.
+      const required: unknown = schema.required;
+      if (!Array.isArray(required) || !required.includes('route')) {
         fail(`the replacement screen schema must keep 'route' in its top-level required list`);
       }
       if (!allOfRefs(schema).includes(BASE_EXTENSION_TYPE_ID)) {
