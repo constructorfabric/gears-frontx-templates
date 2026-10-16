@@ -192,15 +192,16 @@ are the project's. The project states them in `src-app/shell-config/screens.ts`,
 a file the template neither ships nor overwrites (it sits outside the
 template's `exclusiveSubtrees`). Without the file every default applies and
 nothing changes. A config the checks below refuse, or a file without a default export, stops
-the shell at startup with an error that names the file. Field types are not
-checked at runtime, and a schema the GTS store itself refuses fails at
+the shell at startup with an error that names the file. The types of the
+config's own fields are not checked at runtime (`enabled: 'false'`, a string,
+leaves the screen domain on), and a schema the GTS store itself refuses fails at
 registration in `main.tsx`. Its default export,
 typed by `defineShellScreens` from
 `@gears-frontx/frontx-template-shell`, has four optional fields:
 
 | Field | Default | Effect |
 |---|---|---|
-| `schemas` | none | Each `$id` is `gts://` plus a type id (ending in `~`), listed once. A schema under the screen type id is registered instead of the default (the first definition of a type id wins on the shared GTS store, so it also stands against any copy an MFE offers later); it must keep `route` in its own top-level `required` and `{ "$ref": "gts://gts.frontx.mfes.ext.extension.v1~" }` in its top-level `allOf`; if it drops the flat `presentation.label`, supply `readMenuItem` too, or the default reader lists nothing. A type derived from the screen type adds fields and must name the type it derives from in its top-level `allOf` (`{ "$ref": "gts://<parent type id>" }`), since a derived type is validated against its own schema only. Any other `$id` is refused at startup. |
+| `schemas` | none | Each `$id` is `gts://` plus a type id (ending in `~`), listed once. A schema under the screen type id is registered instead of the default (the first definition of a type id wins on the shared GTS store, so it also stands against any copy an MFE offers later); it must keep `route` in its own top-level `required` and `{ "$ref": "gts://gts.frontx.mfes.ext.extension.v1~" }` in its top-level `allOf`; if it drops the flat `presentation.label`, supply `readMenuItem` too, or the default reader lists nothing. A type derived from the screen type adds fields and must name the type it derives from in its top-level `allOf` (`{ "$ref": "gts://<parent type id>" }`), where the parent is the screen type itself or another entry of `schemas` (a parent registered elsewhere, such as by an MFE, is refused), since a derived type is validated against its own schema only. Any other `$id` is refused at startup. |
 | `extensionsTypeId` | the screen type id | The type the screen domain pins: the screen type id or one of `schemas`. A derived type here makes every screen extension declare it. |
 | `readMenuItem` | the flat reader | `(extension, { language }) => { label, icon?, order? } \| undefined`, called for every admitted screen extension after bootstrap and again on every language switch, with the current language code. It gets no user. |
 | `enabled` | `true` | `false` registers no screen domain: no screen slot, no screen menu items, no empty-menu hint. The screen schemas are still registered, so a screen extension an MFE still declares is validated (a malformed one fails MFE bootstrap: the error is logged and the packages after it are not registered) and kept on the type system, never mounted. |

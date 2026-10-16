@@ -138,6 +138,12 @@ describe('bootstrapMFE (host-app)', () => {
     const SCREEN_TYPE = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~';
     const SITE_SCREEN_TYPE = `${SCREEN_TYPE}acme.site.layout.screen.v1~`;
 
+    const screenDomainCall = () => {
+      const call = registerDomain.mock.calls.find(([declaration]) => (declaration as { id: string }).id === 'screen-domain');
+      if (!call) throw new Error('the screen domain was not registered');
+      return call;
+    };
+
     beforeEach(() => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -154,7 +160,7 @@ describe('bootstrapMFE (host-app)', () => {
       const { bootstrapMFE } = await import('./bootstrap');
       await bootstrapMFE(mockApp as never);
 
-      const [screenDeclaration] = registerDomain.mock.calls[0];
+      const [screenDeclaration] = screenDomainCall();
       expect(screenDeclaration.extensionsTypeId).toBe(FRONTX_SCREEN_EXTENSION_TYPE);
     });
 
@@ -176,7 +182,7 @@ describe('bootstrapMFE (host-app)', () => {
       await bootstrapMFE(mockApp as never, screens);
 
       const { CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } = await import('./chrome-actions');
-      const [screenDeclaration] = registerDomain.mock.calls[0];
+      const [screenDeclaration] = screenDomainCall();
       expect(screenDeclaration.extensionsTypeId).toBe(SITE_SCREEN_TYPE);
       expect(screenDeclaration.actions).toEqual([CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED]);
     });

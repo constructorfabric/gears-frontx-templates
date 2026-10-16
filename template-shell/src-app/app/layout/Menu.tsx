@@ -5,7 +5,7 @@
  * Uses local shadcn/ui Sidebar components for proper styling and collapsible behavior.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import {
   useAppSelector,
   useFrontX,
@@ -74,12 +74,18 @@ export const menuItemTestId = (extensionId: string): string => `menu-item-${exte
  * is set the shell broadcasts `en` (`bootstrap.ts`).
  */
 function useScreenLanguage(i18nRegistry: { getLanguage(): string | null } | undefined): string {
-  const [language, setLanguage] = useState(() => i18nRegistry?.getLanguage() ?? 'en');
-  useEffect(() => {
-    const subscription = eventBus.on('i18n/language/changed', (payload) => setLanguage(payload.language));
+  const switched = useRef<string | undefined>(undefined);
+  const subscribe = useCallback((onChange: () => void) => {
+    const subscription = eventBus.on('i18n/language/changed', (payload) => {
+      switched.current = payload.language;
+      onChange();
+    });
     return () => subscription.unsubscribe();
   }, []);
-  return language;
+  // React reads the snapshot again once subscribed, so a switch made before
+  // the subscription (by an effect that ran first) is still seen, through the
+  // registry the i18n plugin updates on the same event.
+  return useSyncExternalStore(subscribe, () => switched.current ?? i18nRegistry?.getLanguage() ?? 'en');
 }
 
 export const Menu: React.FC<MenuProps> = ({ children }) => {
@@ -123,20 +129,27 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // The project's reader turns each extension into a menu item, or leaves it
   // out by returning nothing; the default reads the flat `presentation` of the
   // shell's own screen schema. A reader that throws on one extension costs
-  // only that extension.
-  const entries = useMemo(() => {
-    if (!extensions) return undefined;
+  // only that extension; the failures are logged after render, not during it.
+  const { entries, failures } = useMemo(() => {
+    if (!extensions) return { entries: undefined, failures: [] };
     const read: MenuEntry[] = [];
+    const failed: Array<{ id: string; error: unknown }> = [];
     for (const ext of extensions) {
       try {
         const item = shellScreens.readMenuItem(ext, { language });
         if (item) read.push({ id: ext.id, item });
       } catch (error) {
-        console.error(`[Menu] readMenuItem failed for ${ext.id}; the screen is left out of the menu`, error);
+        failed.push({ id: ext.id, error });
       }
     }
-    return read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999));
+    return { entries: read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999)), failures: failed };
   }, [extensions, language]);
+
+  useEffect(() => {
+    for (const { id, error } of failures) {
+      console.error(`[Menu] readMenuItem failed for ${id}; the screen is left out of the menu`, error);
+    }
+  }, [failures]);
 
   // No registry means no microfrontends plugin: nothing is ever coming. A
   // project that turned the screen domain off has no screen items to list and

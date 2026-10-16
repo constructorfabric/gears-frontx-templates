@@ -1,3 +1,4 @@
+import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -235,8 +236,51 @@ describe('Menu', () => {
       await switchLanguage('de');
       expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
 
-      await switchLanguage('fr');
+      await switchLanguage('en');
       expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+    });
+
+    it('falls back to the flat label for a language the extension has no label for', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      await renderSettled();
+
+      await switchLanguage('de');
+      await switchLanguage('fr');
+
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+    });
+
+    it('catches a switch an earlier effect makes before the menu subscribes', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      // Stands in for the i18n plugin, which keeps the registry's language in
+      // step with the event before any component subscribes.
+      let current = 'en';
+      const registrySubscription = eventBus.on('i18n/language/changed', ({ language }) => {
+        current = language;
+      });
+      mockUseFrontX.mockReturnValue({ ...app, i18nRegistry: { getLanguage: () => current } });
+      // A sibling rendered before the menu runs its effect first.
+      const RestoreLanguage = () => {
+        React.useEffect(() => {
+          eventBus.emit('i18n/language/changed', { language: 'de' });
+        }, []);
+        return null;
+      };
+
+      try {
+        await act(async () => {
+          render(
+            <>
+              <RestoreLanguage />
+              <Menu />
+            </>,
+          );
+        });
+
+        expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+      } finally {
+        registrySubscription.unsubscribe();
+      }
     });
 
     it('starts in the language the shell already has', async () => {

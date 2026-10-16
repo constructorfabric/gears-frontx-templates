@@ -183,7 +183,7 @@ describe('shell screens', () => {
     expect(() => plugin.register(screen(SCREEN_TYPE, 'outbox', {}))).toThrow(/GTS validation failed/);
   });
 
-  it('hands the project reader through to the menu', () => {
+  it('resolves to the project reader', () => {
     const readMenuItem = () => ({ label: 'x' });
 
     expect(resolveShellScreens({ readMenuItem }).readMenuItem).toBe(readMenuItem);
