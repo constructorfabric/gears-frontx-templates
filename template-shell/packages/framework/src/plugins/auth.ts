@@ -1047,12 +1047,14 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
           };
         },
       });
+      // Before subscribing: a provider may report its current state synchronously inside subscribe,
+      // and that report must wait for the baseline.
+      void session.establish();
       unsubscribe = config.provider.subscribe?.((event) => {
         if (event.state === 'authenticated' || event.state === 'unauthenticated') {
           void session.observe(event.state === 'authenticated');
         }
       }) ?? null;
-      void session.establish();
     },
     onDestroy(_app) {
       unsubscribe?.();

@@ -1012,6 +1012,22 @@ describe('auth plugin', () => {
       app.destroy();
     });
 
+    it('emits nothing at init for a provider that replays its state synchronously on subscribe', async () => {
+      const provider = makeStreamProvider({ identity: true });
+      const subscribe = provider.subscribe!;
+      provider.subscribe = vi.fn((next: AuthStateListener) => {
+        const unsubscribeProvider = subscribe(next);
+        next({ state: 'authenticated' });
+        return unsubscribeProvider;
+      });
+      const { app, loggedIn, loggedOut } = await buildWithEvents(provider);
+      await settle();
+
+      expect(loggedIn).not.toHaveBeenCalled();
+      expect(loggedOut).not.toHaveBeenCalled();
+      app.destroy();
+    });
+
     it('clears for a refresh that resolves to no session before the init check completes', async () => {
       const provider = makeStreamProvider({ identity: true, stream: false });
       const initCheck = deferred<{ authenticated: boolean }>();
