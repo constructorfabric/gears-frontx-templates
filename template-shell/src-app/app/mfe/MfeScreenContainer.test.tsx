@@ -138,7 +138,8 @@ describe('MfeScreenContainer', () => {
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
     // Every render, not only the last, passes no registry.
     expect(mockUseDomainRouteStatus).toHaveBeenCalled();
-    expect(mockUseDomainRouteStatus.mock.calls.every(([registry]) => registry === undefined)).toBe(true);
+    const registries = mockUseDomainRouteStatus.mock.calls.map(([registry]) => registry);
+    expect(registries).toEqual(registries.map(() => undefined));
   });
 
   it('shows no error state when the project turned screens off, for a failed bootstrap or a reported screen failure', async () => {

@@ -128,7 +128,7 @@ describe('shell screens', () => {
   describe('a project-derived screen type', () => {
     const config: ShellScreensConfig = { schemas: [groupedScreenSchema], extensionsTypeId: SITE_SCREEN_TYPE };
 
-    it('admits a screen carrying the field the derived type adds, and the reader reads it', () => {
+    it('admits a screen carrying the field the derived type adds, and the default reader still lists it', () => {
       const plugin = storeFor(config);
       const inbox = screen(SITE_SCREEN_TYPE, 'inbox', { label: 'Inbox', group: 'Mail' });
 
