@@ -109,13 +109,15 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
     });
   };
 
+  // One error state at a time: a failed bootstrap wins, since no screen can
+  // mount without it.
+  let retryFailed: (() => void) | undefined;
+  if (bootstrapFailed) retryFailed = () => window.location.reload();
+  else if (loadFailure) retryFailed = retryScreen;
+
   return (
     <div className="flex-1 overflow-auto" data-mfe-screen-container>
-      {bootstrapFailed ? (
-        <LoadFailed onRetry={() => window.location.reload()} />
-      ) : loadFailure ? (
-        <LoadFailed onRetry={retryScreen} />
-      ) : null}
+      {retryFailed ? <LoadFailed onRetry={retryFailed} /> : null}
       {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}
