@@ -33,18 +33,8 @@ import {
   FRONTX_SCREEN_DOMAIN,
 } from '@gears-frontx/react';
 import { bootstrapOnce } from './bootstrapOnce';
+import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
-
-export interface LoadFailedProps {
-  onRetry: () => void;
-}
-
-/** The words of the error state, shared by every rendering of it. */
-export const LOAD_FAILED_TEXT = {
-  title: 'This screen could not be loaded',
-  description: 'Check the connection and try again.',
-  retry: 'Retry',
-} as const;
 
 /**
  * The error state without a UI kit, for projects created without one. The
@@ -121,8 +111,11 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
 
   return (
     <div className="flex-1 overflow-auto" data-mfe-screen-container>
-      {bootstrapFailed ? <LoadFailed onRetry={() => window.location.reload()} /> : null}
-      {loadFailure ? <LoadFailed onRetry={retryScreen} /> : null}
+      {bootstrapFailed ? (
+        <LoadFailed onRetry={() => window.location.reload()} />
+      ) : loadFailure ? (
+        <LoadFailed onRetry={retryScreen} />
+      ) : null}
       {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}

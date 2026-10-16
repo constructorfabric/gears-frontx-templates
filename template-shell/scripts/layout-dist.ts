@@ -36,15 +36,13 @@ const ENRICHED_MANIFEST = 'mfe-manifest.json';
 
 /**
  * Top-level entries of a package's `dist/` the shell never reads: the
- * standalone preview page, the federation type bundle, the build statistics,
- * and the enriched manifest, whose content the aggregate already carries.
+ * standalone preview page, the build statistics, and the enriched manifest,
+ * whose content the aggregate already carries. Every federation type bundle
+ * (a top-level name starting with `@mf-types`) is left out as well.
  */
 const LEFT_OUT = new Set([
   'index.html',
   'mf-stats.json',
-  '@mf-types',
-  '@mf-types.zip',
-  '@mf-types.d.ts',
   ENRICHED_MANIFEST,
 ]);
 
@@ -115,7 +113,11 @@ function setPublicPath(manifest: unknown, publicPath: string): void {
 function copyPackageDist(from: string, to: string): void {
   cpSync(from, to, {
     recursive: true,
-    filter: (source) => source === from || !LEFT_OUT.has(relative(from, source).split(sep)[0]),
+    filter: (source) => {
+      if (source === from) return true;
+      const topLevel = relative(from, source).split(sep)[0];
+      return !topLevel.startsWith('@mf-types') && !LEFT_OUT.has(topLevel);
+    },
   });
 }
 

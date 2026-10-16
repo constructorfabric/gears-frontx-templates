@@ -175,10 +175,14 @@ describe('MfeScreenContainer', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, reload } });
     try {
       const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
       render(<MfeScreenContainer />);
       await act(async () => {
         bootstrap.reject(new Error('boom'));
       });
+      act(() => screenLoadFailure.report('ext.orders', 'push'));
+
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
 
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 

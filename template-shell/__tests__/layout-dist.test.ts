@@ -52,6 +52,7 @@ function builtPackage(name: string, port: number, manifestId: string = manifestI
   writeFileSync(join(dist, '@mf-types', 'index.d.ts'), '');
   writeFileSync(join(dist, '@mf-types.zip'), '');
   writeFileSync(join(dist, '@mf-types.d.ts'), '');
+  writeFileSync(join(dist, '@mf-types-extra.json'), '');
 
   const entryId = `${ENTRY_TYPE}~fixture.${token(name)}.mfe.home.v1`;
   writeFileSync(

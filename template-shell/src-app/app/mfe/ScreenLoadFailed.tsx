@@ -6,7 +6,7 @@
  */
 
 import { Button, Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@gears-frontx/ui-kit';
-import { LOAD_FAILED_TEXT, type LoadFailedProps } from './MfeScreenContainer';
+import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 
 export function ScreenLoadFailed({ onRetry }: LoadFailedProps) {
   return (

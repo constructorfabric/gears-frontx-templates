@@ -52,7 +52,9 @@ three, on one shared predicate per rule rather than a copy each.
    package at it, so `dev:all` stops before building any screen package when two
    packages declare the same port or the port is taken on a loopback address,
    naming the port and the packages, and starts the preview with `--strictPort`
-   so it never moves to another port (`scripts/lib/preview-ports.ts`).
+   so it never moves to another port (`scripts/lib/preview-ports.ts`). `dev:all`
+   starts every package with `npm run preview -- --strictPort`, so a package
+   needs a `preview` script to be started; a `dev` script only supplies the port.
 2. **`mfe.json`** at the package root. This is the actual discovery predicate
    `scripts/generate-mfe-manifests.ts`'s `discoverPackages()` checks for — a
    directory without it is invisible to manifest generation even if it has a
@@ -82,8 +84,9 @@ three, on one shared predicate per rule rather than a copy each.
   into the shell's `dist/mfe/<name>/` (`scripts/layout-dist.ts`, which finds
   packages by the same rules as manifest generation and refuses a manifest id
   two packages declare), leaving out `index.html`,
-  `mf-stats.json`, `@mf-types*` and `mfe-manifest.json`, and addresses the
-  package there in the shell's `dist/generated-mfe-manifests.json` as
+  `mf-stats.json`, every top-level `@mf-types` entry and
+  `mfe-manifest.json`, and addresses the package there in the shell's
+  `dist/generated-mfe-manifests.json` as
   `mfe/<name>/`. Everything else a package build writes (`remoteEntry.js`,
   `mf-manifest.json`, `assets/`, `shared/`, its `public/` files) is deployed.
 
