@@ -86,9 +86,11 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   // loading for it; whatever the new address names mounts and reports on its
   // own.
   useEffect(() => {
+    // In the capture phase, so the new visit starts before the router's own
+    // `popstate` listener (bubble phase) mounts whatever the new address names.
     const leave = () => screenLoadFailure.leave();
-    window.addEventListener('popstate', leave);
-    return () => window.removeEventListener('popstate', leave);
+    window.addEventListener('popstate', leave, { capture: true });
+    return () => window.removeEventListener('popstate', leave, { capture: true });
   }, []);
 
   // Every URL entry for this domain failed to resolve to a mounted screen:

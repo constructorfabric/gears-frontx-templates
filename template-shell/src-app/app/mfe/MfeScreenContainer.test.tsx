@@ -245,6 +245,31 @@ describe('MfeScreenContainer', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
 
+    it('starts the new visit before a popstate listener added earlier mounts the new address', async () => {
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      let visitSeenByRouter: number | undefined;
+      // Stands in for the router, which subscribes in the bubble phase; added
+      // first, so only the phase decides the order.
+      const router = () => {
+        visitSeenByRouter = screenLoadFailure.visit();
+      };
+      window.addEventListener('popstate', router);
+      try {
+        render(<MfeScreenContainer />);
+        await settleBootstrap();
+        const before = screenLoadFailure.visit();
+
+        act(() => {
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+
+        expect(visitSeenByRouter).toBe(before + 1);
+      } finally {
+        window.removeEventListener('popstate', router);
+      }
+    });
+
     it('shows only the error state, not the unknown-address fallback with it', async () => {
       mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
       const { MfeScreenContainer } = await import('./MfeScreenContainer');
