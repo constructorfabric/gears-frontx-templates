@@ -453,13 +453,14 @@ describe('bootstrapMFE (host-app)', () => {
       expect(screenLoadFailure.current()).toBeUndefined();
     });
 
-    it('clears the report once a mount succeeds', async () => {
+    it('clears the report as soon as the next mount starts', async () => {
       const handler = await screenMountHandler();
       const { screenLoadFailure } = await import('./screenLoadFailure');
       exclusiveMount.mockRejectedValueOnce(new Error('remote unreachable'));
       await expect(handler.handleAction(MOUNT_EXT, { subject: 'ext.orders' })).rejects.toThrow();
+      exclusiveMount.mockImplementationOnce(() => new Promise<void>(() => {}));
 
-      await handler.handleAction(MOUNT_EXT, { subject: 'ext.orders' });
+      void handler.handleAction(MOUNT_EXT, { subject: 'ext.billing' });
 
       expect(screenLoadFailure.current()).toBeUndefined();
     });

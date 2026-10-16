@@ -145,6 +145,9 @@ export function layoutDist(
   if (!Array.isArray(parsed)) {
     throw new Error(`${relative(projectDir, aggregateFile)} is not an array of manifest configs. Rebuild the project.`);
   }
+  if (!parsed.every((config) => typeof config === 'object' && config !== null)) {
+    throw new Error(`${relative(projectDir, aggregateFile)} carries an entry that is not a manifest config. Rebuild the project.`);
+  }
   const configs = parsed as AggregateConfig[];
   const byId = builtPackagesById(mfePackagesDir, projectDir);
   const layout = configs.map((config) => {

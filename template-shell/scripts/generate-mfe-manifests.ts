@@ -41,6 +41,8 @@
  *
  * When --base-url is omitted, publicPath comes from manifest.metaData.publicPath
  * in the enriched mfe-manifest.json (set by the build plugin from mf-manifest.json).
+ * Either way this sets the dev aggregate only: `npm run build` lays the screens
+ * out next to the shell and readdresses them there (`scripts/layout-dist.ts`).
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';

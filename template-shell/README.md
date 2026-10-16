@@ -204,7 +204,7 @@ none.
 slash (`/apps/console/`). Without the slash the page resolves its relative
 addresses one folder up, so a host that does not redirect `/apps/console` to
 `/apps/console/` needs that redirect. The shell names its screens in the query
-string (`/apps/console/?screen=profile&widgets=widget-a`), so every address it
+string (`/apps/console/?screen=profile`), so every address it
 writes is the shell's folder itself, and a reload or a shared link loads the
 folder's `index.html` directly with no rewrite. If the host answers unknown
 paths with `index.html` (a single-page fallback), use it only for paths below

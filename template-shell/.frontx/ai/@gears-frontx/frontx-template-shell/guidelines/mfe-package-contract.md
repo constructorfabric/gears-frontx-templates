@@ -49,7 +49,7 @@ three, on one shared predicate per rule rather than a copy each.
    port with `/--port\s+(\d+)/` — a differently-spelled flag (`--port=3010`, no
    space) will not match and the package is silently skipped with a warning.
    The port is strict and the package's own: the dev manifest addresses the
-   package at it, so `dev:all` stops before building any package when two
+   package at it, so `dev:all` stops before building any screen package when two
    packages declare the same port or the port is taken on a loopback address,
    naming the port and the packages, and starts the preview with `--strictPort`
    so it never moves to another port (`scripts/lib/preview-ports.ts`).

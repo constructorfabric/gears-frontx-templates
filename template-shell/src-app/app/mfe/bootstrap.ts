@@ -167,14 +167,15 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     // (`cpt-frontx-algo-extension-domain-governance-mount-execution`,
     // `inst-me-report-settled`) reflects this mount into the URL once the
     // strategy settles — no domain-implementation call is needed for it.
-    // A failed mount is reported for the screen container's error state and
-    // still fails the action; a successful one clears the report. Only the
-    // latest mount reports: an earlier one settling late must neither show its
-    // failure over a newer screen nor clear a newer failure.
+    // A new mount drops the report of the one before it; a failed mount is
+    // reported for the screen container's error state and still fails the
+    // action. Only the latest mount reports, so an earlier one failing late
+    // never shows its error over a newer screen.
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
         const mount = ++this.latestMount;
+        screenLoadFailure.clear();
         try {
           await this.strategy.mount(p as ActionPayload);
         } catch (error) {
@@ -184,7 +185,6 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
           }
           throw error;
         }
-        if (mount === this.latestMount) screenLoadFailure.clear();
       }),
     );
     // The host chrome a mounted screen may drive. The one thing neither the
