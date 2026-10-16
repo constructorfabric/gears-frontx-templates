@@ -14,7 +14,7 @@ Authoritative files:
 - `src-app/mfe_packages/*/mfe.json` - each screen extension's top-level `route`
   and its `presentation.label`
 - `src-app/app/layout/Menu.tsx` - `menuItemTestId`, the handle each menu item carries
-- `src-app/app/main.tsx` - where the themes are registered and the default applied
+- `src-app/app/main.tsx` - where the themes are registered and the stored or default one applied
 - `src-app/app/themes/` - one module per theme, each exporting its id and `name`
 - `packages/studio/src/testIds.ts` - the overlay's verification handles
 - `packages/studio/src/sections/ThemeSelector.tsx` - the switcher the walk drives
@@ -87,7 +87,7 @@ category as not applicable in that case, naming this declaration as the reason.
 ## The variant axis: this shell's theme registry
 
 `main.tsx` registers the shell's themes one call at a time and then applies the
-default:
+one the user chose last:
 
 ```ts
 app.themeRegistry.register(defaultTheme);
@@ -95,8 +95,16 @@ app.themeRegistry.register(lightTheme);
 app.themeRegistry.register(darkTheme);
 app.themeRegistry.register(draculaTheme);
 app.themeRegistry.register(draculaLargeTheme);
-app.themeRegistry.apply(DEFAULT_THEME_ID);
+applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
 ```
+
+`applyPersistedTheme` (`src-app/app/themes/themePersistence.ts`) applies the
+theme id stored under the `localStorage` key `frontx:theme`, and `default` when
+nothing is stored or the stored id is not registered; it then stores every theme
+applied after it. **A walk therefore starts on whatever theme the browser profile
+applied last**, not necessarily `default`. Select every variant through the
+switcher, as the driver does, rather than assuming the first capture shows the
+default theme.
 
 Those five calls are the set: ids `default`, `light`, `dark`, `dracula` and
 `dracula-large`, each declared beside its `name` in its own module under
