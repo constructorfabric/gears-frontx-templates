@@ -30,12 +30,19 @@ export interface ScreenMenuItem {
   order?: number;
 }
 
+/** What the menu knows when it reads an item. */
+export interface ScreenMenuContext {
+  /** The shell's current language code (`en`, `zh-TW`, ...). */
+  language: string;
+}
+
 /**
  * Reads the menu item for a registered screen extension, or `undefined` to
  * leave the extension out of the menu. The extension has already passed the
- * screen type's schema when it reaches the reader.
+ * screen type's schema when it reaches the reader. The menu calls it again for
+ * every extension when the language changes.
  */
-export type ScreenMenuItemReader = (extension: Extension) => ScreenMenuItem | undefined;
+export type ScreenMenuItemReader = (extension: Extension, context: ScreenMenuContext) => ScreenMenuItem | undefined;
 
 /** The default export of a project's `src-app/shell-config/screens.ts`. Every field is optional. */
 export interface ShellScreensConfig {
@@ -50,7 +57,7 @@ export interface ShellScreensConfig {
   schemas?: readonly JSONSchema[];
   /** The type every screen extension must derive from: the screen type id (default) or a type derived from it in `schemas`. */
   extensionsTypeId?: string;
-  /** Reads the menu item from an extension. Default: the flat `presentation.label`, `.icon` and `.order`. */
+  /** Reads the menu item from an extension. Default: the flat `presentation`, with `labels[language]` before `label`. */
   readMenuItem?: ScreenMenuItemReader;
 }
 
@@ -72,13 +79,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The default reader: the flat `presentation` the default schema declares. */
-export const readFlatScreenMenuItem: ScreenMenuItemReader = (extension) => {
+/**
+ * The default reader: the flat `presentation` the default schema declares. The
+ * label is `labels[language]` when the extension carries one for the current
+ * language, and `label` otherwise.
+ */
+export const readFlatScreenMenuItem: ScreenMenuItemReader = (extension, context) => {
   const presentation = (extension as { presentation?: unknown }).presentation;
   if (!isRecord(presentation) || typeof presentation.label !== 'string') return undefined;
-  const { label, icon, order } = presentation;
+  const { label, labels, icon, order } = presentation;
+  const translated = isRecord(labels) ? labels[context.language] : undefined;
   return {
-    label,
+    label: typeof translated === 'string' ? translated : label,
     ...(typeof icon === 'string' ? { icon } : {}),
     ...(typeof order === 'number' ? { order } : {}),
   };

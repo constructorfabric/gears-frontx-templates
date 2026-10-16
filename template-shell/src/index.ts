@@ -7,6 +7,7 @@ export {
   type ShellScreensConfig,
   type ResolvedShellScreens,
   type ScreenMenuItem,
+  type ScreenMenuContext,
   type ScreenMenuItemReader,
 } from './gts/shell-screens';
 export { LayoutDomain } from './layout-domain';

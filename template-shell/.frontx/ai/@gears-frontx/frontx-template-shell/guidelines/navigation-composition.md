@@ -37,8 +37,11 @@ Authoritative files:
 screens config's `readMenuItem` reads it (`label`, `icon`, `order`; by default
 the flat `presentation` fields), sorted by `order` (a missing `order` defaults
 to `999`, i.e. last). An extension the reader returns nothing for, or throws
-on, is left out; a throw is logged. The list is read once, after bootstrap
-settles, and the menu stays blank until then.
+on, is left out; a throw is logged. The extensions are listed once, after
+bootstrap settles, and the menu stays blank until then. Their items are read
+again on every language switch (`i18n/language/changed`, the event that also
+carries the language to MFEs), so the labels follow the language without a
+reload.
 
 A click does **not** navigate. It dispatches a mount action:
 
@@ -166,7 +169,8 @@ top-level `route` and its `presentation`:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `label` | yes | menu item text (raw display string — no i18n key today) |
+| `label` | yes | menu item text, shown for any language `labels` does not name |
+| `labels` | no | menu item text per language code (`de`, `zh-TW`, ...), each a string; the default reader shows `labels[<current language>]` and falls back to `label` |
 | `route` (top level, beside `id`/`domain`/`entry`) | yes | route path; back-projected into the URL after mount and resolved from it on every transition (see above) |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
@@ -198,7 +202,7 @@ typed by `defineShellScreens` from
 |---|---|---|
 | `schemas` | none | Each `$id` is `gts://` plus a type id (ending in `~`), listed once. A schema under the screen type id is registered instead of the default (the first definition of a type id wins on the shared GTS store, so it also stands against any copy an MFE offers later); it must keep `route` in its own top-level `required` and `{ "$ref": "gts://gts.frontx.mfes.ext.extension.v1~" }` in its top-level `allOf`; if it drops the flat `presentation.label`, supply `readMenuItem` too, or the default reader lists nothing. A type derived from the screen type adds fields and must name the type it derives from in its top-level `allOf` (`{ "$ref": "gts://<parent type id>" }`), since a derived type is validated against its own schema only. Any other `$id` is refused at startup. |
 | `extensionsTypeId` | the screen type id | The type the screen domain pins: the screen type id or one of `schemas`. A derived type here makes every screen extension declare it. |
-| `readMenuItem` | the flat reader | `(extension) => { label, icon?, order? } \| undefined`, called once per admitted screen extension after bootstrap. It gets no language or user, and is not called again when either changes. |
+| `readMenuItem` | the flat reader | `(extension, { language }) => { label, icon?, order? } \| undefined`, called for every admitted screen extension after bootstrap and again on every language switch, with the current language code. It gets no user. |
 | `enabled` | `true` | `false` registers no screen domain: no screen slot, no screen menu items, no empty-menu hint. The screen schemas are still registered, so a screen extension an MFE still declares is validated (a malformed one fails MFE bootstrap: the error is logged and the packages after it are not registered) and kept on the type system, never mounted. |
 
 ```ts
@@ -236,9 +240,9 @@ host and MFEs.
 - The ID taxonomy used in every declaration is the `gts-id-conventions`
   guideline in the `template-mfe` AI bundle.
 - The schema shape and the static choice of each item's label, icon, order
-  and visibility are the project's, through its screens config. Live menu i18n
-  and audience targeting still need shell changes (the reader gets neither
-  language nor user), and the menu renders one level. Routing itself has its
+  and visibility are the project's, through its screens config. Audience
+  targeting still needs shell changes (the reader gets no user), and the menu
+  renders one level. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema
   set. Observer-originated mounts acknowledge their current URL only: a late
   mount after Back cannot restore a stale entry.

@@ -54,6 +54,8 @@ function storeFor(config?: ShellScreensConfig): GtsPlugin {
   return plugin;
 }
 
+const EN = { language: 'en' };
+
 function screen(typeId: string, name: string, presentation: Record<string, unknown>): Extension {
   return {
     id: `${typeId}acme.site.screens.${name}.v1`,
@@ -192,10 +194,29 @@ describe('shell screens', () => {
     ['an icon and order of the wrong type dropped', { label: 'A', icon: 1, order: '3' }, { label: 'A' }],
     ['no string label: left out', { label: 7 }, undefined],
   ])('the flat reader reads %s', (_name, presentation, item) => {
-    expect(readFlatScreenMenuItem(screen(SCREEN_TYPE, 'a', presentation))).toEqual(item);
+    expect(readFlatScreenMenuItem(screen(SCREEN_TYPE, 'a', presentation), EN)).toEqual(item);
   });
 
   it('the flat reader leaves out a screen without presentation', () => {
-    expect(readFlatScreenMenuItem({ id: 'x', domain: 'd', entry: 'e' } as Extension)).toBeUndefined();
+    expect(readFlatScreenMenuItem({ id: 'x', domain: 'd', entry: 'e' } as Extension, EN)).toBeUndefined();
+  });
+
+  it.each([
+    ['the label for the current language', 'de', 'Profil'],
+    ['the flat label for a language labels does not name', 'fr', 'Profile'],
+    ['the flat label when the entry is not a string', 'ja', 'Profile'],
+  ])('the flat reader takes %s', (_name, language, label) => {
+    const profile = screen(SCREEN_TYPE, 'profile', { label: 'Profile', labels: { de: 'Profil', ja: 7 } });
+
+    expect(readFlatScreenMenuItem(profile, { language })?.label).toBe(label);
+  });
+
+  it('the default schema admits a per-language labels map of strings only', () => {
+    const plugin = storeFor({});
+
+    expect(() => plugin.register(screen(SCREEN_TYPE, 'inbox', { label: 'Inbox', labels: { de: 'Posteingang' } }))).not.toThrow();
+    expect(() => plugin.register(screen(SCREEN_TYPE, 'outbox', { label: 'Outbox', labels: { de: 7 } }))).toThrow(
+      /GTS validation failed/,
+    );
   });
 });

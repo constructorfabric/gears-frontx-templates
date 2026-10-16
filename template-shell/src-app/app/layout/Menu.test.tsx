@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ScreenExtension } from '@gears-frontx/react';
+import { eventBus, type ScreenExtension } from '@gears-frontx/react';
 import {
   resolveShellScreens,
   type ResolvedShellScreens,
@@ -189,7 +189,7 @@ describe('Menu', () => {
 
     await renderSettled();
 
-    expect(readMenuItem).toHaveBeenCalledWith(inbox);
+    expect(readMenuItem).toHaveBeenCalledWith(inbox, { language: 'en' });
     expect(screen.getByText('Mail / Inbox')).toBeTruthy();
     const items = screen.getAllByTestId(/^menu-item-/).map((el) => el.getAttribute('data-testid'));
     expect(items).toEqual([`menu-item-${inbox.id}`, `menu-item-${tasks.id}`]);
@@ -216,6 +216,48 @@ describe('Menu', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  describe('language', () => {
+    const switchLanguage = async (language: string) => {
+      await act(async () => {
+        eventBus.emit('i18n/language/changed', { language });
+      });
+    };
+
+    const translatedTasks = { ...tasks, presentation: { ...tasks.presentation, labels: { de: 'Aufgaben' } } };
+
+    it('relabels the menu when the language switches, and back', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      await renderSettled();
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+
+      await switchLanguage('de');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+
+      await switchLanguage('fr');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+    });
+
+    it('starts in the language the shell already has', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      mockUseFrontX.mockReturnValue({ ...app, i18nRegistry: { getLanguage: () => 'de' } });
+
+      await renderSettled();
+
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+    });
+
+    it("hands the current language to the project's reader", async () => {
+      const readMenuItem = vi.fn<ScreenMenuItemReader>((_ext, { language }) => ({ label: `Tasks (${language})` }));
+      projectScreens.current = { ...resolveShellScreens(), readMenuItem };
+      await renderSettled();
+
+      await switchLanguage('ja');
+
+      expect(readMenuItem).toHaveBeenLastCalledWith(tasks, { language: 'ja' });
+      expect(screen.getByText('Tasks (ja)')).toBeTruthy();
+    });
   });
 
   it('lists no screens and shows no hint when the project turned the screen domain off', async () => {

@@ -5,7 +5,7 @@
  * Uses local shadcn/ui Sidebar components for proper styling and collapsible behavior.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   useAppSelector,
   useFrontX,
@@ -13,6 +13,7 @@ import {
   eventBus,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
+  type Extension,
   type MenuState,
 } from '@gears-frontx/react';
 import type { ScreenMenuItem } from '@gears-frontx/frontx-template-shell';
@@ -65,12 +66,29 @@ const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
  */
 export const menuItemTestId = (extensionId: string): string => `menu-item-${extensionId}`;
 
+/**
+ * The language screens are shown in. It follows `i18n/language/changed`, the
+ * event the microfrontends plugin forwards to MFEs, rather than
+ * `useTranslation`, which re-renders only when translations register and so
+ * misses a switch in a shell with no translation loaders. Before any language
+ * is set the shell broadcasts `en` (`bootstrap.ts`).
+ */
+function useScreenLanguage(i18nRegistry: { getLanguage(): string | null } | undefined): string {
+  const [language, setLanguage] = useState(() => i18nRegistry?.getLanguage() ?? 'en');
+  useEffect(() => {
+    const subscription = eventBus.on('i18n/language/changed', (payload) => setLanguage(payload.language));
+    return () => subscription.unsubscribe();
+  }, []);
+  return language;
+}
+
 export const Menu: React.FC<MenuProps> = ({ children }) => {
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
   const app = useFrontX();
   const { mfeRegistry } = app;
 
   const collapsed = menuState?.collapsed ?? false;
+  const language = useScreenLanguage(app.i18nRegistry);
 
   // Currently-mounted screen extension. Re-reads when a mount_ext/unmount_ext
   // settles. Index 0 is meaningful because the host registers the screen domain
@@ -81,39 +99,44 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // `undefined` until bootstrap has settled: bootstrap registers every screen
   // extension, so the list is read once, after it, and an empty list before
   // that point means "not known yet", not "no screens".
-  const [entries, setEntries] = useState<MenuEntry[] | undefined>(undefined);
+  const [extensions, setExtensions] = useState<readonly Extension[] | undefined>(undefined);
 
   useEffect(() => {
     if (!mfeRegistry || !shellScreens.enabled) return;
     let cancelled = false;
     bootstrapOnce(app).then(
       () => {
-        if (cancelled) return;
-        // The project's reader turns each extension into a menu item, or
-        // leaves it out by returning nothing; the default reads the flat
-        // `presentation` of the shell's own screen schema.
-        // A reader that throws on one extension costs only that extension.
-        const read: MenuEntry[] = [];
-        for (const ext of mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)) {
-          try {
-            const item = shellScreens.readMenuItem(ext);
-            if (item) read.push({ id: ext.id, item });
-          } catch (error) {
-            console.error(`[Menu] readMenuItem failed for ${ext.id}; the screen is left out of the menu`, error);
-          }
-        }
-        setEntries(read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999)));
+        if (!cancelled) setExtensions([...mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)]);
       },
       // `MfeScreenContainer` logs the bootstrap failure; the menu only shows
       // that there is nothing to list.
       () => {
-        if (!cancelled) setEntries([]);
+        if (!cancelled) setExtensions([]);
       },
     );
     return () => {
       cancelled = true;
     };
   }, [app, mfeRegistry]);
+
+  // Read again on every language switch, so the labels follow the language.
+  // The project's reader turns each extension into a menu item, or leaves it
+  // out by returning nothing; the default reads the flat `presentation` of the
+  // shell's own screen schema. A reader that throws on one extension costs
+  // only that extension.
+  const entries = useMemo(() => {
+    if (!extensions) return undefined;
+    const read: MenuEntry[] = [];
+    for (const ext of extensions) {
+      try {
+        const item = shellScreens.readMenuItem(ext, { language });
+        if (item) read.push({ id: ext.id, item });
+      } catch (error) {
+        console.error(`[Menu] readMenuItem failed for ${ext.id}; the screen is left out of the menu`, error);
+      }
+    }
+    return read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999));
+  }, [extensions, language]);
 
   // No registry means no microfrontends plugin: nothing is ever coming. A
   // project that turned the screen domain off has no screen items to list and
