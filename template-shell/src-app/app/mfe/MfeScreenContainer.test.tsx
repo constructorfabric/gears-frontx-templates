@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 const mockBootstrapMFE = vi.fn();
 const mockUseFrontX = vi.fn();
@@ -152,7 +152,7 @@ describe('MfeScreenContainer', () => {
     expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
   });
 
-  it('logs an error and renders nothing when bootstrap rejects', async () => {
+  it('logs the error and shows the error state when bootstrap rejects (the manifest aggregate unreachable)', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
@@ -163,6 +163,86 @@ describe('MfeScreenContainer', () => {
 
     expect(errorSpy).toHaveBeenCalled();
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByRole('heading', { level: 2 }).textContent).toBe('This screen could not be loaded');
+    expect(within(alert).getByRole('button', { name: 'Retry' })).not.toBeNull();
+  });
+
+  it('reloads the page on Retry after a failed bootstrap, which is not safe to repeat in the same page', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reload = vi.fn();
+    const realLocation = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, reload } });
+    try {
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      render(<MfeScreenContainer />);
+      await act(async () => {
+        bootstrap.reject(new Error('boom'));
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+    }
+  });
+
+  describe('a screen that failed to load', () => {
+    it('shows the error state in place of the screen', async () => {
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      render(<MfeScreenContainer />);
+      await settleBootstrap();
+
+      act(() => screenLoadFailure.report('ext.orders', 'push'));
+
+      const alert = screen.getByRole('alert');
+      expect(within(alert).getByRole('heading', { level: 2 }).textContent).toBe('This screen could not be loaded');
+      expect(within(alert).getByRole('button', { name: 'Retry' })).not.toBeNull();
+    });
+
+    it.each(['push', 'replace', 'none'] as const)(
+      'mounts the screen again on Retry with the failed action history intent (%s)',
+      async (history) => {
+        const executeActionsChain = vi.fn();
+        app.mfeRegistry = { executeActionsChain } as never;
+        const { MfeScreenContainer } = await import('./MfeScreenContainer');
+        const { screenLoadFailure } = await import('./screenLoadFailure');
+        render(<MfeScreenContainer />);
+        await settleBootstrap();
+        act(() => screenLoadFailure.report('ext.orders', history));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+        expect(executeActionsChain).toHaveBeenCalledWith({
+          action: {
+            type: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+            target: FRONTX_SCREEN_DOMAIN,
+            payload: { subject: 'ext.orders', history },
+          },
+        });
+        expect(screen.queryByRole('alert')).toBeNull();
+      },
+    );
+
+    it('renders the error state the app passes in', async () => {
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      const Custom = ({ onRetry }: { onRetry: () => void }) => (
+        <button type="button" onClick={onRetry}>
+          custom error state
+        </button>
+      );
+      render(<MfeScreenContainer LoadFailed={Custom} />);
+      await settleBootstrap();
+
+      act(() => screenLoadFailure.report('ext.orders', 'push'));
+
+      expect(screen.getByRole('button', { name: 'custom error state' })).not.toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
   });
 
   it('renders the fallback when every URL entry for the screen domain is unresolved and nothing mounted', async () => {

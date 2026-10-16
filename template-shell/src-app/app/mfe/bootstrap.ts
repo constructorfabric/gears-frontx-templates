@@ -3,12 +3,18 @@
  *
  * Registers MFE domains, extensions, and handlers with the FrontX app.
  *
- * MFE manifest configs are fetched at runtime from `/generated-mfe-manifests.json`
- * (a public asset produced by `scripts/generate-mfe-manifests.ts` before each
- * `vite dev` / `vite build`). The script accepts `--base-url` for
- * deployment-specific `publicPath` values; the JSON shape is identical to
- * what the future backend API will return so the transport swap is a
- * one-line URL change here.
+ * MFE manifest configs are fetched at runtime from `generated-mfe-manifests.json`
+ * in the shell's own folder (`manifestsUrl`), a public asset produced by
+ * `scripts/generate-mfe-manifests.ts` before each `vite dev` / `vite build`. The
+ * JSON shape is identical to what the future backend API will return so the
+ * transport swap is a one-line URL change here.
+ *
+ * A screen's `publicPath` in the file may be relative: the production layout
+ * (`scripts/layout-dist.ts`) writes `mfe/<package>/`. The MFE handler resolves
+ * it against the document, which the shell is served as from its own folder,
+ * the folder the file sits in. The entries are registered exactly as the file
+ * carries them, so every runtime that registers them from the same file (a
+ * nested app's own bootstrap included) registers the same content.
  */
 
 import {
@@ -44,8 +50,32 @@ import {
   CHROME_SET_MENU_COLLAPSED,
   CHROME_SET_THEME,
 } from './chrome-actions';
+import { readHistoryIntent, screenLoadFailure } from './screenLoadFailure';
 
-const MFE_MANIFESTS_URL = '/generated-mfe-manifests.json';
+const MFE_MANIFESTS_FILE = 'generated-mfe-manifests.json';
+
+/**
+ * Where the manifest aggregate is served: in the shell's own folder.
+ *
+ * A build with a relative base (`./`, the production build) resolves it
+ * against this module's own address rather than the document's: the document
+ * can sit at any address the hosting answers with `index.html`, while every
+ * built module lives in the shell's `assets/` folder (`build.assetsDir` in
+ * vite.config.ts), one level below the aggregate. An absolute base (the dev
+ * server's `/`) is used as it is.
+ *
+ * @param base - The build's base (`import.meta.env.BASE_URL`)
+ * @param moduleUrl - The address of the module asking (`import.meta.url`)
+ */
+export function manifestsUrl(
+  base: string = import.meta.env.BASE_URL,
+  moduleUrl: string = import.meta.url,
+): string {
+  if (base === '' || base.startsWith('.')) {
+    return new URL(`../${MFE_MANIFESTS_FILE}`, moduleUrl).href;
+  }
+  return new URL(`${base.endsWith('/') ? base : `${base}/`}${MFE_MANIFESTS_FILE}`, moduleUrl).href;
+}
 
 /**
  * Shape of each MFE manifest config in the generated JSON.
@@ -139,10 +169,19 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     // (`cpt-frontx-algo-extension-domain-governance-mount-execution`,
     // `inst-me-report-settled`) reflects this mount into the URL once the
     // strategy settles — no domain-implementation call is needed for it.
+    // A failed mount is reported for the screen container's error state and
+    // still fails the action; a successful one clears the report.
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
-        await this.strategy.mount(p as ActionPayload);
+        try {
+          await this.strategy.mount(p as ActionPayload);
+        } catch (error) {
+          const subject = p?.subject;
+          if (typeof subject === 'string') screenLoadFailure.report(subject, readHistoryIntent(p));
+          throw error;
+        }
+        screenLoadFailure.clear();
       }),
     );
     // The host chrome a mounted screen may drive. The one thing neither the
@@ -428,11 +467,12 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
   const derivedLanguage = app.i18nRegistry.getLanguage();
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, derivedLanguage ?? 'en');
 
-  console.info(`[MFE Bootstrap] Fetching MFE manifests from ${MFE_MANIFESTS_URL}`);
-  const response = await fetch(MFE_MANIFESTS_URL);
+  const aggregateUrl = manifestsUrl();
+  console.info(`[MFE Bootstrap] Fetching MFE manifests from ${aggregateUrl}`);
+  const response = await fetch(aggregateUrl);
   if (!response.ok) {
     throw new Error(
-      `[MFE Bootstrap] Failed to load MFE manifests from ${MFE_MANIFESTS_URL}: ${response.status} ${response.statusText}`,
+      `[MFE Bootstrap] Failed to load MFE manifests from ${aggregateUrl}: ${response.status} ${response.statusText}`,
     );
   }
   const manifests = (await response.json()) as MfeManifestConfig[];

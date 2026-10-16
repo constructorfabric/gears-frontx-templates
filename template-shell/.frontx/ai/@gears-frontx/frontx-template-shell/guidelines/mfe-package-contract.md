@@ -48,6 +48,10 @@ three, on one shared predicate per rule rather than a copy each.
    `build-mfes.ts`) tries `preview` first, falls back to `dev`, and extracts the
    port with `/--port\s+(\d+)/` — a differently-spelled flag (`--port=3010`, no
    space) will not match and the package is silently skipped with a warning.
+   The port is strict: the dev manifest addresses the package at it, so
+   `dev:all` stops before building when it is taken, naming the port and the
+   package, and starts the preview with `--strictPort` so it never moves to
+   another port (`scripts/lib/preview-ports.ts`).
 2. **`mfe.json`** at the package root. This is the actual discovery predicate
    `scripts/generate-mfe-manifests.ts`'s `discoverPackages()` checks for — a
    directory without it is invisible to manifest generation even if it has a
@@ -73,6 +77,12 @@ three, on one shared predicate per rule rather than a copy each.
   ESM chunk paths. `scripts/generate-mfe-manifests.ts` reads **this** file, not
   `mf-manifest.json` directly, and throws if it is missing or was not built by
   a `frontxMfGts()`-configured pipeline.
+- `npm run build` copies each package's `dist/` into the shell's
+  `dist/mfe/<name>/` (`scripts/layout-dist.ts`), leaving out `index.html`,
+  `mf-stats.json`, `@mf-types*` and `mfe-manifest.json`, and addresses the
+  package there in the shell's `dist/generated-mfe-manifests.json` as
+  `mfe/<name>/`. Everything else a package build writes (`remoteEntry.js`,
+  `mf-manifest.json`, `assets/`, `shared/`, its `public/` files) is deployed.
 
 ## CSS delivery into shadow roots
 
@@ -154,6 +164,9 @@ counter-declarations in `ThemeAwareReactLifecycle`.
 - `npm run generate:mfe-manifests` aggregates every package's
   `dist/mfe-manifest.json` into `public/generated-mfe-manifests.json`, the file
   every FrontX app instance (host or nested) reads at runtime to discover MFEs.
+  It addresses each package at its preview port; the production copy in `dist/`
+  addresses it relative to the file (`mfe/<name>/`), and the MFE loader
+  resolves that against the shell's page, served from the same folder.
 - `npm run type-check:mfe` (`scripts/run-mfe-type-checks.ts`) type-checks every
   conforming, non-example package independently; it degrades to a no-op when
   none exist. A flagged package is skipped unless

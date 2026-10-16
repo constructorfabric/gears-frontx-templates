@@ -5,9 +5,11 @@
  *
  * Reads the enriched mfe-manifest.json (produced by the frontx-mf-gts Vite
  * plugin into each MFE's dist directory) and writes the aggregated manifest
- * to a public asset (`public/generated-mfe-manifests.json`) served by Vite at
- * the runtime URL `/generated-mfe-manifests.json`. Every FrontX app instance
- * (root host AND any nested app) reads it from that URL at runtime.
+ * to a public asset (`public/generated-mfe-manifests.json`) served by Vite next
+ * to the shell's `index.html`. Every FrontX app instance (root host AND any
+ * nested app) reads it at runtime. This is the dev aggregate: it addresses each
+ * package at its preview server. `npm run build` copies it into `dist/` and
+ * `scripts/layout-dist.ts` rewrites that copy with addresses relative to it.
  *
  * The enriched mfe-manifest.json already contains all required data:
  * - manifest.metaData: publicPath, remoteEntry, buildInfo from mf-manifest.json

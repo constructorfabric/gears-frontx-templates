@@ -57,7 +57,8 @@ The host shell is intentionally empty. Screens come from **microfrontends**:
    top-level `route` and a
    `presentation` block: label, icon, order).
 2. The build produces a manifest; `src-app/app/mfe/bootstrap.ts` fetches
-   `/generated-mfe-manifests.json` and registers everything at runtime.
+   `generated-mfe-manifests.json` from the shell's own folder and registers
+   everything at runtime.
 3. `src-app/app/layout/Menu.tsx` reads the registered screen extensions and
    renders the menu — mounting the corresponding MFE remote on click.
 
@@ -214,7 +215,7 @@ Import via the `@` alias: `import { Badge } from '@/app/components/ui/badge';`
 # Development
 npm run dev:all           # build MFEs + start host and all MFE preview servers
 npm run dev               # host only (rebuilds packages + MFEs, then vite)
-npm run build             # full production build
+npm run build             # production build: one deployable dist/ (README, "Deploying the build")
 npm run build:packages    # build solution workspace packages
 npm run build:mfes        # build all MFE packages
 npm run generate:mfe-manifests   # regenerate the host MFE manifest index

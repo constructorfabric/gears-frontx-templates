@@ -7,11 +7,12 @@
 
 import { Layout } from '@/app/layout';
 import { MfeScreenContainer } from '@/app/mfe/MfeScreenContainer';
+import { ScreenLoadFailed } from '@/app/mfe/ScreenLoadFailed';
 
 function App() {
   return (
     <Layout>
-      <MfeScreenContainer />
+      <MfeScreenContainer LoadFailed={ScreenLoadFailed} />
     </Layout>
   );
 }

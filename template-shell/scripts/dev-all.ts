@@ -19,6 +19,7 @@ import {
   noDiscoveredPackagesNotice,
   type MfeInfo,
 } from './lib/mfe-tools.js';
+import { findTakenPreviewPorts, previewCommand, takenPreviewPortsMessage } from './lib/preview-ports.js';
 
 // Determine main app command based on available scripts
 function getMainAppCommand(): string {
@@ -43,9 +44,10 @@ function buildPreviewCommands(mfes: MfeInfo[]): string[] {
   // Add main app
   commands.push(getMainAppCommand());
 
-  // MFE preview only (build already done in the sequential step)
+  // MFE preview only (build already done in the sequential step), each on a
+  // strict port (scripts/lib/preview-ports.ts)
   for (const mfe of mfes) {
-    commands.push(`cd src-app/mfe_packages/${mfe.name} && npm run preview`);
+    commands.push(previewCommand(mfe));
   }
 
   return commands;
@@ -87,6 +89,12 @@ async function main() {
       console.log(`  [${idx}] ${mfe.name} (port ${mfe.port})`);
     });
     console.log();
+  }
+
+  // Step 0: every declared preview port must be free, before anything is built
+  const taken = await findTakenPreviewPorts(packages);
+  if (taken.length > 0) {
+    throw new Error(takenPreviewPortsMessage(taken));
   }
 
   // Step 1: Build all MFEs (produces dist/ with mf-manifest.json)

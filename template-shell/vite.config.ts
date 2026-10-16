@@ -5,6 +5,11 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // A relative base makes the build independent of where it is deployed: the
+  // document and its assets resolve against the folder the shell is served
+  // from, at the root of a domain or under any sub-path. The dev server keeps
+  // `/`. Deploying `dist/` is described in README.md, "Deploying the build".
+  base: './',
   plugins: [
     react(),
     federation({
@@ -32,6 +37,10 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    // Every built module lands here, one level below the shell folder;
+    // `manifestsUrl` in src-app/app/mfe/bootstrap.ts reads the manifest
+    // aggregate one level up from its own module for that reason.
+    assetsDir: 'assets',
     rollupOptions: {
       output: {
         manualChunks(id) {

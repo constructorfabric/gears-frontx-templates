@@ -26,12 +26,13 @@
 import { Layout } from '@/app/layout';
 import { StudioOverlay } from '@gears-frontx/studio';
 import { MfeScreenContainer } from '@/app/mfe/MfeScreenContainer';
+import { ScreenLoadFailed } from '@/app/mfe/ScreenLoadFailed';
 
 function App() {
   return (
     <>
       <Layout>
-        <MfeScreenContainer />
+        <MfeScreenContainer LoadFailed={ScreenLoadFailed} />
       </Layout>
       <StudioOverlay />
     </>

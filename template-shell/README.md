@@ -121,7 +121,10 @@ errors. Add MFE packages with `frontx add frontx-template-mfe` (see
 [`template-mfe`](../template-mfe/README.md)), then run `npm install` again —
 `add` changes what the workspace glob matches, so the lock must be
 regenerated — before their preview ports (`:3001` demo, `:3099` blank,
-`:3201`/`:3202` widget fixtures) come up alongside the host.
+`:3201`/`:3202` widget fixtures) come up alongside the host. Each preview
+server runs on exactly the port its package declares, because the dev manifest
+points the host there: when a port is taken, `dev:all` stops before building and
+names the port and the package.
 
 The FrontX ecosystem packages (`@gears-frontx/mfes`, `@gears-frontx/gts-plugin`,
 `@gears-frontx/api`) resolve from the npm registry at exact pinned versions.
@@ -144,7 +147,7 @@ my-app/
 ├── src/                     # Shared solution lib (api, build, gts)
 ├── packages/                # Solution packages: react, framework, state, i18n, studio, auth
 ├── public/                  # Static assets + generated-mfe-manifests.json
-├── scripts/                 # dev-all, build-mfes, manifest generation
+├── scripts/                 # dev-all, build-mfes, manifest generation, dist layout
 ├── tailwind.config.ts       # TailwindCSS configuration
 ├── vite.config.ts           # Host Vite + Module Federation config
 └── .frontx/                 # Template provenance (managed by the frontx CLI)
@@ -156,15 +159,73 @@ my-app/
 |--------|--------------|
 | `npm run dev:all` | Build MFEs, then run the host + every MFE preview server together |
 | `npm run dev` | Host only (rebuilds packages + MFEs, then Vite dev server) |
-| `npm run build` | Full production build |
+| `npm run build` | Production build: the shell and every screen in `dist/`, deployable as one folder (see [Deploying the build](#deploying-the-build)) |
 | `npm run build:packages` | Build the solution workspace packages |
 | `npm run build:mfes` | Build all microfrontend packages |
 | `npm run generate:mfe-manifests` | Regenerate the host's MFE manifest index |
+| `npm run layout:dist` | Copy the built screens into `dist/mfe/` and address them relative to `dist/` (the last step of `build`) |
 | `npm run preview` | Preview a production build |
 | `npm run type-check` | Type-check the host app, packages, and MFEs |
 | `npm run lint` | ESLint across the project |
 | `npm run arch:deps` | Dependency-boundary rules check |
 | `npm run test:unit` | Unit tests (package + host app + workspace MFEs) |
+
+## Deploying the build
+
+`npm run build` writes one self-contained folder, `dist/`:
+
+```text
+dist/
+├── index.html                    # the shell
+├── assets/                       # the shell's modules and styles, hashed names
+├── generated-mfe-manifests.json  # every screen, addressed as mfe/<package>/
+└── mfe/<package>/                # one folder per screen package
+    ├── remoteEntry.js
+    ├── mf-manifest.json
+    ├── assets/                   # hashed names
+    └── shared/                   # shared dependencies, names without a hash
+```
+
+A screen package's preview page, type bundles and build statistics stay out of
+`dist/`. Every address inside the folder is relative: the shell is built with
+base `./` and reads `generated-mfe-manifests.json` from its own folder, and the
+MFE loader resolves each screen's `mfe/<package>/` against the shell's page,
+which is served from that same folder. Copy `dist/` to any static host, at the root of a domain or under
+a sub-path (`https://example.com/apps/console/`); no build-time URL and no
+server rewrite is needed. The dev manifest in `public/` keeps the preview-server
+addresses.
+
+**Links and reloads.** The shell names its screens in the query string
+(`/apps/console/?screen=profile&widgets=widget-a`), so every address it writes
+is the shell's folder itself, and a reload or a shared link loads the folder's
+`index.html` directly. If the host answers unknown paths with `index.html` (a
+single-page fallback), use it only for paths below the shell's folder and answer
+them with a redirect to the folder that keeps the query string, not with the file
+itself: the shell's relative asset addresses resolve against the requested path.
+Never answer a missing file under `assets/` or `mfe/` with `index.html`: a
+missing module has to stay a 404, or the browser reports a wrong content type in
+place of the missing file.
+
+**Cache headers.**
+
+| Files | `Cache-Control` |
+|-------|-----------------|
+| `assets/*`, `mfe/*/assets/*` (hashed names) | `public, max-age=31536000, immutable` |
+| `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, `mfe/*/shared/*`, other root files from `public/` (names without a hash) | `no-cache` (revalidate on every request) |
+
+A file without a hash in its name changes content under the same name on every
+release, so a long cache on it would keep serving the previous release.
+
+**When a screen does not load.** A screen whose files fail to load shows an
+error state with a Retry in its place, and navigation and the other screens
+keep working. Retry repeats the navigation that failed with its own history
+intent: a failed menu click still adds its history entry, a screen the address
+opened is mounted without writing one. A manifest that fails to load shows the
+same state, and its Retry reloads the page.
+
+A screen that reads the shell's own files by an absolute address (the
+`demo-mfe` widgets host fetches `/generated-mfe-manifests.json`) works only at
+the root of a domain until screens can learn the shell's address.
 
 ## Tech stack
 

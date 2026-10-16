@@ -372,4 +372,91 @@ describe('bootstrapMFE (host-app)', () => {
       expect(changeTheme).not.toHaveBeenCalled();
     });
   });
+
+  describe('manifestsUrl', () => {
+    it('reads the aggregate next to the shell at the root of a domain', async () => {
+      const { manifestsUrl } = await import('./bootstrap');
+
+      expect(manifestsUrl('./', 'https://example.com/assets/index-a1b2c3.js')).toBe(
+        'https://example.com/generated-mfe-manifests.json',
+      );
+    });
+
+    it('reads the aggregate next to the shell under a sub-path', async () => {
+      const { manifestsUrl } = await import('./bootstrap');
+
+      expect(manifestsUrl('./', 'https://example.com/apps/console/assets/index-a1b2c3.js')).toBe(
+        'https://example.com/apps/console/generated-mfe-manifests.json',
+      );
+    });
+
+    it('reads it from the module address, so a reload on a nested route resolves the same as the first load', async () => {
+      const { manifestsUrl } = await import('./bootstrap');
+      // The module address is the same whatever address the document was
+      // opened at (`/apps/console/?screen=widgets-host&widgets=widget-a`, a
+      // reload of a nested route), because the document loads it from the
+      // shell's own assets folder.
+      vi.spyOn(document, 'baseURI', 'get').mockReturnValue('https://example.com/apps/console/deep/route');
+
+      expect(manifestsUrl('./', 'https://example.com/apps/console/assets/index-a1b2c3.js')).toBe(
+        'https://example.com/apps/console/generated-mfe-manifests.json',
+      );
+    });
+
+    it('uses an absolute base (the dev server) as it is', async () => {
+      const { manifestsUrl } = await import('./bootstrap');
+
+      expect(manifestsUrl('/', 'http://localhost:5173/src-app/app/mfe/bootstrap.ts')).toBe(
+        'http://localhost:5173/generated-mfe-manifests.json',
+      );
+    });
+  });
+
+  describe('screen load failure report', () => {
+    const MOUNT_EXT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
+
+    async function screenMountHandler(): Promise<ActionHandler> {
+      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { bootstrapMFE } = await import('./bootstrap');
+      await bootstrapMFE(mockApp as never);
+      const handlers = new Map<string, ActionHandler>();
+      const [, screenFactory] = registerDomain.mock.calls[0];
+      screenFactory.build({
+        mounter: {},
+        registerHandler: (actionTypeId: string, handler: ActionHandler) => {
+          handlers.set(actionTypeId, handler);
+        },
+      });
+      const handler = handlers.get(MOUNT_EXT);
+      if (!handler) throw new Error('the screen domain registered no mount handler');
+      return handler;
+    }
+
+    it.each([
+      [{ subject: 'ext.orders' }, 'push'],
+      [{ subject: 'ext.orders', history: 'push' }, 'push'],
+      [{ subject: 'ext.orders', history: 'replace' }, 'replace'],
+      [{ subject: 'ext.orders', history: 'none' }, 'none'],
+    ])('reports a failed mount of %j with history intent %s and still fails the action', async (payload, history) => {
+      const handler = await screenMountHandler();
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      exclusiveMount.mockRejectedValueOnce(new Error('remote unreachable'));
+
+      await expect(handler.handleAction(MOUNT_EXT, payload)).rejects.toThrow('remote unreachable');
+
+      expect(screenLoadFailure.current()).toEqual({ extensionId: 'ext.orders', history });
+    });
+
+    it('clears the report once a mount succeeds', async () => {
+      const handler = await screenMountHandler();
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      exclusiveMount.mockRejectedValueOnce(new Error('remote unreachable'));
+      await expect(handler.handleAction(MOUNT_EXT, { subject: 'ext.orders' })).rejects.toThrow();
+
+      await handler.handleAction(MOUNT_EXT, { subject: 'ext.orders' });
+
+      expect(screenLoadFailure.current()).toBeUndefined();
+    });
+  });
 });
