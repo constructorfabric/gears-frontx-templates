@@ -1131,7 +1131,7 @@ describe('auth plugin', () => {
       }
       expect(provider.refresh).toHaveBeenCalledTimes(2);
       expect(results.slice(2).every((result) => result instanceof Error)).toBe(true);
-      expect(loggedIn.mock.calls.length).toBeLessThanOrEqual(1);
+      expect(loggedIn).toHaveBeenCalledTimes(1);
 
       await plugin.onResponse?.({ status: 200, headers: {}, data: {} });
       await fail401(plugin).result;
