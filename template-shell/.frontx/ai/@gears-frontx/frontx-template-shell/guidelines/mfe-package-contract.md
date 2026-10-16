@@ -180,6 +180,25 @@ counter-declarations in `ThemeAwareReactLifecycle`.
   `FRONTX_INCLUDE_TEMPLATE_EXAMPLES` is set to `1`, same as manifest generation
   and dev/build discovery.
 
+## Page chrome a mounted screen can rely on
+
+- **One `h1` per page.** A screen renders its own page heading as one `h1`,
+  and keeping it to one is the screen's job. The shell's header holds a
+  visually hidden `<h1>FrontX</h1>` (`src-app/app/layout/Header.tsx`) only while
+  no other level-one heading is in the document or an open shadow root
+  (`useOtherHeadingOne.ts`): an `h1` without a `role`, or an element with
+  `role="heading"` and `aria-level="1"`, the way axe counts them. A screen with
+  such a heading therefore never sits beside a second one from the shell, and a
+  screen without one still leaves the page with the shell's. Headings in closed
+  shadow roots are not seen.
+- **The screen keeps the width on narrow viewports.** Below 768 px the menu
+  starts collapsed to its 56 px icon rail, an expanded menu lies over the screen
+  behind a backdrop instead of pushing it aside, and the header and screen are inert (out of
+  keyboard reach) until the menu collapses again: on choosing a menu item, on a
+  screen change, on Escape or on the backdrop
+  (`src-app/app/layout/useNarrowViewportMenu.ts`). A screen lays itself out for
+  the width left beside that rail.
+
 ## Non-requirements
 
 - No MFE package name is ever referenced by shell code, config, or scripts —

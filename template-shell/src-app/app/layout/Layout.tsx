@@ -6,7 +6,7 @@
  * Uses local shadcn/ui components.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { fetchCurrentUser } from '@/app/actions/bootstrapActions';
 import { Header } from './Header';
 import { Menu } from './Menu';
@@ -14,12 +14,16 @@ import { Sidebar } from './Sidebar';
 import { Screen } from './Screen';
 import { Popup } from './Popup';
 import { Overlay } from './Overlay';
+import { useNarrowViewportMenu } from './useNarrowViewportMenu';
 
 export interface LayoutProps {
   children?: React.ReactNode;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const menuSlotRef = useRef<HTMLDivElement>(null);
+  const narrowMenu = useNarrowViewportMenu(menuSlotRef);
+
   useEffect(() => {
     // Bootstrap application on mount - fetch current user
     fetchCurrentUser();
@@ -28,12 +32,27 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Top row: Menu + Header + Content + Sidebar */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Menu - full height on left */}
-        <Menu />
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Menu - full height on left. Below md the slot keeps only the
+            collapsed rail's width, and the expanded menu lies over the
+            screen instead of pushing it aside. */}
+        <div ref={menuSlotRef} className="relative flex shrink-0 max-md:w-14">
+          <Menu />
+        </div>
 
-        {/* Right side: Header + Content */}
-        <div className="flex flex-col flex-1 overflow-hidden">
+        {narrowMenu.overlaid ? (
+          <button
+            type="button"
+            aria-label="Close menu"
+            tabIndex={-1}
+            className="absolute inset-0 z-30 bg-[var(--overlay-modal)] md:hidden"
+            onClick={narrowMenu.collapse}
+          />
+        ) : null}
+
+        {/* Right side: Header + Content. Inert while the menu lies over it,
+            so keyboard focus cannot move into what the backdrop covers. */}
+        <div className="flex flex-col flex-1 overflow-hidden" inert={narrowMenu.overlaid}>
           {/* Header */}
           <Header />
 

@@ -1,6 +1,6 @@
 /**
  * Sidebar Component - Based on shadcn/ui sidebar
- * Simplified for desktop-only collapsible navigation
+ * Collapsible navigation; below md the expanded menu overlays the content
  */
 
 import * as React from "react"
@@ -29,6 +29,10 @@ const Sidebar = (
         "group flex flex-col border-r border-mainMenu-border transition-[width] duration-200 ease-linear",
         "bg-mainMenu text-mainMenu-foreground",
         collapsed ? "w-14" : "w-64",
+        // Below md an expanded menu lies over the content (the layout keeps
+        // only the collapsed rail's width for it) instead of taking 256 px of
+        // a phone screen.
+        !collapsed && "max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-lg",
         className
       )}
       {...props}
