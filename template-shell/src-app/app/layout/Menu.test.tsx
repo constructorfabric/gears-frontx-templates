@@ -153,8 +153,7 @@ describe('Menu', () => {
   });
 
   it('still lists the well-formed screens when a sibling extension carries no presentation metadata', async () => {
-    // One extension the reader cannot read must cost only itself. Paired with a well-formed extension because a one-element
-    // sort never calls the comparator that would dereference it.
+    // One extension the reader cannot read must not hide its siblings.
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, withoutPresentation('broken')]);
 
     await renderSettled();
@@ -245,8 +244,9 @@ describe('Menu', () => {
       await renderSettled();
 
       await switchLanguage('de');
-      await switchLanguage('fr');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
 
+      await switchLanguage('fr');
       expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
     });
 

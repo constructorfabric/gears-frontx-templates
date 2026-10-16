@@ -87,7 +87,7 @@ describe('shell screens', () => {
   });
 
   describe('a project schema under the screen type id', () => {
-    it('is registered instead of the default, not beside it', () => {
+    it('resolves to the replacement alone, not the replacement beside the default', () => {
       expect(resolveShellScreens({ schemas: [labelsScreenSchema] }).schemas).toEqual([labelsScreenSchema]);
     });
 
@@ -128,10 +128,12 @@ describe('shell screens', () => {
   describe('a project-derived screen type', () => {
     const config: ShellScreensConfig = { schemas: [groupedScreenSchema], extensionsTypeId: SITE_SCREEN_TYPE };
 
-    it('admits a screen carrying the field the derived type adds', () => {
+    it('admits a screen carrying the field the derived type adds, and the reader reads it', () => {
       const plugin = storeFor(config);
+      const inbox = screen(SITE_SCREEN_TYPE, 'inbox', { label: 'Inbox', group: 'Mail' });
 
-      expect(() => plugin.register(screen(SITE_SCREEN_TYPE, 'inbox', { label: 'Inbox', group: 'Mail' }))).not.toThrow();
+      expect(() => plugin.register(inbox)).not.toThrow();
+      expect(resolveShellScreens(config).readMenuItem(inbox, EN)).toEqual({ label: 'Inbox' });
     });
 
     it('accepts a type derived from another configured screen type', () => {
