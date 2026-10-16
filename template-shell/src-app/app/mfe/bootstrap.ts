@@ -169,19 +169,21 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     // strategy settles — no domain-implementation call is needed for it.
     // A new mount drops the report of the one before it; a failed mount is
     // reported for the screen container's error state and still fails the
-    // action. Only the latest mount reports, so an earlier one failing late
-    // never shows its error over a newer screen.
+    // action. Only the latest mount, started in the current visit, reports, so
+    // a mount failing late never shows its error over a newer screen or after a
+    // history step left its address.
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
         const mount = ++this.latestMount;
+        const visit = screenLoadFailure.visit();
         screenLoadFailure.clear();
         try {
           await this.strategy.mount(p as ActionPayload);
         } catch (error) {
           const subject = p?.subject;
           if (mount === this.latestMount && typeof subject === 'string') {
-            screenLoadFailure.report(subject, readHistoryIntent(p));
+            screenLoadFailure.report(subject, readHistoryIntent(p), visit);
           }
           throw error;
         }

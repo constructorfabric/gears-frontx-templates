@@ -31,6 +31,7 @@ export function readHistoryIntent(payload: Record<string, unknown> | undefined):
 
 function createScreenLoadFailureStore() {
   let failure: ScreenLoadFailure | undefined;
+  let visit = 0;
   const listeners = new Set<Listener>();
   const set = (next: ScreenLoadFailure | undefined) => {
     failure = next;
@@ -38,7 +39,17 @@ function createScreenLoadFailureStore() {
   };
   return {
     current: (): ScreenLoadFailure | undefined => failure,
-    report: (extensionId: string, history: MountHistoryIntent): void => set({ extensionId, history }),
+    /** The current visit: a history step starts a new one (`leave`). */
+    visit: (): number => visit,
+    /** Report a failed mount started during `startedIn`; a mount from a visit the user already left reports nothing. */
+    report: (extensionId: string, history: MountHistoryIntent, startedIn: number = visit): void => {
+      if (startedIn === visit) set({ extensionId, history });
+    },
+    /** A history step left the current address: drop its failure and any report still on its way. */
+    leave: (): void => {
+      visit += 1;
+      if (failure !== undefined) set(undefined);
+    },
     clear: (): void => {
       if (failure !== undefined) set(undefined);
     },

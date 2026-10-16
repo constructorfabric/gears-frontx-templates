@@ -82,10 +82,11 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   }, [app]);
 
   // A history step (back, forward) leaves the failed navigation behind, so its
-  // error state and Retry go with it; whatever the new address names mounts
-  // and reports on its own.
+  // error state and Retry go with it, and so does the report of a mount still
+  // loading for it; whatever the new address names mounts and reports on its
+  // own.
   useEffect(() => {
-    const leave = () => screenLoadFailure.clear();
+    const leave = () => screenLoadFailure.leave();
     window.addEventListener('popstate', leave);
     return () => window.removeEventListener('popstate', leave);
   }, []);
