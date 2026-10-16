@@ -67,10 +67,7 @@ const MFE_MANIFESTS_FILE = 'generated-mfe-manifests.json';
  * @param base - The build's base (`import.meta.env.BASE_URL`)
  * @param moduleUrl - The address of the module asking (`import.meta.url`)
  */
-export function manifestsUrl(
-  base: string = import.meta.env.BASE_URL,
-  moduleUrl: string = import.meta.url,
-): string {
+export function manifestsUrl(base: string, moduleUrl: string): string {
   if (base === '' || base.startsWith('.')) {
     return new URL(`../${MFE_MANIFESTS_FILE}`, moduleUrl).href;
   }
@@ -155,6 +152,7 @@ function readCollapsed(payload: Record<string, unknown> | undefined): boolean {
 
 class ScreenDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: ExclusiveMountStrategy;
+  private latestMount = 0;
 
   constructor(
     ctx: DomainContext,
@@ -170,18 +168,23 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     // `inst-me-report-settled`) reflects this mount into the URL once the
     // strategy settles — no domain-implementation call is needed for it.
     // A failed mount is reported for the screen container's error state and
-    // still fails the action; a successful one clears the report.
+    // still fails the action; a successful one clears the report. Only the
+    // latest mount reports: an earlier one settling late must neither show its
+    // failure over a newer screen nor clear a newer failure.
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
+        const mount = ++this.latestMount;
         try {
           await this.strategy.mount(p as ActionPayload);
         } catch (error) {
           const subject = p?.subject;
-          if (typeof subject === 'string') screenLoadFailure.report(subject, readHistoryIntent(p));
+          if (mount === this.latestMount && typeof subject === 'string') {
+            screenLoadFailure.report(subject, readHistoryIntent(p));
+          }
           throw error;
         }
-        screenLoadFailure.clear();
+        if (mount === this.latestMount) screenLoadFailure.clear();
       }),
     );
     // The host chrome a mounted screen may drive. The one thing neither the
@@ -467,7 +470,7 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
   const derivedLanguage = app.i18nRegistry.getLanguage();
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, derivedLanguage ?? 'en');
 
-  const aggregateUrl = manifestsUrl();
+  const aggregateUrl = manifestsUrl(import.meta.env.BASE_URL, import.meta.url);
   console.info(`[MFE Bootstrap] Fetching MFE manifests from ${aggregateUrl}`);
   const response = await fetch(aggregateUrl);
   if (!response.ok) {

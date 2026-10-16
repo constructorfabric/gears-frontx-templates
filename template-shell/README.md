@@ -123,8 +123,9 @@ errors. Add MFE packages with `frontx add frontx-template-mfe` (see
 regenerated — before their preview ports (`:3001` demo, `:3099` blank,
 `:3201`/`:3202` widget fixtures) come up alongside the host. Each preview
 server runs on exactly the port its package declares, because the dev manifest
-points the host there: when a port is taken, `dev:all` stops before building and
-names the port and the package.
+points the host there: when two packages declare the same port or a declared
+port is taken, `dev:all` stops before building any screen package and names the
+port and the packages.
 
 The FrontX ecosystem packages (`@gears-frontx/mfes`, `@gears-frontx/gts-plugin`,
 `@gears-frontx/api`) resolve from the npm registry at exact pinned versions.
@@ -186,35 +187,44 @@ dist/
     └── shared/                   # shared dependencies, names without a hash
 ```
 
-A screen package's preview page, type bundles and build statistics stay out of
-`dist/`. Every address inside the folder is relative: the shell is built with
-base `./` and reads `generated-mfe-manifests.json` from its own folder, and the
-MFE loader resolves each screen's `mfe/<package>/` against the shell's page,
-which is served from that same folder. Copy `dist/` to any static host, at the root of a domain or under
-a sub-path (`https://example.com/apps/console/`); no build-time URL and no
-server rewrite is needed. The dev manifest in `public/` keeps the preview-server
-addresses.
+A screen package's preview page, type bundles, build statistics and enriched
+`mfe-manifest.json` stay out of `dist/`. The shell is built with base `./`, reads
+`generated-mfe-manifests.json` from its own folder, and the MFE loader resolves
+each screen's `mfe/<package>/` against the shell's page, which is served from
+that same folder; nothing in the shell or the manifest names a domain or a
+path. Copy `dist/` to any static host, at the root of a domain or under a
+sub-path (`https://example.com/apps/console/`); no build-time URL is needed. The
+dev manifest in `public/` keeps the preview-server addresses. A screen package
+that writes addresses into its own files (a CSS `url()` to an image or font, an
+imported asset URL) builds them against its own Vite `base`, so such a package
+sets `base: './'` in its `vite.config.ts`; the `template-mfe` packages write
+none.
 
-**Links and reloads.** The shell names its screens in the query string
-(`/apps/console/?screen=profile&widgets=widget-a`), so every address it writes
-is the shell's folder itself, and a reload or a shared link loads the folder's
-`index.html` directly. If the host answers unknown paths with `index.html` (a
-single-page fallback), use it only for paths below the shell's folder and answer
-them with a redirect to the folder that keeps the query string, not with the file
-itself: the shell's relative asset addresses resolve against the requested path.
-Never answer a missing file under `assets/` or `mfe/` with `index.html`: a
-missing module has to stay a 404, or the browser reports a wrong content type in
-place of the missing file.
+**Links and reloads.** Open the shell at its folder address with the trailing
+slash (`/apps/console/`). Without the slash the page resolves its relative
+addresses one folder up, so a host that does not redirect `/apps/console` to
+`/apps/console/` needs that redirect. The shell names its screens in the query
+string (`/apps/console/?screen=profile&widgets=widget-a`), so every address it
+writes is the shell's folder itself, and a reload or a shared link loads the
+folder's `index.html` directly with no rewrite. If the host answers unknown
+paths with `index.html` (a single-page fallback), use it only for paths below
+the shell's folder and answer them with a redirect to the folder that keeps the
+query string, not with the file itself: the shell's relative addresses resolve
+against the requested path. Never answer a missing file under `assets/` or
+`mfe/` with `index.html`: a missing module has to stay a 404, or the browser
+reports a wrong content type in place of the missing file.
 
-**Cache headers.**
+**Cache headers.** Only the hashed build output may be cached for long:
 
 | Files | `Cache-Control` |
 |-------|-----------------|
-| `assets/*`, `mfe/*/assets/*` (hashed names) | `public, max-age=31536000, immutable` |
-| `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, `mfe/*/shared/*`, other root files from `public/` (names without a hash) | `no-cache` (revalidate on every request) |
+| `assets/*` and `mfe/*/assets/*` (names carry a content hash) | `public, max-age=31536000, immutable` |
+| everything else: `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, `mfe/*/shared/*`, files copied from a `public/` folder | `no-cache` (revalidate on every request) |
 
 A file without a hash in its name changes content under the same name on every
-release, so a long cache on it would keep serving the previous release.
+release, so a long cache on it would keep serving the previous release. Keep
+files of your own out of a `public/assets/` folder, which would land under a
+path cached as hashed.
 
 **When a screen does not load.** A screen whose files fail to load shows an
 error state with a Retry in its place, and navigation and the other screens

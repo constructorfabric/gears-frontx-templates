@@ -34,7 +34,7 @@ function manifestIdFor(name: string): string {
 }
 
 /** A built screen package: its scripts, its `mfe.json`, and the `dist/` its `vite build` writes. */
-function builtPackage(name: string, port: number): void {
+function builtPackage(name: string, port: number, manifestId: string = manifestIdFor(name)): void {
   const dir = join(packagesDir, name);
   const dist = join(dir, 'dist');
   mkdirSync(join(dist, 'assets'), { recursive: true });
@@ -58,7 +58,7 @@ function builtPackage(name: string, port: number): void {
     join(dist, 'mfe-manifest.json'),
     JSON.stringify({
       manifest: {
-        id: manifestIdFor(name),
+        id: manifestId,
         name,
         remoteEntry: `http://localhost:${port}/remoteEntry.js`,
         metaData: {
@@ -77,7 +77,7 @@ function builtPackage(name: string, port: number): void {
           requiredProperties: [],
           actions: [],
           domainActions: [],
-          manifest: manifestIdFor(name),
+          manifest: manifestId,
           exposedModule: './lifecycle',
           exposeAssets: { js: { async: [], sync: ['assets/lifecycle-abc123.js'] }, css: { async: [], sync: [] } },
         },
@@ -178,6 +178,34 @@ describe('layoutDist', () => {
     expect(() => layoutDist(project)).toThrow(/carries manifest .*orders_mfe.*Rebuild the MFE packages/);
     expect(readFileSync(join(project, 'dist', AGGREGATE_FILE), 'utf-8')).toBe(before);
     expect(existsSync(join(project, 'dist', 'mfe'))).toBe(false);
+  });
+
+  it('lays out a package the aggregate carries even when its scripts declare no preview port', () => {
+    builtPackage('orders-mfe', 3010);
+    writeFileSync(join(packagesDir, 'orders-mfe', 'package.json'), JSON.stringify({ name: 'orders-mfe', scripts: {} }));
+    generateAndCopyAggregate();
+
+    expect(layoutDist(project)).toEqual(['orders-mfe']);
+  });
+
+  it('refuses a manifest id two packages declare, naming both, before writing anything', () => {
+    const shared = manifestIdFor('orders-mfe');
+    builtPackage('orders-mfe', 3010, shared);
+    builtPackage('orders-copy-mfe', 3011, shared);
+    generateAndCopyAggregate();
+    const before = readFileSync(join(project, 'dist', AGGREGATE_FILE), 'utf-8');
+
+    expect(() => layoutDist(project)).toThrow(/declared by more than one package: (orders-mfe, orders-copy-mfe|orders-copy-mfe, orders-mfe)/);
+    expect(readFileSync(join(project, 'dist', AGGREGATE_FILE), 'utf-8')).toBe(before);
+    expect(existsSync(join(project, 'dist', 'mfe'))).toBe(false);
+  });
+
+  it('names the package file it cannot parse', () => {
+    builtPackage('orders-mfe', 3010);
+    generateAndCopyAggregate();
+    writeFileSync(join(packagesDir, 'orders-mfe', 'dist', 'mfe-manifest.json'), '{ "manifest": ');
+
+    expect(() => layoutDist(project)).toThrow(/Cannot parse src-app\/mfe_packages\/orders-mfe\/dist\/mfe-manifest\.json/);
   });
 
   it('refuses a dist/ without the aggregate, naming the build step that writes it', () => {

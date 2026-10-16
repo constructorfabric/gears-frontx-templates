@@ -19,7 +19,13 @@ import {
   noDiscoveredPackagesNotice,
   type MfeInfo,
 } from './lib/mfe-tools.js';
-import { findTakenPreviewPorts, previewCommand, takenPreviewPortsMessage } from './lib/preview-ports.js';
+import {
+  findSharedPreviewPorts,
+  findTakenPreviewPorts,
+  previewCommand,
+  sharedPreviewPortsMessage,
+  takenPreviewPortsMessage,
+} from './lib/preview-ports.js';
 
 // Determine main app command based on available scripts
 function getMainAppCommand(): string {
@@ -91,7 +97,12 @@ async function main() {
     console.log();
   }
 
-  // Step 0: every declared preview port must be free, before anything is built
+  // Step 0: every declared preview port must be one package's own and free,
+  // before any screen package is built
+  const shared = findSharedPreviewPorts(packages);
+  if (shared.length > 0) {
+    throw new Error(sharedPreviewPortsMessage(shared));
+  }
   const taken = await findTakenPreviewPorts(packages);
   if (taken.length > 0) {
     throw new Error(takenPreviewPortsMessage(taken));

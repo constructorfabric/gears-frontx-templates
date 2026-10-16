@@ -94,7 +94,17 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   // Every URL entry for this domain failed to resolve to a mounted screen —
   // an unknown token in the address bar, not a moment mid-mount (which still
   // has zero entries or a resolved one already mounting).
-  const unresolvedOnly = status.entries > 0 && status.unresolved === status.entries && mountedScreens.length === 0;
+  // A history step (back, forward) leaves the failed navigation behind, so its
+  // error state and Retry go with it; whatever the new address names mounts
+  // and reports on its own.
+  useEffect(() => {
+    const leave = () => screenLoadFailure.clear();
+    window.addEventListener('popstate', leave);
+    return () => window.removeEventListener('popstate', leave);
+  }, []);
+
+  const unresolvedOnly =
+    !loadFailure && status.entries > 0 && status.unresolved === status.entries && mountedScreens.length === 0;
 
   const retryScreen = () => {
     if (!loadFailure) return;

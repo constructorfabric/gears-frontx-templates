@@ -190,7 +190,7 @@ describe('MfeScreenContainer', () => {
   });
 
   describe('a screen that failed to load', () => {
-    it('shows the error state in place of the screen', async () => {
+    it('shows the error state once a screen failure is reported', async () => {
       const { MfeScreenContainer } = await import('./MfeScreenContainer');
       const { screenLoadFailure } = await import('./screenLoadFailure');
       render(<MfeScreenContainer />);
@@ -226,6 +226,33 @@ describe('MfeScreenContainer', () => {
         expect(screen.queryByRole('alert')).toBeNull();
       },
     );
+
+    it('drops the error state when a history step leaves the failed navigation', async () => {
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      render(<MfeScreenContainer />);
+      await settleBootstrap();
+      act(() => screenLoadFailure.report('ext.orders', 'push'));
+
+      act(() => {
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('shows only the error state, not the unknown-address fallback with it', async () => {
+      mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      render(<MfeScreenContainer />);
+      await settleBootstrap();
+
+      act(() => screenLoadFailure.report('ext.orders', 'none'));
+
+      expect(screen.getByRole('alert')).not.toBeNull();
+      expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
+    });
 
     it('renders the error state the app passes in', async () => {
       const { MfeScreenContainer } = await import('./MfeScreenContainer');

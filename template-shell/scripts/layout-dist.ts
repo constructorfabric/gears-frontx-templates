@@ -14,16 +14,16 @@
  * the same `dist/` works at the root of a domain and under any sub-path. The dev
  * aggregate in `public/` keeps the preview-server addresses.
  *
- * The packages come from the same discovery as `build:mfes`
- * (`getMFEPackages`), and each aggregate config is matched to its package by
- * the manifest id the package's enriched `dist/mfe-manifest.json` carries.
+ * The packages come from the same discovery as manifest generation, and each
+ * aggregate config is matched to its package by the manifest id the package's
+ * enriched `dist/mfe-manifest.json` carries.
  */
 
-import { cpSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getMFEPackages } from './lib/mfe-tools.js';
+import { isNonPackageDirectory, isTemplateExamplePackage, templateExamplesIncluded } from './lib/mfe-tools.js';
 
 /** The aggregate the shell reads at runtime, copied into `dist/` by `vite build`. */
 export const AGGREGATE_FILE = 'generated-mfe-manifests.json';
@@ -63,22 +63,45 @@ interface AggregateConfig {
   entries?: Array<{ manifest?: unknown }>;
 }
 
-function readManifestId(enrichedFile: string): string | undefined {
-  const parsed: unknown = JSON.parse(readFileSync(enrichedFile, 'utf-8'));
+function readJson(file: string, projectDir: string): unknown {
+  try {
+    return JSON.parse(readFileSync(file, 'utf-8'));
+  } catch (err) {
+    throw new Error(
+      `Cannot parse ${relative(projectDir, file)}: ${err instanceof Error ? err.message : String(err)}. Rebuild it.`,
+    );
+  }
+}
+
+function readManifestId(enrichedFile: string, projectDir: string): string | undefined {
+  const parsed = readJson(enrichedFile, projectDir);
   if (typeof parsed !== 'object' || parsed === null || !('manifest' in parsed)) return undefined;
   const manifest = parsed.manifest;
   if (typeof manifest !== 'object' || manifest === null || !('id' in manifest)) return undefined;
   return typeof manifest.id === 'string' ? manifest.id : undefined;
 }
 
-/** Built packages by the manifest id their enriched manifest carries. */
-function builtPackagesById(mfePackagesDir: string): Map<string, string> {
-  const byId = new Map<string, string>();
-  for (const { name } of getMFEPackages(mfePackagesDir).packages) {
-    const enriched = join(mfePackagesDir, name, 'dist', ENRICHED_MANIFEST);
+/**
+ * Built packages by the manifest id their enriched manifest carries, found by
+ * the same rules manifest generation uses (`generate-mfe-manifests.ts`): not a
+ * non-package directory, an `mfe.json` present, template examples only when
+ * they are included. Every package that can reach the aggregate can therefore
+ * be laid out, and the ids are indexed with every package declaring them so a
+ * duplicate is refused rather than resolved to one of them.
+ */
+function builtPackagesById(mfePackagesDir: string, projectDir: string): Map<string, string[]> {
+  const byId = new Map<string, string[]>();
+  if (!existsSync(mfePackagesDir)) return byId;
+  const includeExamples = templateExamplesIncluded();
+  for (const name of readdirSync(mfePackagesDir)) {
+    if (isNonPackageDirectory(name)) continue;
+    const packagePath = join(mfePackagesDir, name);
+    if (!existsSync(join(packagePath, 'mfe.json'))) continue;
+    if (!includeExamples && isTemplateExamplePackage(packagePath)) continue;
+    const enriched = join(packagePath, 'dist', ENRICHED_MANIFEST);
     if (!existsSync(enriched)) continue;
-    const id = readManifestId(enriched);
-    if (id !== undefined) byId.set(id, name);
+    const id = readManifestId(enriched, projectDir);
+    if (id !== undefined) byId.set(id, [...(byId.get(id) ?? []), name]);
   }
   return byId;
 }
@@ -118,18 +141,28 @@ export function layoutDist(
     );
   }
 
-  const configs = JSON.parse(readFileSync(aggregateFile, 'utf-8')) as AggregateConfig[];
-  const byId = builtPackagesById(mfePackagesDir);
+  const parsed = readJson(aggregateFile, projectDir);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${relative(projectDir, aggregateFile)} is not an array of manifest configs. Rebuild the project.`);
+  }
+  const configs = parsed as AggregateConfig[];
+  const byId = builtPackagesById(mfePackagesDir, projectDir);
   const layout = configs.map((config) => {
     const id = config.manifest?.id;
-    const packageDir = typeof id === 'string' ? byId.get(id) : undefined;
-    if (packageDir === undefined) {
+    const packageDirs = typeof id === 'string' ? (byId.get(id) ?? []) : [];
+    if (packageDirs.length === 0) {
       throw new Error(
         `The aggregate carries manifest ${String(id)}, which no built package under ` +
           `${relative(projectDir, mfePackagesDir)}/*/dist/${ENRICHED_MANIFEST} declares. Rebuild the MFE packages.`,
       );
     }
-    return { config, packageDir };
+    if (packageDirs.length > 1) {
+      throw new Error(
+        `Manifest ${String(id)} is declared by more than one package: ${packageDirs.join(', ')}. ` +
+          `Give each package its own manifest id in its mfe.json and rebuild.`,
+      );
+    }
+    return { config, packageDir: packageDirs[0] };
   });
 
   const mfeDir = join(distDir, MFE_DIR);

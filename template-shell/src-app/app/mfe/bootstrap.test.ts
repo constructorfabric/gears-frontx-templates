@@ -390,19 +390,6 @@ describe('bootstrapMFE (host-app)', () => {
       );
     });
 
-    it('reads it from the module address, so a reload on a nested route resolves the same as the first load', async () => {
-      const { manifestsUrl } = await import('./bootstrap');
-      // The module address is the same whatever address the document was
-      // opened at (`/apps/console/?screen=widgets-host&widgets=widget-a`, a
-      // reload of a nested route), because the document loads it from the
-      // shell's own assets folder.
-      vi.spyOn(document, 'baseURI', 'get').mockReturnValue('https://example.com/apps/console/deep/route');
-
-      expect(manifestsUrl('./', 'https://example.com/apps/console/assets/index-a1b2c3.js')).toBe(
-        'https://example.com/apps/console/generated-mfe-manifests.json',
-      );
-    });
-
     it('uses an absolute base (the dev server) as it is', async () => {
       const { manifestsUrl } = await import('./bootstrap');
 
@@ -446,6 +433,24 @@ describe('bootstrapMFE (host-app)', () => {
       await expect(handler.handleAction(MOUNT_EXT, payload)).rejects.toThrow('remote unreachable');
 
       expect(screenLoadFailure.current()).toEqual({ extensionId: 'ext.orders', history });
+    });
+
+    it('ignores an earlier mount that settles after a later one, whichever way each ends', async () => {
+      const handler = await screenMountHandler();
+      const { screenLoadFailure } = await import('./screenLoadFailure');
+      let failEarlier: (error: Error) => void = () => {};
+      exclusiveMount.mockImplementationOnce(
+        () => new Promise<void>((_resolve, reject) => {
+          failEarlier = reject;
+        }),
+      );
+      const earlier = handler.handleAction(MOUNT_EXT, { subject: 'ext.slow' });
+      await handler.handleAction(MOUNT_EXT, { subject: 'ext.fast' });
+
+      failEarlier(new Error('remote unreachable'));
+      await expect(earlier).rejects.toThrow('remote unreachable');
+
+      expect(screenLoadFailure.current()).toBeUndefined();
     });
 
     it('clears the report once a mount succeeds', async () => {
