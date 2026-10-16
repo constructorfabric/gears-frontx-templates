@@ -260,6 +260,17 @@ describe('Menu', () => {
     });
   });
 
+  it('marks only the mounted screen as the current page', async () => {
+    const inbox = screenExtension(`${tasks.id}.inbox`, '/inbox', 30, 'Inbox');
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
+    mockUseMountedExtensions.mockReturnValue([inbox]);
+
+    await renderSettled();
+
+    expect(screen.getByTestId(`menu-item-${inbox.id}`).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId(`menu-item-${tasks.id}`).hasAttribute('aria-current')).toBe(false);
+  });
+
   it('lists no screens and shows no hint when the project turned the screen domain off', async () => {
     projectScreens.current = resolveShellScreens({ enabled: false });
 

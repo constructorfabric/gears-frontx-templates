@@ -202,6 +202,8 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
                   <SidebarMenuButton
                     data-testid={menuItemTestId(id)}
                     isActive={isActive}
+                    // `data-active` styles the item; this tells assistive technology which screen is open.
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={() => handleMenuItemClick(id)}
                     tooltip={collapsed ? item.label : undefined}
                   >

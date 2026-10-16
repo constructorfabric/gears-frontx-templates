@@ -41,7 +41,7 @@ on, is left out; a throw is logged. The extensions are listed once, after
 bootstrap settles, and the menu stays blank until then. Their items are read
 again on every language switch (`i18n/language/changed`, the event that also
 carries the language to MFEs), so the labels follow the language without a
-reload.
+reload. The active item carries `aria-current="page"`.
 
 A click does **not** navigate. It dispatches a mount action:
 
