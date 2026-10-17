@@ -47,12 +47,35 @@ with a thrown registration error, not a silent skip):
 | Field (on the extension) | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text. A raw display string — there is no i18n key for menu labels today, so the label renders identically in every language |
-| `route` (top level, beside `id`/`domain`/`entry`) | yes | route token (e.g. `/widgets-host`), one leading `/` stripped before use. The shell's own injected router reads this to admit the extension as a deep-linkable occupant of the screen domain and to reflect its mount/unmount into the URL — keep it unique within the domain and stable across releases |
+| `route` (top level, beside `id`/`domain`/`entry`) | yes | route value (e.g. `/widgets-host`) the FrontX router finds the extension by; with the screen domain's own route it gives the extension its private subroute — keep it unique within the domain and stable across releases. It must reduce to one valid name under the naming rule of `@gears-frontx/routing`; otherwise the router refuses the registration |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 
 `order` is a flat number per domain — there is no grouping or nesting, so
 coordinate values across packages if relative position matters.
+
+## Routes inside the MFE
+
+An extension that declares a `route`, in a domain that declares one too, has
+a private subroute of its own, and the MFE reads and changes only that. An MFE
+with routes renders `<ExtensionRouter routeTree={routeTree} />` from
+`@gears-frontx/routing-tanstack` in its own content, building `routeTree` with
+the route-tree builders that package re-exports; code outside the rendered
+tree (an `ActionHandler`, for instance) calls `navigation()` from the same
+package (`navigate(path)`, `replace(path)`, `location()`). The framework adds
+nothing to this: it only passes the FrontX router to the registry it builds.
+Everything outside the private subroute, including which extension a domain
+shows, changes through actions (`mount_ext`, `unmount_ext`), never through
+navigation. An extension without a `route` of its own, or mounted into a
+domain without one, has no router access: `ExtensionRouter` and `navigation()`
+refuse with an error there.
+
+Every MFE lists `@gears-frontx/routing` in its shared dependencies in
+`vite.config.ts`, so its runtime evaluates one copy of it, never shared across
+MFEs. An MFE that renders `<ExtensionRouter>` or calls `navigation()` lists
+`@gears-frontx/routing-tanstack` there too.
+
+An MFE is tested inside a shell — a simple dummy shell, for instance the template shell via `npm run dev:all`; it has no standalone preview.
 
 ## Beyond the menu: extensions that do not target the screen domain
 

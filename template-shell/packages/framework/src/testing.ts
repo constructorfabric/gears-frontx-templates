@@ -15,6 +15,7 @@ export type {
   BootstrapMfeTestSpecOptions,
 } from './testing/describeBootstrapMfeContract';
 export { TestContainerProvider } from './testing/TestContainerProvider';
+export type { TestStrategyFactory } from './testing/TestContainerProvider';
 export {
   peekSharedQueryClient,
   peekSharedQueryClientRetainers,

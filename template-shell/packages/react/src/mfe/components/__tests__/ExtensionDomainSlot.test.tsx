@@ -12,7 +12,6 @@ import { ExtensionMounter } from '@gears-frontx/framework';
 import { MfeRegistry } from '@gears-frontx/framework';
 import type { ActionsChain, ExtensionDomain, Extension } from '@gears-frontx/framework';
 import type { ExtensionDomainImplementationFactory } from '@gears-frontx/framework';
-import type { ParentMfeBridge } from '@gears-frontx/framework';
 import type { TypeSystemPlugin } from '@gears-frontx/framework';
 
 // ─── FakeMounter ─────────────────────────────────────────────────────────────
@@ -78,12 +77,12 @@ class FakeRegistry extends MfeRegistry {
   getExtension(_id: string): Extension | undefined { return undefined; }
   getDomain(_id: string): ExtensionDomain | undefined { return undefined; }
   getExtensionsForDomain(_id: string): Extension[] { return []; }
-  getMountedExtensions(_id: string): readonly string[] { return []; }
   getRegisteredPackages(): string[] { return []; }
   getExtensionsForPackage(_id: string): Extension[] { return []; }
-  getParentBridge(_id: string): ParentMfeBridge | null { return null; }
   setTheme(_v: Record<string, string>): void {}
-  dispose(): void {}
+  dispose(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 // ─── Test setup ───────────────────────────────────────────────────────────────

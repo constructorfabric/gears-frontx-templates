@@ -10,13 +10,8 @@
  * it. Widening the viewport does not undo a collapse forced while narrow.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
-import {
-  eventBus,
-  useAppSelector,
-  useMountedExtensions,
-  FRONTX_SCREEN_DOMAIN,
-  type MenuState,
-} from '@gears-frontx/react';
+import { eventBus, useAppSelector, type MenuState } from '@gears-frontx/react';
+import { screenState } from '@/app/mfe/screenState';
 
 /** The viewports below Tailwind's `md` breakpoint, which `max-md:` classes target. */
 export const NARROW_VIEWPORT_QUERY = '(max-width: 767.98px)';
@@ -48,7 +43,7 @@ export function useNarrowViewportMenu(menuSlot: RefObject<HTMLElement | null>): 
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrowViewport, () => false);
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
   const collapsed = menuState?.collapsed ?? false;
-  const mountedId = useMountedExtensions(FRONTX_SCREEN_DOMAIN)[0]?.id;
+  const mountedId = useSyncExternalStore(screenState.subscribe, screenState.getSnapshot);
 
   // Read through a ref so that expanding the menu does not itself trigger the
   // collapse below; only a viewport or screen change does.

@@ -18,12 +18,13 @@ let effects: typeof import('@gears-frontx/framework')['effects'];
 let gtsPlugin: typeof import('@gears-frontx/framework')['gtsPlugin'];
 let microfrontends: typeof import('@gears-frontx/framework')['microfrontends'];
 let queryCache: typeof import('@gears-frontx/framework')['queryCache'];
+let OptionalMountStrategy: typeof import('@gears-frontx/framework')['OptionalMountStrategy'];
 let TestContainerProvider: typeof import('@gears-frontx/framework')['TestContainerProvider'];
 
 beforeEach(async () => {
   vi.resetModules();
   ({ FrontXProvider, useDomainExtensions } = await import('@gears-frontx/react'));
-  ({ createFrontX, effects, gtsPlugin, microfrontends, queryCache, TestContainerProvider } = await import('@gears-frontx/framework'));
+  ({ createFrontX, effects, gtsPlugin, microfrontends, queryCache, TestContainerProvider, OptionalMountStrategy } = await import('@gears-frontx/framework'));
 });
 
 describe('useDomainExtensions hook - Phase 21.7', () => {
@@ -45,6 +46,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     actions: [
       'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
       'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~',
     ],
     extensionsActions: [],
     defaultActionTimeout: 5000,
@@ -58,6 +60,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     actions: [
       'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
       'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~',
     ],
     extensionsActions: [],
     defaultActionTimeout: 5000,
@@ -145,9 +148,9 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should return extensions for the specified domain', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
       const testContainerProvider2 = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.setRegistry(app.mfeRegistry!).prepareForDomain(mockPopupDomain));
+      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.prepareForDomain(mockPopupDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
       await app.mfeRegistry!.registerExtension(sidebarExtension1);
 
       const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
@@ -156,10 +159,37 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
       expect(result.current[0].id).toBe(sidebarExtension1.id);
     });
 
+    it('returns no element with an own route key for an extension registered with one', async () => {
+      // The real registry: its read surface is what the hook returns.
+      const app = createFrontX()
+        .use(effects())
+        .use(queryCache())
+        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .build();
+      apps.push(app);
+      const testContainerProvider = new TestContainerProvider();
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
+      app.mfeRegistry!.typeSystem.register({
+        id: sidebarExtension1.entry,
+        requiredProperties: [],
+        optionalProperties: [],
+        actions: [],
+        domainActions: [],
+      });
+      await app.mfeRegistry!.registerExtension({ ...sidebarExtension1, route: '/own-route' });
+
+      const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
+
+      expect(result.current).toHaveLength(1);
+      for (const element of result.current) {
+        expect(Object.prototype.hasOwnProperty.call(element, 'route')).toBe(false);
+      }
+    });
+
     it('should update when extension is registered', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
 
@@ -181,7 +211,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should update when extension is unregistered', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
       await app.mfeRegistry!.registerExtension(sidebarExtension1);
 
       const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
@@ -202,9 +232,9 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should only return extensions for the specified domain', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
       const testContainerProvider2 = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.setRegistry(app.mfeRegistry!).prepareForDomain(mockPopupDomain));
+      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.prepareForDomain(mockPopupDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       await app.mfeRegistry!.registerExtension(sidebarExtension1);
       await app.mfeRegistry!.registerExtension(sidebarExtension2);
@@ -224,9 +254,9 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should not re-render when extensions in other domains change but list is same', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
       const testContainerProvider2 = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.setRegistry(app.mfeRegistry!).prepareForDomain(mockPopupDomain));
+      app.mfeRegistry!.registerDomain(mockPopupDomain, testContainerProvider2.prepareForDomain(mockPopupDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       await app.mfeRegistry!.registerExtension(sidebarExtension1);
 
@@ -257,7 +287,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should return all current extensions for domain', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       await app.mfeRegistry!.registerExtension(sidebarExtension1);
       await app.mfeRegistry!.registerExtension(sidebarExtension2);
@@ -272,7 +302,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should return empty array for domain with no extensions', () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
 
@@ -284,7 +314,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     it('should re-render when extensions change', async () => {
       const app = buildApp();
       const testContainerProvider = new TestContainerProvider();
-      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.setRegistry(app.mfeRegistry!).prepareForDomain(mockSidebarDomain));
+      app.mfeRegistry!.registerDomain(mockSidebarDomain, testContainerProvider.prepareForDomain(mockSidebarDomain, (ctx, hooks) => new OptionalMountStrategy(ctx.mounter, hooks)));
 
       const { result } = renderHook(() => useDomainExtensions(sidebarDomainId), { wrapper: buildWrapper(app) });
 

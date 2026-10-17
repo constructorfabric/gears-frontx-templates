@@ -3,13 +3,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 const mockBootstrapMFE = vi.fn();
 const mockUseFrontX = vi.fn();
-const mockUseMountedExtensions = vi.fn((_domainId: string): Array<{ id: string }> => []);
-const mockUseDomainRouteStatus = vi.fn(
-  (_registry: unknown, _domainId: string): { entries: number; unresolved: number } => ({
-    entries: 0,
-    unresolved: 0,
-  }),
-);
 const mockScreenDomain = { id: 'screen-domain' };
 const FRONTX_SCREEN_DOMAIN = 'screen-domain';
 
@@ -20,12 +13,10 @@ vi.mock('./bootstrap', () => ({
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, never>>()),
   useFrontX: () => mockUseFrontX(),
-  useMountedExtensions: (domainId: string) => mockUseMountedExtensions(domainId),
-  useDomainRouteStatus: (registry: unknown, domainId: string) => mockUseDomainRouteStatus(registry, domainId),
   screenDomain: mockScreenDomain,
   FRONTX_SCREEN_DOMAIN,
   // `ExtensionDomainSlot` itself owns starting/stopping a routed domain's
-  // observer (ADR 0036, D10/D11) — its own suite covers that; this fake
+  // observer (ADR 0036, "URL ownership") — its own suite covers that; this fake
   // only stands in for the DOM root this container renders around.
   ExtensionDomainSlot: ({
     registry,
@@ -71,10 +62,6 @@ describe('MfeScreenContainer', () => {
           bootstrap.reject = reject;
         }),
     );
-    mockUseMountedExtensions.mockReset();
-    mockUseMountedExtensions.mockReturnValue([]);
-    mockUseDomainRouteStatus.mockReset();
-    mockUseDomainRouteStatus.mockReturnValue({ entries: 0, unresolved: 0 });
   });
 
   afterEach(() => {
@@ -116,21 +103,6 @@ describe('MfeScreenContainer', () => {
     expect(slot.dataset.domainId).toBe(mockScreenDomain.id);
     expect(slot.dataset.registryPresent).toBe('yes');
     expect(slot.dataset.className).toContain('h-full');
-  });
-
-  it('reads the screen domain status only once bootstrap has settled, not before', async () => {
-    const { MfeScreenContainer } = await import('./MfeScreenContainer');
-
-    render(<MfeScreenContainer />);
-
-    // Every call before settling is gated to `undefined` (C1 — no
-    // observer-backed status to read before this container's own
-    // `ExtensionDomainSlot` has anywhere to mount into).
-    expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(undefined, FRONTX_SCREEN_DOMAIN);
-
-    await settleBootstrap();
-
-    expect(mockUseDomainRouteStatus).toHaveBeenLastCalledWith(app.mfeRegistry, FRONTX_SCREEN_DOMAIN);
   });
 
   it('reuses the settled bootstrap across a real remount rather than re-invoking it (C8)', async () => {
@@ -270,19 +242,6 @@ describe('MfeScreenContainer', () => {
       }
     });
 
-    it('shows only the error state, not the unknown-address fallback with it', async () => {
-      mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
-      const { MfeScreenContainer } = await import('./MfeScreenContainer');
-      const { screenLoadFailure } = await import('./screenLoadFailure');
-      render(<MfeScreenContainer />);
-      await settleBootstrap();
-
-      act(() => screenLoadFailure.report('ext.orders', 'none'));
-
-      expect(screen.getByRole('alert')).not.toBeNull();
-      expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
-    });
-
     it('renders the error state the app passes in', async () => {
       const { MfeScreenContainer } = await import('./MfeScreenContainer');
       const { screenLoadFailure } = await import('./screenLoadFailure');
@@ -299,40 +258,5 @@ describe('MfeScreenContainer', () => {
       expect(screen.getByRole('button', { name: 'custom error state' })).not.toBeNull();
       expect(screen.queryByRole('alert')).toBeNull();
     });
-  });
-
-  it('renders the fallback when every URL entry for the screen domain is unresolved and nothing mounted', async () => {
-    mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
-    mockUseMountedExtensions.mockReturnValue([]);
-    const { MfeScreenContainer } = await import('./MfeScreenContainer');
-
-    render(<MfeScreenContainer />);
-    await settleBootstrap();
-
-    expect(screen.getByTestId('screen-route-fallback')).not.toBeNull();
-  });
-
-  it('renders no fallback when the screen domain carries no URL entry', async () => {
-    mockUseDomainRouteStatus.mockReturnValue({ entries: 0, unresolved: 0 });
-    mockUseMountedExtensions.mockReturnValue([]);
-    const { MfeScreenContainer } = await import('./MfeScreenContainer');
-
-    render(<MfeScreenContainer />);
-    await settleBootstrap();
-
-    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
-    expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
-  });
-
-  it('renders no fallback once a screen is mounted, even with an unresolved sibling entry', async () => {
-    mockUseDomainRouteStatus.mockReturnValue({ entries: 1, unresolved: 1 });
-    mockUseMountedExtensions.mockReturnValue([{ id: 'ext.hello-world' }]);
-    const { MfeScreenContainer } = await import('./MfeScreenContainer');
-
-    render(<MfeScreenContainer />);
-    await settleBootstrap();
-
-    expect(screen.getByTestId('extension-domain-slot')).not.toBeNull();
-    expect(screen.queryByTestId('screen-route-fallback')).toBeNull();
   });
 });

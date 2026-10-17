@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { eventBus } from '@gears-frontx/react';
+import { screenState } from '@/app/mfe/screenState';
 import { Layout } from './Layout';
 
 vi.mock('@/app/actions/bootstrapActions', () => ({ fetchCurrentUser: vi.fn() }));
@@ -43,12 +44,10 @@ vi.mock('./Screen', () => ({
 // the default a shell that never touched `setFooterVisible` gets, and says
 // nothing about the menu, which is the expanded default.
 let mockLayoutState: { visible?: boolean; collapsed?: boolean } = { visible: true };
-let mockMountedScreens: { id: string }[] = [];
 
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => mockLayoutState,
-  useMountedExtensions: () => mockMountedScreens,
 }));
 
 /** Makes every media query report `narrow`, the way a phone-width window would. */
@@ -81,7 +80,7 @@ describe('Layout', () => {
 
   beforeEach(() => {
     mockLayoutState = { visible: true };
-    mockMountedScreens = [];
+    screenState.set(undefined);
     setViewport(false);
   });
 
@@ -118,7 +117,7 @@ describe('Layout', () => {
       const { rerender } = render(<Layout />);
       const { requests, stop } = collapseRequests();
 
-      mockMountedScreens = [{ id: 'profile' }];
+      act(() => screenState.set('profile'));
       rerender(<Layout />);
       stop();
 
@@ -138,7 +137,7 @@ describe('Layout', () => {
 
     it('collapses the menu when one of its items is chosen, the open screen included', async () => {
       setViewport(true);
-      mockMountedScreens = [{ id: 'profile' }];
+      screenState.set('profile');
       render(<Layout />);
       const { requests, stop } = collapseRequests();
 
@@ -224,7 +223,7 @@ describe('Layout', () => {
       const { requests, stop } = collapseRequests();
 
       const { rerender } = render(<Layout />);
-      mockMountedScreens = [{ id: 'profile' }];
+      act(() => screenState.set('profile'));
       rerender(<Layout />);
       stop();
 

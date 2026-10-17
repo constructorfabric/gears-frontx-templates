@@ -5,11 +5,10 @@
  * Uses local shadcn/ui Sidebar components for proper styling and collapsible behavior.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import {
   useAppSelector,
   useFrontX,
-  useMountedExtensions,
   eventBus,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
@@ -27,12 +26,15 @@ import {
 } from '@/app/components/ui/sidebar';
 import { Icon } from '@iconify/react';
 import { bootstrapOnce } from '@/app/mfe/bootstrapOnce';
+import { screenState } from '@/app/mfe/screenState';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
 
 export interface MenuProps {
   children?: React.ReactNode;
 }
+
+type RegistryScreenExtension = Omit<ScreenExtension, 'route'>;
 
 const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
 
@@ -66,16 +68,17 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
 
   const collapsed = menuState?.collapsed ?? false;
 
-  // Currently-mounted screen extension. Re-reads when a mount_ext/unmount_ext
-  // settles. Index 0 is meaningful because the host registers the screen domain
-  // with ExclusiveMountStrategy in `bootstrap.ts` (single mount per domain).
-  const mountedScreens = useMountedExtensions(FRONTX_SCREEN_DOMAIN);
-  const mountedId = mountedScreens[0]?.id;
+  // Currently-mounted screen extension, as the screen domain's container
+  // hooks recorded it: creating a screen's container sets it, destroying the
+  // container that holds it clears it.
+  const mountedId = useSyncExternalStore(screenState.subscribe, screenState.getSnapshot);
 
+  // Registry reads carry no `route`, so the menu holds the screen extension
+  // shape without it.
   // `undefined` until bootstrap has settled: bootstrap registers every screen
   // extension, so the list is read once, after it, and an empty list before
   // that point means "not known yet", not "no screens".
-  const [extensions, setExtensions] = useState<ScreenExtension[] | undefined>(undefined);
+  const [extensions, setExtensions] = useState<RegistryScreenExtension[] | undefined>(undefined);
 
   useEffect(() => {
     if (!mfeRegistry) return;
@@ -86,7 +89,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
         // The cast asserts `presentation` rather than checking it, and nothing
         // between the manifest and `registry.registerExtension` does either, so
         // an extension without it is dropped here instead of throwing mid-sort.
-        const screenExts = mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as ScreenExtension[];
+        const screenExts = mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as RegistryScreenExtension[];
         setExtensions(
           screenExts
             .filter((ext) => ext?.presentation)

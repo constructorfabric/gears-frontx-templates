@@ -14,12 +14,7 @@ Authoritative files:
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
 - `src-app/app/mfe/bootstrap.ts` — domain registration and manifest ingestion
 - `src-app/app/mfe/MfeScreenContainer.tsx` — renders the screen domain's own
-  `<ExtensionDomainSlot>` (which owns that domain's own URL observer,
-  starting/stopping it from its own attach/detach) and the unresolved-route
-  fallback
-- `packages/framework/src/plugins/microfrontends/router.ts` — `FrameworkRouter`,
-  the concrete implementation of the `mfes` runtime's router port, injected
-  into every registry `microfrontends()` builds
+  `<ExtensionDomainSlot>`
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
   the four well-known domain instances
@@ -31,9 +26,7 @@ Authoritative files:
 `Menu.tsx` renders exactly what
 `mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, sorted by
 `presentation.order` (a missing `order` defaults to `999`, i.e. last). The list
-is re-read on a 500 ms interval, so extensions registered after first paint
-appear without a reload — this is why a fresh boot may briefly show an empty
-menu.
+is read once, after bootstrap.
 
 A click does **not** navigate. It dispatches a mount action:
 
@@ -53,43 +46,29 @@ needs to react to a chain's outcome expresses that dependency **inside the
 chain itself**, as a terminal action targeting the extension whose mount it
 depends on, via a `next` continuation — never by awaiting this call.
 
-Switching screens is still a mount action against a domain, not a direct route
-transition — but the shell closes the loop between that action and the
-address bar through `FrameworkRouter`, the concrete router every `createFrontX()`
-app's `microfrontends()` plugin injects into the `mfes` runtime's router port
-(`packages/framework/src/plugins/microfrontends/router.ts`). Each routed
-domain (`screen`, `sidebar`, `popup`, `overlay` in the shell) is admitted by
-this router at registration — its own declared `route`, checked against every
-other routed domain live in the page — and its own URL-entry observer starts
-once that domain's own `<ExtensionDomainSlot>` attaches a DOM root, and stops
-on that same slot's own detach (`ExtensionDomainSlot` reaches the router
-through `@gears-frontx/framework`'s `./internal` subpath — never through
-`app.mfeRouter`, which exposes only the extension-local navigation facade).
-After a `mount_ext`/`unmount_ext` execution settles in a domain, the runtime
-reports it to the router, which reflects it into the URL by comparing the
-domain's current mounted set against its current URL entries — no domain
-implementation calls anything to make this happen. A menu click still leaves a
-real entry in the address bar, and browser back/forward and bookmarking still
-work against it; the router's own observer runs the other direction too: on
-every URL change it dispatches the `mount_ext`/`unmount_ext` chains needed to
-bring the mounts to what the URL now says, each carrying the intent that
-restoring a URL-driven state writes nothing further. An entry whose token
-resolves to nothing registered is left in the URL rather than dropped; the
-screen domain's own fallback (`MfeScreenContainer`) renders "No screen matches
-this address." whenever every entry in the screen domain is unresolved and
-nothing is mounted.
+Route composition is invisible to shell and MFE developers. A menu click
+leaves a real entry in the address bar, and browser back/forward, reloads and
+bookmarks resolve to the same screens; the FrontX router from
+`@gears-frontx/routing` does that work, and neither shell code nor MFE code
+reads or composes route state outside its own private subroute. The framework's only routing code is in
+`microfrontends()`: it passes that `router` to the MFE registry it builds
+(`build({ typeSystem, mfeHandlers, router })`) and does nothing else for
+routing. A screen is selected by dispatching a mount action against the screen
+domain, and the screen domain is Exclusive: one occupant, and a new mount
+replaces it.
 
-No occupant address is broadcast through a shared property. An
-occupant that declares its own route learns its own address privately, from
-the runtime's occupant-value rendezvous — an MFE that wants to build its own
-internal route tree supplies it to its own `microfrontends()`-bearing
-`createFrontX()` app and renders `@gears-frontx/react`'s `<ExtensionRouter>`
-over it; an MFE that only needs to read or change its own pathname/search
-imperatively (outside the rendered tree — an `ActionHandler`, for instance)
-calls that same app's own `mfeRouter.navigation()`. Neither path ever goes
-through the action-chain payload or a bridge property, and `app.mfeRouter`
-itself never exposes the occupant value, the router instance, or raw
-history — only the navigation facade.
+Every runtime reads and changes only its own private subroute. The shell's
+private subroute is the pathname: shell code that needs to navigate does so
+only within it, using `@gears-frontx/routing-tanstack` (`navigation()`, or
+`<ExtensionRouter>` over a route tree) as an MFE does. This template's shell
+application code ships no such navigation, and a shell adds that dependency
+only when its code needs it. An MFE whose extension declares a `route`, in a domain that declares one too,
+has a private subroute of its own; an MFE with routes renders
+`<ExtensionRouter routeTree={routeTree} />` from `@gears-frontx/routing-tanstack`
+in its own content, and code outside the rendered tree (an `ActionHandler`,
+for instance) calls `navigation()` from the same package. Everything outside a
+runtime's private subroute, including which screen is shown, changes through
+actions (`mount_ext`, `unmount_ext`), never through navigation.
 
 ## From `mfe.json` to the browser
 
@@ -121,12 +100,12 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 `bootstrapMFE()` proceeds in a fixed order:
 
-1. `microfrontends()` constructs the shared `FrameworkRouter` and builds the
-   MFE registry with it injected. `bootstrapMFE()` then registers the shell's
-   chrome action schemas.
+1. `microfrontends()` builds the MFE registry. `bootstrapMFE()` then registers
+   the shell's chrome action schemas.
 2. Register the four well-known domains — `screen` (with
-   `ExclusiveMountStrategy`: one mounted screen at a time), `sidebar`, `popup`,
-   `overlay` — each admitted by the router automatically as it registers.
+   `ExclusiveMountStrategy`: one mounted screen at a time; the domain declares
+   no `unmount_ext` and registers no handler for it), `sidebar`, `popup`,
+   `overlay`.
 3. Broadcast initial shared properties (`theme`, `language`).
 4. Fetch the manifest aggregate.
 5. First pass over **all** packages: register every non-action schema (derived
@@ -159,15 +138,18 @@ top-level `route` and its `presentation`:
 | Field | Required | Meaning |
 |---|---|---|
 | `label` | yes | menu item text (raw display string — no i18n key today) |
-| `route` (top level, beside `id`/`domain`/`entry`) | yes | route path; back-projected into the URL after mount and resolved from it on every transition (see above) |
+| `route` (top level, beside `id`/`domain`/`entry`) | yes | route value the FrontX router finds the extension by |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
 
 The screen domain instance
 (`…/instances/domains/screen.v1.json`) pins that type via `extensionsTypeId`,
-declares the shared properties (`theme`, `language`) and actions (`load_ext`,
+declares its own `route`, the shared properties (`theme`, `language`) and actions (`load_ext`,
 `mount_ext`) it supports, a 30 s default action timeout, and the lifecycle
-stages it drives.
+stages it drives. Each well-known domain instance declares its own `route`;
+an extension is part of the route only when it and its domain both declare
+one, and a domain's route must be a valid name, unique among the routed
+domains live in the page.
 
 ## Mounting and isolation
 
@@ -187,5 +169,4 @@ host and MFEs.
   properties of the current schemas, tracked upstream in the platform's
   navigation-service planning — not bugs in this shell. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema
-  set. Observer-originated mounts acknowledge their current URL only: a late
-  mount after Back cannot restore a stale entry.
+  set.

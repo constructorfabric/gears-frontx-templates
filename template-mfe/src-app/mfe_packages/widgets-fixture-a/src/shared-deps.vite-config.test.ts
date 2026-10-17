@@ -1,26 +1,16 @@
 // @vitest-environment node
 /**
- * Regression guard for the duplicate-module-instance class of bug that broke
- * `useSearch()` under `<ExtensionRouter>` (widget-a/widget-beta both hit
- * `TypeError: Cannot read properties of null (reading 'stores')`).
+ * Pins the shared-dependency declaration in this package's `vite.config.ts`.
  *
- * Root cause: this package's own Vite build (`vite.config.ts`'s `sharedDeps`
- * / `rollupOptions.external`) only externalizes the packages literally
- * listed there — everything else this package imports is bundled inline by
- * Rollup, and everything `@gears-frontx/react`'s own shared chunk imports
- * that is NOT in that same list is bundled inline by esbuild
- * (`StandaloneEsmBuilder`, `frontx-mf-gts`). `@gears-frontx/routing-tanstack`
- * was omitted, so two independent bundlers each minted their own copy of
- * `@tanstack/react-router` — one inside this package's own chunk (which
- * calls `useSearch`), one inside `@gears-frontx/react`'s shared chunk (which
- * builds the router `<ExtensionRouter>` renders) — so the hook's context
- * lookup missed the router instance that actually mounted.
+ * Packages this MFE's own source imports are bundled inline by Rollup unless
+ * `sharedDeps` lists them. Dependencies of an already-shared package are
+ * bundled inline by esbuild (`StandaloneEsmBuilder`, `frontx-mf-gts`) unless
+ * `sharedDeps` also lists them. A package that is both imported directly here
+ * and depended on by a shared package therefore gets one copy per bundler,
+ * giving two module instances behind one React context.
  *
- * This guard is static (no real build), so it cannot see esbuild's own
- * inlining decision directly. It instead checks the precondition that makes
- * that inlining safe: any package this MFE imports directly that is ALSO a
- * dependency of an already-shared package must itself be declared shared —
- * otherwise the two bundlers' independent resolutions are free to diverge.
+ * The check is static (no real build): every package this MFE imports directly
+ * that is also a dependency of a shared package is declared in `sharedDeps`.
  */
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
@@ -134,8 +124,8 @@ describe('widgets-fixture-a shared-dep declaration', () => {
       `${undeclaredDuplicateRisks.join(', ')} ${undeclaredDuplicateRisks.length === 1 ? 'is' : 'are'} imported ` +
         `directly by this package's own source AND depended on by an already-shared package, but ` +
         `not declared in vite.config.ts's own sharedDeps. Left undeclared, this package's bundler and ` +
-        `the shared package's esbuild build each mint their own copy — two module instances backing one ` +
-        `React context, which is exactly how useSearch() under <ExtensionRouter> broke.`,
+        `the shared package's esbuild build each mint their own copy: two module instances backing one ` +
+        `React context.`,
     ).toEqual([]);
   });
 });

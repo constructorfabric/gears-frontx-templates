@@ -69,20 +69,15 @@ export {
   useHostAction,
   useMfeRegistry,
   useDomainExtensions,
-  useMountedExtensions,
   useRegisteredPackages,
-  useDomainRouteStatus,
   ExtensionDomainSlot,
-  ExtensionRouter,
 } from './mfe';
 
 export type {
   MfeContextValue,
   MfeProviderProps,
   ExtensionDomainSlotProps,
-  ExtensionRouterProps,
   UseSharedPropertyOptions,
-  DomainRouteStatus,
 } from './mfe';
 
 // ============================================================================
@@ -435,23 +430,6 @@ export {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
 } from '@gears-frontx/framework';
-
-// The app-facing router handle type (`app.mfeRouter`, ADR 0036) is
-// re-exported here so app-layer hosts preserve the L3 import boundary.
-// `FrameworkRouter`, the class implementing the runtime's router port
-// (`cpt-frontx-adr-extension-routing-port`), stays internal to the
-// framework package — never reachable from this package or any app object.
-export type { MfeRouterHandle } from '@gears-frontx/framework';
-
-// `startRoutedDomain`/`stopRoutedDomain`/
-// `routedDomainStatus`/`subscribeRoutedDomainStatus` are NOT re-exported
-// here (D10): they are reached only through `@gears-frontx/framework/internal`,
-// by this package's OWN components (`ExtensionDomainSlot`, `ExtensionRouter`,
-// `useDomainRouteStatus` — keep using the hook above for status reads). Every
-// host's own teardown (e.g. Widgets Host) relies entirely on
-// `ExtensionDomainSlot`'s own attach/detach ordering, so this package keeps
-// no public exception for an L4 host to release a routed domain's own
-// occupants itself.
 
 // MFE Types
 export type {

@@ -68,7 +68,13 @@ three, on one shared predicate per rule rather than a copy each.
    plugin, then `frontxMfGts()` (imported from
    `@gears-frontx/frontx-template-shell/build/mf-gts`) with `enforce: 'post'` so
    it runs after federation. Building without `frontxMfGts()` fails manifest
-   generation with an explicit error naming the missing plugin.
+   generation with an explicit error naming the missing plugin. The config's
+   `sharedDeps` constant (which feeds `rollupOptions.external`) always
+   includes `@gears-frontx/routing`, so each MFE runtime evaluates exactly one
+   copy of it, never shared across MFEs: the copy the MFE's registry receives
+   must be the copy `<ExtensionRouter>` and `navigation()` read. The
+   constant includes `@gears-frontx/routing-tanstack` only when the MFE renders
+   `<ExtensionRouter>` or calls `navigation()`.
 
 ## Build-output contract (produced by `vite build`, consumed by the shell)
 

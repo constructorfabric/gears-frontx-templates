@@ -13,12 +13,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TypeSystemPlugin } from '@gears-frontx/mfes';
+import type {
+  ContainerHooks,
+  DomainContext,
+  TypeSystemPlugin,
+} from '@gears-frontx/mfes';
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import type { MfeRegistry } from '@gears-frontx/framework';
 import type { FrontXApp } from '../../src/types';
 
 // One app per runtime: every test loads its own module copy.
+// Strategy classes come from the same module copy as the app under test (every test loads its own).
+let ExclusiveMountStrategy: typeof import('@gears-frontx/mfes').ExclusiveMountStrategy;
+let OptionalMountStrategy: typeof import('@gears-frontx/mfes').OptionalMountStrategy;
 let eventBus: typeof import('@gears-frontx/state').eventBus;
 let resetStore: typeof import('@gears-frontx/state').resetStore;
 let gtsPlugin: typeof import('@gears-frontx/gts-plugin').gtsPlugin;
@@ -31,6 +38,12 @@ let sidebarDomain: LayoutDomains[0];
 let popupDomain: LayoutDomains[1];
 let screenDomain: LayoutDomains[2];
 let overlayDomain: LayoutDomains[3];
+
+// The strategy each base domain uses in the shell's bootstrap: screen is Exclusive; sidebar, popup and overlay are Optional.
+const exclusive = () => (ctx: DomainContext, hooks: ContainerHooks) =>
+  new ExclusiveMountStrategy(ctx.mounter, hooks);
+const optional = () => (ctx: DomainContext, hooks: ContainerHooks) =>
+  new OptionalMountStrategy(ctx.mounter, hooks);
 
 function getAppMfeRegistry(app: FrontXApp): MfeRegistry {
   const registry = app.mfeRegistry;
@@ -47,6 +60,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
   beforeEach(async () => {
     vi.resetModules();
     ({ eventBus, resetStore } = await import('@gears-frontx/state'));
+    ({ ExclusiveMountStrategy, OptionalMountStrategy } = await import('@gears-frontx/mfes'));
     ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
     ({ createFrontX } = await import('../../src/createFrontX'));
     ({ microfrontends } = await import('../../src/plugins/microfrontends'));
@@ -83,13 +97,6 @@ describe('microfrontends plugin - Phase 7.9', () => {
   }
 
   describe('plugin factory', () => {
-    it('injects the framework router into the registry it builds', () => {
-      const app = buildApp();
-      const registry = getAppMfeRegistry(app);
-      expect(app.mfeRouter).toBeDefined();
-      expect(registry).toBeDefined();
-    });
-
     it('accepts required typeSystem parameter and returns a valid plugin object', () => {
       const plugin = microfrontends({ typeSystem });
 
@@ -161,7 +168,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       const registry = getAppMfeRegistry(app);
       const provider = new TestContainerProvider();
 
-      registry.registerDomain(sidebarDomain, provider.prepareForDomain(sidebarDomain));
+      registry.registerDomain(sidebarDomain, provider.prepareForDomain(sidebarDomain, optional()));
 
       expect(registry.getDomain(sidebarDomain.id)).toBeDefined();
       expect(registry.getDomain(sidebarDomain.id)?.id).toBe(sidebarDomain.id);
@@ -172,7 +179,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       const registry = getAppMfeRegistry(app);
       const provider = new TestContainerProvider();
 
-      registry.registerDomain(popupDomain, provider.prepareForDomain(popupDomain));
+      registry.registerDomain(popupDomain, provider.prepareForDomain(popupDomain, optional()));
 
       expect(registry.getDomain(popupDomain.id)).toBeDefined();
     });
@@ -182,7 +189,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       const registry = getAppMfeRegistry(app);
       const provider = new TestContainerProvider();
 
-      registry.registerDomain(screenDomain, provider.setRegistry(registry).prepareForDomain(screenDomain));
+      registry.registerDomain(screenDomain, provider.prepareForDomain(screenDomain, exclusive()));
 
       expect(registry.getDomain(screenDomain.id)).toBeDefined();
     });
@@ -192,7 +199,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       const registry = getAppMfeRegistry(app);
       const provider = new TestContainerProvider();
 
-      registry.registerDomain(overlayDomain, provider.setRegistry(registry).prepareForDomain(overlayDomain));
+      registry.registerDomain(overlayDomain, provider.prepareForDomain(overlayDomain, optional()));
 
       expect(registry.getDomain(overlayDomain.id)).toBeDefined();
     });
@@ -286,7 +293,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       expect(sidebarDomain.actions).toContain('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~');
     });
 
-    it('handles screen domain with swap semantics (load_ext + mount_ext, no unmount_ext)', () => {
+    it('handles screen domain as Exclusive (load_ext + mount_ext, no unmount_ext)', () => {
       expect(screenDomain.actions.length).toBe(2);
       expect(screenDomain.actions).toContain('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~');
       expect(screenDomain.actions).toContain('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~');
@@ -337,7 +344,7 @@ describe('microfrontends plugin - Phase 7.9', () => {
       expect(domain.extensionsLifecycleStages).toHaveLength(4);
     });
 
-    it('creates screen domain with only load_ext action', () => {
+    it('creates screen domain with load_ext and mount_ext actions (Exclusive: no unmount_ext)', () => {
       const domain = screenDomain;
 
       expect(domain).toMatchObject({

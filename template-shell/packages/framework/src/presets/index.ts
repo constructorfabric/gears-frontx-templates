@@ -44,12 +44,12 @@ export interface FullPresetConfig {
  * @example
  * ```typescript
  * import { MfeHandlerMF } from '@gears-frontx/mfes';
- * import { FrontX_MFE_ENTRY_MF } from '@gears-frontx/framework';
+ * import { createFrontX, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/framework';
  * import { gtsPlugin } from '@gears-frontx/gts-plugin';
  *
  * const app = createFrontX()
  *   .use(full({
- *     microfrontends: { typeSystem: gtsPlugin, mfeHandlers: [new MfeHandlerMF(FrontX_MFE_ENTRY_MF)] }
+ *     microfrontends: { typeSystem: gtsPlugin, mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)] }
  *   }))
  *   .build();
  * ```

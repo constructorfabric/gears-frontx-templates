@@ -55,12 +55,4 @@ export {
   sidebarDomain,
   popupDomain,
   overlayDomain,
-  // The app-facing router handle type (ADR 0036) — `FrameworkRouter` itself
-  // stays internal to this plugin, never exported. The framework-internal
-  // reach-through functions (`buildExtensionHistory`, `startRoutedDomain`,
-  // `stopRoutedDomain`, `routedDomainStatus`,
-  // `subscribeRoutedDomainStatus`) are NOT re-exported here — only through
-  // this package's `./internal` subpath (`src/internal.ts`); never part of
-  // `app.mfeRouter`, never MFE-reachable.
-  type MfeRouterHandle,
 } from './microfrontends';

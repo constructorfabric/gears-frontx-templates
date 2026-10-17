@@ -2,13 +2,21 @@
  * Test-only domain factory for the framework package tests.
  *
  * Thin wrapper that satisfies the `ExtensionDomainImplementationFactory`
- * contract used by `MfeRegistry.registerDomain`. Internally selects between
- * `ConcurrentMountStrategy`, `OptionalMountStrategy`, and `ExclusiveMountStrategy`
- * based on the domain declaration's action set.
+ * contract used by `MfeRegistry.registerDomain`. The caller chooses the mount
+ * strategy explicitly for each domain, by passing a function that builds one
+ * (`ConcurrentMountStrategy`, `OptionalMountStrategy` or
+ * `ExclusiveMountStrategy`: the registry admits only these three) from the
+ * domain context and container hooks the provider supplies. Nothing is inferred
+ * from the declaration. The provider registers a handler from the chosen
+ * strategy for each lifecycle action the declaration lists: `mount_ext`
+ * calls `strategy.mount`, `unmount_ext` calls `strategy.unmount`.
  *
  * Usage:
  *   const provider = new TestContainerProvider();
- *   registry.registerDomain(domain, provider.prepareForDomain(domain));
+ *   registry.registerDomain(
+ *     domain,
+ *     provider.prepareForDomain(domain, (ctx, hooks) => new ConcurrentMountStrategy(ctx.mounter, hooks)),
+ *   );
  *
  * The `prepareForDomain` call returns `this` so it can be inlined.
  */
@@ -16,14 +24,11 @@
 import {
   ExtensionDomainImplementationFactory,
   ExtensionDomainImplementation,
-  ConcurrentMountStrategy,
-  ExclusiveMountStrategy,
   ActionHandler,
   type ContainerHooks,
   type DomainContext,
   type ExtensionDomain,
   type MountStrategy,
-  type MfeRegistry,
   type ActionPayload,
 } from '@gears-frontx/mfes';
 
@@ -38,73 +43,62 @@ class TestDomainImpl extends ExtensionDomainImplementation {
   }
 }
 
+/** Builds the mount strategy a test domain uses, from the context and container hooks the provider supplies. */
+export type TestStrategyFactory = (ctx: DomainContext, hooks: ContainerHooks) => MountStrategy;
+
 export class TestContainerProvider extends ExtensionDomainImplementationFactory {
   public readonly mockContainer: Element =
     typeof document !== 'undefined'
       ? document.createElement('div')
       : ({} as unknown as Element);
 
-  private _pendingDeclaration: ExtensionDomain | null = null;
-  private _registry: MfeRegistry | null = null;
+  private _pending: { declaration: ExtensionDomain; createStrategy: TestStrategyFactory } | null = null;
 
   constructor(_container?: Element) {
     super();
     if (_container) (this as { mockContainer: Element }).mockContainer = _container;
   }
 
-  setRegistry(registry: MfeRegistry): this {
-    this._registry = registry;
-    return this;
-  }
-
-  prepareForDomain(declaration: ExtensionDomain): this {
-    this._pendingDeclaration = declaration;
+  prepareForDomain(declaration: ExtensionDomain, createStrategy: TestStrategyFactory): this {
+    this._pending = { declaration, createStrategy };
     return this;
   }
 
   build(ctx: DomainContext): TestDomainImpl {
-    const declaration = this._pendingDeclaration;
-    this._pendingDeclaration = null;
-    if (!declaration) {
+    const pending = this._pending;
+    this._pending = null;
+    if (!pending) {
       throw new Error('TestContainerProvider.build called without prepareForDomain');
     }
-    const actions = declaration.actions ?? [];
-
-    const mountExtActionId = ctx.typeSystem.resolveMountExtActionId();
-    const unmountExtActionId = ctx.typeSystem.resolveUnmountExtActionId();
-    const declaredMountAction = actions.includes(mountExtActionId) ? mountExtActionId : undefined;
-    const declaredUnmountAction = actions.includes(unmountExtActionId) ? unmountExtActionId : undefined;
-
+    const actions = pending.declaration.actions ?? [];
     const container = this.mockContainer;
     const hooks: ContainerHooks = {
       create: () => container,
       destroy: () => undefined,
     };
+    const strategy = pending.createStrategy(ctx, hooks);
 
-    const strategies: MountStrategy[] = [];
-    if (declaredMountAction && declaredUnmountAction) {
-      const strategy = new ConcurrentMountStrategy(ctx.mounter, hooks);
-      strategies.push(strategy);
-      ctx.registerHandler(
-        declaredMountAction,
-        ActionHandler.fromFunction((_t, p) => strategy.mount(p as ActionPayload))
+    const mountExtActionId = ctx.typeSystem.resolveMountExtActionId();
+    const unmountExtActionId = ctx.typeSystem.resolveUnmountExtActionId();
+    const unmount = strategy.unmount?.bind(strategy);
+    if (actions.includes(unmountExtActionId) && !unmount) {
+      throw new Error(
+        `TestContainerProvider: domain '${pending.declaration.id}' lists ${unmountExtActionId} but its mount strategy has no unmount`,
       );
+    }
+    if (actions.includes(mountExtActionId)) {
       ctx.registerHandler(
-        declaredUnmountAction,
-        ActionHandler.fromFunction((_t, p) => strategy.unmount!(p as ActionPayload))
-      );
-    } else if (declaredMountAction) {
-      if (!this._registry) {
-        throw new Error('TestContainerProvider: ExclusiveMountStrategy requires setRegistry(registry) before registering an exclusive domain');
-      }
-      const strategy = new ExclusiveMountStrategy(ctx.mounter, hooks, this._registry, declaration.id);
-      strategies.push(strategy);
-      ctx.registerHandler(
-        declaredMountAction,
+        mountExtActionId,
         ActionHandler.fromFunction((_t, p) => strategy.mount(p as ActionPayload))
       );
     }
+    if (unmount && actions.includes(unmountExtActionId)) {
+      ctx.registerHandler(
+        unmountExtActionId,
+        ActionHandler.fromFunction((_t, p) => unmount(p as ActionPayload))
+      );
+    }
 
-    return new TestDomainImpl(strategies);
+    return new TestDomainImpl([strategy]);
   }
 }

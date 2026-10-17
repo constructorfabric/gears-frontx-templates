@@ -139,7 +139,7 @@ fails to say so.
 
 Then update its `package.json` name and preview `--port`, declare your entries
 and screen extensions in `mfe.json`, and expose your lifecycle modules in its
-`vite.config.ts`.
+`vite.config.ts`, listing `@gears-frontx/routing` in its `sharedDeps` (and `@gears-frontx/routing-tanstack` only when the MFE uses `<ExtensionRouter>` or `navigation()`).
 `dev:all` discovers MFEs automatically by scanning `src-app/mfe_packages/` —
 there is no registry file to edit. See the shell's `mfe-package-contract` AI
 guideline for the exact shape a new package must have.
@@ -172,8 +172,11 @@ const MenuToggle = () => {
 ```
 
 The app is **event-driven**: prefer emitting events over dispatching directly.
-Hooks such as `useMountedExtensions`, `useTheme`, `useTranslation`, and
-`useApiQuery` subscribe to store changes without polling.
+Hooks such as `useTheme`, `useTranslation`, and `useApiQuery` subscribe to
+store changes without polling. The shell's own screen domain implementation
+knows which screen it mounted: its container hooks record it in
+`src-app/app/mfe/screenState.ts` (creating a screen's container sets it;
+destroying the container that holds that screen clears it), which the menu reads.
 
 ## Styling
 

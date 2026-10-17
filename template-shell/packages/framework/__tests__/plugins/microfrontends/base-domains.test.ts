@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateName } from '@gears-frontx/routing';
+import { parseGrammar } from '@gears-frontx/routing';
 import {
   screenDomain,
   sidebarDomain,
@@ -22,6 +22,7 @@ import { loadLayoutDomains } from '../../../src/plugins/microfrontends/gts/loade
 import {
   FRONTX_ACTION_LOAD_EXT,
   FRONTX_ACTION_MOUNT_EXT,
+  FRONTX_ACTION_UNMOUNT_EXT,
 } from '@gears-frontx/gts-plugin';
 
 describe('Base Extension Domain Constants - Shared Properties', () => {
@@ -123,9 +124,10 @@ describe('Base Extension Domain Constants - Shared Properties', () => {
       );
     });
 
-    it('screenDomain actions array contains only load_ext and mount_ext', () => {
+    it('screenDomain actions array contains only load_ext and mount_ext (Exclusive: no unmount_ext, ADR 0009)', () => {
       expect(screenDomain.actions).toEqual([FRONTX_ACTION_LOAD_EXT, FRONTX_ACTION_MOUNT_EXT]);
       expect(screenDomain.actions).toHaveLength(2);
+      expect(screenDomain.actions).not.toContain(FRONTX_ACTION_UNMOUNT_EXT);
     });
 
     it('sidebarDomain does NOT have extensionsTypeId', () => {
@@ -150,7 +152,11 @@ describe('Base Extension Domain Constants - routing', () => {
     ['overlay', overlayDomain],
   ])('%s declares its own valid route', (route, domain) => {
     expect(domain.route).toBe(route);
-    expect(validateName(domain.route!)).toBe(true);
+    // A valid route is one the URL grammar of `@gears-frontx/routing` reads as a domain key.
+    const parsed = parseGrammar(`/?${domain.route!}=probe`);
+    expect(parsed.entries.map((entry) => entry.domainKey)).toEqual([route]);
+    expect(parsed.foreignSegments).toEqual([]);
+    expect(parsed.warnings).toEqual([]);
   });
 
   it('the JSON copies agree with the declarations on route and shared properties', () => {
@@ -159,5 +165,11 @@ describe('Base Extension Domain Constants - routing', () => {
       expect(byId.get(domain.id)?.route).toBe(domain.route);
       expect(byId.get(domain.id)?.sharedProperties).toEqual(domain.sharedProperties);
     }
+  });
+
+  it('the screen JSON copy declares the same actions as the screenDomain declaration, unmount_ext excluded (Exclusive, ADR 0009)', () => {
+    const copy = loadLayoutDomains().find((d) => d.id === screenDomain.id);
+    expect(copy?.actions).toEqual(screenDomain.actions);
+    expect(copy?.actions).not.toContain(FRONTX_ACTION_UNMOUNT_EXT);
   });
 });

@@ -174,7 +174,7 @@ export function unmountExtension(extensionId: string): void {
 
   if (!supportsUnmount) {
     console.warn(
-      `[MFE] Skipping unmount for ${extensionId}: domain '${domainId}' uses swap semantics and does not support ${FRONTX_ACTION_UNMOUNT_EXT}.`
+      `[MFE] Skipping unmount for ${extensionId}: domain '${domainId}' uses the Exclusive strategy and does not support ${FRONTX_ACTION_UNMOUNT_EXT}.`
     );
     return;
   }

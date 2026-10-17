@@ -10,7 +10,7 @@
  *
  * Each mounted instance runs its own tiny router (`route: "/widget-alpha"` /
  * `"/widget-beta"` on the two extensions in `mfe.json`), scoped to the entry
- * address the widgets-host shell broadcast for it. The `last-ping` value the
+ * address the runtime assigns that instance at mount. The `last-ping` value the
  * widget shows is not module or React state at all — it lives only in that
  * router's own URL search param (`useSearch`), so a page reload restores it
  * without this module ever "sending" a ping, and two widgets never share or
@@ -26,18 +26,18 @@ import {
   gtsPlugin,
   ActionHandler,
   ThemeAwareReactLifecycle,
-  ExtensionRouter,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
 } from '@gears-frontx/react';
 import {
+  ExtensionRouter,
+  navigation,
   createRootRoute,
   createRoute,
   Outlet,
   useSearch,
-  type AnyRoute,
 } from '@gears-frontx/routing-tanstack';
 
 const PING_ACTION_TYPE =
@@ -144,7 +144,7 @@ function WidgetANotFound(): React.ReactElement {
 }
 
 const rootRoute = createRootRoute({ component: WidgetARoot, notFoundComponent: WidgetANotFound });
-const routeTree: AnyRoute = rootRoute.addChildren([
+const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: WidgetAHome }),
 ]);
 
@@ -160,22 +160,21 @@ class PingHandler extends ActionHandler {
     if (!this.isMounted()) throw new Error(`[widget-a ${this.instanceId}] ping while not mounted`);
     const lastPing = new Date().toISOString();
     console.info(`[widget-a ${this.instanceId}] ping ${actionTypeId} ${LAST_PING_PARAM}=${lastPing}`);
-    // D21: each runtime reads AND writes only its own entry's parameters —
-    // `location()` reads this occupant's OWN current pathname/search (never
+    // Each runtime reads AND writes only its own private subroute —
+    // `location()` reads this extension's OWN current pathname/search (never
     // a sibling's, never the composed page's), so merging `LAST_PING_PARAM`
     // into it preserves any other search param a caller outside this
     // widget's own render tree already set, instead of overwriting the
     // whole query string from scratch.
     try {
-      // Resolved here, not at module level: the router's navigation facade
-      // reads the occupant value the host supplies on link adoption, which
-      // happens during mount. A facade taken at module evaluation would stay
-      // the refusing one.
-      const navigation = app.mfeRouter!.navigation();
-      const { pathname, search } = navigation.location();
+      // Called at ping time, inside the handler: `navigation()` reaches this
+      // extension's private subroute through the occupant value the host
+      // supplies during mount.
+      const ownSubroute = navigation();
+      const { pathname, search } = ownSubroute.location();
       const params = new URLSearchParams(search);
       params.set(LAST_PING_PARAM, lastPing);
-      navigation.replace(`${pathname || '/'}?${params.toString()}`);
+      ownSubroute.replace(`${pathname || '/'}?${params.toString()}`);
     } catch (err) {
       // A silent failure here would leave the host believing the ping landed: surface it.
       console.error(`[widget-a ${this.instanceId}] ping navigation failed:`, err);
@@ -194,7 +193,7 @@ class WidgetAMount extends ThemeAwareReactLifecycle {
   protected renderContent(bridge: ChildMfeBridge): React.ReactNode {
     return (
       <BridgeContext.Provider value={bridge}>
-        <ExtensionRouter registry={app.mfeRegistry!} routeTree={routeTree} />
+        <ExtensionRouter routeTree={routeTree} />
       </BridgeContext.Provider>
     );
   }

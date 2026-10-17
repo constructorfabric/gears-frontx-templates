@@ -5,9 +5,9 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
 const createRootSpy = vi.fn();
 const rootRenderSpy = vi.fn();
 const rootUnmountSpy = vi.fn();
-/** Whether the host has adopted this runtime's link: the navigation facade refuses until it has (the real router returns a fresh refusing facade while no occupant value exists). */
+/** Whether the host has adopted this runtime's link: `navigation()` refuses until it has (the real router has no occupant value before then). */
 let linkAdopted = false;
-/** Counts `app.mfeRouter.navigation()` resolutions. */
+/** Counts `navigation()` calls. */
 const navigationResolveSpy = vi.fn();
 /** Counts `ThemeAwareReactLifecycle` constructions: one per mounted container. */
 const themeAwareConstructSpy = vi.fn();
@@ -15,52 +15,28 @@ const themeAwareConstructSpy = vi.fn();
 const createFrontXSpy = vi.fn();
 const buildSpy = vi.fn();
 
-/** The navigation-facade spy `PingHandler` writes through (ADR 0036, the navigation facade). */
+/** The `navigation().replace()` spy `PingHandler` writes through. */
 const navigationReplaceSpy = vi.fn();
 /** Set by a test to make the next `navigation().replace()` call throw, exercising `PingHandler`'s own catch/log/rethrow path. */
 let navigationReplaceThrows: Error | null = null;
-/** What `navigation().location()` returns for the NEXT ping — this occupant's own current entry (D21); a test overrides it to assert the ping handler merges into existing params instead of overwriting them. */
+/** What `navigation().location()` returns for the NEXT ping — this extension's own private subroute; a test overrides it to assert the ping handler merges into existing params instead of overwriting them. */
 let navigationLocation = { pathname: '/', search: '' };
 
 /**
- * `<ExtensionRouter>` (this lifecycle renders it instead of building its own
- * router — ADR 0036, D5) and the React render tree are both faked here: this
+ * `<ExtensionRouter>` (this lifecycle renders it from
+ * `@gears-frontx/routing-tanstack`) and the React render tree are both faked here: this
  * suite is a plumbing smoke test for the ping handler's own
  * registration/write/rejection contract, not a render test (a real
  * `<ExtensionRouter>` mount belongs in an integration suite driven through
  * the real `mfes` runtime, mirroring `lifecycle-widgets-host.remount.test.tsx`).
  * `navigation().replace()` is the one surface this file DOES assert against
  * in detail: it is `PingHandler`'s own write path (`lifecycle.tsx`'s
- * `navigation.replace(...)`), and it is real, user-facing behaviour
+ * `navigation().replace(...)`), and it is real, user-facing behaviour
  * this suite's render-fidelity trade-off must not also hide.
  */
 vi.mock('@gears-frontx/react', () => {
-  const fakeFrameworkRouter = {
-    navigation: () => {
-      navigationResolveSpy();
-      if (!linkAdopted) {
-        const refuse = (): never => {
-          throw new Error('navigation refused: no occupant value');
-        };
-        return { navigate: refuse, replace: refuse, location: refuse };
-      }
-      return facade;
-    },
-  };
-  const facade = {
-      navigate: vi.fn(),
-      replace: (path: string) => {
-        if (navigationReplaceThrows) {
-          const err = navigationReplaceThrows;
-          navigationReplaceThrows = null;
-          throw err;
-        }
-        navigationReplaceSpy(path);
-      },
-      location: () => navigationLocation,
-  };
-  // Opaque — `ExtensionRouter` is faked below (returns `null`), so nothing
-  // ever reads this registry's own shape.
+  // Opaque — the faked lifecycle only reads it, so nothing ever reads this
+  // registry's own shape.
   const fakeMfeRegistry = {};
   const fakeAppBuilder = {
     use: () => fakeAppBuilder,
@@ -70,7 +46,6 @@ vi.mock('@gears-frontx/react', () => {
         get mfeRegistry() {
           return fakeMfeRegistry;
         },
-        mfeRouter: fakeFrameworkRouter,
       };
     },
   };
@@ -102,18 +77,42 @@ vi.mock('@gears-frontx/react', () => {
     queryCacheShared: () => ({}),
     mock: () => ({}),
     gtsPlugin: {},
-    ExtensionRouter: () => null,
     FRONTX_ACTION_MOUNT_EXT: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
     FRONTX_SCREEN_DOMAIN: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
   };
 });
 
-vi.mock('@gears-frontx/routing-tanstack', () => ({
-  createRootRoute: (opts: unknown) => ({ ...(opts as object), addChildren: (children: unknown) => ({ ...(opts as object), children }) }),
-  createRoute: (opts: unknown) => opts,
-  Outlet: () => null,
-  useSearch: () => ({}),
-}));
+vi.mock('@gears-frontx/routing-tanstack', () => {
+  const ownSubroute = {
+    navigate: vi.fn(),
+    replace: (path: string) => {
+      if (navigationReplaceThrows) {
+        const err = navigationReplaceThrows;
+        navigationReplaceThrows = null;
+        throw err;
+      }
+      navigationReplaceSpy(path);
+    },
+    location: () => navigationLocation,
+  };
+  return {
+    ExtensionRouter: () => null,
+    navigation: () => {
+      navigationResolveSpy();
+      if (!linkAdopted) {
+        const refuse = (): never => {
+          throw new Error('navigation refused: no occupant value');
+        };
+        return { navigate: refuse, replace: refuse, location: refuse };
+      }
+      return ownSubroute;
+    },
+    createRootRoute: (opts: unknown) => ({ ...(opts as object), addChildren: (children: unknown) => ({ ...(opts as object), children }) }),
+    createRoute: (opts: unknown) => opts,
+    Outlet: () => null,
+    useSearch: () => ({}),
+  };
+});
 
 const PING = 'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
 const ALPHA = 'gts.frontx.mfes.ext.extension.v1~frontx.widgets.fixture_a.widget_alpha.v1';
@@ -202,7 +201,7 @@ describe('widgets-fixture-a lifecycle', () => {
     // registration) — calling it here, with no `act()`/no awaited render
     // effect in between, is this suite's render-free proxy for "before
     // ExtensionRouter's own mount effect has attached anything at all": the
-    // facade writes through `navigation` regardless of whether
+    // ping writes through `navigation()` regardless of whether
     // anything has rendered yet.
     lifecycle.mount(container, bridge);
     await handlers.get(PING)!.handleAction(PING);
@@ -211,7 +210,7 @@ describe('widgets-fixture-a lifecycle', () => {
     const firstWrite = navigationReplaceSpy.mock.calls[0]![0] as string;
     expect(firstWrite).toMatch(/^\/\?last-ping=\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}\.\d{3}Z$/);
 
-    // A second ping — the facade write path is identical regardless of how
+    // A second ping — the `navigation()` write path is identical regardless of how
     // many renders separate it from `mount()` ("after ExtensionRouter attaches").
     await handlers.get(PING)!.handleAction(PING);
 
@@ -222,12 +221,12 @@ describe('widgets-fixture-a lifecycle', () => {
     await lifecycle.unmount(container);
   });
 
-  it("preserves another already-present search param on its own entry when writing last-ping (D21 — reads AND writes only its own entry's parameters)", async () => {
+  it("preserves another already-present search param on its own entry when writing last-ping (reads AND writes only its own private subroute)", async () => {
     const { default: lifecycle } = await import('./lifecycle');
     const { bridge, handlers } = fakeBridge(ALPHA);
     const container = document.createElement('div');
 
-    // Some OTHER caller already set a param on this occupant's own entry
+    // Some OTHER caller already set a param on this extension's own subroute
     // (e.g. a deep link) before the ping handler ever reads it.
     navigationLocation = { pathname: '/', search: '?other=kept' };
 
@@ -323,7 +322,7 @@ describe('widgets-fixture-a lifecycle', () => {
     const container = document.createElement('div');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    // Module evaluation resolved nothing: a facade taken here would be the refusing one.
+    // Module evaluation called nothing: `navigation()` is called at ping time only.
     expect(navigationResolveSpy).not.toHaveBeenCalled();
 
     linkAdopted = false;

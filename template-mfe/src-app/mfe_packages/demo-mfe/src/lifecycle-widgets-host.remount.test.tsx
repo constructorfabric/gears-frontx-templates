@@ -94,9 +94,9 @@ let mountedRoots = new Map<string, Element | ShadowRoot>();
  * needs, since dispatching a mount is fire-and-forget and `WidgetsDomainImpl`
  * exposes nothing to await, so the helper awaits the lifecycle mount callback.
  * `awaitMount` must be called BEFORE the slot attaches and before any
- * dispatch: `ExtensionDomainSlot` starts this domain's own router observer on
- * attach (ADR 0036, D10/D11), and on the second attach that observer's
- * initial diff can restore every extension the (still-live) URL names through
+ * dispatch: the registry starts this routed domain in the router when the
+ * slot attaches its root, and on the second attach the router's initial diff
+ * can restore every extension the (still-live) URL names through
  * the same real mount pipeline, in the same synchronous window
  * `attachRealSlot`'s own `root.render` runs in. A resolver registered
  * beforehand receives that mount too — no sleep, no poll.

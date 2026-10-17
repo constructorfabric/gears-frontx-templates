@@ -51,6 +51,7 @@ import {
   CHROME_SET_THEME,
 } from './chrome-actions';
 import { readHistoryIntent, screenLoadFailure } from './screenLoadFailure';
+import { screenState } from './screenState';
 
 const MFE_MANIFESTS_FILE = 'generated-mfe-manifests.json';
 
@@ -122,6 +123,20 @@ class HostContainerHooks implements ContainerHooks {
   }
 }
 
+/** The screen domain's hooks: the shell's mounted-screen state follows the container of the screen the strategy holds. */
+class ScreenContainerHooks extends HostContainerHooks {
+  override create(extensionId: string): Element {
+    const el = super.create(extensionId);
+    screenState.set(extensionId);
+    return el;
+  }
+
+  override destroy(extensionId: string, container?: Element): void {
+    super.destroy(extensionId, container);
+    if (screenState.getSnapshot() === extensionId) screenState.set(undefined);
+  }
+}
+
 // The two readers below state, to TypeScript, an invariant the type system
 // already enforces at runtime: `chrome-actions.ts` closes each chrome payload
 // around a single required field of a declared type, and the mediator validates
@@ -157,16 +172,16 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
   constructor(
     ctx: DomainContext,
     hooks: ContainerHooks,
-    registry: MfeRegistry,
-    domainId: string,
     app: FrontXApp,
   ) {
     super();
-    this.strategy = new ExclusiveMountStrategy(ctx.mounter, hooks, registry, domainId);
-    // The injected framework router's own settled-action report path
-    // (`cpt-frontx-algo-extension-domain-governance-mount-execution`,
-    // `inst-me-report-settled`) reflects this mount into the URL once the
-    // strategy settles — no domain-implementation call is needed for it.
+    this.strategy = new ExclusiveMountStrategy(ctx.mounter, hooks);
+    // The runtime's `reflect` commands to the router of
+    // `@gears-frontx/routing`, which the framework injects into the registry,
+    // write this mount into the URL — no domain-implementation call is needed
+    // for it. An Exclusive domain
+    // declares and registers no `unmount_ext`: a screen leaves through a
+    // replacing `mount_ext`.
     // A new mount drops the report of the one before it; a failed mount is
     // reported for the screen container's error state and still fails the
     // action. Only the latest mount, started in the current visit, reports, so
@@ -227,9 +242,9 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
 class OptionalDomainImpl extends ExtensionDomainImplementation {
   private readonly strategy: OptionalMountStrategy;
 
-  constructor(ctx: DomainContext, hooks: ContainerHooks, registry: MfeRegistry, domainId: string) {
+  constructor(ctx: DomainContext, hooks: ContainerHooks) {
     super();
-    this.strategy = new OptionalMountStrategy(ctx.mounter, hooks, registry, domainId);
+    this.strategy = new OptionalMountStrategy(ctx.mounter, hooks);
     ctx.registerHandler(
       FRONTX_ACTION_MOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
@@ -239,7 +254,7 @@ class OptionalDomainImpl extends ExtensionDomainImplementation {
     ctx.registerHandler(
       FRONTX_ACTION_UNMOUNT_EXT,
       ActionHandler.fromFunction(async (_t, p) => {
-        await this.strategy.unmount!(p as ActionPayload);
+        await this.strategy.unmount(p as ActionPayload);
       }),
     );
   }
@@ -250,22 +265,15 @@ class OptionalDomainImpl extends ExtensionDomainImplementation {
 }
 
 class ScreenDomainFactory extends ExtensionDomainImplementationFactory {
-  constructor(
-    private readonly registry: MfeRegistry,
-    private readonly app: FrontXApp,
-  ) { super(); }
+  constructor(private readonly app: FrontXApp) { super(); }
   build(ctx: DomainContext): ScreenDomainImpl {
-    return new ScreenDomainImpl(ctx, new HostContainerHooks(), this.registry, screenDomain.id, this.app);
+    return new ScreenDomainImpl(ctx, new ScreenContainerHooks(), this.app);
   }
 }
 
 class OptionalDomainFactory extends ExtensionDomainImplementationFactory {
-  constructor(
-    private readonly registry: MfeRegistry,
-    private readonly domainId: string,
-  ) { super(); }
   build(ctx: DomainContext): OptionalDomainImpl {
-    return new OptionalDomainImpl(ctx, new HostContainerHooks(), this.registry, this.domainId);
+    return new OptionalDomainImpl(ctx, new HostContainerHooks());
   }
 }
 
@@ -361,7 +369,7 @@ function registerAllNonActionSchemas(
  * extensions. Foreign-domain extensions (those whose target domain is owned by
  * a different runtime, like the widgets domain owned by demo-mfe's child
  * FrontX app) MUST NOT be registered on the host registry; they reach their
- * owning runtime through a content-addressed dispatcher (per Phase 2.6 —
+ * owning runtime through a content-addressed dispatcher (see
  * `cpt-frontx-algo-framework-composition-content-addressed-discovery`).
  */
 function hostOwnsDomain(registry: MfeRegistry, domainId: string): boolean {
@@ -417,9 +425,8 @@ async function registerMfePackage(
     }
     await registry.registerExtension(extension);
     // The extension's own entry address, if it declares a route, is
-    // supplied automatically at mount through the injected router's occupant
-    // value (ADR 0036) — no shared-property broadcast to keep in step with
-    // registration.
+    // supplied automatically at mount through the router's occupant value —
+    // no shared-property broadcast to keep in step with registration.
   }
 }
 
@@ -428,16 +435,14 @@ async function registerMfePackage(
  *
  * Registers the chrome action schemas on the registry's type system first,
  * then synchronously registers the four well-known domains (screen, sidebar,
- * popup, overlay) — the injected framework router (`app.mfeRouter`) admits
- * each one automatically through the runtime's router port
- * (`cpt-frontx-adr-extension-routing-port`); no shell-owned routing wiring is
- * built here. It then broadcasts the initial shared properties
+ * popup, overlay). The registry admits each routed domain to the router of
+ * `@gears-frontx/routing` that the framework injects into it, and starts and
+ * stops the domain when its root attaches and detaches; this function builds
+ * no routing wiring. It then broadcasts the initial shared properties
  * (theme, language) and asynchronously registers the extensions declared in
  * `generated-mfe-manifests.json`.
  *
- * Mount/unmount lifecycle is not driven here: `ExtensionDomainSlot` itself
- * starts/stops a routed domain's own URL observer from its own attach/detach
- * (ADR 0036, D10/D11) — this function builds no routing wiring at all.
+ * Mount/unmount lifecycle is not driven here.
  *
  * @param app - FrontX application instance
  */
@@ -461,11 +466,11 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
   // there would make them mandatory for every screen extension in the repo.
   registry.registerDomain(
     { ...screenDomain, actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED] },
-    new ScreenDomainFactory(registry, app),
+    new ScreenDomainFactory(app),
   );
-  registry.registerDomain(sidebarDomain, new OptionalDomainFactory(registry, sidebarDomain.id));
-  registry.registerDomain(popupDomain, new OptionalDomainFactory(registry, popupDomain.id));
-  registry.registerDomain(overlayDomain, new OptionalDomainFactory(registry, overlayDomain.id));
+  registry.registerDomain(sidebarDomain, new OptionalDomainFactory());
+  registry.registerDomain(popupDomain, new OptionalDomainFactory());
+  registry.registerDomain(overlayDomain, new OptionalDomainFactory());
 
   const currentThemeId = app.themeRegistry?.getCurrent()?.id ?? 'default';
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, currentThemeId);

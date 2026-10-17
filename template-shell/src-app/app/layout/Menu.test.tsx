@@ -3,9 +3,9 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScreenExtension } from '@gears-frontx/react';
 import { Menu } from './Menu';
+import { screenState } from '@/app/mfe/screenState';
 
 const mockUseFrontX = vi.fn();
-const mockUseMountedExtensions = vi.fn();
 const mockBootstrapOnce = vi.fn();
 
 vi.mock('@/app/mfe/bootstrapOnce', () => ({
@@ -16,7 +16,6 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => undefined,
   useFrontX: () => mockUseFrontX(),
-  useMountedExtensions: () => mockUseMountedExtensions(),
 }));
 
 const screenExtension = (
@@ -65,7 +64,7 @@ describe('Menu', () => {
       },
     };
     mockUseFrontX.mockReturnValue(app);
-    mockUseMountedExtensions.mockReturnValue([]);
+    screenState.set(undefined);
     mockBootstrapOnce.mockResolvedValue(undefined);
   });
 
@@ -93,6 +92,28 @@ describe('Menu', () => {
       action: { payload: { subject: string } };
     };
     expect(chain.action.payload.subject).toBe(tasks.id);
+  });
+
+  it('highlights the screen that is mounted, and follows it when another replaces it', async () => {
+    const other = screenExtension('ext.other', '/other', 10, 'Other');
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([other, tasks]);
+    await renderSettled();
+
+    const active = (id: string) => screen.getByTestId(`menu-item-${id}`).getAttribute('data-active');
+    expect(active(tasks.id)).toBe('false');
+    expect(active(other.id)).toBe('false');
+
+    await act(async () => {
+      screenState.set(tasks.id);
+    });
+    expect(active(tasks.id)).toBe('true');
+    expect(active(other.id)).toBe('false');
+
+    await act(async () => {
+      screenState.set(other.id);
+    });
+    expect(active(tasks.id)).toBe('false');
+    expect(active(other.id)).toBe('true');
   });
 
   it('stays blank until bootstrap has settled, then lists the registered screens', async () => {

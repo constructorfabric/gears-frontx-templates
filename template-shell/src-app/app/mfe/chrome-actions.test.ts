@@ -62,8 +62,9 @@ function targetRefOf(schema: JSONSchema): string {
 beforeAll(() => {
   // The process-wide `gtsPlugin` singleton, as the app itself uses it. Nothing
   // registered here is case-specific: the schemas and the two domain instances
-  // are static, registration is idempotent, and the actions the cases below
-  // register are anonymous, so no case can leave state another one reads.
+  // are static, registering a type that is already registered leaves it
+  // unchanged, and the actions the cases below register are anonymous, so no
+  // case can leave state another one reads.
   //
   // The shared-property and screen-extension schemas come first because both
   // layout domain instances reference them; without them the domains fail their

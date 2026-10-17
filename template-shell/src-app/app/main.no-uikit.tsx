@@ -29,7 +29,6 @@ registerBootstrapEffects(app.store.dispatch);
  * 2. Components show skeleton loaders (translationsReady = false)
  * 3. User fetched → language set → translations loaded
  * 4. Components re-render with actual text (translationsReady = true)
- * 5. FrontXProvider includes AppRouter for URL-based navigation
  *
  * Note: Mock API is controlled via the FrontX Studio panel.
  * The mock plugin (included in full preset) handles mock plugin lifecycle automatically.

@@ -4,12 +4,10 @@
  * MFE Screen Container Component
  *
  * Bootstraps MFE domains and extensions on first mount, then renders the
- * per-domain `<ExtensionDomainSlot>` for the screen domain. `ExtensionDomainSlot`
- * itself starts/stops the screen domain's own URL observer from its own
- * attach/detach (ADR 0036, D10/D11) — this container builds no routing
- * wiring of its own; it only reads that domain's own status (via the
- * shell-scoped `useDomainRouteStatus` hook) to show a fallback when every
- * URL entry for this domain fails to resolve. Mount/unmount actions are
+ * per-domain `<ExtensionDomainSlot>` for the screen domain. The registry starts
+ * and stops the routed screen domain when the slot attaches and detaches its
+ * root — this container builds no routing wiring of its own. Mount/unmount
+ * actions are
  * dispatched by other components (e.g., the menu) through
  * `registry.executeActionsChain`.
  *
@@ -25,8 +23,6 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import {
   useFrontX,
-  useMountedExtensions,
-  useDomainRouteStatus,
   ExtensionDomainSlot,
   screenDomain,
   FRONTX_ACTION_MOUNT_EXT,
@@ -62,8 +58,6 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   const [bootstrapped, setBootstrapped] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const loadFailure = useScreenLoadFailure();
-  const mountedScreens = useMountedExtensions(FRONTX_SCREEN_DOMAIN);
-  const status = useDomainRouteStatus(bootstrapped ? app.mfeRegistry : undefined, FRONTX_SCREEN_DOMAIN);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,12 +87,6 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
     return () => window.removeEventListener('popstate', leave, { capture: true });
   }, []);
 
-  // Every URL entry for this domain failed to resolve to a mounted screen:
-  // an unknown token in the address bar, not a moment mid-mount (which still
-  // has zero entries or a resolved one already mounting).
-  const unresolvedOnly =
-    !loadFailure && status.entries > 0 && status.unresolved === status.entries && mountedScreens.length === 0;
-
   const retryScreen = () => {
     if (!loadFailure) return;
     const { extensionId, history } = loadFailure;
@@ -127,11 +115,6 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
           domainId={screenDomain.id}
           className="h-full"
         />
-      ) : null}
-      {unresolvedOnly ? (
-        <div data-testid="screen-route-fallback" role="status" className="p-6 text-sm text-muted-foreground">
-          No screen matches this address.
-        </div>
       ) : null}
     </div>
   );

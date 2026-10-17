@@ -27,11 +27,11 @@ type Chain = { action: { type: string; target: string; payload?: { subject?: str
  * A hand-rolled `MfeRegistry` + one-level actions-chain mediator: real enough
  * to construct `WidgetsDomainImpl` through its own factory (so its mount/
  * unmount handler wiring runs for real) without reaching into `mfes`'s own
- * tested dispatch/mounter machinery, OR into the real `FrameworkRouter`
- * (`lifecycle-widgets-host.remount.test.tsx` and `router.test.ts` cover the
- * real router's own route-admission and URL-back-projection behaviour —
- * Global Constraints, not re-tested here). `ExtensionDomainSlot` is faked below (the real one — starting/stopping
- * a routed domain's own observer, and mass-releasing every mounted
+ * tested dispatch/mounter machinery, OR into the router of
+ * `@gears-frontx/routing` (`lifecycle-widgets-host.remount.test.tsx` and the
+ * routing package's own suites cover route admission and URL back-projection —
+ * Global Constraints, not re-tested here). `ExtensionDomainSlot` is faked below (the real one —
+ * attaching the domain's root, and mass-releasing every mounted
  * extension on detach — is a Global Constraint, covered by
  * `ExtensionDomainSlot`'s own suite and `mfes`'s own `DefaultExtensionMounter`
  * suite; `lifecycle-widgets-host.remount.test.tsx` exercises them for real
@@ -147,9 +147,6 @@ function fakeManifestResponse() {
 let fakeRegistry: FakeRegistry | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
-/** `app.mfeRouter` in production — only the navigation facade (ADR 0036); nothing in this file reads it. */
-let fakeRouter: { navigation: ReturnType<typeof vi.fn> };
-
 /** Gates `FakeConcurrentMountStrategy.mount` — set by the "never waits" test to hold a mount open while it asserts against the surrounding call. */
 let mountGate: Promise<void> | undefined;
 
@@ -226,11 +223,6 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
         get mfeRegistry() {
           return fakeRegistry;
         },
-        // `app.mfeRouter` in production narrows to the navigation facade
-        // alone (ADR 0036, D10) — nothing under test here reads it; starting/
-        // stopping this domain's own observer is `ExtensionDomainSlot`'s own
-        // internal concern (its own suite, Global Constraints here).
-        mfeRouter: fakeRouter,
         themeRegistry: { getCurrent: () => undefined },
         i18nRegistry: { getLanguage: () => null },
       };
@@ -246,12 +238,17 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
     },
     ExtensionDomainSlot: ({ onAttached }: { onAttached?: (root: Element) => void }) => {
       const ref = React.useRef<HTMLDivElement | null>(null);
+      // Like the real slot: attaches once, on mount, and always calls the
+      // latest committed `onAttached`.
+      const latestOnAttached = React.useRef(onAttached);
+      latestOnAttached.current = onAttached;
       React.useEffect(() => {
         if (ref.current) {
-          attachedCallbacks.push(() => onAttached?.(ref.current!));
-          onAttached?.(ref.current);
+          const root = ref.current;
+          attachedCallbacks.push(() => latestOnAttached.current?.(root));
+          latestOnAttached.current?.(root);
         }
-      }, [onAttached]);
+      }, []);
       return <div ref={ref} data-testid="widgets-domain-slot" />;
     },
   };
@@ -292,7 +289,6 @@ let mountedInstances: Array<{ lifecycle: { unmount: (c: Element) => unknown }; c
 
 beforeEach(() => {
   fakeRegistry = new FakeRegistry();
-  fakeRouter = { navigation: vi.fn(() => ({ navigate: vi.fn(), replace: vi.fn() })) };
   attachedCallbacks.length = 0;
   createFrontXSpy.mockClear();
   buildSpy.mockClear();
@@ -321,7 +317,7 @@ describe('demo-mfe widgets-host lifecycle', () => {
     expect(container.querySelector('[data-testid="widgets-domain-slot"]')).not.toBeNull();
   });
 
-  it('auto-mounts every registered widget with an opening mount_ext chain carrying history "replace" (auto-mount, D10)', async () => {
+  it('auto-mounts every registered widget with an opening mount_ext chain carrying history "replace" (auto-mount, ADR 0036 "Mounting, unmounting, and the history intent")', async () => {
     await mount(fakeBridge());
 
     const mountCalls = fakeRegistry!.executeActionsChain.mock.calls

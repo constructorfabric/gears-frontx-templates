@@ -40,7 +40,7 @@ import type { Extension } from '@gears-frontx/framework';
  * }
  * ```
  */
-export function useDomainExtensions(domainId: string): Extension[] {
+export function useDomainExtensions(domainId: string): Array<Omit<Extension, 'route'>> {
   const app = useFrontX();
   const registry = resolveMfeRegistry(app, 'useDomainExtensions');
 
@@ -56,7 +56,7 @@ export function useDomainExtensions(domainId: string): Extension[] {
 
   // Cache the snapshot to maintain referential stability for useSyncExternalStore.
   // Only update when the extension IDs actually change.
-  const cacheRef = useRef<{ ids: string; extensions: Extension[] }>({ ids: '', extensions: [] });
+  const cacheRef = useRef<{ ids: string; extensions: Array<Omit<Extension, 'route'>> }>({ ids: '', extensions: [] });
 
   const getSnapshot = useCallback(() => {
     const extensions = registry.getExtensionsForDomain(domainId);

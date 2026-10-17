@@ -17,7 +17,7 @@
  *   for registerDomain().
  *
  * Domain Action Support Matrix (from mfe-ext-lifecycle-actions.md):
- * - screen: 2 actions (load_ext, mount_ext) -- NO unmount_ext (swap semantics)
+ * - screen: 2 actions (load_ext, mount_ext) -- NO unmount_ext (Exclusive strategy)
  * - sidebar/popup/overlay: 3 actions (load_ext, mount_ext, unmount_ext) -- toggle semantics
  *
  * @packageDocumentation
@@ -72,7 +72,7 @@ const DEFAULT_LIFECYCLE_STAGES: readonly string[] = [
  * Screen domain constant.
  *
  * Extension domain for main content area screens.
- * Uses swap semantics: mounting a new screen implicitly unmounts the previous one.
+ * Uses the Exclusive strategy: one occupant; a new mount replaces the occupant.
  * Actions: load_ext, mount_ext (NO unmount_ext).
  * Extensions must use extension_screen.v1~ derived type (adds presentation metadata).
  *

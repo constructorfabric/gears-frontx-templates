@@ -17,18 +17,26 @@ This is a template for creating new FrontX Microfrontend packages. It provides a
 Copy the entire `_blank-mfe` directory to a new name:
 
 ```bash
-cp -r src/mfe_packages/_blank-mfe src/mfe_packages/your-mfe-name
+cp -r src-app/mfe_packages/_blank-mfe src-app/mfe_packages/your-mfe-name
+```
+
+Then remove `templateExample` from the copy's `mfe.json`; while the flag stays,
+the copy is left out of the menu:
+
+```bash
+node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));delete m.templateExample;fs.writeFileSync(f,JSON.stringify(m,null,2)+"\n")' src-app/mfe_packages/your-mfe-name/mfe.json
 ```
 
 ### 2. Update Package Metadata
 
 Edit `package.json`:
 - Change `"name"` from `"@gears-frontx/blank-mfe"` to `"@gears-frontx/your-mfe-name"`
-- Change the port in the `"dev"` and `"preview"` scripts (e.g., from `3099` to your chosen port)
+- Change the port in the `"dev"` and `"preview"` scripts (e.g., from `3099` to your chosen port). The `preview` script serves the built remote for a shell to load; it is not a standalone view of the MFE
 
 Edit `vite.config.ts`:
 - Change `name` in the federation config from `"blankMfe"` to `"yourMfeName"` (camelCase)
 - Update the port in the dev server config if needed
+- Add `@gears-frontx/routing` to `sharedDeps`, so this MFE's runtime evaluates its own copy of it, never shared across MFEs; if the MFE renders `<ExtensionRouter>` or calls `navigation()` (both from `@gears-frontx/routing-tanstack`), add `@gears-frontx/routing-tanstack` too
 
 ### 3. Update GTS IDs in mfe.json
 
@@ -110,28 +118,10 @@ No registration step is needed to make the package buildable or runnable: the
 root `package.json` globs `src-app/mfe_packages/*` as workspaces, and the
 shell's dev orchestrator discovers every package under that directory and
 reads its port from the package's own `preview` script. A copied directory is
-picked up by both as soon as it exists.
-
-### 7. Register with Host
-
-In the host app's MFE bootstrap file (e.g., `src/app/mfe/bootstrap.ts`):
-
-```typescript
-import yourMfeConfig from '@gears-frontx/your-mfe-name/mfe.json';
-
-// Register manifest
-runtime.registerManifest(yourMfeConfig.manifest);
-
-// Register entries
-yourMfeConfig.entries.forEach(entry => {
-  runtime.registerEntry(entry);
-});
-
-// Register extensions
-yourMfeConfig.extensions.forEach(extension => {
-  runtime.registerExtension(extension);
-});
-```
+picked up by both as soon as it exists. Once the flag is dropped, the shell registers the package's
+`mfe.json` declarations through its manifest pipeline
+(`npm run generate:mfe-manifests`, which `dev:all` runs); no shell code names
+the package.
 
 ## Project Structure
 
@@ -189,7 +179,7 @@ and it helps to know which is which:
 
 The `ChildMfeBridge` provides APIs for:
 - Property subscriptions (theme, language)
-- Actions chain execution (navigation, custom actions)
+- Actions chain execution (mount/unmount and custom actions)
 - Bidirectional communication with the host
 
 ### MFE-Local i18n
@@ -282,6 +272,8 @@ npm run dev
 ```
 
 The MFE will be served at `http://localhost:[YOUR_PORT]/assets/remoteEntry.js`.
+It renders only inside a shell. An MFE is tested inside a shell — a simple dummy shell, for instance the template shell via `npm run dev:all`; it has no standalone preview. `dev:all` builds the package, starts
+its `preview` server and runs the shell that mounts it.
 
 ### Build
 
@@ -306,7 +298,7 @@ project — a shell plus this template — not from either template alone.
 ### Module Federation Errors
 
 If you see "Shared module not available" errors:
-- Ensure all shared dependencies in `mfe.json` match those in `vite.config.ts`
+- Ensure every package listed in `sharedDeps` in `vite.config.ts` is one the shell provides, and that `@gears-frontx/routing` is listed (every MFE lists it); packages not listed there, such as `@gears-frontx/ui-kit`, are bundled into the MFE
 - Verify the host app is configured to consume your remote
 
 ### Type Errors

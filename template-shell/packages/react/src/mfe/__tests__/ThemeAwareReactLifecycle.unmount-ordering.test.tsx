@@ -18,7 +18,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
-import type { ActionsChain, ChildMfeBridge, Extension, ExtensionDomain, ExtensionDomainImplementationFactory, ExtensionMounter as ExtensionMounterType, FrontXApp, MfeRegistry, ParentMfeBridge, TypeSystemPlugin } from '@gears-frontx/framework';
+import type { ActionsChain, ChildMfeBridge, Extension, ExtensionDomain, ExtensionDomainImplementationFactory, ExtensionMounter as ExtensionMounterType, FrontXApp, MfeRegistry, TypeSystemPlugin } from '@gears-frontx/framework';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
@@ -112,20 +112,16 @@ function defineFixtures() {
     getExtensionsForDomain(_id: string): Extension[] {
       return [];
     }
-    getMountedExtensions(_id: string): readonly string[] {
-      return [];
-    }
     getRegisteredPackages(): string[] {
       return [];
     }
     getExtensionsForPackage(_id: string): Extension[] {
       return [];
     }
-    getParentBridge(_id: string): ParentMfeBridge | null {
-      return null;
-    }
     setTheme(_v: Record<string, string>): void {}
-    dispose(): void {}
+    dispose(): Promise<void> {
+      return Promise.resolve();
+    }
   }
 
   /** A host lifecycle whose rendered tree is exactly one nested `ExtensionDomainSlot` — standing in for `lifecycle-widgets-host.tsx` without any of its own bootstrap machinery. */

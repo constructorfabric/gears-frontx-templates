@@ -76,7 +76,7 @@ authority on each step.
    copied package's `package.json`. `dev:all`'s port auto-discovery depends on the
    `preview`/`dev` script carrying `--port <N>` literally.
 3. **Rename package identity** — update the copied `package.json` `name` and the
-   Module Federation `name` in `vite.config.ts` (camelCase, must match across both).
+   Module Federation `name` in `vite.config.ts` (camelCase, must match across both), and list `@gears-frontx/routing` in `sharedDeps` there (add `@gears-frontx/routing-tanstack` only when the MFE uses `<ExtensionRouter>` or `navigation()`).
 4. **Assign GTS IDs** — rewrite every placeholder ID in `mfe.json` following
    template-mfe's ID taxonomy (see the `gts-id-conventions` guideline and the
    `gts-id-patterns-reference` reference artifact in this same bundle): a manifest ID,

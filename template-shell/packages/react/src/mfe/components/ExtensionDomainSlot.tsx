@@ -19,10 +19,6 @@
 
 import React, { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { MfeRegistry } from '@gears-frontx/framework';
-// Framework-internal reach-through (never MFE-reachable) — this component's
-// own attach/detach is the one place this routed domain's observer starts
-// and stops; a host never reaches this directly.
-import { startRoutedDomain, stopRoutedDomain } from '@gears-frontx/framework/internal';
 import { registerDomainTeardown } from '../domainTeardownCollector';
 
 /**
@@ -30,7 +26,7 @@ import { registerDomainTeardown } from '../domainTeardownCollector';
  */
 export interface ExtensionDomainSlotProps {
   /**
-   * The screensets registry instance.
+   * The MFE registry instance.
    */
   registry: MfeRegistry;
 
@@ -121,10 +117,6 @@ export function ExtensionDomainSlot(props: ExtensionDomainSlotProps): React.Reac
     // The mounter owns all per-extension container placement under this root.
     const mounter = registry.getMounter(domainId);
     mounter.attach(root);
-    // D10/D11: a routed domain's own URL observer starts once its slot has
-    // somewhere to mount into — a no-op for an unrouted domain, or a
-    // registry with no `FrameworkRouter` attached (e.g. a test double).
-    startRoutedDomain(registry, domainId);
     // @cpt-end:cpt-frontx-flow-react-bindings-extension-domain-slot:p1:inst-attach-root
 
     // @cpt-begin:cpt-frontx-state-react-bindings-extension-slot:p1:inst-slot-attached
@@ -135,13 +127,6 @@ export function ExtensionDomainSlot(props: ExtensionDomainSlotProps): React.Reac
 
     // @cpt-begin:cpt-frontx-flow-react-bindings-extension-domain-slot:p1:inst-detach-root
     return () => {
-      // Stopped before the mass-unmount below (O7-adjacent ordering): a
-      // still-live observer would otherwise see `detach()`'s own removals
-      // as ordinary transitions and try to dispatch unmounts for extensions
-      // the mounter is already tearing down. Safe to call again even when a
-      // host already stopped this domain's observer itself for its own
-      // teardown ordering.
-      stopRoutedDomain(registry, domainId);
       // Mass-unmount every extension currently mounted in the domain.
       // detach() is async (awaits per-extension unmounts) but React cleanup is
       // synchronous, so this call site cannot itself await it. Registering

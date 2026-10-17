@@ -34,11 +34,6 @@ export type FrontXStore = StoreType;
 // ============================================================================
 
 /**
- * Router mode type
- */
-export type RouterMode = 'browser' | 'hash' | 'memory';
-
-/**
  * FrontX Application Configuration
  * Configuration options for creating a FrontX application.
  */
@@ -49,26 +44,6 @@ export interface FrontXConfig {
   devMode?: boolean;
   /** Enable strict mode (throws on errors) */
   strictMode?: boolean;
-  /**
-   * Auto-route to the first registered route on mount.
-   * When false, stays on "/" until explicit navigation occurs.
-   * @default true
-   * @deprecated Legacy option, will be removed in a future version.
-   */
-  autoNavigate?: boolean;
-  /**
-   * Base path for navigation. Example: '/console' makes routes /console/*.
-   * @default '/'
-   */
-  base?: string;
-  /**
-   * Router mode - browser (default), hash, or memory.
-   * - browser: Uses HTML5 history API (clean URLs)
-   * - hash: Uses URL hash (#/path)
-   * - memory: In-memory routing without URL sync
-   * @default 'browser'
-   */
-  routerMode?: RouterMode;
 }
 
 // ============================================================================
@@ -375,22 +350,6 @@ export interface ThemeRegistry {
  */
 export interface FrontXAppRuntimeExtensions {
   readonly __frontxPluginExtensible?: never;
-  /**
-   * The narrow, app-facing router handle (ADR 0036, "The navigation
-   * facade") that this app's `microfrontends()` plugin publishes — present
-   * only when that plugin was used. This is `FrameworkRouter.asHandle()`'s
-   * return value, never the concrete `FrameworkRouter` instance: the class
-   * implementing the runtime's router port
-   * (`cpt-frontx-adr-extension-routing-port`) stays internal to this
-   * package and is not reachable from this (or any) app object. Authored
-   * directly here, not through a `declare module` augmentation from the
-   * plugin's own file: a relative augmentation compiles fine inside this
-   * package's own source but `tsup`'s declaration bundling does not rewrite
-   * it to the bundled output's own internal module graph, so it would
-   * otherwise emit an orphaned augmentation in the published
-   * `dist/index.d.ts` that never applies for an external consumer.
-   */
-  readonly mfeRouter?: import('./plugins/microfrontends/router').MfeRouterHandle;
 }
 
 /**
@@ -419,7 +378,7 @@ export interface FrontXAppRuntimeExtensions {
  * `if (!app.mfeRegistry)` guard or a `app.mfeRegistry!` assertion:
  *
  * ```typescript
- * app.mfeRegistry.registerDomain(myDomain, containerProvider);
+ * app.mfeRegistry.registerDomain(myDomain, new MyDomainFactory());
  * ```
  *
  * The cost: nothing verifies the declaration against the plugins an app
@@ -452,7 +411,7 @@ type MfeRegistrySlot = FrontXAppGuarantees extends { mfeRegistry: true }
  *
  * // Access MFE registry (if microfrontends plugin is used)
  * if (app.mfeRegistry) {
- *   app.mfeRegistry.registerDomain(myDomain, containerProvider);
+ *   app.mfeRegistry.registerDomain(myDomain, new MyDomainFactory());
  * }
  * ```
  */

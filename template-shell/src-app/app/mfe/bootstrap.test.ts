@@ -9,7 +9,6 @@ const registerExtension = vi.fn().mockResolvedValue(undefined);
 const getDomain = vi.fn();
 const getExtension = vi.fn();
 const getExtensionsForDomain = vi.fn((_domainId: string): unknown[] => []);
-const getMountedExtensions = vi.fn(() => []);
 const executeActionsChain = vi.fn(() => undefined);
 // Real `ExclusiveMountStrategy`/`OptionalMountStrategy` need a fully wired
 // `mfes` registry/mounter/bridge to mount anything — out of scope here (that
@@ -17,9 +16,50 @@ const executeActionsChain = vi.fn(() => undefined);
 // fakes stand in for them so the cases below can exercise only what this
 // package owns: the order between a strategy settling and `routing.afterMount`
 // / `routing.afterUnmount` being called.
-const exclusiveMount = vi.fn().mockResolvedValue(undefined);
+//
+// The Exclusive fake follows the call points of `ExclusiveMountStrategy`
+// (mfes `ExclusiveMountStrategy.ts`) on the container hooks it was built with:
+// `destroy(occupant)` when a mount evicts it, `create(subject)` before the
+// physical mount, `destroy(subject)` when that mount fails, and
+// `destroy(occupant)` when the slot detaches (`detach()` stands for the
+// screen mounter's detach releasing its occupant). `exclusiveMount` records
+// the call the handler makes on the strategy and is awaited first, so a case
+// can make the strategy fail or hang through it; `physicalMount` is the
+// mounter's own mount the strategy awaits.
+const exclusiveMount = vi.fn();
+const physicalMount = vi.fn().mockResolvedValue(undefined);
+interface RecordedHooks {
+  create(subject: string): unknown;
+  destroy(subject: string, container?: Element): void;
+}
 class FakeExclusiveMountStrategy {
-  mount = exclusiveMount;
+  static last: FakeExclusiveMountStrategy | undefined;
+  private occupant: string | undefined;
+  constructor(_mounter: unknown, private readonly hooks: RecordedHooks) {
+    FakeExclusiveMountStrategy.last = this;
+  }
+  async mount(payload: { subject: string }): Promise<void> {
+    await exclusiveMount(payload);
+    const subject = payload.subject;
+    if (this.occupant !== undefined && this.occupant !== subject) {
+      this.hooks.destroy(this.occupant);
+      this.occupant = undefined;
+    }
+    this.hooks.create(subject);
+    try {
+      await physicalMount(subject);
+    } catch (error) {
+      this.hooks.destroy(subject);
+      throw error;
+    }
+    this.occupant = subject;
+  }
+  detach(): void {
+    if (this.occupant !== undefined) {
+      this.hooks.destroy(this.occupant);
+      this.occupant = undefined;
+    }
+  }
 }
 const optionalMount = vi.fn().mockResolvedValue(undefined);
 const optionalUnmount = vi.fn().mockResolvedValue(undefined);
@@ -35,7 +75,6 @@ const mockMfeRegistry = {
   getDomain,
   getExtension,
   getExtensionsForDomain,
-  getMountedExtensions,
   executeActionsChain,
   typeSystem: {
     register: registerInstance,
@@ -81,11 +120,11 @@ describe('bootstrapMFE (host-app)', () => {
     getExtension.mockReset();
     getExtensionsForDomain.mockReset();
     getExtensionsForDomain.mockReturnValue([]);
-    getMountedExtensions.mockReset();
-    getMountedExtensions.mockReturnValue([]);
     executeActionsChain.mockClear();
     exclusiveMount.mockClear();
-    exclusiveMount.mockResolvedValue(undefined);
+    physicalMount.mockReset();
+    physicalMount.mockResolvedValue(undefined);
+    FakeExclusiveMountStrategy.last = undefined;
     optionalMount.mockClear();
     optionalMount.mockResolvedValue(undefined);
     optionalUnmount.mockClear();
@@ -127,7 +166,7 @@ describe('bootstrapMFE (host-app)', () => {
     expect(registerSchema).toHaveBeenCalledTimes(2);
   });
 
-  it("the screen mount handler only calls the strategy's own mount — URL reflection is the injected router's own settled-action report now (ADR 0036), not this handler's concern", async () => {
+  it("the screen mount handler only calls the strategy's own mount — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036), not this handler's concern", async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -152,7 +191,117 @@ describe('bootstrapMFE (host-app)', () => {
     expect(exclusiveMount).toHaveBeenCalledWith({ subject: 'ext.hello-world' });
   });
 
-  it("an optional domain's mount and unmount handlers only call their own strategy — URL reflection is the injected router's own settled-action report now (ADR 0036)", async () => {
+  async function buildScreen(): Promise<{
+    mountId: string;
+    mount: (subject: string) => Promise<unknown>;
+    screenState: { getSnapshot(): string | undefined };
+  }> {
+    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { bootstrapMFE } = await import('./bootstrap');
+    const { screenState } = await import('./screenState');
+    await bootstrapMFE(mockApp as never);
+
+    const [, screenFactory] = registerDomain.mock.calls[0];
+    const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
+    screenFactory.build({
+      mounter: {},
+      registerHandler: (actionTypeId: string, handler: { handleAction: (t: string, p: unknown) => unknown }) => {
+        handlers.set(actionTypeId, handler);
+      },
+    });
+    const mountId = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
+    return {
+      mountId,
+      mount: (subject) => Promise.resolve(handlers.get(mountId)!.handleAction(mountId, { subject })),
+      screenState,
+    };
+  }
+
+  describe("the shell's screen state, driven by the screen strategy's container hooks", () => {
+    it('is empty before any mount and holds the screen once it is mounted', async () => {
+      const { mount, screenState } = await buildScreen();
+      expect(screenState.getSnapshot()).toBeUndefined();
+
+      await mount('ext.screen-a');
+
+      expect(screenState.getSnapshot()).toBe('ext.screen-a');
+    });
+
+    it('holds the new screen after a successful mount evicts the previous one', async () => {
+      const { mount, screenState } = await buildScreen();
+
+      await mount('ext.screen-a');
+      await mount('ext.screen-b');
+
+      expect(screenState.getSnapshot()).toBe('ext.screen-b');
+    });
+
+    it('is empty after a mount that fails once it has evicted the previous screen', async () => {
+      const { mount, screenState } = await buildScreen();
+      await mount('ext.screen-a');
+      expect(screenState.getSnapshot()).toBe('ext.screen-a');
+
+      physicalMount.mockRejectedValueOnce(new Error('mount refused'));
+      await expect(mount('ext.screen-b')).rejects.toThrow('mount refused');
+
+      expect(screenState.getSnapshot()).toBeUndefined();
+    });
+
+    it('is empty after a first mount that fails', async () => {
+      const { mount, screenState } = await buildScreen();
+
+      physicalMount.mockRejectedValueOnce(new Error('mount refused'));
+      await expect(mount('ext.bad')).rejects.toThrow('mount refused');
+
+      expect(screenState.getSnapshot()).toBeUndefined();
+    });
+
+    it('is empty after the screen slot detaches', async () => {
+      const { mount, screenState } = await buildScreen();
+      await mount('ext.screen-a');
+      expect(screenState.getSnapshot()).toBe('ext.screen-a');
+
+      FakeExclusiveMountStrategy.last!.detach();
+
+      expect(screenState.getSnapshot()).toBeUndefined();
+    });
+
+    it('is left alone when a screen other than the one it holds is destroyed', async () => {
+      const { mount, screenState } = await buildScreen();
+      await mount('ext.screen-a');
+
+      const hooks = (FakeExclusiveMountStrategy.last as unknown as { hooks: RecordedHooks }).hooks;
+      hooks.destroy('ext.other');
+
+      expect(screenState.getSnapshot()).toBe('ext.screen-a');
+    });
+  });
+
+  it('the screen domain registers no unmount_ext handler: an Exclusive domain declares none (ADR 0009)', async () => {
+    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { bootstrapMFE } = await import('./bootstrap');
+    await bootstrapMFE(mockApp as never);
+
+    const [screenDeclaration, screenFactory] = registerDomain.mock.calls[0];
+    const handlers = new Map<string, unknown>();
+    screenFactory.build({
+      mounter: {},
+      registerHandler: (actionTypeId: string, handler: unknown) => {
+        handlers.set(actionTypeId, handler);
+      },
+    });
+
+    const unmountActionId = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~';
+    expect(handlers.has('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~')).toBe(true);
+    expect(handlers.has(unmountActionId)).toBe(false);
+    expect(screenDeclaration.actions).not.toContain(unmountActionId);
+  });
+
+  it("an optional domain's mount and unmount handlers only call their own strategy — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036)", async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 

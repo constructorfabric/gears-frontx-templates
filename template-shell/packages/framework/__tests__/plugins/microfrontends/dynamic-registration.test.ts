@@ -22,6 +22,7 @@ let unregisterExtension: typeof import('../../../src/plugins/microfrontends')['u
 let MfeEvents: typeof import('../../../src/plugins/microfrontends')['MfeEvents'];
 let selectExtensionState: typeof import('../../../src/plugins/microfrontends')['selectExtensionState'];
 let selectRegisteredExtensions: typeof import('../../../src/plugins/microfrontends')['selectRegisteredExtensions'];
+let ExclusiveMountStrategy: typeof import('@gears-frontx/mfes')['ExclusiveMountStrategy'];
 let eventBus: typeof import('@gears-frontx/state')['eventBus'];
 let resetStore: typeof import('@gears-frontx/state')['resetStore'];
 let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
@@ -32,6 +33,7 @@ beforeEach(async () => {
   ({ createFrontX } = await import('../../../src/createFrontX'));
   ({ effects } = await import('../../../src/plugins/effects'));
   ({ microfrontends, registerExtension, unregisterExtension, MfeEvents, selectExtensionState, selectRegisteredExtensions } = await import('../../../src/plugins/microfrontends'));
+  ({ ExclusiveMountStrategy } = await import('@gears-frontx/mfes'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
   ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
   ({ TestContainerProvider } = await import('../../../src/testing/TestContainerProvider'));
@@ -143,7 +145,7 @@ describe('dynamic registration - Phase 20', () => {
 
       // First register the domain
       const testContainerProvider = new TestContainerProvider();
-      mfeRegistry.registerDomain(mockDomain, testContainerProvider.setRegistry(mfeRegistry).prepareForDomain(mockDomain));
+      mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       // Trigger action
       registerExtension(mockExtension);
@@ -241,7 +243,7 @@ describe('dynamic registration - Phase 20', () => {
 
       // Register domain first
       const testContainerProvider = new TestContainerProvider();
-      mfeRegistry.registerDomain(mockDomain, testContainerProvider.setRegistry(mfeRegistry).prepareForDomain(mockDomain));
+      mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       // Initial state
       let state = app.store.getState();
@@ -275,7 +277,7 @@ describe('dynamic registration - Phase 20', () => {
 
       mfeRegistry.registerExtension = vi.fn().mockResolvedValue(undefined);
       const testContainerProvider = new TestContainerProvider();
-      mfeRegistry.registerDomain(mockDomain, testContainerProvider.setRegistry(mfeRegistry).prepareForDomain(mockDomain));
+      mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       registerExtension(mockExtension);
       await waitForExtensionState(app, mockExtension.id, 'registered');
@@ -301,7 +303,7 @@ describe('dynamic registration - Phase 20', () => {
 
       mfeRegistry.registerExtension = vi.fn().mockResolvedValue(undefined);
       const testContainerProvider = new TestContainerProvider();
-      mfeRegistry.registerDomain(mockDomain, testContainerProvider.setRegistry(mfeRegistry).prepareForDomain(mockDomain));
+      mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       const ext1 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext1.v1' };
       const ext2 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext2.v1' };
@@ -328,7 +330,7 @@ describe('dynamic registration - Phase 20', () => {
       apps.push(app);
 
       const testContainerProvider = new TestContainerProvider();
-      mfeRegistry.registerDomain(mockDomain, testContainerProvider.setRegistry(mfeRegistry).prepareForDomain(mockDomain));
+      mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       // Mock one success and one failure
       const ext1 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext1.v1' };

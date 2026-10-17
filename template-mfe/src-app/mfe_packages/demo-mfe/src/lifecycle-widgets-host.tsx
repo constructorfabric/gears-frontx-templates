@@ -1,17 +1,17 @@
 /**
  * demo-mfe widgets-host lifecycle.
  *
- * Constructs a nested FrontX app that owns the widgets ExtensionDomain (per
- * Phase 1.5 audit Q5 single-owner rule). The widgets domain GTS instance is
+ * Constructs a nested FrontX app that is the single owner of the widgets
+ * ExtensionDomain. The widgets domain GTS instance is
  * authored inside `demo-mfe/mfe.json`'s `domains[]` array — content-addressed
  * by its GTS instance ID and registered into the nested type system from the
  * global runtime-fetched manifest. TypeScript transports the entity, never
  * defines it.
  *
- * Discovery follows the Phase 5.6 runtime-fetch contract: this nested app
+ * Discovery follows the runtime-fetch contract: this nested app
  * fetches the same `generated-mfe-manifests.json` the host bootstrap fetches.
  * For each MFE package in the global manifest, schemas / manifest / domains /
- * entries are registered opaquely on the nested type system (Phase 6.7 order:
+ * entries are registered opaquely on the nested type system (order:
  * schemas → manifest → domains → entries → extensions). The widgets domain
  * instance is located in the registered domains by its GTS instance ID, then
  * the nested app takes ownership via `registry.registerDomain(domain, factory)`.
@@ -20,11 +20,12 @@
  * files, no hardcoded URLs, no GTS-entity decomposition in L4 code.
  *
  * The widgets domain is itself routed (its own flat `route: "widgets"`,
- * admitted by this nested app's own injected `FrameworkRouter` — ADR 0036):
- * `WidgetsHostScreen`'s own domain-slot attach starts that router's observer
- * for this domain, and every settled mount/unmount is reflected into the URL
- * automatically from there, exactly like the shell's own domains — this
- * module builds no routing wiring of its own.
+ * admitted by the router of `@gears-frontx/routing` that the framework injects
+ * into this nested app's registry): the registry starts the domain when
+ * `WidgetsHostScreen`'s domain slot attaches its root, and the runtime's
+ * `reflect` commands to that router write
+ * every mount/unmount into the URL automatically from there, exactly like the
+ * shell's own domains — this module builds no routing wiring of its own.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -143,12 +144,12 @@ class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
 /**
  * Bootstrap demo-mfe's widgets-host child runtime:
  *   1. Fetch the global manifest at runtime from the public-asset URL the
- *      generation script writes (Phase 5.6 contract).
+ *      generation script writes (runtime-fetch contract).
  *   2. First pass: register every package's schemas opaquely on the child
  *      type system so derived-schema chains resolve regardless of package
  *      iteration order.
  *   3. Second pass: for each package, register manifest, domains, then
- *      entries opaquely on the child type system (Phase 6.7 order:
+ *      entries opaquely on the child type system (order:
  *      schemas → manifest → domains → entries → extensions). While iterating
  *      domains, locate the widgets domain by its GTS instance ID so the
  *      nested app can take ownership of it via `registry.registerDomain(...)`.
@@ -318,22 +319,16 @@ interface WidgetsHostScreenProps {
    * above) is necessary for a chain's `next` continuation targeting this
    * domain to be ROUTABLE at all, but it is not sufficient for that
    * continuation to actually MOUNT anything: `ExtensionDomainSlot` only
-   * renders once this component's own `ready` state flips true (which
-   * itself only happens after `bootstrap` resolves), and its root-attach
-   * effect runs on a LATER React commit than the microtask that resolves
-   * `mount()`'s own promise and immediately drives the chain's `next` node.
-   * Awaiting this signal too — not just `bootstrap` — is what closes that
-   * second race.
+   * renders once `bootstrap` has resolved, and its root-attach effect runs on
+   * a LATER React commit than the microtask that resolves `mount()`'s own
+   * promise and immediately drives the chain's `next` node. Awaiting this
+   * signal too — not just `bootstrap` — closes that race.
    *
    * Called synchronously at the end of `handleAttached`, once this domain's
    * own opening mounts have been dispatched (or deferred behind the
    * enclosing entry) — not awaited, since `mfes` serializes each subject's
    * mount/unmount and this component relies on that ordering rather than on
-   * any settlement of its own. `ExtensionDomainSlot` only renders once this
-   * component's own `ready` state flips true, and its root-attach effect
-   * runs on a LATER React commit than the microtask that resolves
-   * `mount()`'s own promise and immediately drives a chain's `next`
-   * continuation. If that continuation dispatched a `mount_ext` for this
+   * any settlement of its own. If a chain's `next` continuation dispatched a `mount_ext` for this
    * domain before `DefaultExtensionMounter` had a root attached, it would
    * reject with "no root attached for domain ...". Calling this signal only
    * after the opening dispatch closes that race: any later `mount_ext` for
@@ -372,14 +367,13 @@ function WidgetsHostScreen({
   // by the time this fires `widgetsDomain` is always defined — the non-null
   // assertion mirrors that render-gating rather than asserting past it.
   //
-  // `ExtensionDomainSlot` itself starts this domain's own URL observer from
-  // its own attach, once the slot renders below (ADR 0036, D10/D11) — this
-  // handler only runs the auto-mount-on-attach pass.
+  // The registry starts this routed domain when the slot below attaches its
+  // root — this handler only runs the auto-mount-on-attach pass.
   const handleAttached = (): void => {
-    // D10: Widgets Host's own auto-mount-on-attach pass, sent with history
-    // intent `replace` — the injected router's generic settled-action
-    // reflection (ADR 0036) back-projects each one into the URL on its own;
-    // this domain builds no routing wiring of its own.
+    // Widgets Host's auto-mount-on-attach pass sends each `mount_ext` with
+    // history intent `replace`; the runtime's `reflect` commands to the
+    // injected router (ADR 0036) write each one into the URL, so this domain
+    // builds no routing wiring of its own.
     const ids = registry.getExtensionsForDomain(WIDGETS_DOMAIN_ID).map((e) => e.id);
     for (const id of ids) {
       registry.executeActionsChain({
@@ -480,16 +474,16 @@ class DemoMfeWidgetsHostLifecycle extends ThemeAwareReactLifecycle {
 
   /**
    * Resolves once `ExtensionDomainSlot`'s `onAttached` callback has fired for
-   * the widgets domain and this screen's own auto-mount-on-attach pass has
-   * settled for every extension currently registered on this domain — i.e.
-   * `DefaultExtensionMounter.attach(root)` has actually run, so the domain
-   * has a DOM root to mount into, AND the opening write (or its deferral) is
-   * already made. `mount()` awaits this ALONGSIDE `bootstrapPromise` (see
+   * the widgets domain and this screen has dispatched (or deferred behind the
+   * enclosing entry) the opening `mount_ext` for every extension currently
+   * registered on this domain — i.e. `DefaultExtensionMounter.attach(root)`
+   * has actually run, so the domain has a DOM root to mount into. The
+   * dispatches are not awaited, so it does not mean those mounts have
+   * settled. `mount()` awaits this ALONGSIDE `bootstrapPromise` (see
    * that field's doc comment for why `registerDomain` completing is
    * necessary but not sufficient): `ExtensionDomainSlot` only renders — and
-   * only then, on a LATER React commit, attaches — once `WidgetsHostScreen`'s
-   * own `ready` state flips true, which itself only happens after
-   * `bootstrapPromise` resolves. Without also awaiting this signal, a
+   * only then, on a LATER React commit, attaches — once
+   * `bootstrapPromise` has resolved. Without also awaiting this signal, a
    * chain's `next` continuation targeting this domain (routable as soon as
    * `bootstrapPromise` resolves) can reach `ConcurrentMountStrategy.mount()`
    * before the mounter has a root, and `DefaultExtensionMounter.mount()`

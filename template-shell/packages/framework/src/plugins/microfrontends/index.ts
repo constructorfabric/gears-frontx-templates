@@ -2,8 +2,9 @@
  * Microfrontends Plugin
  *
  * Enables MFE capabilities in FrontX applications.
- * This plugin accepts NO configuration parameters.
- * All MFE registration happens dynamically at runtime.
+ * The plugin takes a configuration object: `typeSystem` (required) and
+ * `mfeHandlers` (optional). Domains, extensions and entries are registered
+ * dynamically at runtime.
  *
  * @packageDocumentation
  */
@@ -20,13 +21,13 @@ import {
   type MfeRegistry,
   type TypeSystemPlugin,
 } from '@gears-frontx/mfes';
+import { router } from '@gears-frontx/routing';
 import { mfeRegistryFactory } from '../../mfe/registry';
 import { eventBus } from '@gears-frontx/state';
 import type { ChangeThemePayload, FrontXApp, FrontXPlugin, SetLanguagePayload } from '../../types';
 import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../mfe/constants';
 import { mfeSlice } from './slice';
 import { initMfeEffects } from './effects';
-import { FrameworkRouter } from './router';
 import {
   loadExtension,
   mountExtension,
@@ -48,7 +49,7 @@ export interface MicrofrontendsConfig {
   typeSystem: TypeSystemPlugin;
 
   /**
-   * Optional MFE handlers to register with the screensets registry.
+   * Optional MFE handlers to register with the MFE registry.
    * Handlers enable loading of specific MFE entry types (e.g., MfeEntryMF).
    *
    * If not provided, no handlers are registered. Applications must register
@@ -58,22 +59,10 @@ export interface MicrofrontendsConfig {
 }
 
 /**
- * Module-scoped singleton, mirroring `mfeRegistryFactory`'s own cache
- * (`src/mfe/registry.ts`): one `FrameworkRouter` per loaded copy of this
- * module, so every `microfrontends()` call in this copy presents the
- * identical router object the factory's own config-identity check requires.
- */
-let sharedRouter: FrameworkRouter | undefined;
-function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
-  if (!sharedRouter) sharedRouter = new FrameworkRouter({ typeSystem });
-  return sharedRouter;
-}
-
-/**
  * Microfrontends plugin factory.
  *
- * Enables MFE capabilities in FrontX applications. Optionally accepts MFE handlers
- * for registration with the registry.
+ * Enables MFE capabilities in FrontX applications. Requires a TypeSystemPlugin and
+ * optionally accepts MFE handlers for registration with the registry.
  *
  * **Key Principles:**
  * - Optional mfeHandlers config for handler registration
@@ -82,24 +71,24 @@ function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
  * - Same TypeSystemPlugin instance is propagated throughout
  * - Integrates MFE lifecycle with Flux data flow (actions, effects, slice)
  *
- * @param config - Optional configuration with mfeHandlers array
+ * @param config - Configuration: `typeSystem` (required) and `mfeHandlers` (optional array)
  *
  * @example
  * ```typescript
  * import { createFrontX, microfrontends } from '@gears-frontx/framework';
  * import { MfeHandlerMF } from '@gears-frontx/mfes';
- * import { FrontX_MFE_ENTRY_MF } from '@gears-frontx/framework';
+ * import { FRONTX_MFE_ENTRY_MF } from '@gears-frontx/framework';
  * import { gtsPlugin } from '@gears-frontx/gts-plugin';
  *
  * const app = createFrontX()
  *   .use(microfrontends({
  *     typeSystem: gtsPlugin,
- *     mfeHandlers: [new MfeHandlerMF(FrontX_MFE_ENTRY_MF)],
+ *     mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
  *   }))
  *   .build();
  *
  * // Register domains dynamically at runtime:
- * app.mfeRegistry.registerDomain(sidebarDomain, containerProvider);
+ * app.mfeRegistry.registerDomain(sidebarDomain, new SidebarDomainFactory());
  *
  * // Use MFE actions:
  * app.actions.loadExtension('my.extension.v1');
@@ -110,23 +99,15 @@ function sharedFrameworkRouter(typeSystem: TypeSystemPlugin): FrameworkRouter {
 // @cpt-begin:cpt-frontx-state-framework-composition-mfe-mount:p1:inst-1
 // @cpt-begin:cpt-frontx-dod-framework-composition-mfe-plugin:p1:inst-1
 export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
-  // The framework router implementing the runtime's router port
-  // (`cpt-frontx-adr-extension-routing-port`) — injected into the registry
-  // this plugin builds. `mfeRegistryFactory`'s own cache compares a repeated
-  // build's router by identity (`cpt-frontx-dod-mfe-registry-router-configuration`),
-  // so every `microfrontends()` call in this loaded copy shares one router.
-  const router = sharedFrameworkRouter(config.typeSystem);
-
   // The registry is built lazily, exactly once, by `initializeRegistry`. A
   // nested runtime (an MFE extension's own bundle copy) must build its
   // registry inside its first mount window so the host links it; building it
   // at `build()` time would happen outside any window and make it a root. Every
   // consumer — the `app.mfeRegistry` accessor, lifecycle actions, effects and
   // `ThemeAwareReactLifecycle.mount` — goes through this one initializer, so
-  // reading the registry is what materializes it.
-  // The router is this registry's consumer-side wiring, attached right after
-  // the build and before any domain or extension registers (see
-  // `FrameworkRouter.attachRegistry`).
+  // reading the registry is what materializes it. The registry receives the
+  // ready `router` of `@gears-frontx/routing`; the plugin passes it on and does
+  // nothing else with it.
   let registry: MfeRegistry | undefined;
   let builtApp: FrontXApp | undefined;
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
@@ -151,12 +132,7 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
 
   const initializeRegistry = (): MfeRegistry => {
     if (!registry) {
-      const built = mfeRegistryFactory.build({
-        typeSystem: config.typeSystem,
-        mfeHandlers: config.mfeHandlers,
-        router,
-      });
-      router.attachRegistry(built);
+      const built = mfeRegistryFactory.build({ typeSystem: config.typeSystem, mfeHandlers: config.mfeHandlers, router });
       setMfeRegistry(built);
       registry = built;
       if (builtApp) {
@@ -182,19 +158,6 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
           return initializeRegistry();
         },
       },
-      // `app.mfeRouter` — the module-augmentation surface (see
-      // `FrontXAppRuntimeExtensions`) exposing only `navigation()`, the
-      // extension-local navigation facade an MFE reads/drives its own route
-      // through (ADR 0036, D5; see `MfeRouterHandle`'s own doc comment for
-      // the full contract). Starting/stopping a routed domain's URL observer
-      // and building/rendering its route tree are React-owned internal
-      // integration, never reached through this handle: `ExtensionDomainSlot`
-      // drives attach/detach itself and `ExtensionRouter` builds the route
-      // tree (both `@gears-frontx/react`), each backed by the reach-through
-      // functions `@gears-frontx/framework/internal` exports. Published via
-      // `asHandle()`, never the `router` instance itself, so no `RouterPort`
-      // member (or `attachRegistry`) is reachable from an app object.
-      app: { mfeRouter: router.asHandle() },
       slices: [mfeSlice],
       // NOTE: Effects are NOT initialized via provides.effects.
       // They are initialized in onInit to capture cleanup references.
@@ -299,24 +262,6 @@ export {
   FRONTX_OVERLAY_DOMAIN,
   MfeEvents,
 } from './constants';
-
-// `FrameworkRouter` itself stays internal to this plugin — only the narrow
-// `app.mfeRouter` handle type is exported (ADR 0036; the class is never
-// reachable from an app object, see `router.ts`'s own doc comment). The
-// framework-internal reach-through functions below are NOT re-exported from
-// this package's public entry (`src/index.ts`) — only from its `./internal`
-// subpath (`src/internal.ts`), consumed by `@gears-frontx/react`'s own
-// `ExtensionDomainSlot`/`ExtensionRouter`/`useDomainRouteStatus`.
-// Never part of `app.mfeRouter` itself.
-export type { MfeRouterHandle } from './router';
-export {
-  buildExtensionHistory,
-  startRoutedDomain,
-  stopRoutedDomain,
-  routedDomainStatus,
-  subscribeRoutedDomainStatus,
-  subscribeSettledMounts,
-} from './router';
 
 // Re-export base ExtensionDomain constants
 export {
