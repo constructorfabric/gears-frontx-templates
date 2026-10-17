@@ -99,6 +99,8 @@ The Inspector row follows the width and sizing rules above; the other rows resta
 
 ## Overflow and long content
 
+Content scrolling inside its own container is measured at the scroller's visible content box, so the part reachable by scrolling is not overflow. The scroller keeps its own horizontal padding.
+
 - Ordinary page content **MUST NOT** cause horizontal page scrolling at 320 CSS px, except genuinely two-dimensional content such as a data grid or timeline. This is the owning statement of the 320 px reflow rule (LAY-002); the accessibility guideline defers to it.
 - Truncation rules (including the keyboard-accessible reveal) are defined in the typography guideline's truncation section.
 - Actions and statuses **MUST NOT** be clipped.
