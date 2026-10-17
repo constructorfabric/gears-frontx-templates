@@ -13,6 +13,7 @@ import {
   FULL_BLEED_TOLERANCE_PX,
   MIN_CARD_PADDING_PX,
   TINY_TEXT_PX,
+  clipInkToScrollers,
   collectHeadingSkipFindings,
   findCardEdgeFlush,
   findControlHeightMismatches,
@@ -156,6 +157,62 @@ describe('findControlHeightMismatches', () => {
   });
 });
 
+describe('clipInkToScrollers', () => {
+  it('cuts both sides of wide ink and keeps an edge that starts at padded content', () => {
+    const box = { left: 112, right: 388 };
+    expect(clipInkToScrollers({ left: 100, right: 420 }, [box])).toEqual({ left: null, right: null });
+    expect(clipInkToScrollers({ left: 112, right: 420 }, [box])).toEqual({ left: 112, right: null });
+  });
+
+  it('keeps an unpadded left edge measurable while cutting the right side', () => {
+    const ink = clipInkToScrollers({ left: 100, right: 420 }, [{ left: 100, right: 400 }]);
+    expect(ink).toEqual({ left: 100, right: null });
+    expect(findCardEdgeFlush({ left: 100, right: 400 }, [ink!], { left: true, right: true })).toEqual([
+      { side: 'left', insetPx: 0 },
+    ]);
+  });
+
+  it('cuts only the side beyond a scroller and drops ink fully out of view', () => {
+    const box = { left: 112, right: 388 };
+    expect(clipInkToScrollers({ left: 100, right: 388 }, [box])).toEqual({ left: null, right: 388 });
+    expect(clipInkToScrollers({ left: 390, right: 420 }, [box])).toBeNull();
+  });
+
+  it('intersects nested scrollers regardless of order', () => {
+    const outer = { left: 108, right: 390 };
+    const inner = { left: 112, right: 400 };
+    expect(clipInkToScrollers({ left: 110, right: 395 }, [outer, inner])).toEqual({ left: null, right: null });
+    expect(clipInkToScrollers({ left: 110, right: 395 }, [inner, outer])).toEqual({ left: null, right: null });
+  });
+
+  it('leaves ink under a hidden container unclipped so overflow is reported', () => {
+    const ink = clipInkToScrollers({ left: 90, right: 380 }, []);
+    expect(ink).toEqual({ left: 90, right: 380 });
+    expect(findCardEdgeFlush({ left: 100, right: 400 }, [ink!], { left: true, right: true })).toEqual([
+      { side: 'left', insetPx: -10 },
+    ]);
+  });
+
+  it('cuts by the element box, so cell text short of the edge in a cut cell is not measured', () => {
+    const scroller = { left: 100, right: 400 };
+    const cellText = { left: 316, right: 399 };
+    const cell = { left: 300, right: 415 };
+    expect(clipInkToScrollers(cellText, [scroller], cell)).toEqual({ left: 316, right: null });
+    expect(clipInkToScrollers(cellText, [scroller])).toEqual({ left: 316, right: 399 });
+    expect(clipInkToScrollers({ left: 408, right: 412 }, [scroller], { left: 405, right: 415 })).toBeNull();
+  });
+
+  it('accepts padded ink at both scroll ends', () => {
+    const content = { left: 100, right: 400 };
+    const box = { left: content.left + MIN_CARD_PADDING_PX, right: content.right - MIN_CARD_PADDING_PX };
+    const start = clipInkToScrollers({ left: box.left, right: 450 }, [box]);
+    const end = clipInkToScrollers({ left: 50, right: box.right }, [box]);
+    expect(start).toEqual({ left: box.left, right: null });
+    expect(end).toEqual({ left: null, right: box.right });
+    expect(findCardEdgeFlush(content, [start!, end!], { left: true, right: true })).toEqual([]);
+  });
+});
+
 describe('findCardEdgeFlush', () => {
   const content = { left: 100, right: 400 };
   const bothSides = { left: true, right: true };
@@ -194,6 +251,16 @@ describe('findCardEdgeFlush', () => {
 
   it('reports nothing for an empty card', () => {
     expect(findCardEdgeFlush(content, [], bothSides)).toEqual([]);
+  });
+
+  it('skips null sides and leaves a side with only null values unmeasured', () => {
+    expect(findCardEdgeFlush(content, [{ left: null, right: 400 }, { left: 116, right: null }], bothSides)).toEqual([
+      { side: 'right', insetPx: 0 },
+    ]);
+    expect(findCardEdgeFlush(content, [{ left: null, right: 400 }], bothSides)).toEqual([
+      { side: 'right', insetPx: 0 },
+    ]);
+    expect(findCardEdgeFlush(content, [{ left: null, right: null }], bothSides)).toEqual([]);
   });
 });
 

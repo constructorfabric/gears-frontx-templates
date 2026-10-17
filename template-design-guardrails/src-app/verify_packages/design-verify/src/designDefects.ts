@@ -17,10 +17,11 @@
  *   - control-height mismatch (form controls sharing one flex row rendered
  *     at different heights — e.g. a default-size button beside a large
  *     input; tops or bottoms can never both align);
- *   - card missing padding (content ink flush against a drawn card edge —
- *     bounded containers carry horizontal padding; the one exemption is a
- *     card filled by a full-bleed media child); a negative inset — content
- *     extending past the edge — reports as card-content-overflow instead;
+ *   - card missing padding (content ink flush against a drawn card edge;
+ *     content scrolling inside its own auto/scroll container is measured at
+ *     the scroller's visible content box; bounded containers carry horizontal
+ *     padding; the one exemption is a card filled by a full-bleed media child);
+ *     a negative inset reports as card-content-overflow instead;
  *   - dead spacing class (a Tailwind spacing utility present in the DOM that
  *     no CSS rule defines — e.g. an MFE source outside the host's Tailwind
  *     scan: the source reads correct, the padding renders as nothing).
@@ -237,6 +238,12 @@ export interface InkEdge {
   right: number;
 }
 
+/** Ink sides cut off by a scroller edge are not measured. */
+export interface MeasuredInk {
+  left: number | null;
+  right: number | null;
+}
+
 /**
  * A media child at (or beyond) the card's content width is a deliberate
  * full-bleed treatment, which exempts the card from the padding rule.
@@ -247,6 +254,31 @@ export function isFullBleedMedia(cardContentWidth: number, mediaWidth: number): 
 }
 
 /**
+ * Clip ink to the visible content boxes of its horizontal scrollers. A null
+ * side is cut off by a scroller edge, not measured: content continuing under
+ * that edge is a scroll cue, not missing padding. A null result is not visible.
+ * Scrolled content starts at the content box, and browsers put inline-end
+ * padding after it, so readers see the scroller's padding at both ends of the
+ * scroll range. This does not depend on the current scroll position.
+ *
+ * `box` is the element's own border box when the ink sits inside it (text
+ * inside a cell's padding): the element decides what is cut, so a table
+ * cell running under the scroller's edge is cut even where its text stops
+ * short of that edge. It defaults to the ink itself.
+ */
+export function clipInkToScrollers(
+  ink: InkEdge,
+  scrollers: readonly InkEdge[],
+  box: InkEdge = ink
+): MeasuredInk | null {
+  if (scrollers.length === 0) return { left: ink.left, right: ink.right };
+  const lo = Math.max(...scrollers.map((scroller) => scroller.left));
+  const hi = Math.min(...scrollers.map((scroller) => scroller.right));
+  if (Math.max(box.left, lo) >= Math.min(box.right, hi)) return null;
+  return { left: box.left < lo ? null : ink.left, right: box.right > hi ? null : ink.right };
+}
+
+/**
  * Pure rule for card padding: given the card's content-box edges, the ink
  * extents of its visible content, and which edges the card actually draws,
  * report each drawn side where ink sits closer than the minimum padding.
@@ -254,18 +286,24 @@ export function isFullBleedMedia(cardContentWidth: number, mediaWidth: number): 
  */
 export function findCardEdgeFlush(
   content: { left: number; right: number },
-  inks: readonly InkEdge[],
+  inks: readonly MeasuredInk[],
   drawnSides: { left: boolean; right: boolean }
 ): Array<{ side: 'left' | 'right'; insetPx: number }> {
   if (inks.length === 0) return [];
   const violations: Array<{ side: 'left' | 'right'; insetPx: number }> = [];
   if (drawnSides.left) {
-    const inset = Math.round(Math.min(...inks.map((ink) => ink.left)) - content.left);
-    if (inset < MIN_CARD_PADDING_PX) violations.push({ side: 'left', insetPx: inset });
+    const lefts = inks.map((ink) => ink.left).filter((left): left is number => left !== null);
+    if (lefts.length > 0) {
+      const inset = Math.round(Math.min(...lefts) - content.left);
+      if (inset < MIN_CARD_PADDING_PX) violations.push({ side: 'left', insetPx: inset });
+    }
   }
   if (drawnSides.right) {
-    const inset = Math.round(content.right - Math.max(...inks.map((ink) => ink.right)));
-    if (inset < MIN_CARD_PADDING_PX) violations.push({ side: 'right', insetPx: inset });
+    const rights = inks.map((ink) => ink.right).filter((right): right is number => right !== null);
+    if (rights.length > 0) {
+      const inset = Math.round(content.right - Math.max(...rights));
+      if (inset < MIN_CARD_PADDING_PX) violations.push({ side: 'right', insetPx: inset });
+    }
   }
   return violations;
 }
@@ -472,7 +510,30 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
   const contentWidth = contentRight - contentLeft;
   if (contentWidth < MIN_CARD_WIDTH_PX || rect.height < MIN_CARD_HEIGHT_PX) return [];
 
-  const inks: InkEdge[] = [];
+  const inks: MeasuredInk[] = [];
+  const scrollerBoxes = new Map<Element, InkEdge | null>();
+  const pushDescendantInk = (el: Element, ink: InkEdge, box: InkEdge = ink): void => {
+    const scrollers: InkEdge[] = [];
+    for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      let box = scrollerBoxes.get(ancestor);
+      if (box === undefined) {
+        const style = ancestor === card ? cardStyle : getComputedStyle(ancestor);
+        box = null;
+        if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+          const ancestorRect = ancestor === card ? rect : ancestor.getBoundingClientRect();
+          box = {
+            left: ancestorRect.left + ancestor.clientLeft + parsePx(style.paddingLeft),
+            right: ancestorRect.left + ancestor.clientLeft + ancestor.clientWidth - parsePx(style.paddingRight),
+          };
+        }
+        scrollerBoxes.set(ancestor, box);
+      }
+      if (box) scrollers.push(box);
+      if (ancestor === card) break;
+    }
+    const clipped = clipInkToScrollers(ink, scrollers, box);
+    if (clipped) inks.push(clipped);
+  };
   if (hasDirectText(card)) {
     inks.push({
       left: contentLeft + parsePx(cardStyle.paddingLeft),
@@ -488,7 +549,7 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
     const inkRect = el.getBoundingClientRect();
     if (MEDIA_TAGS.has(el.tagName.toUpperCase())) {
       if (isFullBleedMedia(contentWidth, inkRect.width)) return []; // deliberate full-bleed card
-      inks.push({ left: inkRect.left, right: inkRect.right });
+      pushDescendantInk(el, { left: inkRect.left, right: inkRect.right });
       continue;
     }
     const paintsOwnBox =
@@ -497,14 +558,18 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
       borderSideVisible(style.borderLeftWidth, style.borderLeftStyle) ||
       borderSideVisible(style.borderRightWidth, style.borderRightStyle);
     if (paintsOwnBox) {
-      inks.push({ left: inkRect.left, right: inkRect.right });
+      pushDescendantInk(el, { left: inkRect.left, right: inkRect.right });
     } else if (hasDirectText(el)) {
       // Unpainted text carriers (spans, ghost buttons): ink starts where the
       // text does, inside the element's own padding.
-      inks.push({
-        left: inkRect.left + parsePx(style.borderLeftWidth) + parsePx(style.paddingLeft),
-        right: inkRect.right - parsePx(style.borderRightWidth) - parsePx(style.paddingRight),
-      });
+      pushDescendantInk(
+        el,
+        {
+          left: inkRect.left + parsePx(style.borderLeftWidth) + parsePx(style.paddingLeft),
+          right: inkRect.right - parsePx(style.borderRightWidth) - parsePx(style.paddingRight),
+        },
+        { left: inkRect.left, right: inkRect.right }
+      );
     }
   }
 
