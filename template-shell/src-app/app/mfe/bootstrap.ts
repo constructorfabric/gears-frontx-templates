@@ -45,6 +45,8 @@ import type {
   ActionPayload,
   MountStrategy,
 } from '@gears-frontx/react';
+import type { ResolvedShellScreens } from '@gears-frontx/frontx-template-shell';
+import { shellScreens } from './shellScreens';
 import {
   CHROME_ACTION_SCHEMAS,
   CHROME_SET_MENU_COLLAPSED,
@@ -435,13 +437,18 @@ async function registerMfePackage(
  * (theme, language) and asynchronously registers the extensions declared in
  * `generated-mfe-manifests.json`.
  *
+ * A project whose screens config turns the screen domain off gets the other
+ * three only.
+ *
  * Mount/unmount lifecycle is not driven here: `ExtensionDomainSlot` itself
  * starts/stops a routed domain's own URL observer from its own attach/detach
  * (ADR 0036, D10/D11) — this function builds no routing wiring at all.
  *
  * @param app - FrontX application instance
+ * @param screens - The project's resolved screens config. Defaults to the
+ * one `Menu` and `MfeScreenContainer` read; tests pass their own.
  */
-export async function bootstrapMFE(app: FrontXApp): Promise<void> {
+export async function bootstrapMFE(app: FrontXApp, screens: ResolvedShellScreens = shellScreens): Promise<void> {
   const registry = app.mfeRegistry;
   if (!registry) {
     throw new Error('[MFE Bootstrap] mfeRegistry is not available on app instance');
@@ -459,10 +466,18 @@ export async function bootstrapMFE(app: FrontXApp): Promise<void> {
   // itself into the two chrome actions its handlers above answer. The
   // declaration's `extensionsActions` is deliberately untouched - listing them
   // there would make them mandatory for every screen extension in the repo.
-  registry.registerDomain(
-    { ...screenDomain, actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED] },
-    new ScreenDomainFactory(registry, app),
-  );
+  // The project's screens config may pin a derived screen type, or turn the
+  // screen domain off altogether.
+  if (screens.enabled) {
+    registry.registerDomain(
+      {
+        ...screenDomain,
+        actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED],
+        extensionsTypeId: screens.extensionsTypeId,
+      },
+      new ScreenDomainFactory(registry, app),
+    );
+  }
   registry.registerDomain(sidebarDomain, new OptionalDomainFactory(registry, sidebarDomain.id));
   registry.registerDomain(popupDomain, new OptionalDomainFactory(registry, popupDomain.id));
   registry.registerDomain(overlayDomain, new OptionalDomainFactory(registry, overlayDomain.id));

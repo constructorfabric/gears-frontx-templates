@@ -5,7 +5,7 @@
  * Uses local shadcn/ui Sidebar components for proper styling and collapsible behavior.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import {
   useAppSelector,
   useFrontX,
@@ -13,9 +13,10 @@ import {
   eventBus,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
+  type Extension,
   type MenuState,
-  type ScreenExtension,
 } from '@gears-frontx/react';
+import type { ScreenMenuItem } from '@gears-frontx/frontx-template-shell';
 import {
   Sidebar,
   SidebarContent,
@@ -27,11 +28,17 @@ import {
 } from '@/app/components/ui/sidebar';
 import { Icon } from '@iconify/react';
 import { bootstrapOnce } from '@/app/mfe/bootstrapOnce';
+import { shellScreens } from '@/app/mfe/shellScreens';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
 
 export interface MenuProps {
   children?: React.ReactNode;
+}
+
+interface MenuEntry {
+  id: string;
+  item: ScreenMenuItem;
 }
 
 const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
@@ -59,12 +66,35 @@ const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
  */
 export const menuItemTestId = (extensionId: string): string => `menu-item-${extensionId}`;
 
+/**
+ * The language screens are shown in. It follows `i18n/language/changed`, the
+ * event the microfrontends plugin forwards to MFEs, rather than
+ * `useTranslation`, which re-renders only when translations register and so
+ * misses a switch in a shell with no translation loaders. Before any language
+ * is set the shell broadcasts `en` (`bootstrap.ts`).
+ */
+function useScreenLanguage(i18nRegistry: { getLanguage(): string | null } | undefined): string {
+  const switched = useRef<string | undefined>(undefined);
+  const subscribe = useCallback((onChange: () => void) => {
+    const subscription = eventBus.on('i18n/language/changed', (payload) => {
+      switched.current = payload.language;
+      onChange();
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  // React reads the snapshot again once subscribed, so a switch made before
+  // the subscription (by an effect that ran first) is still seen, through the
+  // registry the i18n plugin updates on the same event.
+  return useSyncExternalStore(subscribe, () => switched.current ?? i18nRegistry?.getLanguage() ?? 'en');
+}
+
 export const Menu: React.FC<MenuProps> = ({ children }) => {
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
   const app = useFrontX();
   const { mfeRegistry } = app;
 
   const collapsed = menuState?.collapsed ?? false;
+  const language = useScreenLanguage(app.i18nRegistry);
 
   // Currently-mounted screen extension. Re-reads when a mount_ext/unmount_ext
   // settles. Index 0 is meaningful because the host registers the screen domain
@@ -75,23 +105,14 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // `undefined` until bootstrap has settled: bootstrap registers every screen
   // extension, so the list is read once, after it, and an empty list before
   // that point means "not known yet", not "no screens".
-  const [extensions, setExtensions] = useState<ScreenExtension[] | undefined>(undefined);
+  const [extensions, setExtensions] = useState<readonly Extension[] | undefined>(undefined);
 
   useEffect(() => {
-    if (!mfeRegistry) return;
+    if (!mfeRegistry || !shellScreens.enabled) return;
     let cancelled = false;
     bootstrapOnce(app).then(
       () => {
-        if (cancelled) return;
-        // The cast asserts `presentation` rather than checking it, and nothing
-        // between the manifest and `registry.registerExtension` does either, so
-        // an extension without it is dropped here instead of throwing mid-sort.
-        const screenExts = mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as ScreenExtension[];
-        setExtensions(
-          screenExts
-            .filter((ext) => ext?.presentation)
-            .sort((a, b) => (a.presentation.order ?? 999) - (b.presentation.order ?? 999)),
-        );
+        if (!cancelled) setExtensions([...mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)]);
       },
       // `MfeScreenContainer` logs the bootstrap failure; the menu only shows
       // that there is nothing to list.
@@ -104,8 +125,37 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     };
   }, [app, mfeRegistry]);
 
-  // No registry means no microfrontends plugin: nothing is ever coming.
-  const screens = mfeRegistry ? extensions : [];
+  // Read again on every language switch, so the labels follow the language.
+  // The project's reader turns each extension into a menu item, or leaves it
+  // out by returning nothing; the default reads the flat `presentation` of the
+  // shell's own screen schema. A reader that throws on one extension costs
+  // only that extension; the failures are logged after render, not during it.
+  const { entries, failures } = useMemo(() => {
+    if (!extensions) return { entries: undefined, failures: [] };
+    const read: MenuEntry[] = [];
+    const failed: Array<{ id: string; error: unknown }> = [];
+    for (const ext of extensions) {
+      try {
+        const item = shellScreens.readMenuItem(ext, { language });
+        if (item) read.push({ id: ext.id, item });
+      } catch (error) {
+        failed.push({ id: ext.id, error });
+      }
+    }
+    return { entries: read.sort((a, b) => (a.item.order ?? 999) - (b.item.order ?? 999)), failures: failed };
+  }, [extensions, language]);
+
+  useEffect(() => {
+    for (const { id, error } of failures) {
+      console.error(`[Menu] readMenuItem failed for ${id}; the screen is left out of the menu`, error);
+    }
+  }, [failures]);
+
+  // No registry means no microfrontends plugin: nothing is ever coming. A
+  // project that turned the screen domain off has no screen items to list and
+  // gets no hint about adding them.
+  const screens = mfeRegistry ? entries : [];
+  const showEmptyHint = shellScreens.enabled && screens?.length === 0;
 
   const handleToggleCollapse = () => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
@@ -141,7 +191,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
       <SidebarContent>
         <SidebarMenu>
           {/* Before bootstrap settles `screens` is undefined and the menu stays blank. */}
-          {screens?.length === 0 ? (
+          {showEmptyHint ? (
             // Reached from two different states, so the hint names the step that
             // tells them apart: a shell-only seed has no `src-app/mfe_packages/`
             // at all until the MFE template is added, and pointing such a
@@ -158,23 +208,24 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
               <code className={hintCodeClass}>mfe.json</code> so it reaches this menu.
             </li>
           ) : (
-            screens?.map((ext) => {
-              const isActive = ext.id === mountedId;
-              const pres = ext.presentation;
+            screens?.map(({ id, item }) => {
+              const isActive = id === mountedId;
               return (
-                <SidebarMenuItem key={ext.id}>
+                <SidebarMenuItem key={id}>
                   <SidebarMenuButton
-                    data-testid={menuItemTestId(ext.id)}
+                    data-testid={menuItemTestId(id)}
                     isActive={isActive}
-                    onClick={() => handleMenuItemClick(ext.id)}
-                    tooltip={collapsed ? pres.label : undefined}
+                    // `data-active` styles the item; this tells assistive technology which screen is open.
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => handleMenuItemClick(id)}
+                    tooltip={collapsed ? item.label : undefined}
                   >
-                    {pres.icon && (
+                    {item.icon && (
                       <SidebarMenuIcon>
-                        <Icon icon={pres.icon} className="w-4 h-4" />
+                        <Icon icon={item.icon} className="w-4 h-4" />
                       </SidebarMenuIcon>
                     )}
-                    <span>{pres.label}</span>
+                    <span>{item.label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );

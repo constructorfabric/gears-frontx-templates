@@ -1,12 +1,25 @@
+import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ScreenExtension } from '@gears-frontx/react';
+import { eventBus, type ScreenExtension } from '@gears-frontx/react';
+import {
+  resolveShellScreens,
+  type ResolvedShellScreens,
+  type ScreenMenuItemReader,
+} from '@gears-frontx/frontx-template-shell';
 import { Menu } from './Menu';
 
 const mockUseFrontX = vi.fn();
 const mockUseMountedExtensions = vi.fn();
 const mockBootstrapOnce = vi.fn();
+const projectScreens = vi.hoisted(() => ({ current: undefined as ResolvedShellScreens | undefined }));
+
+vi.mock('@/app/mfe/shellScreens', () => ({
+  get shellScreens() {
+    return projectScreens.current;
+  },
+}));
 
 vi.mock('@/app/mfe/bootstrapOnce', () => ({
   bootstrapOnce: (...args: unknown[]) => mockBootstrapOnce(...args),
@@ -33,9 +46,9 @@ const screenExtension = (
 });
 
 /**
- * An extension the registry accepts and the menu cannot render: `presentation`
- * is asserted by a cast rather than validated anywhere on the registration
- * path, so this shape reaches the menu in a real boot.
+ * An extension the registry accepts and the default reader cannot render:
+ * `presentation` is not validated anywhere on the registration path when the
+ * target domain pins no extension type, so this shape can reach the menu.
  */
 const withoutPresentation = (id: string) => ({ id, domain: 'screen-domain', entry: `${id}.entry` });
 
@@ -67,6 +80,7 @@ describe('Menu', () => {
     mockUseFrontX.mockReturnValue(app);
     mockUseMountedExtensions.mockReturnValue([]);
     mockBootstrapOnce.mockResolvedValue(undefined);
+    projectScreens.current = resolveShellScreens();
   });
 
   const emptyState = () => screen.queryByText(/No screens yet/);
@@ -139,10 +153,7 @@ describe('Menu', () => {
   });
 
   it('still lists the well-formed screens when a sibling extension carries no presentation metadata', async () => {
-    // `presentation` is asserted by a cast and checked nowhere on the path from
-    // the manifest to `registry.registerExtension`; one such sibling must cost
-    // only itself. Paired with a well-formed extension because a one-element
-    // sort never calls the comparator that would dereference it.
+    // One extension the reader cannot read must not hide its siblings.
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, withoutPresentation('broken')]);
 
     await renderSettled();
@@ -160,5 +171,159 @@ describe('Menu', () => {
     await renderSettled();
 
     expect(emptyState()).not.toBeNull();
+  });
+
+  it("lists what the project's reader returns, including a field beyond the flat presentation", async () => {
+    // The flat order (30) sorts the inbox after tasks (20); only the reader's
+    // own order (10) puts it first.
+    const inbox = {
+      ...screenExtension(`${tasks.id}.inbox`, '/inbox', 30, 'Inbox'),
+      presentation: { label: 'Inbox', order: 30, group: 'Mail', menuOrder: 10 },
+    };
+    const readMenuItem = vi.fn<ScreenMenuItemReader>((ext) => {
+      const p = (ext as { presentation?: { label: string; group?: string; menuOrder?: number } }).presentation;
+      return p && { label: p.group ? `${p.group} / ${p.label}` : p.label, order: p.menuOrder ?? 20 };
+    });
+    projectScreens.current = { ...resolveShellScreens(), readMenuItem };
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
+
+    await renderSettled();
+
+    expect(readMenuItem).toHaveBeenCalledWith(inbox, { language: 'en' });
+    expect(screen.getByText('Mail / Inbox')).toBeTruthy();
+    const items = screen.getAllByTestId(/^menu-item-/).map((el) => el.getAttribute('data-testid'));
+    expect(items).toEqual([`menu-item-${inbox.id}`, `menu-item-${tasks.id}`]);
+  });
+
+  it('leaves out only the screen a project reader throws on, and logs it', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const broken = screenExtension(`${tasks.id}.broken`, '/broken', 5, 'Broken');
+    projectScreens.current = {
+      ...resolveShellScreens(),
+      readMenuItem: (ext) => {
+        if (ext.id === broken.id) throw new Error('no group');
+        return { label: 'Tasks' };
+      },
+    };
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([broken, tasks]);
+
+    try {
+      await renderSettled();
+
+      expect(screen.getByTestId(`menu-item-${tasks.id}`)).toBeTruthy();
+      expect(screen.queryByTestId(`menu-item-${broken.id}`)).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(broken.id), expect.any(Error));
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  describe('language', () => {
+    const switchLanguage = async (language: string) => {
+      await act(async () => {
+        eventBus.emit('i18n/language/changed', { language });
+      });
+    };
+
+    const translatedTasks = { ...tasks, presentation: { ...tasks.presentation, labels: { de: 'Aufgaben' } } };
+
+    it('relabels the menu when the language switches, and back', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      await renderSettled();
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+
+      await switchLanguage('de');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+
+      await switchLanguage('en');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+    });
+
+    it('falls back to the flat label for a language the extension has no label for', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      await renderSettled();
+
+      await switchLanguage('de');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+
+      await switchLanguage('fr');
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Tasks');
+    });
+
+    it('catches a switch an earlier effect makes before the menu subscribes', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      // Stands in for the i18n plugin, which keeps the registry's language in
+      // step with the event before any component subscribes.
+      let current = 'en';
+      const registrySubscription = eventBus.on('i18n/language/changed', ({ language }) => {
+        current = language;
+      });
+      mockUseFrontX.mockReturnValue({ ...app, i18nRegistry: { getLanguage: () => current } });
+      // A sibling rendered before the menu runs its effect first.
+      const RestoreLanguage = () => {
+        React.useEffect(() => {
+          eventBus.emit('i18n/language/changed', { language: 'de' });
+        }, []);
+        return null;
+      };
+
+      try {
+        await act(async () => {
+          render(
+            <>
+              <RestoreLanguage />
+              <Menu />
+            </>,
+          );
+        });
+
+        expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+      } finally {
+        registrySubscription.unsubscribe();
+      }
+    });
+
+    it('starts in the language the shell already has', async () => {
+      app.mfeRegistry.getExtensionsForDomain.mockReturnValue([translatedTasks]);
+      mockUseFrontX.mockReturnValue({ ...app, i18nRegistry: { getLanguage: () => 'de' } });
+
+      await renderSettled();
+
+      expect(screen.getByTestId(`menu-item-${tasks.id}`).textContent).toBe('Aufgaben');
+    });
+
+    it("hands the current language to the project's reader", async () => {
+      const readMenuItem = vi.fn<ScreenMenuItemReader>((_ext, { language }) => ({ label: `Tasks (${language})` }));
+      projectScreens.current = { ...resolveShellScreens(), readMenuItem };
+      await renderSettled();
+
+      await switchLanguage('ja');
+
+      expect(readMenuItem).toHaveBeenLastCalledWith(tasks, { language: 'ja' });
+      expect(screen.getByText('Tasks (ja)')).toBeTruthy();
+    });
+  });
+
+  it('marks only the mounted screen as the current page', async () => {
+    const inbox = screenExtension(`${tasks.id}.inbox`, '/inbox', 30, 'Inbox');
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
+    mockUseMountedExtensions.mockReturnValue([inbox]);
+
+    await renderSettled();
+
+    expect(screen.getByTestId(`menu-item-${inbox.id}`).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId(`menu-item-${tasks.id}`).hasAttribute('aria-current')).toBe(false);
+  });
+
+  it('lists no screens and shows no hint when the project turned the screen domain off', async () => {
+    projectScreens.current = resolveShellScreens({ enabled: false });
+
+    await renderSettled();
+
+    // Bootstrap still runs, from the screen container; the menu has nothing to wait for.
+    expect(mockBootstrapOnce).not.toHaveBeenCalled();
+    expect(app.mfeRegistry.getExtensionsForDomain).not.toHaveBeenCalled();
+    expect(screen.queryByTestId(/^menu-item-/)).toBeNull();
+    expect(emptyState()).toBeNull();
   });
 });

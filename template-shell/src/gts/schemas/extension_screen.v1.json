@@ -11,7 +11,12 @@
       "properties": {
         "label": {
           "type": "string",
-          "$comment": "Display label for the extension in host UI (e.g., nav menu item text)"
+          "$comment": "Display label for the extension in host UI (e.g., nav menu item text); used for any language labels does not name"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "$comment": "Display label per language code of the host's i18n (e.g., { \"de\": \"Profil\", \"zh-TW\": \"個人資料\" }); the host shows the entry for its current language and follows a language switch"
         },
         "icon": {
           "type": "string",

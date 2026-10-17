@@ -12,7 +12,7 @@ updated to match.
 ## The whole contract for "appear in the menu"
 
 One entry in the package's `mfe.json` `extensions[]` array, targeting the
-shared screen domain — verbatim from `demo-mfe`:
+shared screen domain - from `demo-mfe`, with its `labels` map cut to two languages:
 
 ```json
 {
@@ -22,6 +22,7 @@ shared screen domain — verbatim from `demo-mfe`:
   "route": "/widgets-host",
   "presentation": {
     "label": "Widgets Host",
+    "labels": { "de": "Widget-Host", "ja": "ウィジェットホスト" },
     "icon": "lucide:layout-grid",
     "order": 200
   }
@@ -46,13 +47,24 @@ with a thrown registration error, not a silent skip):
 
 | Field (on the extension) | Required | Meaning |
 |---|---|---|
-| `label` | yes | menu item text. A raw display string — there is no i18n key for menu labels today, so the label renders identically in every language |
+| `label` | yes | menu item text, shown for any language `labels` does not name |
+| `labels` | no | menu item text per language code of the shell's i18n (`de`, `zh-TW`, ...), each a string. The menu shows the entry for the current language and follows a language switch without a reload; a missing entry falls back to `label` |
 | `route` (top level, beside `id`/`domain`/`entry`) | yes | route token (e.g. `/widgets-host`), one leading `/` stripped before use. The shell's own injected router reads this to admit the extension as a deep-linkable occupant of the screen domain and to reflect its mount/unmount into the URL — keep it unique within the domain and stable across releases |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 
 `order` is a flat number per domain — there is no grouping or nesting, so
 coordinate values across packages if relative position matters.
+
+This table is the shell's default. A project may replace the screen schema,
+derive its own screen type with more `presentation` fields, read the menu item
+differently, or turn the screen domain off, in its
+`src-app/shell-config/screens.ts` (the shell bundle's `navigation-composition`
+guideline). When that file exists, declare what its schema requires, use its
+derived type id as your extension id prefix when it pins one, and check that it
+does not set `enabled: false`: then no screen is mounted or listed, though each
+is still validated, and a malformed one fails MFE bootstrap (the error is
+logged and the packages after it are not registered).
 
 ## Beyond the menu: extensions that do not target the screen domain
 

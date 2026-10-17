@@ -66,6 +66,13 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   };
 });
 
+// The shipped tests must not read whatever `src-app/shell-config/screens.ts`
+// a project adds: the default path runs against the defaults.
+vi.mock('./shellScreens', async () => {
+  const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');
+  return { shellScreens: resolveShellScreens() };
+});
+
 describe('bootstrapMFE (host-app)', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
@@ -125,6 +132,84 @@ describe('bootstrapMFE (host-app)', () => {
     // extensions that mount into the domain.
     expect(screenDeclaration.extensionsActions).toBeUndefined();
     expect(registerSchema).toHaveBeenCalledTimes(2);
+  });
+
+  describe("the project's screens config", () => {
+    const SCREEN_TYPE = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~';
+    const SITE_SCREEN_TYPE = `${SCREEN_TYPE}acme.site.layout.screen.v1~`;
+
+    const screenDomainCall = () => {
+      const call = registerDomain.mock.calls.find(([declaration]) => (declaration as { id: string }).id === 'screen-domain');
+      if (!call) throw new Error('the screen domain was not registered');
+      return call;
+    };
+
+    beforeEach(() => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      // The registry knows exactly the domains bootstrap registered on it.
+      getDomain.mockImplementation((id: string) =>
+        registerDomain.mock.calls.some(([declaration]) => (declaration as { id: string }).id === id) ? { id } : undefined,
+      );
+    });
+
+    it("pins the framework's own screen type on the screen domain by default", async () => {
+      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      const { FRONTX_SCREEN_EXTENSION_TYPE } = await import('@gears-frontx/react');
+
+      const { bootstrapMFE } = await import('./bootstrap');
+      await bootstrapMFE(mockApp as never);
+
+      const [screenDeclaration] = screenDomainCall();
+      expect(screenDeclaration.extensionsTypeId).toBe(FRONTX_SCREEN_EXTENSION_TYPE);
+    });
+
+    it('pins the derived screen type the project names', async () => {
+      fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+      const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');
+      const screens = resolveShellScreens({
+        schemas: [
+          {
+            $id: `gts://${SITE_SCREEN_TYPE}`,
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            allOf: [{ $ref: `gts://${SCREEN_TYPE}` }],
+          },
+        ],
+        extensionsTypeId: SITE_SCREEN_TYPE,
+      });
+
+      const { bootstrapMFE } = await import('./bootstrap');
+      await bootstrapMFE(mockApp as never, screens);
+
+      const { CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } = await import('./chrome-actions');
+      const [screenDeclaration] = screenDomainCall();
+      expect(screenDeclaration.extensionsTypeId).toBe(SITE_SCREEN_TYPE);
+      expect(screenDeclaration.actions).toEqual([CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED]);
+    });
+
+    it('registers no screen domain when the project turned it off, and still boots the rest', async () => {
+      const screenExt = { id: `${SCREEN_TYPE}acme.demo.screens.home.v1`, domain: 'screen-domain' };
+      fetchSpy.mockResolvedValue(
+        new Response(
+          JSON.stringify([{ manifest: { $id: 'manifest.demo', id: 'manifest.demo' }, entries: [], extensions: [screenExt] }]),
+          { status: 200 },
+        ),
+      );
+      const { resolveShellScreens } = await import('@gears-frontx/frontx-template-shell');
+
+      const { bootstrapMFE } = await import('./bootstrap');
+      await expect(bootstrapMFE(mockApp as never, resolveShellScreens({ enabled: false }))).resolves.toBeUndefined();
+
+      expect(registerDomain.mock.calls.map(([declaration]) => (declaration as { id: string }).id)).toEqual([
+        'sidebar-domain',
+        'popup-domain',
+        'overlay-domain',
+      ]);
+      // A screen an MFE still declares is not mounted here: it is kept on the
+      // type system only, as for any domain this host does not own.
+      expect(registerExtension).not.toHaveBeenCalled();
+      expect(registerInstance).toHaveBeenCalledWith(screenExt);
+    });
   });
 
   it("the screen mount handler only calls the strategy's own mount — URL reflection is the injected router's own settled-action report now (ADR 0036), not this handler's concern", async () => {

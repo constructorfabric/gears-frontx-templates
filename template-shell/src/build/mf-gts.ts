@@ -117,18 +117,17 @@ interface MfeJsonEntry {
   exposedModule: string;
 }
 
-interface MfeJsonExtensionPresentation {
-  label: string;
-  icon: string;
-  route: string;
-  order: number;
-}
-
+/**
+ * Only the fields every extension carries. What a domain adds (a screen's
+ * `route` and `presentation`, whose shape the project's screen schema decides)
+ * passes through unread: the type the target domain pins validates it when the
+ * host registers the extension.
+ */
 interface MfeJsonExtension {
   id: string;
   domain: string;
   entry: string;
-  presentation: MfeJsonExtensionPresentation;
+  [field: string]: unknown;
 }
 
 interface MfeJsonSchema {
