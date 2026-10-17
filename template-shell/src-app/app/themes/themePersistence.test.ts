@@ -17,6 +17,13 @@ const registryWith = (): ThemeRegistry => {
   return registry;
 };
 
+/**
+ * Where the localStorage the code uses gets its methods: the Storage prototype,
+ * or the object itself when vitest.setup.ts installed its in-memory stand-in.
+ */
+const storageMethods = (): Storage =>
+  Object.getPrototypeOf(window.localStorage) === Storage.prototype ? Storage.prototype : window.localStorage;
+
 describe('applyPersistedTheme', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -24,14 +31,16 @@ describe('applyPersistedTheme', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    document.head.querySelector('#frontx-theme-vars')?.remove();
+    document.documentElement.removeAttribute('data-theme');
   });
 
   it('applies the fallback theme on a first visit', () => {
     const registry = registryWith();
 
-    applyPersistedTheme(registry, 'default');
+    applyPersistedTheme(registry, 'dark');
 
-    expect(registry.getCurrent()?.id).toBe('default');
+    expect(registry.getCurrent()?.id).toBe('dark');
   });
 
   it('applies the theme chosen in an earlier session', () => {
@@ -56,29 +65,31 @@ describe('applyPersistedTheme', () => {
     window.localStorage.setItem(THEME_STORAGE_KEY, 'removed-theme');
     const registry = registryWith();
 
-    applyPersistedTheme(registry, 'default');
+    applyPersistedTheme(registry, 'dark');
 
-    expect(registry.getCurrent()?.id).toBe('default');
+    expect(registry.getCurrent()?.id).toBe('dark');
   });
 
   it('boots on the fallback when storage cannot be read', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    const getItem = vi.spyOn(storageMethods(), 'getItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
     const registry = registryWith();
 
-    expect(() => applyPersistedTheme(registry, 'default')).not.toThrow();
-    expect(registry.getCurrent()?.id).toBe('default');
+    expect(() => applyPersistedTheme(registry, 'dark')).not.toThrow();
+    expect(getItem).toHaveBeenCalled();
+    expect(registry.getCurrent()?.id).toBe('dark');
   });
 
   it('still switches themes when storage cannot be written', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const setItem = vi.spyOn(storageMethods(), 'setItem').mockImplementation(() => {
       throw new DOMException('full', 'QuotaExceededError');
     });
     const registry = registryWith();
     applyPersistedTheme(registry, 'default');
 
     expect(() => registry.apply('dark')).not.toThrow();
+    expect(setItem).toHaveBeenCalled();
     expect(registry.getCurrent()?.id).toBe('dark');
   });
 });

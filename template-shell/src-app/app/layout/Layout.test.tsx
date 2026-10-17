@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { eventBus } from '@gears-frontx/react';
 import { Layout } from './Layout';
@@ -65,12 +65,15 @@ const setViewport = (narrow: boolean) => {
   }));
 };
 
+const activeSubscriptions: Array<() => void> = [];
 const collapseRequests = () => {
   const requests: boolean[] = [];
   const subscription = eventBus.on('layout/menu/collapsed', ({ collapsed }) => {
     requests.push(collapsed);
   });
-  return { requests, stop: () => subscription.unsubscribe() };
+  const stop = () => subscription.unsubscribe();
+  activeSubscriptions.push(stop);
+  return { requests, stop };
 };
 
 describe('Layout', () => {
@@ -83,6 +86,7 @@ describe('Layout', () => {
   });
 
   afterEach(() => {
+    activeSubscriptions.splice(0).forEach((stop) => stop());
     window.matchMedia = originalMatchMedia;
   });
 
@@ -155,6 +159,18 @@ describe('Layout', () => {
       expect(requests).toEqual([]);
     });
 
+    it('does not collapse when the user expands a previously collapsed menu', () => {
+      setViewport(true);
+      mockLayoutState = { visible: true, collapsed: true };
+      const { rerender } = render(<Layout />);
+      const { requests } = collapseRequests();
+
+      mockLayoutState = { visible: true, collapsed: false };
+      rerender(<Layout />);
+
+      expect(requests).toEqual([]);
+    });
+
     it('closes the expanded menu on Escape', async () => {
       setViewport(true);
       render(<Layout />);
@@ -164,6 +180,24 @@ describe('Layout', () => {
       stop();
 
       expect(requests).toEqual([true]);
+    });
+
+    it('leaves the menu expanded when Escape was already handled', () => {
+      setViewport(true);
+      render(<Layout />);
+      const { requests } = collapseRequests();
+      // Another layer handles Escape on its way down, as a dialog's own
+      // capture listener would.
+      const handled = (event: KeyboardEvent) => event.preventDefault();
+      document.addEventListener('keydown', handled, { capture: true });
+
+      try {
+        fireEvent.keyDown(document.body, { key: 'Escape', cancelable: true });
+      } finally {
+        document.removeEventListener('keydown', handled, { capture: true });
+      }
+
+      expect(requests).toEqual([]);
     });
 
     it('takes the screen out of keyboard reach while the menu lies over it', () => {

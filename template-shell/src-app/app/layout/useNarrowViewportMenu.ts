@@ -7,8 +7,7 @@
  * an overlay: the menu starts collapsed, collapses again once one of its items
  * is chosen (the open screen included) or the mounted screen changes by any
  * other route, closes on Escape, and offers `collapse` for the backdrop beside
- * it. On wider viewports it does nothing and the menu stays wherever the user
- * put it.
+ * it. Widening the viewport does not undo a collapse forced while narrow.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
 import {
@@ -78,7 +77,7 @@ export function useNarrowViewportMenu(menuSlot: RefObject<HTMLElement | null>): 
       if (event.target instanceof Element && event.target.closest('[data-sidebar="menu-item"]')) collapse();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') collapse();
+      if (event.key === 'Escape' && !event.defaultPrevented) collapse();
     };
     slot.addEventListener('click', onClick);
     document.addEventListener('keydown', onKeyDown);

@@ -186,16 +186,22 @@ counter-declarations in `ThemeAwareReactLifecycle`.
   and keeping it to one is the screen's job. The shell's header holds a
   visually hidden `<h1>FrontX</h1>` (`src-app/app/layout/Header.tsx`) only while
   no other level-one heading is in the document or an open shadow root
-  (`useOtherHeadingOne.ts`): an `h1` without a `role`, or an element with
-  `role="heading"` and `aria-level="1"`, the way axe counts them. A screen with
-  such a heading therefore never sits beside a second one from the shell, and a
-  screen without one still leaves the page with the shell's. Headings in closed
+  (`useOtherHeadingOne.ts`): an `h1` without `role` or `aria-level`, an `h1`-`h6`
+  without `role` and with `aria-level="1"`, or a `[role="heading"]` with
+  `aria-level="1"`. A heading under `hidden` or `aria-hidden="true"` does not
+  count, nor, where the browser has `Element.checkVisibility`, one hidden by CSS
+  (`display`, `visibility`, `content-visibility`, a closed `<details>`). A screen with
+  such a heading therefore does not sit beside a second one from the shell, and
+  a screen without one still leaves the page with the shell's. The check runs in
+  the frame after a DOM change, a resize, or a `class`/`style`/`data-state` change on a
+  heading or its ancestors; a heading shown or hidden by any other route (a
+  sibling selector, a stylesheet change) is followed at the next of those. Headings in closed
   shadow roots are not seen.
 - **The screen keeps the width on narrow viewports.** Below 768 px the menu
   starts collapsed to its 56 px icon rail, an expanded menu lies over the screen
   behind a backdrop instead of pushing it aside, and the header and screen are inert (out of
   keyboard reach) until the menu collapses again: on choosing a menu item, on a
-  screen change, on Escape or on the backdrop
+  screen change, on an Escape no other layer has handled (`preventDefault`), or on the backdrop
   (`src-app/app/layout/useNarrowViewportMenu.ts`). A screen lays itself out for
   the width left beside that rail.
 
