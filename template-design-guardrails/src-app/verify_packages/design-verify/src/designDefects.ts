@@ -254,6 +254,14 @@ export function isFullBleedMedia(cardContentWidth: number, mediaWidth: number): 
 }
 
 /**
+ * Slack for "runs under the scroller's edge": the scroller box comes from
+ * integer clientLeft/clientWidth, the element box from fractional rects, so
+ * a child that exactly fills the scroller can land a fraction of a pixel past
+ * its edge without being cut off.
+ */
+export const SCROLL_EDGE_TOLERANCE_PX = 1;
+
+/**
  * Clip ink to the visible content boxes of its horizontal scrollers. A null
  * side is cut off by a scroller edge, not measured: content continuing under
  * that edge is a scroll cue, not missing padding. A null result is not visible.
@@ -275,7 +283,10 @@ export function clipInkToScrollers(
   const lo = Math.max(...scrollers.map((scroller) => scroller.left));
   const hi = Math.min(...scrollers.map((scroller) => scroller.right));
   if (Math.max(box.left, lo) >= Math.min(box.right, hi)) return null;
-  return { left: box.left < lo ? null : ink.left, right: box.right > hi ? null : ink.right };
+  return {
+    left: box.left < lo - SCROLL_EDGE_TOLERANCE_PX ? null : ink.left,
+    right: box.right > hi + SCROLL_EDGE_TOLERANCE_PX ? null : ink.right,
+  };
 }
 
 /**
@@ -515,20 +526,26 @@ function collectCardPaddingFindings(card: Element, cardStyle: CSSStyleDeclaratio
   const pushDescendantInk = (el: Element, ink: InkEdge, box: InkEdge = ink): void => {
     const scrollers: InkEdge[] = [];
     for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
-      let box = scrollerBoxes.get(ancestor);
-      if (box === undefined) {
+      let scrollerBox = scrollerBoxes.get(ancestor);
+      if (scrollerBox === undefined) {
         const style = ancestor === card ? cardStyle : getComputedStyle(ancestor);
-        box = null;
-        if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+        scrollerBox = null;
+        // Only a box that really scrolls sideways clips: overflow-y: auto also
+        // computes overflow-x to auto, and an inline or display: contents box
+        // reports auto with no width at all.
+        if (
+          (style.overflowX === 'auto' || style.overflowX === 'scroll') &&
+          ancestor.scrollWidth > ancestor.clientWidth
+        ) {
           const ancestorRect = ancestor === card ? rect : ancestor.getBoundingClientRect();
-          box = {
+          scrollerBox = {
             left: ancestorRect.left + ancestor.clientLeft + parsePx(style.paddingLeft),
             right: ancestorRect.left + ancestor.clientLeft + ancestor.clientWidth - parsePx(style.paddingRight),
           };
         }
-        scrollerBoxes.set(ancestor, box);
+        scrollerBoxes.set(ancestor, scrollerBox);
       }
-      if (box) scrollers.push(box);
+      if (scrollerBox) scrollers.push(scrollerBox);
       if (ancestor === card) break;
     }
     const clipped = clipInkToScrollers(ink, scrollers, box);

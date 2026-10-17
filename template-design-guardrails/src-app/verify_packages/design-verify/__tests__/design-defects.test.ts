@@ -12,6 +12,7 @@ import {
   CONTROL_TEXT_PX,
   FULL_BLEED_TOLERANCE_PX,
   MIN_CARD_PADDING_PX,
+  SCROLL_EDGE_TOLERANCE_PX,
   TINY_TEXT_PX,
   clipInkToScrollers,
   collectHeadingSkipFindings,
@@ -185,7 +186,7 @@ describe('clipInkToScrollers', () => {
     expect(clipInkToScrollers({ left: 110, right: 395 }, [inner, outer])).toEqual({ left: null, right: null });
   });
 
-  it('leaves ink under a hidden container unclipped so overflow is reported', () => {
+  it('leaves ink unclipped without a scroller, so overflow past a hidden or clip container is still reported', () => {
     const ink = clipInkToScrollers({ left: 90, right: 380 }, []);
     expect(ink).toEqual({ left: 90, right: 380 });
     expect(findCardEdgeFlush({ left: 100, right: 400 }, [ink!], { left: true, right: true })).toEqual([
@@ -200,6 +201,15 @@ describe('clipInkToScrollers', () => {
     expect(clipInkToScrollers(cellText, [scroller], cell)).toEqual({ left: 316, right: null });
     expect(clipInkToScrollers(cellText, [scroller])).toEqual({ left: 316, right: 399 });
     expect(clipInkToScrollers({ left: 408, right: 412 }, [scroller], { left: 405, right: 415 })).toBeNull();
+  });
+
+  it('does not cut a child that fills the scroller to within a subpixel', () => {
+    const box = { left: 112, right: 388 };
+    const edge = SCROLL_EDGE_TOLERANCE_PX / 2;
+    expect(clipInkToScrollers({ left: 112 - edge, right: 388 + edge }, [box])).toEqual({
+      left: 112 - edge,
+      right: 388 + edge,
+    });
   });
 
   it('accepts padded ink at both scroll ends', () => {
