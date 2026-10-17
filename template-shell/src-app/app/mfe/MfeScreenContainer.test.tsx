@@ -142,19 +142,29 @@ describe('MfeScreenContainer', () => {
     expect(registries).toEqual(registries.map(() => undefined));
   });
 
-  it('shows no error state when the project turned screens off, for a failed bootstrap or a reported screen failure', async () => {
+  it('shows no error state for a failed bootstrap when the project turned screens off, and still logs it', async () => {
     projectScreens.enabled = false;
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
-    const { screenLoadFailure } = await import('./screenLoadFailure');
 
     render(<MfeScreenContainer />);
     await act(async () => {
       bootstrap.reject(new Error('boom'));
     });
-    act(() => screenLoadFailure.report('ext.orders', 'push'));
 
     expect(errorSpy).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows no error state for a reported screen failure when the project turned screens off', async () => {
+    projectScreens.enabled = false;
+    const { MfeScreenContainer } = await import('./MfeScreenContainer');
+    const { screenLoadFailure } = await import('./screenLoadFailure');
+
+    render(<MfeScreenContainer />);
+    await settleBootstrap();
+    act(() => screenLoadFailure.report('ext.orders', 'push'));
+
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
   });
