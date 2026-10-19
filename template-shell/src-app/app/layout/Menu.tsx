@@ -25,7 +25,7 @@ import {
   SidebarHeader,
 } from '@/app/components/ui/sidebar';
 import { Icon } from '@iconify/react';
-import { bootstrapOnce } from '@/app/mfe/bootstrapOnce';
+import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
 import { screenState } from '@/app/mfe/screenState';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
@@ -63,8 +63,7 @@ export const menuItemTestId = (extensionId: string): string => `menu-item-${exte
 
 export const Menu: React.FC<MenuProps> = ({ children }) => {
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
-  const app = useFrontX();
-  const { mfeRegistry } = app;
+  const { mfeRegistry } = useFrontX();
 
   const collapsed = menuState?.collapsed ?? false;
 
@@ -77,13 +76,15 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   // shape without it.
   // `undefined` until bootstrap has settled: bootstrap registers every screen
   // extension, so the list is read once, after it, and an empty list before
-  // that point means "not known yet", not "no screens".
+  // that point means "not known yet", not "no screens". The screen container
+  // starts the bootstrap; the menu only waits for it, so a shell without a
+  // screen container keeps the menu blank.
   const [extensions, setExtensions] = useState<RegistryScreenExtension[] | undefined>(undefined);
 
   useEffect(() => {
     if (!mfeRegistry) return;
     let cancelled = false;
-    bootstrapOnce(app).then(
+    bootstrapSettled().then(
       () => {
         if (cancelled) return;
         // The cast asserts `presentation` rather than checking it, and nothing
@@ -105,7 +106,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [app, mfeRegistry]);
+  }, [mfeRegistry]);
 
   // No registry means no microfrontends plugin: nothing is ever coming.
   const screens = mfeRegistry ? extensions : [];

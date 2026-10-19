@@ -82,15 +82,16 @@ describe('MfeScreenContainer', () => {
     expect(screen.queryByTestId('extension-domain-slot')).toBeNull();
   });
 
-  it('bootstraps the MFE runtime only once across re-renders', async () => {
+  it('bootstraps the MFE runtime once across re-renders, with the screen domain it implements', async () => {
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
+    const { registerScreenDomain } = await import('./screenDomain');
 
     const { rerender } = render(<MfeScreenContainer />);
     rerender(<MfeScreenContainer />);
     rerender(<MfeScreenContainer />);
 
     expect(mockBootstrapMFE).toHaveBeenCalledTimes(1);
-    expect(mockBootstrapMFE).toHaveBeenCalledWith(app);
+    expect(mockBootstrapMFE).toHaveBeenCalledWith(app, [registerScreenDomain]);
   });
 
   it('renders the screen-domain ExtensionDomainSlot after bootstrap succeeds', async () => {

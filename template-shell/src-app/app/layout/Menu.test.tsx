@@ -6,10 +6,10 @@ import { Menu } from './Menu';
 import { screenState } from '@/app/mfe/screenState';
 
 const mockUseFrontX = vi.fn();
-const mockBootstrapOnce = vi.fn();
+const mockBootstrapSettled = vi.fn();
 
 vi.mock('@/app/mfe/bootstrapOnce', () => ({
-  bootstrapOnce: (...args: unknown[]) => mockBootstrapOnce(...args),
+  bootstrapSettled: () => mockBootstrapSettled(),
 }));
 
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
@@ -65,7 +65,7 @@ describe('Menu', () => {
     };
     mockUseFrontX.mockReturnValue(app);
     screenState.set(undefined);
-    mockBootstrapOnce.mockResolvedValue(undefined);
+    mockBootstrapSettled.mockResolvedValue(undefined);
   });
 
   const emptyState = () => screen.queryByText(/No screens yet/);
@@ -131,7 +131,7 @@ describe('Menu', () => {
 
   it('stays blank until bootstrap has settled, then lists the registered screens', async () => {
     let finishBootstrap!: () => void;
-    mockBootstrapOnce.mockReturnValue(new Promise<void>((resolve) => (finishBootstrap = resolve)));
+    mockBootstrapSettled.mockReturnValue(new Promise<void>((resolve) => (finishBootstrap = resolve)));
 
     await renderSettled();
     expect(emptyState()).toBeNull();
@@ -145,6 +145,16 @@ describe('Menu', () => {
     expect(emptyState()).toBeNull();
   });
 
+  it('stays blank, with no empty state, while nothing starts the bootstrap (a shell without a screen container)', async () => {
+    mockBootstrapSettled.mockReturnValue(new Promise<void>(() => {}));
+
+    await renderSettled();
+
+    expect(screen.queryByTestId(/^menu-item-/)).toBeNull();
+    expect(emptyState()).toBeNull();
+    expect(app.mfeRegistry.getExtensionsForDomain).not.toHaveBeenCalled();
+  });
+
   it('shows the empty state when bootstrap settles with nothing registered', async () => {
     app.mfeRegistry.getExtensionsForDomain.mockReturnValue([]);
 
@@ -154,7 +164,7 @@ describe('Menu', () => {
   });
 
   it('shows the empty state when bootstrap fails', async () => {
-    mockBootstrapOnce.mockRejectedValue(new Error('manifests unavailable'));
+    mockBootstrapSettled.mockRejectedValue(new Error('manifests unavailable'));
 
     await renderSettled();
 

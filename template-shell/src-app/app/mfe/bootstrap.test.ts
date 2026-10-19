@@ -10,10 +10,10 @@ const getDomain = vi.fn();
 const getExtension = vi.fn();
 const getExtensionsForDomain = vi.fn((_domainId: string): unknown[] => []);
 const executeActionsChain = vi.fn(() => undefined);
-// Real `ExclusiveMountStrategy`/`OptionalMountStrategy` need a fully wired
-// `mfes` registry/mounter/bridge to mount anything — out of scope here (that
-// machinery is `mfes`'s own tested behaviour, Global Constraints). These
-// fakes stand in for them so the cases below can exercise only what this
+// A real `ExclusiveMountStrategy` needs a fully wired
+// `mfes` registry/mounter/bridge to mount anything - out of scope here (that
+// machinery is `mfes`'s own tested behaviour, Global Constraints). A
+// fake stands in for it so the cases below can exercise only what this
 // package owns: the order between a strategy settling and `routing.afterMount`
 // / `routing.afterUnmount` being called.
 //
@@ -61,13 +61,6 @@ class FakeExclusiveMountStrategy {
     }
   }
 }
-const optionalMount = vi.fn().mockResolvedValue(undefined);
-const optionalUnmount = vi.fn().mockResolvedValue(undefined);
-class FakeOptionalMountStrategy {
-  mount = optionalMount;
-  unmount = optionalUnmount;
-}
-
 const mockMfeRegistry = {
   registerDomain,
   updateSharedProperty,
@@ -88,22 +81,25 @@ const mockApp = {
   i18nRegistry: { getLanguage: () => null },
 };
 
-// Each domain needs a valid `route` — the injected router rejects a routed
-// domain that declares none, and `bootstrapMFE` would then throw before ever
-// reaching the manifest fetch these cases exercise.
+// The screen domain needs a valid `route`: the injected router rejects a
+// routed domain that declares none, and `bootstrapMFE` would then throw before
+// ever reaching the manifest fetch these cases exercise.
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const real = await importOriginal<Record<string, never>>();
   return {
     ...real,
     // `actions` is spread by the host bootstrap to append the chrome actions.
     screenDomain: { id: 'screen-domain', route: 'screen', actions: [] },
-    sidebarDomain: { id: 'sidebar-domain', route: 'sidebar' },
-    popupDomain: { id: 'popup-domain', route: 'popup' },
-    overlayDomain: { id: 'overlay-domain', route: 'overlay' },
     ExclusiveMountStrategy: FakeExclusiveMountStrategy,
-    OptionalMountStrategy: FakeOptionalMountStrategy,
   };
 });
+
+/** `bootstrapMFE` freshly imported, run with the screen domain the shell implements. */
+async function loadBootstrap(): Promise<{ bootstrapMFE: (app: never) => Promise<void> }> {
+  const { bootstrapMFE } = await import('./bootstrap');
+  const { registerScreenDomain } = await import('./screenDomain');
+  return { bootstrapMFE: (app) => bootstrapMFE(app, [registerScreenDomain]) };
+}
 
 describe('bootstrapMFE (host-app)', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -125,10 +121,6 @@ describe('bootstrapMFE (host-app)', () => {
     physicalMount.mockReset();
     physicalMount.mockResolvedValue(undefined);
     FakeExclusiveMountStrategy.last = undefined;
-    optionalMount.mockClear();
-    optionalMount.mockResolvedValue(undefined);
-    optionalUnmount.mockClear();
-    optionalUnmount.mockResolvedValue(undefined);
 
     fetchSpy = vi.spyOn(globalThis, 'fetch');
   });
@@ -138,23 +130,40 @@ describe('bootstrapMFE (host-app)', () => {
     vi.restoreAllMocks();
   });
 
-  it('registers the four base domains before fetching manifests', async () => {
+  it('registers the screen domain and the screen extension type before fetching manifests', async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
+    const { extensionScreenSchema } = await import('@gears-frontx/frontx-template-shell');
     await bootstrapMFE(mockApp as never);
 
-    expect(registerDomain).toHaveBeenCalledTimes(4);
+    expect(registerDomain).toHaveBeenCalledTimes(1);
+    expect(registerDomain.mock.calls[0][0].id).toBe('screen-domain');
+    expect(registerSchema).toHaveBeenCalledWith(extensionScreenSchema);
+    // The type goes on the type system before the domain that names it.
+    expect(registerSchema.mock.invocationCallOrder[0]).toBeLessThan(registerDomain.mock.invocationCallOrder[0]);
+    expect(registerDomain.mock.invocationCallOrder[0]).toBeLessThan(fetchSpy.mock.invocationCallOrder[0]);
     expect(updateSharedProperty.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('registers no domain and no screen type when the host implements none', async () => {
+    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { bootstrapMFE } = await import('./bootstrap');
+    await bootstrapMFE(mockApp as never, []);
+
+    expect(registerDomain).not.toHaveBeenCalled();
+    expect(registerSchema).not.toHaveBeenCalled();
   });
 
   it('opts the screen domain into the host chrome actions', async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     const { CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } = await import('./chrome-actions');
     await bootstrapMFE(mockApp as never);
 
@@ -163,14 +172,15 @@ describe('bootstrapMFE (host-app)', () => {
     // Making them domain actions must not make them mandatory for the
     // extensions that mount into the domain.
     expect(screenDeclaration.extensionsActions).toBeUndefined();
-    expect(registerSchema).toHaveBeenCalledTimes(2);
+    // The screen extension type and the two chrome action types.
+    expect(registerSchema).toHaveBeenCalledTimes(3);
   });
 
   it("the screen mount handler only calls the strategy's own mount — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036), not this handler's concern", async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await bootstrapMFE(mockApp as never);
 
     const [, screenFactory] = registerDomain.mock.calls[0];
@@ -199,7 +209,7 @@ describe('bootstrapMFE (host-app)', () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     const { screenState } = await import('./screenState');
     await bootstrapMFE(mockApp as never);
 
@@ -283,7 +293,7 @@ describe('bootstrapMFE (host-app)', () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await bootstrapMFE(mockApp as never);
 
     const [screenDeclaration, screenFactory] = registerDomain.mock.calls[0];
@@ -301,38 +311,10 @@ describe('bootstrapMFE (host-app)', () => {
     expect(screenDeclaration.actions).not.toContain(unmountActionId);
   });
 
-  it("an optional domain's mount and unmount handlers only call their own strategy — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036)", async () => {
-    fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const { bootstrapMFE } = await import('./bootstrap');
-    await bootstrapMFE(mockApp as never);
-
-    // Sidebar is the second `registerDomain` call (screen, sidebar, popup, overlay).
-    const [, sidebarFactory] = registerDomain.mock.calls[1];
-    const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
-    sidebarFactory.build({
-      mounter: {},
-      registerHandler: (actionTypeId: string, handler: { handleAction: (t: string, p: unknown) => unknown }) => {
-        handlers.set(actionTypeId, handler);
-      },
-    });
-    const mountHandler = handlers.get('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~');
-    const unmountHandler = handlers.get('gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~');
-    expect(mountHandler).toBeDefined();
-    expect(unmountHandler).toBeDefined();
-
-    await mountHandler!.handleAction('mount', { subject: 'ext.sidebar-thing' });
-    await unmountHandler!.handleAction('unmount', { subject: 'ext.sidebar-thing' });
-
-    expect(optionalMount).toHaveBeenCalledWith({ subject: 'ext.sidebar-thing' });
-    expect(optionalUnmount).toHaveBeenCalledWith({ subject: 'ext.sidebar-thing' });
-  });
-
   it('throws when the manifest fetch fails', async () => {
     fetchSpy.mockResolvedValue(new Response('not found', { status: 404, statusText: 'Not Found' }));
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await expect(bootstrapMFE(mockApp as never)).rejects.toThrow(/Failed to load MFE manifests/);
   });
 
@@ -361,7 +343,7 @@ describe('bootstrapMFE (host-app)', () => {
       ),
     );
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await bootstrapMFE(mockApp as never);
 
     // Action schemas registered by scoped pass (act.a/act.b match entry actions/domainActions).
@@ -387,7 +369,7 @@ describe('bootstrapMFE (host-app)', () => {
       ),
     );
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await expect(bootstrapMFE(mockApp as never)).resolves.toBeUndefined();
 
     expect(registerExtension).toHaveBeenCalledWith(extA);
@@ -409,7 +391,7 @@ describe('bootstrapMFE (host-app)', () => {
       ),
     );
 
-    const { bootstrapMFE } = await import('./bootstrap');
+    const { bootstrapMFE } = await loadBootstrap();
     await bootstrapMFE(mockApp as never);
 
     expect(registerExtension).not.toHaveBeenCalled();
@@ -427,7 +409,7 @@ describe('bootstrapMFE (host-app)', () => {
     ): Promise<Map<string, ActionHandler>> {
       fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
 
-      const { bootstrapMFE } = await import('./bootstrap');
+      const { bootstrapMFE } = await loadBootstrap();
       await bootstrapMFE({ ...mockApp, actions } as never);
 
       const handlers = new Map<string, ActionHandler>();
@@ -554,7 +536,7 @@ describe('bootstrapMFE (host-app)', () => {
     async function screenMountHandler(): Promise<ActionHandler> {
       fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
       vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const { bootstrapMFE } = await import('./bootstrap');
+      const { bootstrapMFE } = await loadBootstrap();
       await bootstrapMFE(mockApp as never);
       const handlers = new Map<string, ActionHandler>();
       const [, screenFactory] = registerDomain.mock.calls[0];

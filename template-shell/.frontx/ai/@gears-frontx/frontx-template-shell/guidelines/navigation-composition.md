@@ -12,12 +12,15 @@ match.
 Authoritative files:
 
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
-- `src-app/app/mfe/bootstrap.ts` — domain registration and manifest ingestion
-- `src-app/app/mfe/MfeScreenContainer.tsx` — renders the screen domain's own
-  `<ExtensionDomainSlot>`
+- `src-app/app/mfe/bootstrap.ts` - manifest ingestion, after the domains the
+  host implements are registered
+- `src-app/app/mfe/screenDomain.ts` - the screen domain's implementation and
+  its registration, the screen extension type included
+- `src-app/app/mfe/MfeScreenContainer.tsx` - starts the bootstrap with the
+  screen domain and renders the screen domain's own `<ExtensionDomainSlot>`
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
-- `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/` —
-  the four well-known domain instances
+- `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/screen.v1.json` -
+  the screen domain instance
 - `scripts/generate-mfe-manifests.ts`, `src/build/mf-gts.ts` — the build-time
   pipeline
 
@@ -110,14 +113,25 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 ## Registration order and ownership
 
+A domain exists because something implements it. The shell implements one,
+the screen domain: `MfeScreenContainer` starts the bootstrap
+(`bootstrapOnce(app, [registerScreenDomain])`), and the menu only waits for
+that bootstrap to settle. A shell that renders no screen container runs no
+bootstrap and has no screen domain, and its menu stays blank. The shell
+registers no `sidebar`, `popup` or `overlay` domain: nothing in it renders
+one.
+
 `bootstrapMFE()` proceeds in a fixed order:
 
-1. `microfrontends()` builds the MFE registry. `bootstrapMFE()` then registers
-   the shell's chrome action schemas.
-2. Register the four well-known domains — `screen` (with
-   `ExclusiveMountStrategy`: one mounted screen at a time; the domain declares
-   no `unmount_ext` and registers no handler for it), `sidebar`, `popup`,
-   `overlay`.
+1. `microfrontends()` builds the MFE registry.
+2. Run the registration of each domain the host implements, before anything
+   else. `registerScreenDomain` registers the screen extension type
+   (`extension_screen.v1.json`) and the shell's chrome action schemas, then
+   the `screen` domain (with `ExclusiveMountStrategy`: one mounted screen at a
+   time; the domain declares no `unmount_ext` and registers no handler for
+   it). The registry admits an extension only when its domain is already
+   registered, and a domain registered later does not pick up the extensions
+   recorded before it, so this step comes before the manifests are walked.
 3. Broadcast initial shared properties (`theme`, `language`).
 4. Fetch the manifest aggregate.
 5. First pass over **all** packages: register every non-action schema (derived
@@ -158,7 +172,7 @@ The screen domain instance
 (`…/instances/domains/screen.v1.json`) pins that type via `extensionsTypeId`,
 declares its own `route`, the shared properties (`theme`, `language`) and actions (`load_ext`,
 `mount_ext`) it supports, a 30 s default action timeout, and the lifecycle
-stages it drives. Each well-known domain instance declares its own `route`;
+stages it drives. A domain instance declares its own `route`;
 an extension is part of the route only when it and its domain both declare
 one, and a domain's route must be a valid name, unique among the routed
 domains live in the page.

@@ -3,8 +3,11 @@
 /**
  * MFE Screen Container Component
  *
- * Bootstraps MFE domains and extensions on first mount, then renders the
- * per-domain `<ExtensionDomainSlot>` for the screen domain. The registry starts
+ * Implements the screen domain: on first mount it starts the MFE bootstrap
+ * with the screen domain's registration (`screenDomain.ts`), so the domain and
+ * its types are registered before the manifests are walked, then renders the
+ * per-domain `<ExtensionDomainSlot>` for the screen domain. A shell that
+ * renders no screen container has no screen domain. The registry starts
  * and stops the routed screen domain when the slot attaches and detaches its
  * root — this container builds no routing wiring of its own. Mount/unmount
  * actions are
@@ -29,6 +32,7 @@ import {
   FRONTX_SCREEN_DOMAIN,
 } from '@gears-frontx/react';
 import { bootstrapOnce } from './bootstrapOnce';
+import { registerScreenDomain } from './screenDomain';
 import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
 
@@ -61,7 +65,7 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
 
   useEffect(() => {
     let cancelled = false;
-    bootstrapOnce(app)
+    bootstrapOnce(app, [registerScreenDomain])
       .then(() => {
         if (!cancelled) setBootstrapped(true);
       })
