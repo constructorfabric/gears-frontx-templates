@@ -36,7 +36,9 @@ settled.catch(() => {});
 /**
  * Starts the bootstrap once per page with the domains its caller implements.
  * The screen container is the caller: the screen domain exists because the
- * container is rendered.
+ * container is rendered. Only the first call starts it, so a later call's
+ * `domains` are never registered: a second domain implementation joins the
+ * list the first caller passes rather than calling this itself.
  */
 export function bootstrapOnce(app: FrontXApp, domains: readonly DomainRegistration[]): Promise<void> {
   if (!bootstrapPromise) {

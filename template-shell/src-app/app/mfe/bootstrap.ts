@@ -263,7 +263,6 @@ export async function bootstrapMFE(app: FrontXApp, domains: readonly DomainRegis
     registerDomain(app);
   }
 
-
   const currentThemeId = app.themeRegistry?.getCurrent()?.id ?? 'default';
   registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, currentThemeId);
   const derivedLanguage = app.i18nRegistry.getLanguage();
