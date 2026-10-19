@@ -116,6 +116,19 @@ describe('Menu', () => {
     expect(active(other.id)).toBe('true');
   });
 
+  it('marks only the mounted screen as the current page', async () => {
+    const inbox = screenExtension(`${tasks.id}.inbox`, '/inbox', 30, 'Inbox');
+    app.mfeRegistry.getExtensionsForDomain.mockReturnValue([tasks, inbox]);
+    await renderSettled();
+
+    await act(async () => {
+      screenState.set(inbox.id);
+    });
+
+    expect(screen.getByTestId(`menu-item-${inbox.id}`).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId(`menu-item-${tasks.id}`).hasAttribute('aria-current')).toBe(false);
+  });
+
   it('stays blank until bootstrap has settled, then lists the registered screens', async () => {
     let finishBootstrap!: () => void;
     mockBootstrapOnce.mockReturnValue(new Promise<void>((resolve) => (finishBootstrap = resolve)));

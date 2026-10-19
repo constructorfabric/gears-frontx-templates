@@ -26,7 +26,7 @@ Authoritative files:
 `Menu.tsx` renders exactly what
 `mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, sorted by
 `presentation.order` (a missing `order` defaults to `999`, i.e. last). The list
-is read once, after bootstrap.
+is read once, after bootstrap. The active item carries `aria-current="page"`.
 
 A click does **not** navigate. It dispatches a mount action:
 
