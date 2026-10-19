@@ -1,8 +1,12 @@
 /**
- * Dark theme for FrontX
- * CSS custom properties map following shadcn/ui variable naming convention.
+ * Dark theme for FrontX.
+ *
+ * Colour, radius and type tokens come from @gears-frontx/ui-kit's theme.css,
+ * resolved for the `appearance` below. This theme declares only the shell's
+ * own tokens (left menu, spacing, shadows, transitions, `--error`,
+ * `--radius-none`) and re-declares no kit token, so the kit stays the one
+ * palette. themes.test.ts enforces both halves.
  */
-// @cpt-algo:cpt-frontx-algo-ui-libraries-choice-theme-propagation:p1
 
 import type { ThemeConfig } from '@gears-frontx/react';
 import colors from './tailwindColors';
@@ -18,41 +22,8 @@ export const darkTheme: ThemeConfig = {
   name: 'Dark',
   appearance: 'dark',
   variables: {
-    // Shadcn color variables
-    '--background': cssColor(colors.zinc[950]),
-    '--foreground': cssColor(colors.zinc[50]),
-    '--card': cssColor(colors.zinc[950]),
-    '--card-foreground': cssColor(colors.zinc[50]),
-    '--card-hover': 'color-mix(in oklab, var(--card) 96%, var(--foreground))',
-    '--popover': cssColor(colors.zinc[950]),
-    '--popover-foreground': cssColor(colors.zinc[50]),
-    '--primary': cssColor(colors.zinc[50]),
-    '--primary-foreground': cssColor(colors.zinc[950]),
-    '--primary-hover': 'color-mix(in oklab, var(--primary) 90%, var(--background))',
-    '--secondary': cssColor(colors.zinc[800]),
-    '--secondary-foreground': cssColor(colors.zinc[50]),
-    '--muted': cssColor(colors.zinc[800]),
-    '--muted-foreground': cssColor(colors.zinc[50]),
-    '--accent': cssColor(colors.zinc[400]),
-    '--accent-foreground': cssColor(colors.zinc[950]),
-    '--destructive': cssColor(colors.red[900]),
-    '--destructive-foreground': cssColor(colors.zinc[50]),
-    '--border': cssColor(colors.zinc[800]),
-    '--input': cssColor(colors.zinc[800]),
-    '--ring': cssColor(colors.zinc[50]),
-
-    // State colors
+    // State colour the kit has no token for (the kit's red is --destructive)
     '--error': cssColor(colors.red[900]),
-    '--warning': cssColor(colors.orange[500]),
-    '--success': cssColor(colors.green[500]),
-    '--info': cssColor(colors.sky[500]),
-
-    // Chart colors (OKLCH format, shadcn/ui dark theme)
-    '--chart-1': 'oklch(0.488 0.243 264.376)',
-    '--chart-2': 'oklch(0.696 0.17 162.48)',
-    '--chart-3': 'oklch(0.769 0.188 70.08)',
-    '--chart-4': 'oklch(0.627 0.265 303.9)',
-    '--chart-5': 'oklch(0.645 0.246 16.439)',
 
     // Left menu colors
     '--left-menu': cssColor(colors.black),
@@ -70,13 +41,9 @@ export const darkTheme: ThemeConfig = {
     '--spacing-2xl': '3rem',
     '--spacing-3xl': '4rem',
 
-    // Border radius
+    // Border radius the kit has no step for; every other step derives from
+    // the kit's --radius
     '--radius-none': '0',
-    '--radius-sm': '0.125rem',
-    '--radius-md': '0.25rem',
-    '--radius-lg': '0.5rem',
-    '--radius-xl': '1rem',
-    '--radius-full': '9999px',
 
     // Shadows
     '--shadow-sm': '0 1px 2px 0 rgba(0, 0, 0, 0.3)',

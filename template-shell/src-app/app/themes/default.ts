@@ -1,9 +1,12 @@
 /**
- * Default theme for FrontX
- * Based on original PoC design with light color scheme
- * CSS custom properties map following shadcn/ui variable naming convention.
+ * Default theme for FrontX: the kit's light palette with a dark left menu.
+ *
+ * Colour, radius and type tokens come from @gears-frontx/ui-kit's theme.css,
+ * resolved for the `appearance` below. This theme declares only the shell's
+ * own tokens (left menu, spacing, shadows, transitions, `--error`,
+ * `--radius-none`) and re-declares no kit token, so the kit stays the one
+ * palette. themes.test.ts enforces both halves.
  */
-// @cpt-algo:cpt-frontx-algo-ui-libraries-choice-theme-propagation:p1
 
 import type { ThemeConfig } from '@gears-frontx/react';
 import colors from './tailwindColors';
@@ -20,41 +23,8 @@ export const defaultTheme: ThemeConfig = {
   appearance: 'light',
   default: true,
   variables: {
-    // Shadcn color variables
-    '--background': cssColor(colors.white),
-    '--foreground': cssColor(colors.gray[900]),
-    '--card': cssColor(colors.white),
-    '--card-foreground': cssColor(colors.gray[900]),
-    '--card-hover': 'color-mix(in oklab, var(--card) 96%, var(--foreground))',
-    '--popover': cssColor(colors.white),
-    '--popover-foreground': cssColor(colors.gray[900]),
-    '--primary': cssColor(colors.blue[600]),
-    '--primary-foreground': cssColor(colors.white),
-    '--primary-hover': 'color-mix(in oklab, var(--primary) 90%, var(--background))',
-    '--secondary': cssColor(colors.gray[50]),
-    '--secondary-foreground': cssColor(colors.gray[900]),
-    '--muted': cssColor(colors.gray[100]),
-    '--muted-foreground': cssColor(colors.gray[900]),
-    '--accent': cssColor(colors.blue[100]),
-    '--accent-foreground': cssColor(colors.white),
-    '--destructive': cssColor(colors.red[500]),
-    '--destructive-foreground': cssColor(colors.gray[900]),
-    '--border': cssColor(colors.gray[200]),
-    '--input': cssColor(colors.gray[200]),
-    '--ring': cssColor(colors.blue[600]),
-
-    // State colors
+    // State colour the kit has no token for (the kit's red is --destructive)
     '--error': cssColor(colors.red[500]),
-    '--warning': cssColor(colors.orange[500]),
-    '--success': cssColor(colors.green[600]),
-    '--info': cssColor(colors.sky[500]),
-
-    // Chart colors (OKLCH format, shadcn/ui light theme)
-    '--chart-1': 'oklch(0.646 0.222 41.116)',
-    '--chart-2': 'oklch(0.6 0.118 184.704)',
-    '--chart-3': 'oklch(0.398 0.07 227.392)',
-    '--chart-4': 'oklch(0.828 0.189 84.429)',
-    '--chart-5': 'oklch(0.769 0.188 70.08)',
 
     // Left menu colors
     '--left-menu': cssColor(colors.gray[900]),
@@ -72,13 +42,9 @@ export const defaultTheme: ThemeConfig = {
     '--spacing-2xl': '3rem',
     '--spacing-3xl': '4rem',
 
-    // Border radius
+    // Border radius the kit has no step for; every other step derives from
+    // the kit's --radius
     '--radius-none': '0',
-    '--radius-sm': '0.125rem',
-    '--radius-md': '0.25rem',
-    '--radius-lg': '0.5rem',
-    '--radius-xl': '1rem',
-    '--radius-full': '9999px',
 
     // Shadows
     '--shadow-sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',

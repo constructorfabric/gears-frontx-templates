@@ -6,6 +6,7 @@ import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-front
 import { Toaster } from '@/app/components/ui/sonner';
 import { AccountsApiService } from '@/app/api';
 import '@gears-frontx/ui-kit/theme.css'; // UI-kit design tokens (imported exactly once, at the app entry)
+import './font.css'; // Registers Inter, the face the kit's --font-sans and --font-heading name first
 import './globals.css'; // Global styles with CSS variables
 import '@gears-frontx/ui-kit'; // side-effect: puts ui-kit component CSS in the host document, where MFE shadow roots adopt it (ThemeAwareReactLifecycle). Must come after globals.css so component rules beat Tailwind's preflight resets on specificity ties.
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)

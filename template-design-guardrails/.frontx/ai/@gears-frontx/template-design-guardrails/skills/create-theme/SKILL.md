@@ -1,16 +1,16 @@
 ---
 name: create-theme
 version: 0.1.0
-description: Author or revise a FrontX shell theme against the @gears-frontx/ui-kit token contract — full CSS color values, declared light/dark appearance, derived hover and alpha tokens, complete variable coverage. Use when adding a brand or product theme, porting an existing palette, or when kit components render unstyled, transparent, or with wrong dark-mode surfaces after a theme change.
+description: Author or revise a FrontX shell theme against the @gears-frontx/ui-kit token contract - full CSS color values, declared light/dark appearance, derived hover and alpha tokens, kit tokens overridden only on purpose and then completely. Use when adding a brand or product theme, porting an existing palette, or when kit components render unstyled, transparent, or with wrong dark-mode surfaces after a theme change.
 ---
 
 # Create a FrontX theme
 
-A theme is a `ThemeConfig` object registered with the shell, not a stylesheet. Its variables feed both the host document and every MFE (micro-frontend) shadow root, and the UI kit consumes them as-is — which makes the value format a token-value contract, not a convention.
+A theme is a `ThemeConfig` object registered with the shell, not a stylesheet. The UI kit's `theme.css` is the palette every theme starts from: it declares every colour, radius and type token for both appearances, and the shell resolves it for the theme's declared appearance. A theme's variables are applied on top of it on the document root, and the kit consumes them as-is, which makes the value format a token-value contract, not a convention.
 
 ## Establish the token contract
 
-1. Read the nearest existing theme in the app (`src-app/app/themes/`) and copy its full variable set as the starting point. A theme that defines only the colors it cares about leaves the rest resolving to another theme's leftovers. If no theme exists yet, enumerate every kit-consumed token from the installed UI-kit documentation and declare all of them explicitly instead of copying a sibling theme.
+1. Decide whether the theme is the kit's palette or a palette of its own. A theme on the kit's palette declares the shell's own tokens (left menu, spacing, shadows, transitions, `--error`, `--radius-none`) and at most a few kit tokens it overrides on purpose, such as a brand `--primary`; the shell's `light`, `dark` and `default` override none. A theme that repaints the page surface (`--background`) has a palette of its own, like the shell's Dracula themes (`src-app/app/themes/draculaPalette.ts`), and then overrides every colour token the kit declares for its appearance: a token left out resolves to the kit's value, and a kit component then paints in two palettes. Shape is one knob: override `--radius`, never the derived `--radius-*` steps. Start from the existing theme of the same kind in `src-app/app/themes/`; the shell's `themes.test.ts` checks every theme in `frontxThemes` (`src-app/app/themes/index.ts`) against the installed kit, so list a new theme there as well as registering it.
 2. Read the installed UI-kit documentation for the semantic roles and the tokens the kit consumes directly. The kit is the only token source; there is no bundle fallback set. When a kit-consumed token cannot be mapped from available context, ask the user for that token's value before finishing; fall back to the base value and flag it only if no answer is available.
 
 ## Value format rules
@@ -39,7 +39,7 @@ Before the Report, state pass/fail for each of the five value-format rules by in
 Name:
 
 - the theme id and its appearance;
-- which tokens differ from the theme you started from;
+- which kit tokens it overrides, and why;
 - any kit-consumed token you could not map and left at the base value;
 - the verification evidence — host + shadow-root screens observed, contrast findings;
 - states not switched to — list them as unverified instead of claiming the theme works there.
