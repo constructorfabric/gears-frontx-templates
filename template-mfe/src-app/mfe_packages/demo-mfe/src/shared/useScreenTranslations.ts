@@ -5,11 +5,11 @@
  * `import.meta.glob('./i18n/*.json')` (Vite-compatible glob).
  *
  * The hook:
- * 1. Gets current language from bridge.getProperty(FRONTX_SHARED_PROPERTY_LANGUAGE)
+ * 1. Reads the current language through useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge })
  * 2. Builds module key from language (e.g., './i18n/en.json')
  * 3. Dynamically imports the module
  * 4. Returns t(key) function that looks up key in loaded translations
- * 5. Subscribes to language property changes to reload translations
+ * 5. Reloads translations when the language changes
  *
  * Usage in screen component:
  * ```tsx
@@ -20,7 +20,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, useSharedProperty } from '@gears-frontx/react';
 
 interface TranslationJsonModule {
   default: Record<string, string>;
@@ -46,16 +46,13 @@ export function useScreenTranslations(
 ): UseScreenTranslationsReturn {
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  // Use ref to track current language for comparison without triggering effect re-runs
-  const currentLanguageRef = useRef<string>('en');
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
   const lastLoadedLanguageRef = useRef<string | null>(null);
   const lastLoadedModulesRef = useRef<LanguageModuleMap | null>(null);
 
   // Load translations for the given language
   const loadTranslations = useCallback(
     async (language: string) => {
-      // Keep ref in sync
-      currentLanguageRef.current = language;
       lastLoadedLanguageRef.current = language;
       lastLoadedModulesRef.current = languageModules;
       setLoading(true);
@@ -91,31 +88,15 @@ export function useScreenTranslations(
     [languageModules]
   );
 
-  // Subscribe to language property changes
+  // Load translations for the current language, and again whenever it changes
   useEffect(() => {
-    // Get initial language
-    const initialProperty = bridge.getProperty(FRONTX_SHARED_PROPERTY_LANGUAGE);
-    const lang = initialProperty && typeof initialProperty.value === 'string' ? initialProperty.value : 'en';
-    const shouldLoadInitialTranslations =
-      lastLoadedLanguageRef.current !== lang || lastLoadedModulesRef.current !== languageModules;
-
-    if (shouldLoadInitialTranslations) {
-      loadTranslations(lang);
+    if (
+      lastLoadedLanguageRef.current !== language ||
+      lastLoadedModulesRef.current !== languageModules
+    ) {
+      loadTranslations(language);
     }
-
-    // Subscribe to language changes
-    const unsubscribe = bridge.subscribeToProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, (property) => {
-      if (
-        typeof property.value === 'string' &&
-        (property.value !== currentLanguageRef.current ||
-          lastLoadedModulesRef.current !== languageModules)
-      ) {
-        loadTranslations(property.value);
-      }
-    });
-
-    return unsubscribe;
-  }, [bridge, languageModules, loadTranslations]);
+  }, [language, languageModules, loadTranslations]);
 
   // Translation function
   const t = useCallback(
