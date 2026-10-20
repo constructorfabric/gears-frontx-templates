@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
@@ -107,6 +108,60 @@ describe('useScreenTranslations', () => {
 
     await waitFor(() => {
       expect(frenchImporter).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps the newest language when an older load resolves last', async () => {
+    let resolveFrench: (module: { default: Record<string, string> }) => void = () => {};
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { title: 'Home' } }),
+      './i18n/fr.json': () =>
+        new Promise<{ default: Record<string, string> }>((resolve) => {
+          resolveFrench = resolve;
+        }),
+      './i18n/de.json': async () => ({ default: { title: 'Startseite' } }),
+    };
+    const fixture = screenTranslationsTestBridge('en');
+
+    const { result } = renderHook(() => useScreenTranslations(languageModules, fixture.bridge));
+
+    await waitFor(() => {
+      expect(result.current.t('title')).toBe('Home');
+    });
+
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
+    });
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.t('title')).toBe('Startseite');
+    });
+
+    await act(async () => {
+      resolveFrench({ default: { title: 'Accueil' } });
+    });
+
+    expect(result.current.t('title')).toBe('Startseite');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('finishes loading under StrictMode', async () => {
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { title: 'Home' } }),
+    };
+    const { bridge } = screenTranslationsTestBridge('en');
+
+    const { result } = renderHook(() => useScreenTranslations(languageModules, bridge), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.t('title')).toBe('Home');
     });
   });
 
