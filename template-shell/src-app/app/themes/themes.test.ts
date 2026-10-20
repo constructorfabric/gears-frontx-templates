@@ -100,8 +100,10 @@ describe('shell themes over the ui-kit palette', () => {
     expect(names(byId(id)).filter((name) => kitTokens.has(name))).toEqual([]);
   });
 
-  it('scales dracula-large through --radius, which every kit radius step derives from', () => {
-    expect(byId('dracula-large').variables['--radius']).toBeDefined();
+  it('scales dracula-large to 1.5x the kit --radius, which every kit radius step derives from', () => {
+    const kitRadius = Number.parseFloat(kitCss.match(/--radius\s*:\s*([\d.]+)rem\s*;/)?.[1] ?? '');
+    expect(kitRadius).toBeGreaterThan(0);
+    expect(Number.parseFloat(byId('dracula-large').variables['--radius'])).toBeCloseTo(kitRadius * 1.5, 5);
     for (const step of ['--radius-sm', '--radius-md', '--radius-lg', '--radius-xl']) {
       expect(kitCss, step).toMatch(new RegExp(`${step}\\s*:[^;]*var\\(--radius\\)`));
     }
@@ -117,5 +119,14 @@ describe('shell themes over the ui-kit palette', () => {
     const families = new Set([...fontCss.matchAll(/font-family:\s*['"]?([^'";]+)/g)].map((match) => match[1].trim()));
     expect([...families]).toEqual([kitFirstFamily('--font-sans')]);
     expect(kitFirstFamily('--font-heading')).toBe(kitFirstFamily('--font-sans'));
+  });
+
+  it('points every font src in font.css at a file that resolves', () => {
+    const fontCss = readFileSync(resolveFromHere.resolve('../font.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const urls = [...fontCss.matchAll(/url\(\s*['"]([^'"]+)['"]\s*\)/g)].map((match) => match[1]);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(() => resolveFromHere.resolve(url), url).not.toThrow();
+    }
   });
 });
