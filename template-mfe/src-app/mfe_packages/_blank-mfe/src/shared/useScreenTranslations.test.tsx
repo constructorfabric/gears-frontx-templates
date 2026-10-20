@@ -1,4 +1,5 @@
 // @cpt-dod:cpt-frontx-dod-unit-test-generation-and-agent-verification-blank-mfe-tests:p1
+import { StrictMode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
@@ -112,6 +113,62 @@ describe('useScreenTranslations', () => {
     await waitFor(() => {
       expect(frImporter).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('keeps the newest language when an older load resolves last', async () => {
+    let resolveFrench: (module: { default: Record<string, string> }) => void = () => {};
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { greeting: 'Hello' } }),
+      './i18n/fr.json': () =>
+        new Promise<{ default: Record<string, string> }>((resolve) => {
+          resolveFrench = resolve;
+        }),
+      './i18n/de.json': async () => ({ default: { greeting: 'Hallo' } }),
+    };
+    const fixture = makeBridge('en');
+
+    const { result } = renderHook(() =>
+      useScreenTranslations(languageModules, fixture.bridge),
+    );
+
+    await waitFor(() => expect(result.current.t('greeting')).toBe('Hello'));
+
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
+    });
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.t('greeting')).toBe('Hallo');
+    });
+
+    // The French load resolving last must not overwrite the German strings.
+    await act(async () => {
+      resolveFrench({ default: { greeting: 'Bonjour' } });
+    });
+
+    expect(result.current.t('greeting')).toBe('Hallo');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('finishes loading under StrictMode', async () => {
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { greeting: 'Hello' } }),
+    };
+
+    const { bridge } = makeBridge('en');
+
+    const { result } = renderHook(
+      () => useScreenTranslations(languageModules, bridge),
+      { wrapper: StrictMode },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.t('greeting')).toBe('Hello');
   });
 
   it('unsubscribes from bridge language updates on unmount', async () => {
