@@ -19,7 +19,7 @@ These are the failure modes actually observed; each one renders as "kit looks br
 
 - **Every color token is a full CSS color** — `hsl(240 10% 3.9%)`, a hex value, `oklch(...)`. Never an HSL fragment like `240 10% 3.9%`: the kit consumes tokens as `var(--x)` directly, and a fragment there is an invalid value, so the component silently loses its color. The repository's token-format CI gate bans the matching consumer pattern `hsl(var(--x))` for the same reason.
 - **Declare `appearance: 'light' | 'dark'`** on every theme. The shell stamps it as `data-theme` on the document element, and the kit's dark-surface tokens (elevated surfaces, overlays) switch on that attribute — a dark theme without the declaration gets light kit surfaces.
-- **Derive hover tokens, don't invent them.** A theme on the kit palette inherits the kit's hover tokens and declares none. Only a theme that overrides `--primary` or `--card` (an own-palette theme) must also set `--primary-hover` / `--card-hover`, derived from the base so they follow palette edits: `color-mix(in oklab, var(--primary) 90%, var(--background))`. After authoring, grep the hover/alpha tokens the theme declares for the `color-mix(` derivation from their base — a visually correct hardcoded value still fails this check.
+- **Derive hover tokens, don't invent them.** A theme that overrides neither `--primary` nor `--card` inherits the kit's hover tokens and declares none. Any theme that overrides `--primary` or `--card`, an own palette or a deliberate override on the kit palette, must also set `--primary-hover` / `--card-hover`, derived from the base so they follow palette edits: `color-mix(in oklab, var(--primary) 90%, var(--background))`. After authoring, grep the hover/alpha tokens the theme declares for the `color-mix(` derivation from their base — a visually correct hardcoded value still fails this check.
 - **Alpha via `color-mix`**, never by re-wrapping a token: `color-mix(in oklab, var(--border) 50%, transparent)`.
 - Fallbacks, where needed, go inside `var()`: `var(--x, hsl(0 0% 100%))`.
 
@@ -34,7 +34,7 @@ If dev mode or shadow-root inspection cannot be reached, report **environment un
 
 ## Report
 
-Before the Report, state pass/fail for each of the five value-format rules by inspecting the theme's declared values: (1) every color token is a full CSS color; (2) no HSL fragments; (3) appearance declared; (4) the hover/alpha tokens the theme declares (none to check for a theme on the kit palette) derived via `color-mix` from their base, not hardcoded; (5) no token re-wrapping. A theme is not reportable as done with any rule unchecked.
+Before the Report, state pass/fail for each of the five value-format rules by inspecting the theme's declared values: (1) every color token is a full CSS color; (2) no HSL fragments; (3) appearance declared; (4) the hover/alpha tokens the theme declares (none to check for a theme that overrides neither `--primary` nor `--card`) derived via `color-mix` from their base, not hardcoded; (5) no token re-wrapping. A theme is not reportable as done with any rule unchecked.
 
 Name:
 
