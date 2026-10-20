@@ -2,7 +2,7 @@
  * The string-checked reader the lifecycle uses to put the shell's kit scope on
  * the shadow host. It keeps the same path and exports as _blank-mfe's copy, so
  * a package scaffolded from either template reads the host theme the same way,
- * and demo-mfe's screens read the theme through useBridgeProperty.
+ * and demo-mfe's screens read the theme through useSharedProperty.
  */
 
 import type { ChildMfeBridge } from '@gears-frontx/react';

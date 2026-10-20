@@ -1,8 +1,9 @@
 /**
  * A string read of one of the host's shared bridge properties.
  *
- * The host lifecycle and the screens resolve the theme from the same
- * property, so the read lives here once and the two sides cannot drift apart.
+ * The host lifecycle reads the theme here, and the screens, which read it
+ * through useSharedProperty, fall back to the same DEFAULT_THEME_ID, so the
+ * two sides cannot drift apart.
  */
 
 import type { ChildMfeBridge } from '@gears-frontx/react';
