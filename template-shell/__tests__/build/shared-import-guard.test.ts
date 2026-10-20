@@ -17,7 +17,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { BuildOptions } from 'esbuild';
 import { parseAst } from 'vite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -33,19 +32,6 @@ import {
   type MintedSharedChunk,
   type SharedChunk,
 } from '../../src/build/mf-gts';
-
-// The builder sets no `absWorkingDir`, so esbuild resolves each shared dep
-// from its default working directory, which it reads once, when it loads.
-// Passing the current one on every build lets the fixture tests below build
-// from their own directory, as a build run from the MFE's directory does.
-vi.mock('esbuild', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('esbuild')>();
-  return {
-    ...actual,
-    build: (options: BuildOptions) =>
-      actual.build({ absWorkingDir: process.cwd(), ...options }),
-  };
-});
 
 function shared(
   name: string,
@@ -343,7 +329,6 @@ const FIXTURES: Record<string, { pkg?: Record<string, unknown>; files: Files }> 
 };
 
 describe('shared chunks built from fixture packages', () => {
-  const originalCwd = process.cwd();
   let root = '';
   let sharedChunks: SharedChunk[] = [];
   let minted: MintedSharedChunk[] = [];
@@ -399,8 +384,9 @@ describe('shared chunks built from fixture packages', () => {
       }
     }
 
-    // See the esbuild mock at the top of the file.
-    process.chdir(root);
+    // The fixture packages are installed under `root` only, never in the
+    // directory the tests run in, so every build below resolves them from
+    // the package root the builder is given.
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const builder = new StandaloneEsmBuilder(
       Object.keys(FIXTURES),
@@ -419,7 +405,6 @@ describe('shared chunks built from fixture packages', () => {
   });
 
   afterAll(() => {
-    process.chdir(originalCwd);
     vi.restoreAllMocks();
     fs.rmSync(root, { recursive: true, force: true });
   });
