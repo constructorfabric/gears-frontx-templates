@@ -44,6 +44,12 @@ async function makeRepo() {
   git(rootDir, ['init', '-q', '-b', 'develop']);
   git(rootDir, ['config', 'user.email', 'test@example.com']);
   git(rootDir, ['config', 'user.name', 'Test']);
+  // Every `git commit` starts a detached `git maintenance run --auto`. From git
+  // 2.54 it repacks once two loose objects share `objects/17/`, which commit
+  // timestamps make a matter of chance even in a repo this small. The repack
+  // then writes into .git/info and .git/objects/pack while afterEach deletes
+  // the repo, and the delete fails with ENOTEMPTY.
+  git(rootDir, ['config', 'maintenance.auto', 'false']);
   return rootDir;
 }
 
