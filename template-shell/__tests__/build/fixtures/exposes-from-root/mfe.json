@@ -1,0 +1,18 @@
+{
+  "manifest": {
+    "id": "fixture.manifest",
+    "remoteEntry": "remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "fixture.lifecycle",
+      "requiredProperties": [],
+      "actions": [],
+      "domainActions": [],
+      "manifest": "fixture.manifest",
+      "exposedModule": "./lifecycle"
+    }
+  ],
+  "extensions": [],
+  "schemas": []
+}
