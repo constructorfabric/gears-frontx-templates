@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_ACTION_MOUNT_EXT, FRONTX_SCREEN_DOMAIN, FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_SCREEN_DOMAIN, FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE, useSharedProperty } from '@gears-frontx/react';
 import {
   Button,
   Card,
@@ -11,7 +11,6 @@ import {
   Skeleton,
 } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
-import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
 import {
   THEME_EXTENSION_ID,
@@ -54,8 +53,8 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
  */
 export const HelloWorldScreen: React.FC<HelloWorldScreenProps> = ({ bridge }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const theme = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default');
-  const language = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en');
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
   useHostDirection(containerRef, language);
 
   // Load translations using the shared hook

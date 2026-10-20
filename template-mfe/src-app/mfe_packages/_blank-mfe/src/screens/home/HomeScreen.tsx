@@ -1,13 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
 import {
   FRONTX_SHARED_PROPERTY_THEME,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   useApiQuery,
+  useSharedProperty,
   apiRegistry,
 } from '@gears-frontx/react';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
+import { useHostDirection } from '../../shared/useHostDirection';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { _BlankApiService } from '../../api/_BlankApiService';
 import styles from './HomeScreen.module.css';
@@ -17,19 +19,6 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
   string,
   () => Promise<{ default: Record<string, string> }>
 >;
-
-const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
-
-// Only the primary subtag decides, so a region-tagged code such as `ar-EG`
-// reads as Arabic.
-function isRtlLanguage(language: string): boolean {
-  return RTL_LANGUAGES.includes(language.split('-')[0].toLowerCase());
-}
-
-function readBridgeProperty(bridge: ChildMfeBridge, property: string, fallback: string): string {
-  const current = bridge.getProperty(property);
-  return current && typeof current.value === 'string' ? current.value : fallback;
-}
 
 /**
  * Props for the HomeScreen component.
@@ -59,28 +48,9 @@ interface HomeScreenProps {
  */
 export const HomeScreen: React.FC<HomeScreenProps> = ({ bridge }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  /*
-   * The bridge's current values are read here, in lazy useState initializers,
-   * rather than at the top of the effect below. A setState called synchronously
-   * in an effect body re-renders the screen before paint, which is why
-   * `react-hooks/set-state-in-effect` rejects it; the effect only has to
-   * SUBSCRIBE.
-   */
-  const [theme, setTheme] = useState<string>(() =>
-    readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default')
-  );
-  const [language, setLanguage] = useState<string>(() =>
-    readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en')
-  );
-  // The lazy initializers above run only on mount; if the host swaps the bridge
-  // instance, re-read its current properties during render ("adjusting state
-  // during render") — the subscription effect only delivers future changes.
-  const [prevBridge, setPrevBridge] = useState(bridge);
-  if (prevBridge !== bridge) {
-    setPrevBridge(bridge);
-    setTheme(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default'));
-    setLanguage(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en'));
-  }
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
+  useHostDirection(containerRef, language);
 
   const service = apiRegistry.getService(_BlankApiService);
   const { t, loading } = useScreenTranslations(languageModules, bridge);
@@ -90,43 +60,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ bridge }) => {
     isError: isStatusError,
     error: statusError,
   } = useApiQuery(service.getStatus);
-
-  useEffect(() => {
-    // Subscribe to theme domain property
-    const themeUnsubscribe = bridge.subscribeToProperty(
-      FRONTX_SHARED_PROPERTY_THEME,
-      (property) => {
-        if (typeof property.value === 'string') {
-          setTheme(property.value);
-        }
-      }
-    );
-
-    // Subscribe to language domain property
-    const languageUnsubscribe = bridge.subscribeToProperty(
-      FRONTX_SHARED_PROPERTY_LANGUAGE,
-      (property) => {
-        if (typeof property.value === 'string') {
-          setLanguage(property.value);
-        }
-      }
-    );
-
-    return () => {
-      themeUnsubscribe();
-      languageUnsubscribe();
-    };
-  }, [bridge]);
-
-  // Keep the Shadow DOM host's text direction in sync with the active language.
-  // An effect keyed by `language` (rather than logic inside the subscription
-  // callback) also covers the initial language, which never fires a callback.
-  useEffect(() => {
-    const rootNode = containerRef.current?.getRootNode();
-    if (rootNode && 'host' in rootNode) {
-      (rootNode.host as HTMLElement).dir = isRtlLanguage(language) ? 'rtl' : 'ltr';
-    }
-  }, [language]);
 
   const kitThemeScope = kitThemeScopeFor(theme);
 
