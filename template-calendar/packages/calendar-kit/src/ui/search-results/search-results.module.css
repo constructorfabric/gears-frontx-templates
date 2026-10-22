@@ -1,0 +1,165 @@
+.results {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-4);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+}
+
+.groups {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-4);
+}
+
+/* The label sits close to its rows; each row's own padding spaces the rows. */
+.group,
+.rows {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+}
+
+.group {
+  gap: var(--cal-space-1);
+}
+
+/* Sentence case: "Wed, Aug 26" read as shouting in capitals. */
+.day {
+  composes: sectionLabel from "../../styles/modules/text.module.css";
+  font-weight: var(--cal-text-label-weight);
+  text-transform: none;
+}
+
+.dayToday {
+  color: var(--cal-color-now);
+}
+
+/* Results line up with the search field above them, so the list item adds no inset of its own. */
+.resultItem {
+  padding-inline: 0;
+}
+
+.result {
+  composes: focusRing from "../../styles/modules/focus-ring.module.css";
+  position: relative;
+  align-items: flex-start;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--cal-radius-md);
+  color: var(--cal-color-text);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--cal-font-family);
+  font-size: inherit;
+  inline-size: 100%;
+  justify-content: flex-start;
+  margin: 0;
+  min-inline-size: 0;
+  outline: none;
+  padding: var(--cal-space-2) var(--cal-space-2) var(--cal-space-2)
+    var(--cal-space-3);
+  text-align: start;
+  transition:
+    background-color var(--cal-motion-duration-short) ease,
+    border-color var(--cal-motion-duration-short) ease,
+    box-shadow var(--cal-motion-duration-short) ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 72px;
+  white-space: normal;
+}
+
+.result:hover {
+  background: var(--cal-state-hover);
+}
+
+/* A flat row with the event's colour bar, as in the agenda; a bordered box per result was heavy. */
+.result::before {
+  position: absolute;
+  inset-block: var(--cal-space-2);
+  inset-inline-start: 0;
+  inline-size: 3px;
+  background: var(--search-result-bar, var(--cal-color-muted));
+  border-radius: var(--cal-radius-pill);
+  content: "";
+}
+
+.colorTurquoise {
+  --search-result-bar: var(--cal-color-turquoise-accent);
+}
+
+.colorPurple {
+  --search-result-bar: var(--cal-color-purple-accent);
+}
+
+.colorOrange {
+  --search-result-bar: var(--cal-color-orange-accent);
+}
+
+.colorBlue {
+  --search-result-bar: var(--cal-color-blue-accent);
+}
+
+.content {
+  display: flex;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--cal-space-1);
+}
+
+.title,
+.details {
+  max-inline-size: 100%;
+}
+
+.title {
+  composes: truncate from "../../styles/modules/text.module.css";
+  color: inherit;
+  font-size: var(--cal-text-grid-size);
+  font-weight: var(--cal-text-grid-weight);
+  line-height: var(--cal-text-grid-line-height);
+}
+
+.details {
+  composes: truncate from "../../styles/modules/text.module.css";
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-meta-size);
+  line-height: var(--cal-text-meta-line-height);
+}
+
+.liveRegion {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
+
+@media (forced-colors: active), (prefers-contrast: more) {
+  .dayToday {
+    color: Highlight;
+  }
+
+  .result {
+    color: CanvasText;
+    background: Canvas;
+    border-color: CanvasText;
+  }
+
+  .result:hover,
+  .result:focus-visible {
+    color: HighlightText;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .details {
+    color: inherit;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result {
+    transition-duration: 0s;
+  }
+}

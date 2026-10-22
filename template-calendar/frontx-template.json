@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0",
+  "name": "@gears-frontx/frontx-template-calendar",
+  "version": "0.1.0-alpha.0",
+  "description": "Standalone seed for the calendar feature, not an overlay onto template-shell: the @gears-frontx/calendar-kit React component library (week, day, month and agenda views, availability grid, event creation, search and sidebar widgets) built on @gears-frontx/ui-kit, with its build, lint, dependency and test toolchain. The host owns data, persistence and scheduling rules; the kit exposes a UI data model and callbacks only.",
+  "ownershipBoundaries": {
+    "exclusiveSubtrees": [
+      "packages/calendar-kit/",
+      "package.json",
+      "package-lock.json",
+      "eslint.config.js",
+      ".dependency-cruiser.cjs",
+      ".gitignore",
+      "README.md"
+    ],
+    "sharedFiles": []
+  }
+}
