@@ -102,11 +102,23 @@ describe('application-layer derived GTS schemas', () => {
       expect(new Set(codes)).toEqual(new Set(Object.values(Language)));
     });
 
+    it('matches the language code schema in order', () => {
+      expect(getValuePropertySchema(languageSchema).enum).toEqual(languageCodeSchema.enum);
+    });
+
     it('is accessible via getSchema using the language property type ID', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       expect(schema).toBeDefined();
       expect(schema?.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_LANGUAGE}`);
-      expect(getValuePropertySchema(schema).$ref).toBe('gts://gts.frontx.i18n.lang.code.v1~');
+    });
+
+    it('validates language values without the language code schema', () => {
+      const isolatedPlugin = new GtsPlugin({ isolated: true });
+      isolatedPlugin.registerSchema(languageSchema);
+      const validId = `${FRONTX_SHARED_PROPERTY_LANGUAGE}frontx.mfes.comm.runtime.v1`;
+      const invalidId = `${FRONTX_SHARED_PROPERTY_LANGUAGE}frontx.mfes.comm.runtime.invalid.v1`;
+      expect(() => isolatedPlugin.register({ id: validId, value: 'en' })).not.toThrow();
+      expect(() => isolatedPlugin.register({ id: invalidId, value: 'xx' })).toThrow(/GTS validation failed/);
     });
 
     it('uses allOf derivation from base shared_property schema', () => {
