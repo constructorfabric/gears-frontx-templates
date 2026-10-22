@@ -1522,6 +1522,21 @@ export interface ChunkLinkage {
   exports: string[];
   /** Specifiers the chunk re-exports everything from (`export * from "<x>"`). */
   starExports: string[];
+  /**
+   * The names in `exports` that are another module's binding rather than the
+   * chunk's own, each with the specifier and the name there:
+   * `export { a as b } from "x"`, and `import { a } from "x"; export { a as b }`,
+   * both map `b` to `a` in `x`.
+   */
+  reExports: Record<string, { from: string; name: string }>;
+  /**
+   * The local binding behind each of the chunk's own exports whose name
+   * differs from it: `export { x as N }` maps `N` to `x`, and
+   * `export default function f() {}` maps `default` to `f`. ES modules tell
+   * bindings apart by module and local name, so `N` and `x` are one binding
+   * there. `export default <expression>` binds a binding of its own.
+   */
+  locals: Record<string, string>;
   /** Names it imports per specifier, as in {@link ImportingChunk}. */
   imports: Record<string, string[]>;
 }
@@ -1549,8 +1564,23 @@ export interface SharedImportMismatch {
   packageName: string;
   /** The names that dependency's chunk does not export. */
   missing: string[];
+  /** The names in `missing` that two `export *` lines make ambiguous. */
+  ambiguous?: AmbiguousExport[];
   /** See {@link MintedSharedChunk.discoveryFailure}. */
   discoveryFailure?: string;
+}
+
+/**
+ * A name a shared chunk does not export because two of its `export *` lines
+ * supply it from different bindings.
+ */
+export interface AmbiguousExport {
+  /** The name as the importing chunk asks for it. */
+  name: string;
+  /** The shared chunk whose `export *` lines meet. */
+  chunk: string;
+  /** The two specifiers those lines re-export from. */
+  sources: [string, string];
 }
 
 /**
@@ -1565,23 +1595,38 @@ export function readChunkLinkage(
   parse: (code: string) => unknown
 ): ChunkLinkage {
   const program = parse(code) as { body: AstNode[] };
-  const linkage: ChunkLinkage = { exports: [], starExports: [], imports: {} };
+  const linkage: ChunkLinkage = {
+    exports: [],
+    starExports: [],
+    reExports: {},
+    locals: {},
+    imports: {},
+  };
   const addImport = (from: string, name?: string): void => {
     const names = (linkage.imports[from] ??= []);
     if (name !== undefined) names.push(name);
   };
+  // An imported binding exported again (`import { a } from "x"; export { a }`)
+  // is still `a` in `x`. Imports hoist, so the export may come first.
+  const importedBindings = new Map<string, { from: string; name: string }>();
+  const localExports: Array<{ local: string; exported: string }> = [];
 
   for (const node of program.body) {
     if (node.type === 'ImportDeclaration') {
       const from = nameOf(node.source as AstNode);
       addImport(from);
       for (const specifier of node.specifiers as AstNode[]) {
+        const local = nameOf(specifier.local as AstNode);
         if (specifier.type === 'ImportDefaultSpecifier') {
           addImport(from, 'default');
+          importedBindings.set(local, { from, name: 'default' });
         } else if (specifier.type === 'ImportNamespaceSpecifier') {
+          // A namespace exported again is the chunk's own binding.
           addImport(from, '*');
         } else {
-          addImport(from, nameOf(specifier.imported as AstNode));
+          const name = nameOf(specifier.imported as AstNode);
+          addImport(from, name);
+          importedBindings.set(local, { from, name });
         }
       }
     } else if (node.type === 'ExportNamedDeclaration') {
@@ -1590,18 +1635,44 @@ export function readChunkLinkage(
         linkage.exports.push(...declaredNames(node.declaration as AstNode));
       }
       for (const specifier of node.specifiers as AstNode[]) {
-        linkage.exports.push(nameOf(specifier.exported as AstNode));
-        if (source) addImport(nameOf(source), nameOf(specifier.local as AstNode));
+        const exported = nameOf(specifier.exported as AstNode);
+        const local = nameOf(specifier.local as AstNode);
+        linkage.exports.push(exported);
+        if (source) {
+          addImport(nameOf(source), local);
+          linkage.reExports[exported] = { from: nameOf(source), name: local };
+        } else {
+          localExports.push({ local, exported });
+        }
       }
     } else if (node.type === 'ExportDefaultDeclaration') {
       linkage.exports.push('default');
+      // `export default function f() {}` binds `f`. Any expression, a
+      // parenthesized `(function f() {})` too, binds a binding of its own.
+      const declaration = node.declaration as AstNode;
+      if (
+        (declaration.type === 'FunctionDeclaration' ||
+          declaration.type === 'ClassDeclaration') &&
+        declaration.id
+      ) {
+        linkage.locals.default = nameOf(declaration.id as AstNode);
+      }
     } else if (node.type === 'ExportAllDeclaration') {
       const from = nameOf(node.source as AstNode);
       addImport(from, '*');
+      // `export * as ns from "x"` stays the chunk's own binding. V8 links it
+      // that way: a name two chunks each export like this conflicts when a
+      // third re-exports both through `export *`.
       const exported = node.exported as AstNode | null;
       if (exported) linkage.exports.push(nameOf(exported));
       else linkage.starExports.push(from);
     }
+  }
+
+  for (const { local, exported } of localExports) {
+    const binding = importedBindings.get(local);
+    if (binding) linkage.reExports[exported] = binding;
+    else if (local !== exported) linkage.locals[exported] = local;
   }
 
   return linkage;
@@ -1670,11 +1741,21 @@ function declaredNames(node: AstNode): string[] {
  * dependency are skipped, and so is `*`: a namespace import names nothing to
  * check.
  *
- * A chunk's exports include what it re-exports with `export * from "<x>"`
- * from another shared chunk, except `default`. esbuild keeps that line when
- * `x` is a sibling shared dependency. `@tanstack/react-query`, for instance,
- * starts with `export * from "@tanstack/query-core"`, so a project that
- * shares both gets one, and `QueryClient` reaches the MFE through it.
+ * A name resolves the way ES modules link it. The chunk's own exports come
+ * first. A name it re-exports by name resolves in the chunk it names. Any
+ * other name except `default` comes through the chunk's `export * from "<x>"`
+ * lines from other shared chunks. esbuild keeps such a line when `x` is a
+ * sibling shared dependency. `@tanstack/react-query`, for instance, starts
+ * with `export * from "@tanstack/query-core"`, so a project that shares both
+ * gets one, and `QueryClient` reaches the MFE through it. When two of those
+ * lines supply a name from different bindings, the name is ambiguous: the
+ * chunk does not export it, and neither does a chunk that re-exports it
+ * through `export *` in turn. Two lines that lead to the same binding, as when
+ * two packages both re-export one core package, are not ambiguous. A binding
+ * is a module and a local name, so one variable exported under two names is
+ * one binding. A name re-exported from a module outside the shared chunks
+ * conflicts with none: the guard has not read that module, so it cannot tell
+ * whether another line leads to the same binding.
  *
  * Pure; exported for unit tests.
  */
@@ -1686,29 +1767,59 @@ export function findSharedImportMismatches(
   const packageOfFile = new Map(
     sharedChunks.map((chunk) => [chunk.fileName, chunk.name])
   );
-  const exportCache = new Map<string, ReadonlySet<string>>();
+  const ownExports = new Map(
+    sharedChunks.map((chunk) => [chunk.name, new Set(chunk.exports)])
+  );
 
-  // `visiting` stops at a cycle of `export *` lines. The cycle guard has
-  // failed such a build already, so what the cut-off names would add does
-  // not matter.
-  const exportsOf = (
+  // `module` is null for a binding outside the shared chunks.
+  type Binding = { module: string; local: string } | { module: null };
+  type Ambiguity = Omit<AmbiguousExport, 'name'>;
+
+  // ECMA-262's ResolveExport over the shared chunks: the binding a name
+  // resolves to, an ambiguity, or null when the chunk does not export it.
+  // As in the spec, `resolveSet` holds every chunk and name asked for so
+  // far: a second path to one of them adds nothing, and a cycle of
+  // re-exports ends there, which the cycle guard has failed already.
+  const resolveExport = (
     chunk: SharedChunk,
-    visiting: Set<string>
-  ): ReadonlySet<string> => {
-    const cached = exportCache.get(chunk.name);
-    if (cached) return cached;
-    const names = new Set(chunk.exports);
-    visiting.add(chunk.name);
+    name: string,
+    resolveSet: Set<string>
+  ): Binding | Ambiguity | null => {
+    const key = `${chunk.name}\0${name}`;
+    if (resolveSet.has(key)) return null;
+    resolveSet.add(key);
+
+    if (Object.hasOwn(chunk.reExports, name)) {
+      const { from, name: imported } = chunk.reExports[name];
+      const target = byName.get(from);
+      return target
+        ? resolveExport(target, imported, resolveSet)
+        : { module: null };
+    }
+    if (ownExports.get(chunk.name)?.has(name)) {
+      return { module: chunk.name, local: chunk.locals[name] ?? name };
+    }
+    if (name === 'default') return null;
+
+    let star: { from: string; binding: Binding } | undefined;
     for (const from of chunk.starExports) {
       const target = byName.get(from);
-      if (!target || visiting.has(from)) continue;
-      for (const name of exportsOf(target, visiting)) {
-        if (name !== 'default') names.add(name);
+      if (!target) continue;
+      const resolved = resolveExport(target, name, resolveSet);
+      if (resolved === null) continue;
+      if ('sources' in resolved) return resolved;
+      // The first binding in a shared chunk is the one the others must match.
+      if (!star || star.binding.module === null) {
+        star = { from, binding: resolved };
+      } else if (
+        resolved.module !== null &&
+        (star.binding.module !== resolved.module ||
+          star.binding.local !== resolved.local)
+      ) {
+        return { chunk: chunk.name, sources: [star.from, from] };
       }
     }
-    visiting.delete(chunk.name);
-    exportCache.set(chunk.name, names);
-    return names;
+    return star?.binding ?? null;
   };
 
   const mismatches: SharedImportMismatch[] = [];
@@ -1716,16 +1827,25 @@ export function findSharedImportMismatches(
     for (const [from, names] of Object.entries(importer.imports)) {
       const target = byName.get(from);
       if (!target) continue;
-      const available = exportsOf(target, new Set());
-      const missing = [...new Set(names)].filter(
-        (name) => name !== '*' && !available.has(name)
-      );
+      const missing: string[] = [];
+      const ambiguous: AmbiguousExport[] = [];
+      for (const name of new Set(names)) {
+        if (name === '*') continue;
+        const resolved = resolveExport(target, name, new Set());
+        if (resolved === null) {
+          missing.push(name);
+        } else if ('sources' in resolved) {
+          missing.push(name);
+          ambiguous.push({ name, ...resolved });
+        }
+      }
       if (missing.length === 0) continue;
       mismatches.push({
         importer: importer.fileName,
         importerPackage: packageOfFile.get(importer.fileName),
         packageName: from,
         missing,
+        ...(ambiguous.length > 0 ? { ambiguous } : {}),
         discoveryFailure: target.discoveryFailure,
       });
     }
@@ -1741,7 +1861,11 @@ export function findSharedImportMismatches(
  * default export is the package's whole `module.exports`), or bundle the
  * package instead of sharing it. A shared chunk's import comes from that
  * package's own code, which cannot change, so there the likely cause is two
- * package versions that do not fit each other.
+ * package versions that do not fit each other. An ambiguous name usually
+ * comes from two shared packages that each bundle their own copy of a third
+ * one they both re-export; sharing the third one too gives both `export *`
+ * lines one binding. Neither of the other fixes resolves that, so they are
+ * left out for a mismatch whose names are all ambiguous.
  */
 export function formatSharedImportMismatchError(
   mismatches: readonly SharedImportMismatch[]
@@ -1750,12 +1874,21 @@ export function formatSharedImportMismatchError(
     const line =
       `  - '${mismatch.importer}' imports ${mismatch.missing.join(', ')} ` +
       `from '${mismatch.packageName}'`;
-    return mismatch.discoveryFailure
-      ? `${line}\n    (${mismatch.discoveryFailure})`
-      : line;
+    const reasons = mismatch.discoveryFailure ? [mismatch.discoveryFailure] : [];
+    for (const ambiguity of mismatch.ambiguous ?? []) {
+      reasons.push(
+        `${ambiguity.name} is ambiguous: '${ambiguity.chunk}' has export * from ` +
+          `both '${ambiguity.sources[0]}' and '${ambiguity.sources[1]}', which ` +
+          `supply it from different bindings`
+      );
+    }
+    return [line, ...reasons.map((reason) => `    (${reason})`)].join('\n');
   });
+  const notAllAmbiguous = mismatches.filter(
+    (mismatch) => (mismatch.ambiguous?.length ?? 0) < mismatch.missing.length
+  );
   const fixes: string[] = [];
-  if (mismatches.some((mismatch) => mismatch.importerPackage === undefined)) {
+  if (notAllAmbiguous.some((mismatch) => !mismatch.importerPackage)) {
     fixes.push(
       `Fix, where one of the MFE's own chunks imports the name: import only ` +
         `names the package exports. If a discovery failure is listed, the ` +
@@ -1765,7 +1898,7 @@ export function formatSharedImportMismatchError(
         `from build.rollupOptions.external so Vite bundles it into the MFE.`
     );
   }
-  if (mismatches.some((mismatch) => mismatch.importerPackage !== undefined)) {
+  if (notAllAmbiguous.some((mismatch) => mismatch.importerPackage)) {
     fixes.push(
       `Fix, where a shared chunk imports the name: that package's own code ` +
         `asks for it, so the import cannot change. If a discovery failure is ` +
@@ -1773,6 +1906,15 @@ export function formatSharedImportMismatchError(
         `build.rollupOptions.external. Otherwise the installed versions of ` +
         `the two packages most likely do not fit each other: install versions ` +
         `that do.`
+    );
+  }
+  if (mismatches.some((mismatch) => mismatch.ambiguous !== undefined)) {
+    fixes.push(
+      `Fix, where a name is ambiguous: ES modules do not export a name that ` +
+        `two export * lines supply from different bindings. When both packages ` +
+        `re-export a package they depend on, share that package too (add it to ` +
+        `build.rollupOptions.external), so both lines lead to its one shared ` +
+        `chunk. Otherwise import the name from the package that declares it.`
     );
   }
   return (

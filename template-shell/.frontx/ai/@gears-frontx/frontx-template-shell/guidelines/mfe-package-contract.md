@@ -109,7 +109,11 @@ points every bare import at that file. ES modules link by name, so
 `frontxMfGts()` fails the build when a chunk imports a name that the shared
 chunk for that package does not export. The error names the chunk, the name
 and the package. When the importing chunk is itself a shared chunk, the two
-packages' installed versions most likely do not fit each other.
+packages' installed versions most likely do not fit each other. A shared chunk
+does not export a name that two of its `export * from` lines supply from
+different bindings, as ES modules link it, so importing that name fails the
+build too. This happens when two shared packages each bundle their own copy of
+a third package they both re-export; sharing the third package as well fixes it.
 
 A CommonJS package needs one more step. esbuild gives its chunk only a default
 export, the package's whole `module.exports`, so `frontxMfGts()` finds the
