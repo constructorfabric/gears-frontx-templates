@@ -328,6 +328,18 @@ const FIXTURES: Record<string, { pkg?: Record<string, unknown>; files: Files }> 
   },
 };
 
+/** Two packages that require each other, minted apart from `FIXTURES`. */
+const CYCLE_FIXTURES: typeof FIXTURES = {
+  'cycle-a': {
+    pkg: { dependencies: { 'cycle-b': '*' } },
+    files: { 'index.js': 'exports.getB = () => require("cycle-b");\n' },
+  },
+  'cycle-b': {
+    pkg: { dependencies: { 'cycle-a': '*' } },
+    files: { 'index.js': 'exports.getA = () => require("cycle-a");\n' },
+  },
+};
+
 describe('shared chunks built from fixture packages', () => {
   let root = '';
   let sharedChunks: SharedChunk[] = [];
@@ -372,7 +384,7 @@ describe('shared chunks built from fixture packages', () => {
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'mf-gts-shared-imports-'));
     fs.writeFileSync(path.join(root, 'package.json'), '{"name":"fixture-root"}\n');
-    for (const [name, fixture] of Object.entries(FIXTURES)) {
+    for (const [name, fixture] of Object.entries({ ...FIXTURES, ...CYCLE_FIXTURES })) {
       const dir = path.join(root, 'node_modules', name);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(
@@ -476,5 +488,22 @@ describe('shared chunks built from fixture packages', () => {
     const mod = await load('cjs-uses-default');
     expect((mod.getX as () => unknown)()).toBe(6);
     expect((mod.getDefault as () => unknown)()).toBe('d');
+  });
+
+  it('fails a shared-chunk cycle, reading its edges from the package root', async () => {
+    // The cycle guard reads each chunk's imports from esbuild's metafile,
+    // whose output paths are relative to the package root, not to the
+    // directory the tests run in. Read against the wrong one, a chunk has no
+    // edges and the cycle passes.
+    const builder = new StandaloneEsmBuilder(
+      Object.keys(CYCLE_FIXTURES),
+      path.join(root, 'dist', 'cycle'),
+      root
+    );
+    await expect(
+      builder.build((message) => {
+        throw new Error(message);
+      })
+    ).rejects.toThrow('Cyclic shared-dependency graph: cycle-a -> cycle-b -> cycle-a');
   });
 });
