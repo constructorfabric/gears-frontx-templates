@@ -25,8 +25,9 @@ export function labelDictionaryUrl(file: string, publicPath: string, aggregateUr
 export class MenuLabels {
   private sources: readonly LabelSource[] = [];
   private aggregateUrl = '';
-  private readonly cache = new Map<string, Promise<ScreenLabels | null>>();
+  private readonly cache = new Map<string, Promise<ScreenLabels | null | undefined>>();
   private readonly resolved = new Map<string, Map<string, string>>();
+  private generation = 0;
 
   constructor(private typeSystem: Pick<typeof gtsPlugin, 'register' | 'registerSchema'>) {}
 
@@ -38,6 +39,7 @@ export class MenuLabels {
     this.aggregateUrl = aggregateUrl;
     this.cache.clear();
     this.resolved.clear();
+    this.generation += 1;
   }
 
   peek(language: string): Map<string, string> | undefined {
@@ -45,22 +47,25 @@ export class MenuLabels {
   }
 
   async load(language: string): Promise<Map<string, string>> {
+    const generation = this.generation;
+    let complete = true;
     const dictionaries = this.sources.flatMap((source) => {
       const owned = new Set((source.extensions ?? []).map(({ id }) => id));
       return (Array.isArray(source.labelDictionaries) ? source.labelDictionaries : [])
         .filter((dictionary) => dictionary?.language === language)
         .map(async (dictionary) => {
-          const labels = (await this.fetchOnce(language, dictionary.file, source.manifest.metaData.publicPath))?.labels ?? [];
-          return labels.filter(({ extension }) => owned.has(extension));
+          const result = await this.fetchOnce(language, dictionary.file, source.manifest.metaData.publicPath);
+          if (result === undefined) complete = false;
+          return (result?.labels ?? []).filter(({ extension }) => owned.has(extension));
         });
     });
     const results = await Promise.all(dictionaries);
     const labels = new Map(results.flat().map(({ extension, label }) => [extension, label] as const));
-    this.resolved.set(language, labels);
+    if (complete && generation === this.generation) this.resolved.set(language, labels);
     return labels;
   }
 
-  private fetchOnce(language: string, file: string, publicPath: string): Promise<ScreenLabels | null> {
+  private fetchOnce(language: string, file: string, publicPath: string): Promise<ScreenLabels | null | undefined> {
     const key = JSON.stringify([language, publicPath, file]);
     let pending = this.cache.get(key);
     if (!pending) {
@@ -90,7 +95,7 @@ export class MenuLabels {
         } catch (error) {
           if (retry && this.cache.get(key) === pending) this.cache.delete(key);
           console.warn(`[Menu labels] Ignoring ${url}:`, error);
-          return null;
+          return retry ? undefined : null;
         }
       })();
       this.cache.set(key, pending);

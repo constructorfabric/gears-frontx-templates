@@ -45,7 +45,7 @@
  * out next to the shell and readdresses them there (`scripts/layout-dist.ts`).
  */
 
-import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -359,7 +359,7 @@ export class ManifestGenerator {
     const languages = new Set<string>();
     const owned = new Set(mfeJson.extensions.map(({ id }) => id));
     const publicDir = join(pkgPath, 'public');
-    if (!existsSync(publicDir)) return fail('file not found under public/');
+    if (!existsSync(publicDir)) return fail('requires a public/ directory, which is missing');
     const publicRoot = realpathSync(publicDir);
     if (!publicRoot.startsWith(`${realpathSync(pkgPath)}${sep}`)) return fail('public/ must be inside the package');
     return declared.map((item: unknown, index: number) => {
@@ -369,30 +369,39 @@ export class ManifestGenerator {
       if (typeof language !== 'string' || typeof file !== 'string' || Object.keys(item).length !== 2) {
         return fail(`${field} requires only string language and file`);
       }
-      if (!languageCodeSchema.enum.includes(language)) fail(`${field} has unsupported language ${language}`);
-      if (languages.has(language)) fail(`${field} repeats language ${language}`);
+      if (!languageCodeSchema.enum.includes(language)) return fail(`${field} has unsupported language ${language}`);
+      if (languages.has(language)) return fail(`${field} repeats language ${language}`);
       languages.add(language);
       if (!file || /^[a-z][a-z0-9+.-]*:/i.test(file) || file.startsWith('/') || file.includes('\\') || file.split('/').includes('..')) {
-        fail(`${field} file must be a relative path inside public/`);
+        return fail(`${field} file must be a relative path inside public/`);
       }
       const path = join(publicRoot, file);
-      if (!existsSync(path) || !realpathSync(path).startsWith(`${publicRoot}${sep}`)) fail(`${field} file not found under public/: ${file}`);
+      if (!existsSync(path) || !realpathSync(path).startsWith(`${publicRoot}${sep}`) || !statSync(path).isFile()) {
+        return fail(`${field} file not found under public/: ${file}`);
+      }
       let dictionary: unknown;
       try {
         dictionary = JSON.parse(readFileSync(path, 'utf-8'));
       } catch {
-        fail(`${field} file is not valid JSON: ${file}`);
+        return fail(`${field} file is not valid JSON: ${file}`);
       }
-      if (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary)) fail(`${field} file is not a screen labels dictionary: ${file}`);
+      if (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary)) {
+        return fail(`${field} file is not a screen labels dictionary: ${file}`);
+      }
       const content = dictionary as Record<string, unknown>;
-      const labels = content.labels;
-      if (content.type !== 'gts.frontx.i18n.dict.screen_labels.v1~' || content.language !== language || !Array.isArray(labels)) {
-        return fail(`${field} file has wrong type, language, or labels: ${file}`);
-      }
-      for (const [labelIndex, label] of labels.entries()) {
-        if (!label || typeof label !== 'object' || !owned.has((label as Record<string, unknown>).extension as string)) {
-          fail(`${field} file labels[${labelIndex}].extension is not owned by this package`);
-        }
+      if (content.type !== 'gts.frontx.i18n.dict.screen_labels.v1~') return fail(`${field} file has wrong type: ${file}`);
+      if (content.language !== language) return fail(`${field} file language does not match ${language}: ${file}`);
+      if (!Array.isArray(content.labels)) return fail(`${field} file labels must be an array: ${file}`);
+      const extensions = new Set<string>();
+      for (const [labelIndex, entry] of content.labels.entries()) {
+        const at = `${field} file labels[${labelIndex}]`;
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return fail(`${at} must be an object`);
+        const { extension, label } = entry as Record<string, unknown>;
+        if (typeof extension !== 'string') return fail(`${at}.extension must be a string`);
+        if (typeof label !== 'string' || !label) return fail(`${at}.label must be a non-empty string`);
+        if (!owned.has(extension)) return fail(`${at}.extension is not owned by this package`);
+        if (extensions.has(extension)) return fail(`${at} repeats extension ${extension}`);
+        extensions.add(extension);
       }
       return { language, file };
     });
