@@ -133,6 +133,7 @@ interface RawEnrichedMfeJson {
   entries: RawEntry[];
   extensions: RawExtension[];
   schemas?: RawSchema[];
+  labelDictionaries?: Array<{ language: string; file: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ interface OutMfeManifestConfig {
   entries: OutMfeEntryMF[];
   extensions: RawExtension[];
   schemas?: RawSchema[];
+  labelDictionaries?: Array<{ language: string; file: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +338,7 @@ export class ManifestGenerator {
       entries: outEntries,
       extensions: mfeJson.extensions,
       ...(mfeJson.schemas !== undefined && { schemas: mfeJson.schemas }),
+      ...(mfeJson.labelDictionaries !== undefined && { labelDictionaries: mfeJson.labelDictionaries }),
     };
   }
 

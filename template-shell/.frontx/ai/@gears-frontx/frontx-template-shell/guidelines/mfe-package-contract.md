@@ -62,7 +62,7 @@ three, on one shared predicate per rule rather than a copy each.
    ID), `entries[]` (exposed modules + required/optional shared properties +
    actions), and `extensions[]` (domain + presentation metadata per screen or
    widget the package contributes), plus the optional `templateExample` flag
-   described above. See the `gts-id-conventions` guideline in the `template-mfe`
+   described above. Optional `labelDictionaries[]` entries name a language code and a JSON file relative to the MFE's served root. Put those files in `public/labels/`; each validates as `gts.frontx.i18n.dict.screen_labels.v1~`. See the `gts-id-conventions` guideline in the `template-mfe`
    AI bundle for the ID taxonomy these fields use.
 3. **`vite.config.ts`** that runs `@module-federation/vite`'s `federation()`
    plugin, then `frontxMfGts()` (imported from

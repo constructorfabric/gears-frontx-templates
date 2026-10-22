@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -62,6 +62,7 @@ interface ManifestOverrides {
   omitEntries?: boolean;
   /** Writes both collections present but empty, which is what a contributing-nothing MFE emits. */
   emptyCollections?: boolean;
+  labelDictionaries?: Array<{ language: string; file: string }>;
 }
 
 /**
@@ -93,6 +94,7 @@ function mfePackageWithIds(overrides: ManifestOverrides): void {
         },
         shared: [],
       },
+      ...(overrides.labelDictionaries && { labelDictionaries: overrides.labelDictionaries }),
       ...(overrides.omitEntries
         ? {}
         : {
@@ -159,6 +161,16 @@ afterEach(() => {
 });
 
 describe('ManifestGenerator - GTS identifier validation', () => {
+  it('preserves each MFE label dictionary declaration in the served aggregate', () => {
+    const declared = [{ language: 'en', file: 'labels/en.json' }];
+    mfePackageWithIds({ labelDictionaries: declared });
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ labelDictionaries?: typeof declared }>;
+    expect(aggregate[0].labelDictionaries).toEqual(declared);
+  });
+
   it('refuses the run when an extension id carries a segment one dot-token short of five', () => {
     mfePackageWithIds({ extensionId: FOUR_TOKEN_EXTENSION_ID });
 
