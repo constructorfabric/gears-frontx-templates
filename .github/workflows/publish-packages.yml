@@ -1,5 +1,6 @@
-# Publishes the six publishable template-shell workspace subpackages
-# (template-shell/packages/*), version-gated, in dependency order.
+# Publishes the publishable template workspace subpackages - the six
+# template-shell/packages/* and template-calendar/packages/calendar-kit -
+# version-gated, in dependency order.
 # `template-shell` itself is `"private": true` - a full app template meant to
 # be seeded, not installed as a dependency - so it is never published; the
 # `detect-template` job below skips any manifest with `private: true` before
@@ -61,22 +62,26 @@ jobs:
           BASE_COMMIT="${{ github.event.before }}"
           echo "Comparing HEAD against pre-push state: $BASE_COMMIT"
 
-          # The template package itself + every workspace subpackage - derived
-          # from template-shell/package.json's OWN "workspaces" field rather
-          # than a hardcoded glob list, so a workspace pattern added there
-          # (src-app/verify_packages/*, say) is picked up here without also
-          # editing this workflow. A hand-maintained copy of that list drifted
-          # once already: this glob pair used to be the whole workspaces
-          # field, until a third pattern was added to package.json and not
-          # here, silently exempting anything published under it from
-          # version-change detection.
-          mapfile -t WORKSPACE_GLOBS < <(jq -r '.workspaces[]' template-shell/package.json)
-          MANIFESTS=("template-shell/package.json")
-          for glob in "${WORKSPACE_GLOBS[@]}"; do
-            # Intentionally unquoted: each glob (e.g. "packages/*") must
-            # shell-expand against the filesystem, same as the literal globs
-            # this replaces did.
-            MANIFESTS+=(template-shell/$glob/package.json)
+          # Each template root + every workspace subpackage - derived from
+          # each template's OWN "workspaces" field rather than a hardcoded glob
+          # list, so a workspace pattern added there (src-app/verify_packages/*,
+          # say) or a new template carrying its own package (template-calendar)
+          # is picked up here without also editing this workflow. A
+          # hand-maintained copy of that list drifted once already: this glob
+          # pair used to be the whole workspaces field, until a third pattern
+          # was added to package.json and not here, silently exempting
+          # anything published under it from version-change detection.
+          MANIFESTS=()
+          for root in template-*; do
+            [ -f "$root/package.json" ] || continue
+            MANIFESTS+=("$root/package.json")
+            mapfile -t WORKSPACE_GLOBS < <(jq -r '.workspaces // [] | .[]' "$root/package.json")
+            for glob in "${WORKSPACE_GLOBS[@]}"; do
+              # Intentionally unquoted: each glob (e.g. "packages/*") must
+              # shell-expand against the filesystem, same as the literal globs
+              # this replaces did.
+              MANIFESTS+=($root/$glob/package.json)
+            done
           done
 
           for pkg_json in "${MANIFESTS[@]}"; do
@@ -111,8 +116,8 @@ jobs:
 
   publish-template:
     # Job id kept as `publish-template` (other jobs reference it via `needs`);
-    # the display name says what actually gets published - the six workspace
-    # subpackages, never the private `template-shell` root itself.
+    # the display name says what actually gets published - the workspace
+    # subpackages, never a private template root itself.
     name: Publish template subpackages
     needs: [detect-template]
     if: needs.detect-template.outputs.has_changes == 'true'
@@ -140,6 +145,19 @@ jobs:
           npm ci
           npm run build:package
           npm run build:packages
+
+      - name: Install + build the other templates with a changed package
+        env:
+          PACKAGES: ${{ needs.detect-template.outputs.packages }}
+        run: |
+          # Every template root that owns a changed package, so a new template is
+          # built here without a workflow edit, the same way detection picks it
+          # up. template-shell is built above with its own scripts.
+          for root in $(jq -r '.[].path | split("/")[0]' <<< "$PACKAGES" | sort -u); do
+            [ "$root" = "template-shell" ] && continue
+            echo "Building $root"
+            (cd "$root" && npm ci && npm run build)
+          done
 
       - name: Publish template packages
         id: publish
@@ -256,7 +274,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           }
 
-          report "Shell template" \
+          report "Template packages" \
             "${{ needs.detect-template.outputs.has_changes }}" \
             "${{ needs.publish-template.result }}" \
             '${{ needs.publish-template.outputs.published }}' \
