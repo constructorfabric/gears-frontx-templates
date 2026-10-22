@@ -143,6 +143,7 @@ _blank-mfe/
     ├── slices/               # State slices
     ├── shared/
     │   ├── useScreenTranslations.ts    # i18n hook
+    │   ├── useHostDirection.ts         # shadow host text direction
     │   └── anchorKitThemeOnShadowHost.ts  # ui-kit token re-anchoring
     └── screens/
         └── home/
