@@ -68,8 +68,12 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   const language = useSyncExternalStore(
     useCallback((listener: () => void) => {
       const subscription = eventBus.on('i18n/language/changed', listener);
-      return () => subscription.unsubscribe();
-    }, []),
+      const unsubscribeRegistry = i18nRegistry.subscribe(listener);
+      return () => {
+        subscription.unsubscribe();
+        unsubscribeRegistry();
+      };
+    }, [i18nRegistry]),
     () => i18nRegistry.getLanguage() ?? 'en',
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();

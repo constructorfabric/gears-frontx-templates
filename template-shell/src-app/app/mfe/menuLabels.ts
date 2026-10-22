@@ -54,6 +54,7 @@ export class MenuLabels {
           const response = await fetch(url);
           if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
           const dictionary = (await response.json()) as ScreenLabels;
+          if (dictionary.type !== 'gts.frontx.i18n.dict.screen_labels.v1~') throw new Error('unexpected dictionary type');
           if (dictionary.language !== language) throw new Error('dictionary language does not match manifest');
           this.typeSystem.register(dictionary);
           return dictionary;
