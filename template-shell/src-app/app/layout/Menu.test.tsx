@@ -52,6 +52,7 @@ const tasks = screenExtension(
 
 describe('Menu', () => {
   let language = 'en';
+  let registryListeners: Set<() => void>;
   let app: {
     mfeRegistry: {
       getExtensionsForDomain: ReturnType<typeof vi.fn>;
@@ -59,10 +60,12 @@ describe('Menu', () => {
     };
     i18nRegistry: {
       getLanguage: () => string;
+      subscribe: (listener: () => void) => () => void;
     };
   };
 
   beforeEach(() => {
+    registryListeners = new Set();
     app = {
       mfeRegistry: {
         getExtensionsForDomain: vi.fn().mockReturnValue([tasks]),
@@ -70,6 +73,10 @@ describe('Menu', () => {
       },
       i18nRegistry: {
         getLanguage: () => language,
+        subscribe: (listener) => {
+          registryListeners.add(listener);
+          return () => { registryListeners.delete(listener); };
+        },
       },
     };
     language = 'en';
@@ -237,6 +244,22 @@ describe('Menu', () => {
     expect(screen.getByTestId(`menu-item-${tasks.id}`).getAttribute('title')).toBe('Tasks');
 
     await act(async () => { resolveFrench(new Map([[tasks.id, 'Taches']])); });
+    expect(screen.getByText('Taches')).toBeTruthy();
+  });
+
+  it('reloads labels after a direct registry language change and translation notification', async () => {
+    vi.mocked(menuLabels.load).mockImplementation(async (code) => new Map([
+      [tasks.id, code === 'fr' ? 'Taches' : 'Translated tasks'],
+    ]));
+    await renderSettled();
+    expect(screen.getByText('Translated tasks')).toBeTruthy();
+
+    await act(async () => {
+      language = 'fr';
+      registryListeners.forEach((listener) => listener());
+    });
+
+    expect(menuLabels.load).toHaveBeenCalledWith('fr');
     expect(screen.getByText('Taches')).toBeTruthy();
   });
 

@@ -96,8 +96,10 @@ describe('application-layer derived GTS schemas', () => {
     const plugin = buildPluginWithDerivedSchemas();
 
     it('keeps the set of 36 supported language codes', () => {
-      expect(languageCodeSchema.enum).toHaveLength(36);
-      expect(new Set(languageCodeSchema.enum as string[])).toEqual(new Set([
+      const codes = languageCodeSchema.enum as string[];
+      expect(codes).toHaveLength(36);
+      expect(new Set(codes).size).toBe(codes.length);
+      expect(new Set(codes)).toEqual(new Set([
         'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'pl', 'uk', 'cs', 'ar',
         'he', 'fa', 'ur', 'tr', 'zh', 'zh-TW', 'ja', 'ko', 'vi', 'th', 'id', 'hi',
         'bn', 'sv', 'da', 'no', 'fi', 'el', 'ro', 'hu', 'ms', 'tl', 'ta', 'sw',
@@ -108,6 +110,7 @@ describe('application-layer derived GTS schemas', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       expect(schema).toBeDefined();
       expect(schema?.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_LANGUAGE}`);
+      expect(getValuePropertySchema(schema).$ref).toBe('gts://gts.frontx.i18n.lang.code.v1~');
     });
 
     it('uses allOf derivation from base shared_property schema', () => {

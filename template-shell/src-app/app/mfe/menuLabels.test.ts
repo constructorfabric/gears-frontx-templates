@@ -115,6 +115,30 @@ describe('menu label loading', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a valid instance of another type without registering it or replacing the fallback label', async () => {
+    const plugin = store();
+    const loader = new MenuLabels(plugin);
+    const id = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~frontx.mfes.comm.label_probe.v1';
+    const unrelated = {
+      ...dictionary('en', 'Hijacked label'),
+      id,
+      type: 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~',
+      value: 'en',
+    };
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => unrelated })));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const labels = await loader.load('en');
+    expect(labels.get(extension) ?? 'Profile').toBe('Profile');
+    expect(plugin.validateInstance(id).valid).toBe(false);
+    expect(warning).toHaveBeenCalledTimes(1);
+    warning.mockRestore();
+  });
+
   it.each([
     ['failed fetch', () => ({ ok: false, status: 404, statusText: 'Not Found' })],
     ['invalid dictionary', () => ({ ok: true, json: async () => dictionary('en', '') })],
