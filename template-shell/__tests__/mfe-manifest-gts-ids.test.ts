@@ -209,10 +209,11 @@ describe('ManifestGenerator - GTS identifier validation', () => {
   });
 
   it.each(['https://example.com/en.json', '/labels/en.json', '//example.com/en.json', '../en.json', 'labels/../en.json', 'labels\\en.json'])('refuses dictionary path %s outside public', (file) => {
-      mfePackageWithIds({ labelDictionaries: [{ language: 'en', file }] });
-      writeDictionary();
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file }] });
+    writeDictionary();
 
-      expect(messageFromRefusal()).toContain('relative path inside public/');
+    expect(messageFromRefusal()).toContain('relative path inside public/');
+    expect(existsSync(outputFile)).toBe(false);
   });
 
   it('refuses a public directory linked outside the package', () => {
@@ -222,19 +223,41 @@ describe('ManifestGenerator - GTS identifier validation', () => {
     symlinkSync(external, join(mfePackagesDir, PACKAGE_NAME, 'public'));
 
     expect(messageFromRefusal()).toContain('public/ must be inside the package');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a declaration when the package has no public directory', () => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+
+    expect(messageFromRefusal()).toContain('public/ directory, which is missing');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a declared file that is a directory', () => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels' }] });
+    writeDictionary();
+
+    expect(messageFromRefusal()).toContain('file not found under public/: labels');
+    expect(existsSync(outputFile)).toBe(false);
   });
 
   it.each([
     ['invalid JSON', '{', 'not valid JSON'],
     ['wrong type', { type: 'wrong', language: 'en', labels: [] }, 'wrong type'],
-    ['wrong language', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'fr', labels: [] }, 'wrong type'],
-    ['missing labels', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en' }, 'wrong type'],
+    ['wrong language', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'fr', labels: [] }, 'language does not match en'],
+    ['missing labels', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en' }, 'labels must be an array'],
+    ['non-object label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: ['Home'] }, 'labels[0] must be an object'],
+    ['non-string extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: 12, label: 'Home' }] }, 'labels[0].extension must be a string'],
+    ['missing label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID }] }, 'labels[0].label must be a non-empty string'],
+    ['empty label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: '' }] }, 'labels[0].label must be a non-empty string'],
     ['foreign extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: 'other', label: 'Other' }] }, 'not owned'],
+    ['repeated extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: 'Home' }, { extension: VALID_EXTENSION_ID, label: 'Start' }] }, 'labels[1] repeats extension'],
   ])('refuses dictionary file with %s', (_name, contents, message) => {
     mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
     writeDictionary(contents);
 
     expect(messageFromRefusal()).toContain(message);
+    expect(existsSync(outputFile)).toBe(false);
   });
 
   it('refuses the run when an extension id carries a segment one dot-token short of five', () => {

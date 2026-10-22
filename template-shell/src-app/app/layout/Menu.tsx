@@ -133,6 +133,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
 
   // No registry means no microfrontends plugin: nothing is ever coming.
   const screens = mfeRegistry ? extensions : [];
+  const labels = translated?.language === language ? translated.labels : menuLabels.peek(language);
 
   const handleToggleCollapse = () => {
     eventBus.emit('layout/menu/collapsed', { collapsed: !collapsed });
@@ -188,7 +189,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
             screens?.map((ext) => {
               const isActive = ext.id === mountedId;
               const pres = ext.presentation;
-              const label = (translated?.language === language ? translated.labels : menuLabels.peek(language))?.get(ext.id) ?? pres.label;
+              const label = labels?.get(ext.id) ?? pres.label;
               return (
                 <SidebarMenuItem key={ext.id}>
                   <SidebarMenuButton

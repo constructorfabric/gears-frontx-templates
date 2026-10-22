@@ -181,6 +181,40 @@ describe('menu label loading', () => {
     warning.mockRestore();
   });
 
+  it('does not publish a load with a retryable failure to peek', async () => {
+    const loader = new MenuLabels(store());
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, statusText: 'Unavailable' })));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect((await loader.load('en')).size).toBe(0);
+    expect(loader.peek('en')).toBeUndefined();
+    warning.mockRestore();
+  });
+
+  it('does not publish a load superseded by a later configure to peek', async () => {
+    const loader = new MenuLabels(store());
+    const source = {
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    };
+    loader.configure([source], 'https://example.com/generated-mfe-manifests.json');
+    let respond = (_value: unknown) => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { respond = resolve; })));
+
+    const stale = loader.load('en');
+    loader.configure([source], 'https://example.com/other/generated-mfe-manifests.json');
+    respond({ ok: true, json: async () => dictionary('en') });
+
+    expect((await stale).get(extension)).toBe('Profile');
+    expect(loader.peek('en')).toBeUndefined();
+  });
+
   it('skips non-array manifest dictionaries and loads valid siblings', async () => {
     const loader = new MenuLabels(store());
     loader.configure([
