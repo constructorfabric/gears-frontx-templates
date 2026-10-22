@@ -71,10 +71,12 @@ describe('menu label loading', () => {
     loader.configure([
       {
         manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+        extensions: [{ id: extension }],
         labelDictionaries: [{ language: 'en', file: 'labels/en.json' }, { language: 'fr', file: 'labels/fr.json' }],
       },
       {
         manifest: { metaData: { publicPath: 'mfe/_blank-mfe/' } },
+        extensions: [{ id: blankExtension }],
         labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
       },
     ], 'https://example.com/apps/console/generated-mfe-manifests.json');
@@ -104,6 +106,7 @@ describe('menu label loading', () => {
       },
       {
         manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+        extensions: [{ id: extension }],
         labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
       },
     ], 'https://example.com/generated-mfe-manifests.json');
@@ -113,6 +116,46 @@ describe('menu label loading', () => {
     expect((await loader.load('en')).get(extension)).toBe('Profile');
     expect((await loader.load('fr')).size).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips non-object dictionary entries and loads valid siblings', async () => {
+    const loader = new MenuLabels(store());
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [null, 'labels/en.json', { language: 'en', file: 'labels/en.json' }] as never,
+    }], 'https://example.com/generated-mfe-manifests.json');
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => dictionary('en') }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await loader.load('en')).get(extension)).toBe('Profile');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops labels for extensions the declaring manifest does not own', async () => {
+    const loader = new MenuLabels(store());
+    loader.configure([
+      {
+        manifest: { metaData: { publicPath: 'mfe/_blank-mfe/' } },
+        extensions: [{ id: blankExtension }],
+        labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+      },
+      {
+        manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+        extensions: [{ id: extension }],
+        labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+      },
+    ], 'https://example.com/generated-mfe-manifests.json');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('/_blank-mfe/')
+        ? { ...dictionary('en'), labels: [{ extension: blankExtension, label: 'Blank Home' }] }
+        : { ...dictionary('en'), labels: [{ extension, label: 'Profile' }, { extension: blankExtension, label: 'Hijacked' }] },
+    })));
+
+    const labels = await loader.load('en');
+    expect(labels.get(extension)).toBe('Profile');
+    expect(labels.get(blankExtension)).toBe('Blank Home');
   });
 
   it('ignores a valid instance of another type without registering it or replacing the fallback label', async () => {
@@ -127,6 +170,7 @@ describe('menu label loading', () => {
     };
     loader.configure([{
       manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
       labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
     }], 'https://example.com/generated-mfe-manifests.json');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => unrelated })));
@@ -149,6 +193,7 @@ describe('menu label loading', () => {
     const loader = new MenuLabels(store());
     loader.configure([{
       manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
       labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
     }], 'https://example.com/generated-mfe-manifests.json');
     const fetchMock = vi.fn(async () => response());
