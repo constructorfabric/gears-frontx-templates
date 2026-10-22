@@ -60,9 +60,11 @@ const aggregate = [
 
 async function buildApp() {
   const react = await import('@gears-frontx/react');
-  const { themeSchema, languageSchema } = await import('@gears-frontx/frontx-template-shell');
+  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import('@gears-frontx/frontx-template-shell');
   react.gtsPlugin.registerSchema(themeSchema);
+  react.gtsPlugin.registerSchema(languageCodeSchema);
   react.gtsPlugin.registerSchema(languageSchema);
+  react.gtsPlugin.registerSchema(screenLabelsSchema);
   const app = react
     .createFrontX()
     .useAll(react.presets.full())

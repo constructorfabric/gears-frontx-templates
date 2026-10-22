@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
 import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../../src/mfe/constants';
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
-import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import { themeSchema, languageCodeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
 
 /**
  * Returns the `value` property of a shared_property schema or fails the test
@@ -41,6 +41,7 @@ function getValuePropertySchema(schema: JSONSchema | undefined): JSONSchema {
 function buildPluginWithDerivedSchemas(): GtsPlugin {
   const plugin = new GtsPlugin({ isolated: true });
   plugin.registerSchema(themeSchema);
+  plugin.registerSchema(languageCodeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
   return plugin;
@@ -94,19 +95,24 @@ describe('application-layer derived GTS schemas', () => {
   describe('language schema', () => {
     const plugin = buildPluginWithDerivedSchemas();
 
+    it('keeps the supported language codes in order', () => {
+      expect(languageCodeSchema.enum).toEqual([
+        'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'pl', 'uk', 'cs', 'ar',
+        'he', 'fa', 'ur', 'tr', 'zh', 'zh-TW', 'ja', 'ko', 'vi', 'th', 'id', 'hi',
+        'bn', 'sv', 'da', 'no', 'fi', 'el', 'ro', 'hu', 'ms', 'tl', 'ta', 'sw',
+      ]);
+    });
+
     it('is accessible via getSchema using the language property type ID', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       expect(schema).toBeDefined();
       expect(schema?.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_LANGUAGE}`);
     });
 
-    it('constrains value to 36 enum strings', () => {
+    it('references the supported language code type', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       const valueSchema = getValuePropertySchema(schema);
-      expect(valueSchema.type).toBe('string');
-      expect(valueSchema.enum).toBeDefined();
-      expect(Array.isArray(valueSchema.enum)).toBe(true);
-      expect(valueSchema.enum as unknown[]).toHaveLength(36);
+      expect(valueSchema.$ref).toBe('gts://gts.frontx.i18n.lang.code.v1~');
     });
 
     it('uses allOf derivation from base shared_property schema', () => {

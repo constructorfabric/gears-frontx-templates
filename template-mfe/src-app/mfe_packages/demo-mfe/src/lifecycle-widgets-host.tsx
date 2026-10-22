@@ -62,6 +62,7 @@ import {
 } from '@gears-frontx/react';
 import {
   themeSchema,
+  languageCodeSchema,
   languageSchema,
   extensionScreenSchema,
 } from '@gears-frontx/frontx-template-shell';
@@ -216,9 +217,10 @@ export async function bootstrapWidgetsRuntime(
   // references them by `x-gts-ref` in its own `sharedProperties` — not only
   // the well-known `screenDomain` registered below, but also any
   // manifest-declared domain in the loop that follows. Registering these
-  // three ahead of the manifest-driven domain loop covers the
+  // solution schemas ahead of the manifest-driven domain loop cover the
   // application-level schema ordering rule.
   registry.typeSystem.registerSchema(themeSchema);
+  registry.typeSystem.registerSchema(languageCodeSchema);
   registry.typeSystem.registerSchema(languageSchema);
   registry.typeSystem.registerSchema(extensionScreenSchema);
 

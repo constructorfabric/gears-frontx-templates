@@ -185,6 +185,7 @@ dist/
     ├── remoteEntry.js
     ├── mf-manifest.json
     ├── assets/                   # hashed names
+    ├── labels/                   # optional per-language menu labels
     └── shared/                   # shared dependencies, names without a hash
 ```
 

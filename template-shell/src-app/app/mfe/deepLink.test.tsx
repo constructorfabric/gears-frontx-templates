@@ -26,7 +26,7 @@ import {
   type MfeEntryLifecycle,
   type MfeEntryMF,
 } from '@gears-frontx/react';
-import { themeSchema, languageSchema } from '@gears-frontx/frontx-template-shell';
+import { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
 import { MfeScreenContainer } from './MfeScreenContainer';
 import { screenState } from './screenState';
 
@@ -105,7 +105,9 @@ describe('a deep link through the real router', () => {
     // The application schemas `main.tsx` registers before it builds the app;
     // the screen extension type is the screen container's to register.
     gtsPlugin.registerSchema(themeSchema);
+    gtsPlugin.registerSchema(languageCodeSchema);
     gtsPlugin.registerSchema(languageSchema);
+    gtsPlugin.registerSchema(screenLabelsSchema);
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(new Response(JSON.stringify(aggregate))));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });

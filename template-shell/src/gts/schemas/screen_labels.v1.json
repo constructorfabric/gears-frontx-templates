@@ -1,0 +1,20 @@
+{
+  "$id": "gts://gts.frontx.i18n.dict.screen_labels.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "language": { "$ref": "gts://gts.frontx.i18n.lang.code.v1~" },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "extension": { "type": "string", "x-gts-ref": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~*" },
+          "label": { "type": "string", "minLength": 1 }
+        },
+        "required": ["extension", "label"]
+      }
+    }
+  },
+  "required": ["language", "labels"]
+}

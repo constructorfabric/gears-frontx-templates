@@ -1,0 +1,26 @@
+{
+  "type": "gts.frontx.i18n.dict.screen_labels.v1~",
+  "language": "en",
+  "labels": [
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1",
+      "label": "Widgets Host"
+    },
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1",
+      "label": "Hello World"
+    },
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.profile.v1",
+      "label": "Profile"
+    },
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.theme.v1",
+      "label": "Current Theme"
+    },
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.uikit.v1",
+      "label": "UIKit Elements"
+    }
+  ]
+}

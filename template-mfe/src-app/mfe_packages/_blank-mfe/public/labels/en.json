@@ -1,0 +1,10 @@
+{
+  "type": "gts.frontx.i18n.dict.screen_labels.v1~",
+  "language": "en",
+  "labels": [
+    {
+      "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.blank.screens.home.v1",
+      "label": "Blank Home"
+    }
+  ]
+}

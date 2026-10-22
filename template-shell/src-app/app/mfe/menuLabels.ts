@@ -1,0 +1,74 @@
+import { gtsPlugin } from '@gears-frontx/react';
+
+const SCREEN_LABELS_TYPE = 'gts.frontx.i18n.dict.screen_labels.v1~';
+
+export interface LabelDictionaryManifest {
+  language: string;
+  file: string;
+}
+
+interface LabelSource {
+  manifest: { metaData: { publicPath: string } };
+  labelDictionaries?: LabelDictionaryManifest[];
+}
+
+interface ScreenLabels {
+  type: string;
+  language: string;
+  labels: Array<{ extension: string; label: string }>;
+}
+
+export function labelDictionaryUrl(file: string, publicPath: string, aggregateUrl: string): string {
+  return new URL(file, new URL(publicPath, aggregateUrl)).href;
+}
+
+export class MenuLabels {
+  private sources: readonly LabelSource[] = [];
+  private aggregateUrl = '';
+  private readonly cache = new Map<string, Promise<ScreenLabels | null>>();
+
+  constructor(private readonly typeSystem: Pick<typeof gtsPlugin, 'register'>) {}
+
+  configure(sources: readonly LabelSource[], aggregateUrl: string): void {
+    this.sources = sources;
+    this.aggregateUrl = aggregateUrl;
+    this.cache.clear();
+  }
+
+  async load(language: string): Promise<Map<string, string>> {
+    const dictionaries = this.sources.flatMap((source) =>
+      (source.labelDictionaries ?? [])
+        .filter((dictionary) => dictionary.language === language)
+        .map((dictionary) => this.fetchOnce(language, dictionary.file, source.manifest.metaData.publicPath)),
+    );
+    const results = await Promise.all(dictionaries);
+    return new Map(results.flatMap((dictionary) => dictionary?.labels.map(({ extension, label }) => [extension, label] as const) ?? []));
+  }
+
+  private fetchOnce(language: string, file: string, publicPath: string): Promise<ScreenLabels | null> {
+    const key = JSON.stringify([language, publicPath, file]);
+    let pending = this.cache.get(key);
+    if (!pending) {
+      pending = (async () => {
+        let url = file;
+        try {
+          url = labelDictionaryUrl(file, publicPath, this.aggregateUrl);
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          const dictionary = (await response.json()) as ScreenLabels;
+          if (dictionary.language !== language) throw new Error('dictionary language does not match manifest');
+          if (dictionary.type !== SCREEN_LABELS_TYPE) throw new Error('wrong dictionary type');
+          this.typeSystem.register(dictionary);
+          return dictionary;
+        } catch (error) {
+          console.warn(`[Menu labels] Ignoring ${url}:`, error);
+          return null;
+        }
+      })();
+      this.cache.set(key, pending);
+    }
+    return pending;
+  }
+}
+
+export const menuLabels = new MenuLabels(gtsPlugin);

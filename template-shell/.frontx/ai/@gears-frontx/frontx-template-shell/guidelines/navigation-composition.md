@@ -30,6 +30,7 @@ Authoritative files:
 `mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, sorted by
 `presentation.order` (a missing `order` defaults to `999`, i.e. last). The list
 is read once, after bootstrap. The active item carries `aria-current="page"`.
+For the current language, the menu loads each MFE's declared `labelDictionaries` file and uses its screen extension labels for text and tooltip. It falls back to the required `presentation.label` when no dictionary label is available.
 
 A click does **not** navigate. It dispatches a mount action:
 

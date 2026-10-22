@@ -4,9 +4,11 @@ import userEvent from '@testing-library/user-event';
 import type { ScreenExtension } from '@gears-frontx/react';
 import { Menu } from './Menu';
 import { screenState } from '@/app/mfe/screenState';
+import { menuLabels } from '@/app/mfe/menuLabels';
 
 const mockUseFrontX = vi.fn();
 const mockBootstrapSettled = vi.fn();
+let mockMenuState: { collapsed: boolean } | undefined;
 
 vi.mock('@/app/mfe/bootstrapOnce', () => ({
   bootstrapSettled: () => mockBootstrapSettled(),
@@ -14,7 +16,7 @@ vi.mock('@/app/mfe/bootstrapOnce', () => ({
 
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
-  useAppSelector: () => undefined,
+  useAppSelector: () => mockMenuState,
   useFrontX: () => mockUseFrontX(),
 }));
 
@@ -49,10 +51,16 @@ const tasks = screenExtension(
 );
 
 describe('Menu', () => {
+  let language = 'en';
+  const languageListeners = new Set<() => void>();
   let app: {
     mfeRegistry: {
       getExtensionsForDomain: ReturnType<typeof vi.fn>;
       executeActionsChain: ReturnType<typeof vi.fn>;
+    };
+    i18nRegistry: {
+      getLanguage: () => string;
+      subscribe: (listener: () => void) => () => void;
     };
   };
 
@@ -62,7 +70,17 @@ describe('Menu', () => {
         getExtensionsForDomain: vi.fn().mockReturnValue([tasks]),
         executeActionsChain: vi.fn().mockReturnValue(undefined),
       },
+      i18nRegistry: {
+        getLanguage: () => language,
+        subscribe: (listener) => {
+          languageListeners.add(listener);
+          return () => { languageListeners.delete(listener); };
+        },
+      },
     };
+    language = 'en';
+    mockMenuState = undefined;
+    vi.spyOn(menuLabels, 'load').mockResolvedValue(new Map());
     mockUseFrontX.mockReturnValue(app);
     screenState.set(undefined);
     mockBootstrapSettled.mockResolvedValue(undefined);
@@ -175,7 +193,7 @@ describe('Menu', () => {
   it('shows the empty state when the app carries no MFE registry at all', async () => {
     // `mfeRegistry` is optional on the app: a project without the
     // microfrontends plugin has no screens coming.
-    mockUseFrontX.mockReturnValue({ mfeRegistry: undefined });
+    mockUseFrontX.mockReturnValue({ ...app, mfeRegistry: undefined });
 
     await renderSettled();
 
@@ -204,5 +222,52 @@ describe('Menu', () => {
     await renderSettled();
 
     expect(emptyState()).not.toBeNull();
+  });
+
+  it('uses a dictionary label and restores the presentation label when language changes', async () => {
+    mockMenuState = { collapsed: true };
+    vi.mocked(menuLabels.load).mockImplementation(async (code) =>
+      code === 'en' ? new Map([[tasks.id, 'Translated tasks']]) : new Map(),
+    );
+    await renderSettled();
+    expect(screen.getByText('Translated tasks')).toBeTruthy();
+    expect(screen.getByTestId(`menu-item-${tasks.id}`).getAttribute('title')).toBe('Translated tasks');
+
+    await act(async () => {
+      language = 'fr';
+      languageListeners.forEach((listener) => listener());
+    });
+    expect(screen.getByText('Tasks')).toBeTruthy();
+    expect(screen.getByTestId(`menu-item-${tasks.id}`).getAttribute('title')).toBe('Tasks');
+  });
+
+  it('keeps the current language when an earlier dictionary finishes late', async () => {
+    let resolveEnglish!: (labels: Map<string, string>) => void;
+    let resolveFrench!: (labels: Map<string, string>) => void;
+    let englishLoads = 0;
+    vi.mocked(menuLabels.load).mockImplementation((code) => {
+      if (code === 'fr') return new Promise((resolve) => { resolveFrench = resolve; });
+      if (englishLoads++ === 0) return new Promise((resolve) => { resolveEnglish = resolve; });
+      return new Promise(() => {});
+    });
+
+    await renderSettled();
+    expect(menuLabels.load).toHaveBeenCalledWith('en');
+
+    await act(async () => {
+      language = 'fr';
+      languageListeners.forEach((listener) => listener());
+    });
+    await act(async () => { resolveFrench(new Map()); });
+    expect(screen.getByText('Tasks')).toBeTruthy();
+
+    await act(async () => { resolveEnglish(new Map([[tasks.id, 'English tasks']])); });
+    expect(screen.getByText('Tasks')).toBeTruthy();
+
+    await act(async () => {
+      language = 'en';
+      languageListeners.forEach((listener) => listener());
+    });
+    expect(screen.getByText('Tasks')).toBeTruthy();
   });
 });

@@ -27,6 +27,7 @@ import {
 import { Icon } from '@iconify/react';
 import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
 import { screenState } from '@/app/mfe/screenState';
+import { menuLabels } from '@/app/mfe/menuLabels';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
 
@@ -63,7 +64,22 @@ export const menuItemTestId = (extensionId: string): string => `menu-item-${exte
 
 export const Menu: React.FC<MenuProps> = ({ children }) => {
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
-  const { mfeRegistry } = useFrontX();
+  const { mfeRegistry, i18nRegistry } = useFrontX();
+  const language = useSyncExternalStore(
+    useCallback((listener: () => void) => i18nRegistry.subscribe(listener), [i18nRegistry]),
+    () => i18nRegistry.getLanguage() ?? 'en',
+  );
+  const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();
+
+  useEffect(() => {
+    let cancelled = false;
+    bootstrapSettled()
+      .then(() => cancelled ? new Map<string, string>() : menuLabels.load(language))
+      .then((labels) => {
+        if (!cancelled) setTranslated({ language, labels });
+      }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [language]);
 
   const collapsed = menuState?.collapsed ?? false;
 
@@ -165,6 +181,9 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
             screens?.map((ext) => {
               const isActive = ext.id === mountedId;
               const pres = ext.presentation;
+              const label = translated?.language === language
+                ? translated.labels.get(ext.id) ?? pres.label
+                : pres.label;
               return (
                 <SidebarMenuItem key={ext.id}>
                   <SidebarMenuButton
@@ -173,14 +192,14 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
                     // `data-active` styles the item; this tells assistive technology which screen is open.
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => handleMenuItemClick(ext.id)}
-                    tooltip={collapsed ? pres.label : undefined}
+                    tooltip={collapsed ? label : undefined}
                   >
                     {pres.icon && (
                       <SidebarMenuIcon>
                         <Icon icon={pres.icon} className="w-4 h-4" />
                       </SidebarMenuIcon>
                     )}
-                    <span>{pres.label}</span>
+                    <span>{label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
