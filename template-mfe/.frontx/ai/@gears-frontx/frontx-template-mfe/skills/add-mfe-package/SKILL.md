@@ -85,6 +85,10 @@ authority on each step.
    for a screen-domain contribution). Rewrite the same extension IDs in every
    label dictionary under `public/labels/` (`labels[].extension`), and set each
    label there; a dictionary that names an unregistered extension is rejected.
+   The dictionary label wins over `presentation.label`, so whenever you change a
+   screen's `presentation.label`, update its entry in every dictionary too
+   (each language is read on its own, with no fallback to `en.json`), or the
+   menu keeps showing the old text.
 5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
