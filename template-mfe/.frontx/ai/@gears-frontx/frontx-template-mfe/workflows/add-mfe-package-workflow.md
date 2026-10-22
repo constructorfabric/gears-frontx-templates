@@ -43,7 +43,9 @@ each step names the concrete command or file template-mfe ships.
      template-mfe's ID taxonomy (`gts-id-conventions` guideline; worked examples in
      `gts-id-patterns-reference`).
    - Rewrite the same extension IDs, and the labels, in every dictionary under
-     `public/labels/`.
+     `public/labels/`. A dictionary label wins over `presentation.label`, so a
+     later change to `presentation.label` needs the same change in each
+     dictionary.
    - Update `remoteEntry` to `http://localhost:{port}/assets/remoteEntry.js`.
 
 5. **Implement the screen**
