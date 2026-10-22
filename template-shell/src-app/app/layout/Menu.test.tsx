@@ -201,6 +201,14 @@ describe('Menu', () => {
     expect(emptyState()).not.toBeNull();
   });
 
+  it('renders presentation labels without an i18n registry', async () => {
+    mockUseFrontX.mockReturnValue({ ...app, i18nRegistry: undefined });
+
+    await renderSettled();
+
+    expect(screen.getByText('Tasks')).toBeTruthy();
+  });
+
   it('still lists the well-formed screens when a sibling extension carries no presentation metadata', async () => {
     // `presentation` is asserted by a cast and checked nowhere on the path from
     // the manifest to `registry.registerExtension`; one such sibling must cost
@@ -261,6 +269,29 @@ describe('Menu', () => {
 
     expect(menuLabels.load).toHaveBeenCalledWith('fr');
     expect(screen.getByText('Taches')).toBeTruthy();
+  });
+
+  it('shows cached labels during the render that switches back to a loaded language', async () => {
+    vi.spyOn(menuLabels, 'peek').mockImplementation((code) => code === 'en'
+      ? new Map([[tasks.id, 'English tasks']])
+      : new Map([[tasks.id, 'Taches']]));
+    vi.mocked(menuLabels.load).mockImplementation(async (code) => new Map([
+      [tasks.id, code === 'en' ? 'English tasks' : 'Taches'],
+    ]));
+    await renderSettled();
+
+    await act(async () => {
+      language = 'fr';
+      registryListeners.forEach((listener) => listener());
+    });
+    expect(screen.getByText('Taches')).toBeTruthy();
+
+    act(() => {
+      language = 'en';
+      registryListeners.forEach((listener) => listener());
+    });
+    expect(screen.getByText('English tasks')).toBeTruthy();
+    expect(screen.queryByText('Tasks')).toBeNull();
   });
 
   it('keeps the current language when an earlier dictionary finishes late', async () => {

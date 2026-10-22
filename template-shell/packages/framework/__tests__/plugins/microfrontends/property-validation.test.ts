@@ -17,6 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
+import { Language } from '@gears-frontx/i18n';
 import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../../src/mfe/constants';
 import type { JSONSchema } from '@gears-frontx/gts-plugin';
 import { themeSchema, languageCodeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
@@ -95,15 +96,10 @@ describe('application-layer derived GTS schemas', () => {
   describe('language schema', () => {
     const plugin = buildPluginWithDerivedSchemas();
 
-    it('keeps the set of 36 supported language codes', () => {
+    it('matches the runtime language codes', () => {
       const codes = languageCodeSchema.enum as string[];
-      expect(codes).toHaveLength(36);
       expect(new Set(codes).size).toBe(codes.length);
-      expect(new Set(codes)).toEqual(new Set([
-        'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'pl', 'uk', 'cs', 'ar',
-        'he', 'fa', 'ur', 'tr', 'zh', 'zh-TW', 'ja', 'ko', 'vi', 'th', 'id', 'hi',
-        'bn', 'sv', 'da', 'no', 'fi', 'el', 'ro', 'hu', 'ms', 'tl', 'ta', 'sw',
-      ]));
+      expect(new Set(codes)).toEqual(new Set(Object.values(Language)));
     });
 
     it('is accessible via getSchema using the language property type ID', () => {

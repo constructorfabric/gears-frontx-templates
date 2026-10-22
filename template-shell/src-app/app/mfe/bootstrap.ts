@@ -293,5 +293,5 @@ export async function bootstrapMFE(app: FrontXApp, domains: readonly DomainRegis
   for (const config of manifests) {
     await registerMfePackage(registry, config);
   }
-  menuLabels.configure(manifests, aggregateUrl);
+  menuLabels.configure(manifests, aggregateUrl, registry.typeSystem);
 }

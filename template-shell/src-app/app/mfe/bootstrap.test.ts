@@ -148,6 +148,19 @@ describe('bootstrapMFE (host-app)', () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
+  it('configures menu labels on the registry type system', async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify([{
+      manifest: { id: 'manifest.demo' }, entries: [], extensions: [],
+    }]), { status: 200 }));
+    const { bootstrapMFE } = await loadBootstrap();
+    const { menuLabels } = await import('./menuLabels');
+    const configure = vi.spyOn(menuLabels, 'configure');
+
+    await bootstrapMFE(mockApp as never);
+
+    expect(configure).toHaveBeenCalledWith(expect.any(Array), expect.any(String), mockMfeRegistry.typeSystem);
+  });
+
   it('registers no domain and no screen type when the host implements none', async () => {
     fetchSpy.mockResolvedValue(new Response('[]', { status: 200 }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
