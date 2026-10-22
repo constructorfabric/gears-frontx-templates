@@ -1893,6 +1893,28 @@ function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
 }
 
 /**
+ * The module `@module-federation/vite` generates to load the exposes
+ * (`virtual:mf-exposes:<name>`, or `virtual:mf-exposes-ssr:<name>` for SSR).
+ * Each `exposes` path appears in it verbatim, as `import("./src/x.tsx")`.
+ */
+const FEDERATION_EXPOSES_MODULE = /^virtual:mf-exposes(?:-ssr)?:/;
+
+/**
+ * Whether a relative `source` has to resolve from the package root. Vite
+ * resolves a relative path from its importer's directory, or from the
+ * process's working directory when there is no importer, and a virtual
+ * module's id has no directory. `@module-federation/vite` asks for the
+ * relative `exposes` paths both ways: with no importer when it emits each
+ * expose as a chunk at build start, and from its exposes module. A build run
+ * anywhere but the package's own directory would then miss them, or pick up
+ * a file of the same name in the working directory instead.
+ */
+function resolvesFromPackageRoot(source: string, importer: string | undefined): boolean {
+  if (!source.startsWith('./') && !source.startsWith('../')) return false;
+  return importer === undefined || FEDERATION_EXPOSES_MODULE.test(importer);
+}
+
+/**
  * Creates the frontx-mf-gts Vite plugin.
  *
  * Runs in `closeBundle` after `@module-federation/vite`. Builds standalone
@@ -1900,7 +1922,8 @@ function lazyCallSpecifiers(node: unknown, found: string[] = []): string[] {
  * manifest metadata, shared dep info, and per-entry expose assets.
  *
  * The package root is resolved from Vite's `config.root` — no `__dirname`
- * argument needed.
+ * argument needed. Relative `exposes` paths resolve from it too, so the build
+ * can run from any working directory.
  *
  * @example
  * ```typescript
@@ -2016,6 +2039,20 @@ export function frontxMfGts(): Plugin {
       // acceptable trade since the transformed sites are FrontX runtime
       // plumbing, not vendor source debugging targets.
       return { code: result.code, map: null };
+    },
+
+    // Resolves the relative `exposes` paths from the package root, wherever
+    // the build runs (see `resolvesFromPackageRoot`). `order: 'pre'` puts this
+    // ahead of Vite's own resolver, which `enforce: 'post'` alone would not.
+    resolveId: {
+      order: 'pre',
+      handler(source, importer, options) {
+        if (!resolvesFromPackageRoot(source, importer)) return null;
+        return this.resolve(path.resolve(packageRoot, source), importer, {
+          ...options,
+          skipSelf: true,
+        });
+      },
     },
 
     configResolved(config) {
