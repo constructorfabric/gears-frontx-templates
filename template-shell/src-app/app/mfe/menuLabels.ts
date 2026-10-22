@@ -7,6 +7,7 @@ export interface LabelDictionaryManifest {
 
 interface LabelSource {
   manifest: { metaData: { publicPath: string } };
+  extensions?: Array<{ id: string }>;
   labelDictionaries?: LabelDictionaryManifest[];
 }
 
@@ -34,13 +35,17 @@ export class MenuLabels {
   }
 
   async load(language: string): Promise<Map<string, string>> {
-    const dictionaries = this.sources.flatMap((source) =>
-      (Array.isArray(source.labelDictionaries) ? source.labelDictionaries : [])
-        .filter((dictionary) => dictionary.language === language)
-        .map((dictionary) => this.fetchOnce(language, dictionary.file, source.manifest.metaData.publicPath)),
-    );
+    const dictionaries = this.sources.flatMap((source) => {
+      const owned = new Set((source.extensions ?? []).map(({ id }) => id));
+      return (Array.isArray(source.labelDictionaries) ? source.labelDictionaries : [])
+        .filter((dictionary) => dictionary?.language === language)
+        .map(async (dictionary) => {
+          const labels = (await this.fetchOnce(language, dictionary.file, source.manifest.metaData.publicPath))?.labels ?? [];
+          return labels.filter(({ extension }) => owned.has(extension));
+        });
+    });
     const results = await Promise.all(dictionaries);
-    return new Map(results.flatMap((dictionary) => dictionary?.labels.map(({ extension, label }) => [extension, label] as const) ?? []));
+    return new Map(results.flat().map(({ extension, label }) => [extension, label] as const));
   }
 
   private fetchOnce(language: string, file: string, publicPath: string): Promise<ScreenLabels | null> {
