@@ -1,0 +1,394 @@
+/*
+ * Two type styles only, as in the design's side sheet: the title at 16px semi-bold, every other
+ * line at 14px regular, primary for values and secondary for supporting lines. Icons are the
+ * 16px glyph set in secondary, each on the first line of its row.
+ */
+
+.popover {
+  inline-size: min(400px, calc(100vw - var(--cal-space-4)));
+}
+
+/* The shared expanded size is a large fixed window; a detail is often a few rows, so this one is
+   narrower. It opens at a reading size, 800 by 520px, grows with its content up to 85% of the
+   viewport and scrolls inside. */
+.expanded.expanded {
+  block-size: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  inline-size: min(800px, calc(100vw - var(--cal-space-8)));
+  max-block-size: 85vh;
+  max-inline-size: none;
+  min-block-size: min(520px, 85vh);
+  overflow: hidden;
+  padding: 0;
+}
+
+/* With columns, each column scrolls on its own and the body only holds them. */
+.expanded .body:has(> .columns) {
+  overflow: hidden;
+}
+
+.columns {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
+}
+
+.mainColumn,
+.sideColumn {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.mainColumn {
+  border-inline-end: var(--cal-border-width-1) solid var(--cal-color-divider);
+  padding-inline-end: var(--cal-space-3);
+}
+
+.sideColumn {
+  padding-inline-start: var(--cal-space-3);
+}
+
+@media (max-width: 720px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    overflow-y: auto;
+  }
+
+  .mainColumn,
+  .sideColumn {
+    overflow-y: visible;
+  }
+
+  .mainColumn {
+    border-inline-end: 0;
+    padding-inline-end: 0;
+  }
+
+  .sideColumn {
+    border-block-start: var(--cal-border-width-1) solid
+      var(--cal-color-divider);
+    padding-block-start: var(--cal-space-3);
+    padding-inline-start: 0;
+  }
+}
+
+/* The header stays put and the body scrolls: the panel caps its height, so the content shrinks
+   to it rather than overflowing as one block. */
+.content {
+  background: var(--cal-color-surface);
+  color: var(--cal-color-text);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  font-family: var(--cal-font-family);
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+/* One row: the title on the start side, the actions on the end side on its first line. The end
+   inset is half the start one because the close button's own padding makes up the rest. */
+.header {
+  align-items: flex-start;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--cal-space-3);
+  padding: var(--cal-space-4) var(--cal-space-2) 0 var(--cal-space-4);
+}
+
+/* A long title would grow the fixed header past the viewport; three lines, then an ellipsis.
+   The heading keeps the full text for screen readers. */
+.title {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--cal-color-text);
+  display: -webkit-box;
+  flex: 1 1 auto;
+  font-size: var(--cal-text-title-size);
+  font-weight: var(--cal-text-title-weight);
+  line-height: var(--cal-text-title-line-height);
+  margin: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.expanded .title {
+  -webkit-line-clamp: 5;
+}
+
+/* The 32px buttons centre on the title's 24px first line. */
+.headerActions {
+  align-items: center;
+  display: flex;
+  flex: none;
+  gap: var(--cal-space-1);
+  margin-block: calc(
+    (var(--cal-text-title-line-height) - var(--cal-control-height-sm)) / 2
+  );
+}
+
+.headerAction {
+  --button-bg-hover: var(--cal-state-hover);
+  --button-fg: var(--cal-color-muted);
+  --button-fg-hover: var(--cal-color-muted);
+  border-radius: var(--cal-radius-md);
+}
+
+.deleteAction {
+  --button-fg: var(--cal-color-error);
+  --button-fg-hover: var(--cal-color-error);
+}
+
+.headerDivider {
+  align-self: center;
+  block-size: var(--cal-icon-size-sm);
+  margin-inline: var(--cal-space-1);
+}
+
+.headerSlot {
+  flex-shrink: 0;
+  padding: var(--cal-space-3) var(--cal-space-4) 0;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: var(--cal-space-3) var(--cal-space-4) var(--cal-space-4);
+}
+
+/* Groups as in calendar previews: time and joining, place, people, description, with a rule
+   between groups that have something to show. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+}
+
+.group:empty {
+  display: none;
+}
+
+.group:not(:empty) ~ .group:not(:empty) {
+  border-block-start: var(--cal-border-width-1) solid var(--cal-color-divider);
+  margin-block-start: var(--cal-space-3);
+  padding-block-start: var(--cal-space-3);
+}
+
+.row {
+  align-items: start;
+  column-gap: var(--cal-space-3);
+  display: grid;
+  grid-template-columns: var(--cal-icon-size-sm) minmax(0, 1fr);
+  position: relative;
+}
+
+/* The icon box is one text line tall, so the icon centres on the row's first line. */
+.rowIcon {
+  composes: iconBox from "../../styles/modules/layout.module.css";
+  block-size: var(--cal-text-label-line-height);
+  color: var(--cal-color-muted);
+  inline-size: 100%;
+}
+
+.rowIcon svg,
+.headerAction svg {
+  block-size: var(--cal-icon-size-sm);
+  inline-size: var(--cal-icon-size-sm);
+}
+
+/* Join and Copy link are the row's first line, so the icon centres on the buttons. */
+.row:has(> .rowContent > .conferencingRow:first-child) > .rowIcon {
+  block-size: var(--cal-control-height-sm);
+}
+
+.rowContent {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.sectionLabel {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
+
+.text,
+.mutedText,
+.description {
+  font-size: var(--cal-text-label-size);
+  font-weight: var(--cal-text-grid-weight);
+  line-height: var(--cal-text-label-line-height);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.text,
+.description {
+  color: var(--cal-color-text);
+}
+
+.mutedText {
+  color: var(--cal-color-muted);
+}
+
+.description {
+  white-space: pre-line;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+}
+
+/* The same 12px from avatar to name as from a row's icon column to its text. */
+.person {
+  align-items: center;
+  display: flex;
+  gap: var(--cal-space-3);
+}
+
+.personText {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* The email under a person's name, and the label over a guest group, are the 12px medium
+   caption. */
+.personMeta,
+.groupLabel {
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-label-weight);
+  line-height: var(--cal-text-meta-line-height);
+  margin: 0;
+}
+
+.personMeta {
+  overflow-wrap: anywhere;
+}
+
+.conferencingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cal-space-2);
+}
+
+.joinButton {
+  align-items: center;
+  background: var(--cal-color-action);
+  block-size: var(--cal-control-height-sm);
+  border-radius: var(--cal-radius-md);
+  color: var(--cal-color-action-foreground);
+  display: inline-flex;
+  font-size: var(--cal-text-label-size);
+  font-weight: var(--cal-text-label-weight);
+  justify-content: center;
+  padding-inline: var(--cal-space-4);
+  text-decoration: none;
+}
+
+.joinButton:focus-visible,
+.stackOverflow:focus-visible {
+  outline: 2px solid var(--cal-color-focus-ring-strong);
+  outline-offset: 2px;
+}
+
+/* Side by side rather than overlapped: at 24px an overlap covers half of each avatar's initials. */
+.avatarStack {
+  composes: listReset from "../../styles/modules/list.module.css";
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cal-space-1);
+  margin-block-start: var(--cal-space-2);
+}
+
+.stackAvatar,
+.stackOverflow {
+  block-size: var(--cal-icon-size-lg);
+  border-radius: var(--cal-radius-pill);
+  flex-shrink: 0;
+  inline-size: var(--cal-icon-size-lg);
+}
+
+/* The +N chip matches the avatars' initials, not the text lines. It grows into a pill for three
+   digits, and its border keeps it a shape on the near-white surface. */
+.stackOverflow {
+  align-items: center;
+  background: var(--cal-color-raised);
+  border: var(--cal-border-width-1) solid var(--cal-color-divider);
+  box-sizing: border-box;
+  color: var(--cal-color-text);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-meta-weight);
+  inline-size: auto;
+  justify-content: center;
+  line-height: 1;
+  min-inline-size: var(--cal-icon-size-lg);
+  padding: 0 var(--cal-space-1);
+}
+
+.inviteeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+  margin-block-start: var(--cal-space-3);
+}
+
+.invitees,
+.conflicts {
+  composes: listReset from "../../styles/modules/list.module.css";
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+}
+
+.conflicts > li {
+  background: var(--cal-color-raised);
+  border-inline-start: var(--cal-border-width-1) solid
+    var(--cal-border-conflict);
+  border-radius: var(--cal-radius-sm);
+  column-gap: var(--cal-space-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+  padding: var(--cal-space-2) var(--cal-space-3);
+}
+
+.conflictDimension {
+  color: var(--cal-color-muted);
+}
+
+.conflictLabel {
+  overflow-wrap: anywhere;
+}
+
+.conflictMessage {
+  color: var(--cal-color-muted);
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
+.footerSlot {
+  flex-shrink: 0;
+  padding: 0 var(--cal-space-4) var(--cal-space-4);
+}
+
+.copyStatus {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
