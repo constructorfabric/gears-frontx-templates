@@ -351,7 +351,7 @@ Whether the tags are cut by hand, by a release script, or by a workflow. Nothing
 | Public surface | Purpose |
 |-----------------|---------|
 | `presentation.label` | Required. The member's own fallback display string, rendered whenever the current language's dictionary gives the extension no label. Already required by the derived screen-extension schema and already carried by every screen extension in this repository. |
-| `labelDictionaries` | Optional, top level of the MFE manifest. One `{ language, file }` item per language the MFE labels; `language` is typed by `gts.frontx.i18n.lang.code.v1~`. |
+| `labelDictionaries` | Optional, top level of the MFE manifest. One `{ language, file }` item per language the MFE labels; `language` must be a code of `gts.frontx.i18n.lang.code.v1~`. The shell's dictionary loader drops a dictionary whose own `language` differs from it, and the menu keeps `presentation.label`. |
 | `gts.frontx.i18n.dict.screen_labels.v1~` | One MFE's menu labels in one language: `type` (the type id, as every GTS instance carries it), `language`, which must equal the manifest item's `language`, and an array of `{ extension, label }`, `extension` a GTS reference to a screen extension. |
 | `gts.frontx.i18n.lang.code.v1~` | The language codes the shell supports; referenced by the dictionary's `language` and by the `language` shared property's value. |
 
