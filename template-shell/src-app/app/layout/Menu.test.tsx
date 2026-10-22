@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ScreenExtension } from '@gears-frontx/react';
+import { eventBus, type ScreenExtension } from '@gears-frontx/react';
 import { Menu } from './Menu';
 import { screenState } from '@/app/mfe/screenState';
 import { menuLabels } from '@/app/mfe/menuLabels';
@@ -52,7 +52,6 @@ const tasks = screenExtension(
 
 describe('Menu', () => {
   let language = 'en';
-  const languageListeners = new Set<() => void>();
   let app: {
     mfeRegistry: {
       getExtensionsForDomain: ReturnType<typeof vi.fn>;
@@ -60,7 +59,6 @@ describe('Menu', () => {
     };
     i18nRegistry: {
       getLanguage: () => string;
-      subscribe: (listener: () => void) => () => void;
     };
   };
 
@@ -72,10 +70,6 @@ describe('Menu', () => {
       },
       i18nRegistry: {
         getLanguage: () => language,
-        subscribe: (listener) => {
-          languageListeners.add(listener);
-          return () => { languageListeners.delete(listener); };
-        },
       },
     };
     language = 'en';
@@ -224,31 +218,37 @@ describe('Menu', () => {
     expect(emptyState()).not.toBeNull();
   });
 
-  it('uses a dictionary label and restores the presentation label when language changes', async () => {
+  it('loads labels on a language event without translation loaders and hides stale labels while loading', async () => {
     mockMenuState = { collapsed: true };
-    vi.mocked(menuLabels.load).mockImplementation(async (code) =>
-      code === 'en' ? new Map([[tasks.id, 'Translated tasks']]) : new Map(),
-    );
+    let resolveFrench!: (labels: Map<string, string>) => void;
+    vi.mocked(menuLabels.load).mockImplementation((code) => code === 'en'
+      ? Promise.resolve(new Map([[tasks.id, 'Translated tasks']]))
+      : new Promise((resolve) => { resolveFrench = resolve; }));
     await renderSettled();
     expect(screen.getByText('Translated tasks')).toBeTruthy();
     expect(screen.getByTestId(`menu-item-${tasks.id}`).getAttribute('title')).toBe('Translated tasks');
 
     await act(async () => {
       language = 'fr';
-      languageListeners.forEach((listener) => listener());
+      eventBus.emit('i18n/language/changed', { language: 'fr' });
     });
+    expect(menuLabels.load).toHaveBeenCalledWith('fr');
     expect(screen.getByText('Tasks')).toBeTruthy();
     expect(screen.getByTestId(`menu-item-${tasks.id}`).getAttribute('title')).toBe('Tasks');
+
+    await act(async () => { resolveFrench(new Map([[tasks.id, 'Taches']])); });
+    expect(screen.getByText('Taches')).toBeTruthy();
   });
 
   it('keeps the current language when an earlier dictionary finishes late', async () => {
     let resolveEnglish!: (labels: Map<string, string>) => void;
     let resolveFrench!: (labels: Map<string, string>) => void;
+    let resolveSecondEnglish!: (labels: Map<string, string>) => void;
     let englishLoads = 0;
     vi.mocked(menuLabels.load).mockImplementation((code) => {
       if (code === 'fr') return new Promise((resolve) => { resolveFrench = resolve; });
       if (englishLoads++ === 0) return new Promise((resolve) => { resolveEnglish = resolve; });
-      return new Promise(() => {});
+      return new Promise((resolve) => { resolveSecondEnglish = resolve; });
     });
 
     await renderSettled();
@@ -256,7 +256,7 @@ describe('Menu', () => {
 
     await act(async () => {
       language = 'fr';
-      languageListeners.forEach((listener) => listener());
+      eventBus.emit('i18n/language/changed', { language: 'fr' });
     });
     await act(async () => { resolveFrench(new Map()); });
     expect(screen.getByText('Tasks')).toBeTruthy();
@@ -266,8 +266,11 @@ describe('Menu', () => {
 
     await act(async () => {
       language = 'en';
-      languageListeners.forEach((listener) => listener());
+      eventBus.emit('i18n/language/changed', { language: 'en' });
     });
     expect(screen.getByText('Tasks')).toBeTruthy();
+
+    await act(async () => { resolveSecondEnglish(new Map([[tasks.id, 'English tasks v2']])); });
+    expect(screen.getByText('English tasks v2')).toBeTruthy();
   });
 });

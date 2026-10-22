@@ -54,13 +54,6 @@ describe('screen label schemas', () => {
       labels: [{ extension: nonScreen, label: 'Widget' }],
     })).toThrow(/does not match pattern/);
   });
-
-  it('keeps the shared language property constrained through the code reference', () => {
-    const plugin = store();
-    const id = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~frontx.mfes.comm.runtime.v1';
-    expect(() => plugin.register({ id, value: 'en' })).not.toThrow();
-    expect(() => plugin.register({ id, value: 'xx' })).toThrow(/allowed values/);
-  });
 });
 
 describe('menu label loading', () => {
@@ -102,10 +95,32 @@ describe('menu label loading', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('skips non-array manifest dictionaries and loads valid siblings', async () => {
+    const loader = new MenuLabels(store());
+    loader.configure([
+      {
+        manifest: { metaData: { publicPath: 'mfe/broken/' } },
+        labelDictionaries: 'invalid' as never,
+      },
+      {
+        manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+        labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+      },
+    ], 'https://example.com/generated-mfe-manifests.json');
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => dictionary('en') }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await loader.load('en')).get(extension)).toBe('Profile');
+    expect((await loader.load('fr')).size).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ['failed fetch', () => ({ ok: false, status: 404, statusText: 'Not Found' })],
     ['invalid dictionary', () => ({ ok: true, json: async () => dictionary('en', '') })],
     ['mismatched language', () => ({ ok: true, json: async () => dictionary('fr') })],
+    ['wrong type', () => ({ ok: true, json: async () => ({ ...dictionary('en'), type: 'wrong' }) })],
+    ['missing type', () => ({ ok: true, json: async () => ({ language: 'en', labels: dictionary('en').labels }) })],
   ])('ignores a %s with one warning', async (_name, response) => {
     const loader = new MenuLabels(store());
     loader.configure([{
