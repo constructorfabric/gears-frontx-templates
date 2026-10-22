@@ -20,6 +20,12 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
 
 const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
 
+// Only the primary subtag decides, so a region-tagged code such as `ar-EG`
+// reads as Arabic.
+function isRtlLanguage(language: string): boolean {
+  return RTL_LANGUAGES.includes(language.split('-')[0].toLowerCase());
+}
+
 function readBridgeProperty(bridge: ChildMfeBridge, property: string, fallback: string): string {
   const current = bridge.getProperty(property);
   return current && typeof current.value === 'string' ? current.value : fallback;
@@ -118,7 +124,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ bridge }) => {
   useEffect(() => {
     const rootNode = containerRef.current?.getRootNode();
     if (rootNode && 'host' in rootNode) {
-      (rootNode.host as HTMLElement).dir = RTL_LANGUAGES.includes(language) ? 'rtl' : 'ltr';
+      (rootNode.host as HTMLElement).dir = isRtlLanguage(language) ? 'rtl' : 'ltr';
     }
   }, [language]);
 
