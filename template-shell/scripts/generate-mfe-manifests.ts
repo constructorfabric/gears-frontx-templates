@@ -46,10 +46,11 @@
  */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Gts } from '@globaltypesystem/gts-ts';
+import languageCodeSchema from '../src/gts/schemas/language_code.v1.json';
 
 import {
   isNonPackageDirectory,
@@ -133,7 +134,7 @@ interface RawEnrichedMfeJson {
   entries: RawEntry[];
   extensions: RawExtension[];
   schemas?: RawSchema[];
-  labelDictionaries?: Array<{ language: string; file: string }>;
+  labelDictionaries?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +328,7 @@ export class ManifestGenerator {
     const mfeJson = this.readEnrichedMfeJson(pkgPath, packageDir);
     this.assertRequiredCollectionsArePresent(mfeJson, packageDir);
     this.assertGtsIdsAreValid(mfeJson, pkgPath, packageDir);
+    const labelDictionaries = this.validateLabelDictionaries(mfeJson, pkgPath, packageDir);
     const publicPath = this.resolvePublicPath(mfeJson, packageDir);
 
     const outManifest = this.buildManifest(mfeJson.manifest, publicPath);
@@ -338,8 +340,62 @@ export class ManifestGenerator {
       entries: outEntries,
       extensions: mfeJson.extensions,
       ...(mfeJson.schemas !== undefined && { schemas: mfeJson.schemas }),
-      ...(mfeJson.labelDictionaries !== undefined && { labelDictionaries: mfeJson.labelDictionaries }),
+      ...(labelDictionaries !== undefined && { labelDictionaries }),
     };
+  }
+
+  private validateLabelDictionaries(
+    mfeJson: RawEnrichedMfeJson,
+    pkgPath: string,
+    packageDir: string
+  ): Array<{ language: string; file: string }> | undefined {
+    const declared = mfeJson.labelDictionaries;
+    if (declared === undefined) return undefined;
+    const fail = (detail: string): never => {
+      throw new Error(`[${packageDir}] ${this.mfeManifestPath} labelDictionaries ${detail}`);
+    };
+    if (!Array.isArray(declared)) return fail('must be an array');
+    if (declared.length === 0) return [];
+    const languages = new Set<string>();
+    const owned = new Set(mfeJson.extensions.map(({ id }) => id));
+    const publicDir = join(pkgPath, 'public');
+    if (!existsSync(publicDir)) return fail('file not found under public/');
+    const publicRoot = realpathSync(publicDir);
+    if (!publicRoot.startsWith(`${realpathSync(pkgPath)}${sep}`)) return fail('public/ must be inside the package');
+    return declared.map((item: unknown, index: number) => {
+      const field = `[${index}]`;
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return fail(`${field} must be an object`);
+      const { language, file } = item as Record<string, unknown>;
+      if (typeof language !== 'string' || typeof file !== 'string' || Object.keys(item).length !== 2) {
+        return fail(`${field} requires only string language and file`);
+      }
+      if (!languageCodeSchema.enum.includes(language)) fail(`${field} has unsupported language ${language}`);
+      if (languages.has(language)) fail(`${field} repeats language ${language}`);
+      languages.add(language);
+      if (!file || /^[a-z][a-z0-9+.-]*:/i.test(file) || file.startsWith('/') || file.includes('\\') || file.split('/').includes('..')) {
+        fail(`${field} file must be a relative path inside public/`);
+      }
+      const path = join(publicRoot, file);
+      if (!existsSync(path) || !realpathSync(path).startsWith(`${publicRoot}${sep}`)) fail(`${field} file not found under public/: ${file}`);
+      let dictionary: unknown;
+      try {
+        dictionary = JSON.parse(readFileSync(path, 'utf-8'));
+      } catch {
+        fail(`${field} file is not valid JSON: ${file}`);
+      }
+      if (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary)) fail(`${field} file is not a screen labels dictionary: ${file}`);
+      const content = dictionary as Record<string, unknown>;
+      const labels = content.labels;
+      if (content.type !== 'gts.frontx.i18n.dict.screen_labels.v1~' || content.language !== language || !Array.isArray(labels)) {
+        return fail(`${field} file has wrong type, language, or labels: ${file}`);
+      }
+      for (const [labelIndex, label] of labels.entries()) {
+        if (!label || typeof label !== 'object' || !owned.has((label as Record<string, unknown>).extension as string)) {
+          fail(`${field} file labels[${labelIndex}].extension is not owned by this package`);
+        }
+      }
+      return { language, file };
+    });
   }
 
   private readEnrichedMfeJson(pkgPath: string, packageDir: string): RawEnrichedMfeJson {

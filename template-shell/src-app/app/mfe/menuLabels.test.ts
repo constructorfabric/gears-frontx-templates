@@ -16,13 +16,13 @@ const dictionary = (language: string, label = 'Profile') => ({
   labels: [{ extension, label }],
 });
 
-function store(): typeof gtsPlugin {
+function store(labelSchemas = true): typeof gtsPlugin {
   const Plugin = gtsPlugin.constructor as new (options: { isolated: boolean }) => typeof gtsPlugin;
   const plugin = new Plugin({ isolated: true });
-  plugin.registerSchema(languageCodeSchema);
+  if (labelSchemas) plugin.registerSchema(languageCodeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
-  plugin.registerSchema(screenLabelsSchema);
+  if (labelSchemas) plugin.registerSchema(screenLabelsSchema);
   plugin.register({
     id: extension,
     domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
@@ -90,11 +90,95 @@ describe('menu label loading', () => {
 
     const english = await loader.load('en');
     expect(english.get(extension)).toBe('Profile');
+    expect(loader.peek('en')).toEqual(english);
     expect(english.get(blankExtension)).toBe('Blank Home');
     expect((await loader.load('fr')).get(extension)).toBe('Profil');
     expect((await loader.load('es')).size).toBe(0);
     await loader.load('en');
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ['$schema and $id', { $schema: 'https://json-schema.org/draft/2020-12/schema', $id: 'gts://gts.frontx.i18n.dict.screen_labels.v1~', labels: [{ extension, label: 'Translated', id: extension }] }],
+    ['shared property id', { id: 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~frontx.mfes.comm.label_probe.v1', value: 'en' }],
+    ['screen extension id', { id: extension, route: '/hijacked', presentation: { label: 'Hijacked' }, domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1', entry: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.profile.v1' }],
+  ])('registers a dictionary with %s only as screen labels', async (_name, extra) => {
+    const plugin = store();
+    const register = vi.spyOn(plugin, 'register');
+    const loader = new MenuLabels(plugin);
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...dictionary('en', 'Translated'), ...extra }) })));
+
+    expect((await loader.load('en')).get(extension)).toBe('Translated');
+    expect(register).toHaveBeenCalledWith(dictionary('en', 'Translated'));
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates labels after removing unrelated dictionary fields', async () => {
+    const loader = new MenuLabels(store());
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+      ...dictionary('en', ''),
+      id: extension,
+      domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
+      entry: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.profile.v1',
+      route: '/hijacked',
+      presentation: { label: 'Hijacked' },
+    }) })));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect((await loader.load('en')).size).toBe(0);
+    expect(warning).toHaveBeenCalledTimes(1);
+    warning.mockRestore();
+  });
+
+  it('uses the configured isolated type system for dictionary references', async () => {
+    const plugin = store(false);
+    const loader = new MenuLabels(gtsPlugin);
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json', plugin);
+    expect(plugin.getSchema('gts.frontx.i18n.lang.code.v1~')).toBeDefined();
+    expect(plugin.getSchema('gts.frontx.i18n.dict.screen_labels.v1~')).toBeDefined();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => dictionary('en', 'Translated') })));
+
+    expect((await loader.load('en')).get(extension)).toBe('Translated');
+  });
+
+  it.each([
+    ['503', [{ ok: false, status: 503, statusText: 'Unavailable' }, { ok: true, json: async () => dictionary('en') }], 2, 'Profile'],
+    ['network error', [new Error('offline'), { ok: true, json: async () => dictionary('en') }], 2, 'Profile'],
+    ['404', [{ ok: false, status: 404, statusText: 'Not Found' }, { ok: true, json: async () => dictionary('en') }], 1, undefined],
+  ])('%s responses follow the retry policy', async (_name, responses, count, expected) => {
+    const loader = new MenuLabels(store());
+    loader.configure([{
+      manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
+      extensions: [{ id: extension }],
+      labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
+    }], 'https://example.com/generated-mfe-manifests.json');
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => {
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await loader.load('en');
+    expect((await loader.load('en')).get(extension)).toBe(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(count);
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    warning.mockRestore();
   });
 
   it('skips non-array manifest dictionaries and loads valid siblings', async () => {

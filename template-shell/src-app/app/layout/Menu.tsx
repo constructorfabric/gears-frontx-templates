@@ -68,13 +68,13 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   const language = useSyncExternalStore(
     useCallback((listener: () => void) => {
       const subscription = eventBus.on('i18n/language/changed', listener);
-      const unsubscribeRegistry = i18nRegistry.subscribe(listener);
+      const unsubscribeRegistry = i18nRegistry?.subscribe(listener);
       return () => {
         subscription.unsubscribe();
-        unsubscribeRegistry();
+        unsubscribeRegistry?.();
       };
     }, [i18nRegistry]),
-    () => i18nRegistry.getLanguage() ?? 'en',
+    () => i18nRegistry?.getLanguage() ?? 'en',
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();
 
@@ -188,9 +188,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
             screens?.map((ext) => {
               const isActive = ext.id === mountedId;
               const pres = ext.presentation;
-              const label = translated?.language === language
-                ? translated.labels.get(ext.id) ?? pres.label
-                : pres.label;
+              const label = (translated?.language === language ? translated.labels : menuLabels.peek(language))?.get(ext.id) ?? pres.label;
               return (
                 <SidebarMenuItem key={ext.id}>
                   <SidebarMenuButton
