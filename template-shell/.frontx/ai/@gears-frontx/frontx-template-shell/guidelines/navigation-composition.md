@@ -164,7 +164,7 @@ top-level `route` and its `presentation`:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `label` | yes | menu item text (raw display string — no i18n key today) |
+| `label` | yes | fallback menu item text; the MFE's label dictionary for the current language overrides it (`labelDictionaries`, see `mfe-package-contract`) |
 | `route` (top level, beside `id`/`domain`/`entry`) | yes | route value the FrontX router finds the extension by |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
@@ -192,7 +192,7 @@ host and MFEs.
   pipeline at all is the `mfe-package-contract` guideline in this bundle.
 - The ID taxonomy used in every declaration is the `gts-id-conventions`
   guideline in the `template-mfe` AI bundle.
-- Known limitations (no menu i18n, no audience targeting, flat `order`) are
+- Known limitations (no audience targeting, flat `order`) are
   properties of the current schemas, tracked upstream in the platform's
   navigation-service planning — not bugs in this shell. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema

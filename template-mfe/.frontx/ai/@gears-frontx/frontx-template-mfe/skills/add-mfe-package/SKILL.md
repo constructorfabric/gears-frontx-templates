@@ -82,7 +82,9 @@ authority on each step.
    `gts-id-patterns-reference` reference artifact in this same bundle): a manifest ID,
    one entry ID per exposed module, and one extension ID per screen contributed to a
    domain (typically `gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1`
-   for a screen-domain contribution).
+   for a screen-domain contribution). Rewrite the same extension IDs in every
+   label dictionary under `public/labels/` (`labels[].extension`), and set each
+   label there; a dictionary that names an unregistered extension is rejected.
 5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it

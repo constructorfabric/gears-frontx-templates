@@ -19,7 +19,7 @@ new MFE.
 
 1. For each new MFE, run the `add-mfe-package` skill steps 1-4: copy
    `_blank-mfe` and strip `templateExample`, assign the port, rename the
-   package identity, assign GTS IDs. Assign all ports from one central list
+   package identity, assign GTS IDs (in `mfe.json` and `public/labels/`). Assign all ports from one central list
    (`3010`, `3020`, ...) in this phase — two parallel agents choosing their
    own ports is a collision, and `dev:all`'s auto-discovery will not warn.
 2. Declare each package's full dependency set now (the scaffold already
