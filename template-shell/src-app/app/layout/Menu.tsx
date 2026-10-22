@@ -66,7 +66,10 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
   const menuState = useAppSelector((state) => state['layout/menu'] as MenuState | undefined);
   const { mfeRegistry, i18nRegistry } = useFrontX();
   const language = useSyncExternalStore(
-    useCallback((listener: () => void) => i18nRegistry.subscribe(listener), [i18nRegistry]),
+    useCallback((listener: () => void) => {
+      const subscription = eventBus.on('i18n/language/changed', listener);
+      return () => subscription.unsubscribe();
+    }, []),
     () => i18nRegistry.getLanguage() ?? 'en',
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();

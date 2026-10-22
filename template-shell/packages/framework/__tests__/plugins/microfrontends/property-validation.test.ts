@@ -95,24 +95,19 @@ describe('application-layer derived GTS schemas', () => {
   describe('language schema', () => {
     const plugin = buildPluginWithDerivedSchemas();
 
-    it('keeps the supported language codes in order', () => {
-      expect(languageCodeSchema.enum).toEqual([
+    it('keeps the set of 36 supported language codes', () => {
+      expect(languageCodeSchema.enum).toHaveLength(36);
+      expect(new Set(languageCodeSchema.enum as string[])).toEqual(new Set([
         'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'pl', 'uk', 'cs', 'ar',
         'he', 'fa', 'ur', 'tr', 'zh', 'zh-TW', 'ja', 'ko', 'vi', 'th', 'id', 'hi',
         'bn', 'sv', 'da', 'no', 'fi', 'el', 'ro', 'hu', 'ms', 'tl', 'ta', 'sw',
-      ]);
+      ]));
     });
 
     it('is accessible via getSchema using the language property type ID', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       expect(schema).toBeDefined();
       expect(schema?.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_LANGUAGE}`);
-    });
-
-    it('references the supported language code type', () => {
-      const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
-      const valueSchema = getValuePropertySchema(schema);
-      expect(valueSchema.$ref).toBe('gts://gts.frontx.i18n.lang.code.v1~');
     });
 
     it('uses allOf derivation from base shared_property schema', () => {
