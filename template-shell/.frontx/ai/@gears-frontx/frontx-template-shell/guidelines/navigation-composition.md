@@ -14,6 +14,8 @@ Authoritative files:
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
 - `src-app/app/mfe/bootstrap.ts` - manifest ingestion, after the domains the
   host implements are registered
+- `src-app/app/mfe/menuLabels.ts` - loads each MFE's label dictionary for the
+  current language and maps extension ids to menu labels
 - `src-app/app/mfe/screenDomain.ts` - the screen domain's implementation and
   its registration, the screen extension type included
 - `src-app/app/mfe/MfeScreenContainer.tsx` - starts the bootstrap with the
@@ -106,7 +108,7 @@ URL returning the same shape, and nothing downstream changes. That shape, per
 package (`MfeManifestConfig` in `bootstrap.ts`):
 
 ```ts
-{ manifest, entries, extensions?, domains?, schemas? }
+{ manifest, entries, extensions?, domains?, schemas?, labelDictionaries? }
 ```
 
 `domains` is present only when the package itself owns an extension domain;
@@ -140,6 +142,9 @@ one.
    regardless of package order in the aggregate.
 6. Per package: scoped action schemas → `manifest` → `domains` → `entries` →
    `extensions`.
+7. Hand all packages to the menu labels:
+   `menuLabels.configure(manifests, aggregateUrl, registry.typeSystem)`. The
+   menu then loads the current language's dictionaries on its own.
 
 Two outcomes at the `extensions` step are deliberately different:
 
