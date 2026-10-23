@@ -51,6 +51,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Gts } from '@globaltypesystem/gts-ts';
 import languageCodeSchema from '../src/gts/schemas/language_code.v1.json';
+import screenLabelsSchema from '../src/gts/schemas/screen_labels.v1.json';
 
 import {
   isNonPackageDirectory,
@@ -58,6 +59,8 @@ import {
   templateExamplesIncluded,
   templateExamplesSkippedNotice,
 } from './lib/mfe-tools.js';
+
+const screenExtensionPrefix = screenLabelsSchema.properties.labels.items.properties.extension['x-gts-ref'].slice(0, -1);
 
 // ---------------------------------------------------------------------------
 // Raw JSON shape types (what we read from the enriched mfe-manifest.json on disk)
@@ -399,6 +402,7 @@ export class ManifestGenerator {
         const { extension, label } = entry as Record<string, unknown>;
         if (typeof extension !== 'string') return fail(`${at}.extension must be a string`);
         if (typeof label !== 'string' || !label) return fail(`${at}.label must be a non-empty string`);
+        if (!extension.startsWith(screenExtensionPrefix)) return fail(`${at}.extension is not a screen extension`);
         if (!owned.has(extension)) return fail(`${at}.extension is not owned by this package`);
         if (extensions.has(extension)) return fail(`${at} repeats extension ${extension}`);
         extensions.add(extension);

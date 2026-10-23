@@ -93,6 +93,7 @@ export class MenuLabels {
           this.typeSystem.register(clean);
           return clean;
         } catch (error) {
+          retry ||= ['TimeoutError', 'AbortError'].includes((error as Error | null)?.name ?? '');
           if (retry && this.cache.get(key) === pending) this.cache.delete(key);
           console.warn(`[Menu labels] Ignoring ${url}:`, error);
           return retry ? undefined : null;
