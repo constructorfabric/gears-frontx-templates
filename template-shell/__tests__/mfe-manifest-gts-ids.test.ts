@@ -250,13 +250,22 @@ describe('ManifestGenerator - GTS identifier validation', () => {
     ['non-string extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: 12, label: 'Home' }] }, 'labels[0].extension must be a string'],
     ['missing label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID }] }, 'labels[0].label must be a non-empty string'],
     ['empty label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: '' }] }, 'labels[0].label must be a non-empty string'],
-    ['foreign extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: 'other', label: 'Other' }] }, 'not owned'],
+    ['foreign extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: `${EXTENSION_TYPE}~fixture.other.screens.home.v1`, label: 'Other' }] }, 'not owned'],
     ['repeated extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: 'Home' }, { extension: VALID_EXTENSION_ID, label: 'Start' }] }, 'labels[1] repeats extension'],
   ])('refuses dictionary file with %s', (_name, contents, message) => {
     mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
     writeDictionary(contents);
 
     expect(messageFromRefusal()).toContain(message);
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a dictionary label for an owned extension that is not a screen', () => {
+    const widgetId = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.widget.v1~fixture.billing.widgets.card.v1';
+    mfePackageWithIds({ extensionId: widgetId, labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+    writeDictionary({ type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: widgetId, label: 'Card' }] });
+
+    expect(messageFromRefusal()).toContain('labels[0].extension is not a screen extension');
     expect(existsSync(outputFile)).toBe(false);
   });
 

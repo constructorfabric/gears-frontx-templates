@@ -159,6 +159,8 @@ describe('menu label loading', () => {
     ['503', [{ ok: false, status: 503, statusText: 'Unavailable' }, { ok: true, json: async () => dictionary('en') }], 2, 'Profile'],
     ['network error', [new Error('offline'), { ok: true, json: async () => dictionary('en') }], 2, 'Profile'],
     ['404', [{ ok: false, status: 404, statusText: 'Not Found' }, { ok: true, json: async () => dictionary('en') }], 1, undefined],
+    ['body read timeout', [{ ok: true, json: async () => { throw new DOMException('signal timed out', 'TimeoutError'); } }, { ok: true, json: async () => dictionary('en') }], 2, 'Profile'],
+    ['invalid JSON', [{ ok: true, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); } }, { ok: true, json: async () => dictionary('en') }], 1, undefined],
   ])('%s responses follow the retry policy', async (_name, responses, count, expected) => {
     const loader = new MenuLabels(store());
     loader.configure([{
