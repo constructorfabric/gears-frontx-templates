@@ -20,6 +20,7 @@ import {
 // for them the same way.
 import {
   extensionScreenSchema,
+  languageCodeSchema,
   languageSchema,
   themeSchema,
 } from '@gears-frontx/frontx-template-shell';
@@ -71,6 +72,7 @@ beforeAll(() => {
   // own admission and every case would refuse over a missing domain rather than
   // over the target pattern.
   gtsPlugin.registerSchema(themeSchema);
+  gtsPlugin.registerSchema(languageCodeSchema);
   gtsPlugin.registerSchema(languageSchema);
   gtsPlugin.registerSchema(extensionScreenSchema);
   for (const schema of CHROME_ACTION_SCHEMAS) {

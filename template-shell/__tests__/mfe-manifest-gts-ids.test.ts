@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -62,6 +62,7 @@ interface ManifestOverrides {
   omitEntries?: boolean;
   /** Writes both collections present but empty, which is what a contributing-nothing MFE emits. */
   emptyCollections?: boolean;
+  labelDictionaries?: unknown;
 }
 
 /**
@@ -93,6 +94,7 @@ function mfePackageWithIds(overrides: ManifestOverrides): void {
         },
         shared: [],
       },
+      ...(overrides.labelDictionaries !== undefined && { labelDictionaries: overrides.labelDictionaries }),
       ...(overrides.omitEntries
         ? {}
         : {
@@ -132,6 +134,16 @@ function generate(): void {
   new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, null).run();
 }
 
+function writeDictionary(contents: unknown = {
+  type: 'gts.frontx.i18n.dict.screen_labels.v1~',
+  language: 'en',
+  labels: [{ extension: VALID_EXTENSION_ID, label: 'Home' }],
+}): void {
+  const labelsDir = join(mfePackagesDir, PACKAGE_NAME, 'public', 'labels');
+  mkdirSync(labelsDir, { recursive: true });
+  writeFileSync(join(labelsDir, 'en.json'), typeof contents === 'string' ? contents : JSON.stringify(contents));
+}
+
 /**
  * The refusal message, so a case can read it rather than match a pattern
  * against it. A generator that wrote an aggregate instead fails here with what
@@ -159,6 +171,104 @@ afterEach(() => {
 });
 
 describe('ManifestGenerator - GTS identifier validation', () => {
+  it('preserves each MFE label dictionary declaration in the served aggregate', () => {
+    const declared = [{ language: 'en', file: 'labels/en.json' }];
+    mfePackageWithIds({ labelDictionaries: declared });
+    writeDictionary();
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ labelDictionaries?: typeof declared }>;
+    expect(aggregate[0].labelDictionaries).toEqual(declared);
+  });
+
+  it('accepts an empty label dictionary declaration without a public directory', () => {
+    mfePackageWithIds({ labelDictionaries: [] });
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ labelDictionaries: unknown[] }>;
+    expect(aggregate[0].labelDictionaries).toEqual([]);
+  });
+
+  it.each([
+    ['non-array declaration', 'labels/en.json', 'must be an array'],
+    ['non-object item', [null], 'must be an object'],
+    ['non-string language', [{ language: 12, file: 'labels/en.json' }], 'requires only string language and file'],
+    ['non-string file', [{ language: 'en', file: 12 }], 'requires only string language and file'],
+    ['extra item field', [{ language: 'en', file: 'labels/en.json', id: 'extra' }], 'requires only string language and file'],
+    ['unsupported language', [{ language: 'xx', file: 'labels/en.json' }], 'unsupported language'],
+    ['repeated language', [{ language: 'en', file: 'labels/en.json' }, { language: 'en', file: 'labels/en.json' }], 'repeats language'],
+    ['missing file', [{ language: 'en', file: 'labels/missing.json' }], 'file not found'],
+  ])('refuses %s in label dictionaries', (_name, declared, message) => {
+    mfePackageWithIds({ labelDictionaries: declared });
+    writeDictionary();
+
+    expect(messageFromRefusal()).toContain(message);
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it.each(['https://example.com/en.json', '/labels/en.json', '//example.com/en.json', '../en.json', 'labels/../en.json', 'labels\\en.json'])('refuses dictionary path %s outside public', (file) => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file }] });
+    writeDictionary();
+
+    expect(messageFromRefusal()).toContain('relative path inside public/');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a public directory linked outside the package', () => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+    const external = join(workspace, 'external');
+    mkdirSync(external);
+    symlinkSync(external, join(mfePackagesDir, PACKAGE_NAME, 'public'));
+
+    expect(messageFromRefusal()).toContain('public/ must be inside the package');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a declaration when the package has no public directory', () => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+
+    expect(messageFromRefusal()).toContain('public/ directory, which is missing');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a declared file that is a directory', () => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels' }] });
+    writeDictionary();
+
+    expect(messageFromRefusal()).toContain('file not found under public/: labels');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it.each([
+    ['invalid JSON', '{', 'not valid JSON'],
+    ['wrong type', { type: 'wrong', language: 'en', labels: [] }, 'wrong type'],
+    ['wrong language', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'fr', labels: [] }, 'language does not match en'],
+    ['missing labels', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en' }, 'labels must be an array'],
+    ['non-object label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: ['Home'] }, 'labels[0] must be an object'],
+    ['non-string extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: 12, label: 'Home' }] }, 'labels[0].extension must be a string'],
+    ['missing label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID }] }, 'labels[0].label must be a non-empty string'],
+    ['empty label', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: '' }] }, 'labels[0].label must be a non-empty string'],
+    ['foreign extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: `${EXTENSION_TYPE}~fixture.other.screens.home.v1`, label: 'Other' }] }, 'not owned'],
+    ['repeated extension', { type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: VALID_EXTENSION_ID, label: 'Home' }, { extension: VALID_EXTENSION_ID, label: 'Start' }] }, 'labels[1] repeats extension'],
+  ])('refuses dictionary file with %s', (_name, contents, message) => {
+    mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+    writeDictionary(contents);
+
+    expect(messageFromRefusal()).toContain(message);
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a dictionary label for an owned extension that is not a screen', () => {
+    const widgetId = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.widget.v1~fixture.billing.widgets.card.v1';
+    mfePackageWithIds({ extensionId: widgetId, labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
+    writeDictionary({ type: 'gts.frontx.i18n.dict.screen_labels.v1~', language: 'en', labels: [{ extension: widgetId, label: 'Card' }] });
+
+    expect(messageFromRefusal()).toContain('labels[0].extension is not a screen extension');
+    expect(existsSync(outputFile)).toBe(false);
+  });
+
   it('refuses the run when an extension id carries a segment one dot-token short of five', () => {
     mfePackageWithIds({ extensionId: FOUR_TOKEN_EXTENSION_ID });
 

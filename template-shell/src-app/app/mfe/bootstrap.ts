@@ -31,6 +31,7 @@ import type {
   JSONSchema,
   MfeRegistry,
 } from '@gears-frontx/react';
+import { menuLabels, type LabelDictionaryManifest } from './menuLabels';
 
 const MFE_MANIFESTS_FILE = 'generated-mfe-manifests.json';
 
@@ -72,6 +73,7 @@ interface MfeManifestConfig {
   entries: MfeEntryMF[];
   extensions?: Extension[];
   schemas?: JSONSchema[];
+  labelDictionaries?: LabelDictionaryManifest[];
 }
 
 /**
@@ -291,4 +293,5 @@ export async function bootstrapMFE(app: FrontXApp, domains: readonly DomainRegis
   for (const config of manifests) {
     await registerMfePackage(registry, config);
   }
+  menuLabels.configure(manifests, aggregateUrl, registry.typeSystem);
 }

@@ -9,6 +9,8 @@ packages (`demo-mfe`, `_blank-mfe`, `widgets-fixture-a`, `widgets-fixture-b`), s
 new MFEs added to a project built from template-mfe stay consistent with the
 existing ones.
 
+Menu label dictionaries use the type `gts.frontx.i18n.dict.screen_labels.v1~`. Their `language` field uses `gts.frontx.i18n.lang.code.v1~`, and each `labels[].extension` refers to a registered screen extension ID. They are JSON files in `public/labels/`, named by top-level `mfe.json` `labelDictionaries[]` entries.
+
 ## General shape
 
 ```text

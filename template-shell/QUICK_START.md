@@ -150,7 +150,7 @@ guideline for the exact shape a new package must have.
 The template ships a complete `CoreLayout` (menu, header, footer, sidebar, and
 the screen container). You compose *into* it:
 
-- **Menu** is populated from screen extensions (`presentation.label`/`icon`/`order`).
+- **Menu** is populated from screen extensions (`presentation.label`/`icon`/`order`). Optional `labelDictionaries` supply translated menu labels, with `presentation.label` as fallback.
 - **Screen container** mounts one screen at a time (exclusive mount strategy).
 - **Sidebar / popup / overlay** are optional domains an MFE can target the same way.
 

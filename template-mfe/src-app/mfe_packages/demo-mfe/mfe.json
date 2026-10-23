@@ -1,5 +1,6 @@
 {
   "templateExample": true,
+  "labelDictionaries": [{ "language": "en", "file": "labels/en.json" }],
   "schemas": [
     {
       "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.demo.action.refresh_profile.v1~",
