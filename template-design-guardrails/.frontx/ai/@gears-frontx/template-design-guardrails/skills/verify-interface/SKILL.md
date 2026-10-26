@@ -92,7 +92,7 @@ Manual protocol (no Chrome available, or interactively reaching states):
 1. Open or navigate to the screen under verification. Let it settle — MFEs mount asynchronously and the checker's automatic sweep waits for that; a check at first paint races them — wait for the first `[design-defects]` console line before reading results.
 2. Read the automatic sweep from the console: every line is prefixed `[design-defects]`. A clean run prints exactly one line saying no defects were detected.
 3. For each state you can reach (theme switch, narrow width, populated/empty data), re-run the sweep on demand with `window.__frontxDesignDefects()` and read the returned findings or the new console lines. If the function is undefined or throws despite a clean load line, report it as a blocking environment finding with the error, the same as the failed-to-load case.
-4. Exercise widths deliberately: wide, medium, narrow, and 320 CSS px. The page-level horizontal-scroll rule is the direct measurement of LAY-002.
+4. Exercise widths deliberately: wide, medium, narrow, and 320 CSS px. The page-level horizontal-scroll rule is the direct measurement of LAY-002. It measures the document and every box the main landmark's content scrolls in: the FrontX shell never scrolls the document and scrolls the screen in a container of its own, so there the finding names that container.
 
 Tier the matrix to the phase. The full pass — every reachable width (wide,
 medium, narrow, 320 CSS px), both themes, populated and empty data — runs on
@@ -119,7 +119,7 @@ The checker reports stable rule ids. Map them before reporting; never forward ra
 
 - `axe/color-contrast` → COL/A11Y contrast gates (pick the single matching gate ID from `quality-gates.json` and carry its severity) — this is the one axe rule the jsdom test suite cannot run, so treat it as new evidence, not duplication;
 - other `axe/*` findings (labels, landmarks, list semantics, heading-one) → the single closest A11Y/structure gate ID;
-- `page-horizontal-scroll` → LAY-002 (blocker at 320 CSS px);
+- `page-horizontal-scroll` (the document, or the box the page's content scrolls in, scrolls sideways) → LAY-002 (blocker at 320 CSS px);
 - `tiny-text` (visible text below the kit's mono size, `--text-mono-size`), `small-control-text` (text on a button, link, form control or its label below the kit's label size, `--text-label-size`) and `clipped-text` (clipped without ellipsis) → the single closest TYP or layout/density gate ID; the floors are read from the installed tokens, so the fix is always the kit's own role, never an arbitrary size;
 - `control-height-mismatch` (form controls sharing one flex row rendered at different heights) → LAY-003 shared alignment lines / LAY-005 shared anatomy and density — the fix is matching the kit's size variants, never spacer elements or eyeballed margins;
 - `card-missing-padding` (content ink flush against a card's drawn edge) → LAY-005 shared anatomy and density — bounded containers carry horizontal padding (4 px floor, 12–24 px normal); the checker already exempts the full-bleed media card, so do not re-litigate that exemption when mapping;
@@ -127,7 +127,7 @@ The checker reports stable rule ids. Map them before reporting; never forward ra
 - `card-content-overflow` (content extending past a card's drawn edge) → LAY-002 — wide content scrolls or wraps inside its own container (`overflow-x-auto`, truncation, or `break-all` for unbroken strings), never past a drawn edge. Content inside an `overflow-x: auto` or `scroll` container is measured at that scroller's visible content box, so wide content that scrolls there is not reported; content past an `overflow: hidden` or `clip` card outside any such scroller still is;
 - `skipped-heading` → the single closest hierarchy/typography gate ID.
 
-Worked trace: console line `[design-defects] page-horizontal-scroll: body overflows at 320px` → gate `LAY-002` → report line `LAY-002 (blocker) — page-horizontal-scroll at 320 CSS px; evidence: the console line above; locator: <body>`.
+Worked trace: console line `[design-defects] page-horizontal-scroll: the page's scroll container scrolls horizontally (900px content in 273px box) — wide content must scroll inside its own container, not the page's — div.flex-1.overflow-auto` → gate `LAY-002` → report line `LAY-002 (blocker) — page-horizontal-scroll at 320 CSS px; evidence: the console line above; locator: div.flex-1.overflow-auto (the shell's screen container)`.
 
 Every reported finding must carry exactly one gate ID and the severity that `quality-gates.json` assigns to it; if no single gate matches, report the rule id with gate `unmapped` and severity from the checker context rather than inventing one.
 

@@ -9,7 +9,10 @@
  *     (browser-only: it needs real paint) — axe traverses open shadow roots,
  *     so MFE content is covered;
  *   - page-level horizontal scroll (the layout contract every screen must
- *     keep: wide content scrolls in its own container, never the page);
+ *     keep: wide content scrolls in its own container, never the page),
+ *     measured on the document and on every box the main landmark's content
+ *     scrolls in — the FrontX shell never scrolls the document and scrolls
+ *     the screen in a container of its own;
  *   - clipped text (content wider than its box under overflow hidden/clip
  *     with no ellipsis treatment);
  *   - tiny text (visible text below a readable floor);
@@ -149,6 +152,51 @@ export function isClippedText(box: {
   if (box.textOverflow === 'ellipsis') return false;
   if (box.clientWidth <= 1 && box.clientHeight <= 1) return false;
   return box.scrollWidth > box.clientWidth + OVERFLOW_TOLERANCE_PX;
+}
+
+/**
+ * Pure predicate for the page-level horizontal-scroll rule on a box that is
+ * not the document; exported for unit tests. Only a box that scrolls on the
+ * inline axis counts: content past a hidden or clip box is clipped, not
+ * scrolled.
+ */
+export function scrollsSideways(box: { overflowX: string; scrollWidth: number; clientWidth: number }): boolean {
+  if (!scrollsOnInlineAxis(box.overflowX)) return false;
+  return box.scrollWidth > box.clientWidth + OVERFLOW_TOLERANCE_PX;
+}
+
+function scrollsOnInlineAxis(overflowX: string): boolean {
+  return overflowX === 'auto' || overflowX === 'scroll';
+}
+
+/**
+ * The boxes the page's content scrolls in, found from the main landmark:
+ * each scroller among its ancestors, then the landmark itself and each box
+ * on the chain of sole children below it. A shell can keep the document
+ * still and scroll the page in a box of its own — the FrontX shell hides
+ * overflow on html, body and main and scrolls the screen in
+ * div[data-mfe-screen-container] — so the reflow rule has to measure that
+ * box too. The chain stops at the first level with more than one child: a
+ * box with siblings holds only part of the page, and a table scrolling in its
+ * own overflow-x: auto wrapper is the isolated scroll the layout rule allows.
+ * Generic over the node type so the walk is unit-testable without layout.
+ */
+export function findPageScrollers<T>(
+  main: T,
+  tree: {
+    parent(node: T): T | null;
+    soleChild(node: T): T | null;
+    isScroller(node: T): boolean;
+  }
+): T[] {
+  const scrollers: T[] = [];
+  for (let node = tree.parent(main); node !== null; node = tree.parent(node)) {
+    if (tree.isScroller(node)) scrollers.push(node);
+  }
+  for (let node: T | null = main; node !== null; node = tree.soleChild(node)) {
+    if (tree.isScroller(node)) scrollers.push(node);
+  }
+  return scrollers;
 }
 
 /**
@@ -660,6 +708,74 @@ function hasDirectText(el: Element): boolean {
 }
 
 /**
+ * The parent box, stepping out of a shadow root to its host. Null at body:
+ * the document's own scroll is measured on document.scrollingElement, and
+ * body and html also carry the overflow the viewport takes from them.
+ */
+function layoutParent(el: Element): Element | null {
+  const root = el.getRootNode();
+  const parent = el.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+  if (parent === null || parent === document.body || parent === document.documentElement) return null;
+  return parent;
+}
+
+/**
+ * The only rendered in-flow child of `el`, or of its shadow root when it
+ * hosts one; null when there is none, more than one, or text beside it.
+ * Absolutely positioned and fixed children sit outside the flow and hold no
+ * part of the page's content.
+ */
+function soleInFlowChild(el: Element): Element | null {
+  let sole: Element | null = null;
+  for (const node of Array.from((el.shadowRoot ?? el).childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if ((node.textContent ?? '').trim().length > 0) return null;
+      continue;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const child = node as Element;
+    if (!isRendered(child)) continue;
+    const position = getComputedStyle(child).position;
+    if (position === 'absolute' || position === 'fixed') continue;
+    if (sole !== null) return null;
+    sole = child;
+  }
+  return sole;
+}
+
+/**
+ * The page-level horizontal-scroll rule for the boxes the page's content
+ * scrolls in (see findPageScrollers); the document itself is measured
+ * separately.
+ */
+function collectPageScrollerFindings(mains: readonly Element[]): DesignDefectFinding[] {
+  const scrollers = new Set<Element>();
+  for (const main of mains) {
+    const found = findPageScrollers(main, {
+      parent: layoutParent,
+      soleChild: soleInFlowChild,
+      isScroller: (el) => scrollsOnInlineAxis(getComputedStyle(el).overflowX),
+    });
+    for (const scroller of found) scrollers.add(scroller);
+  }
+  const findings: DesignDefectFinding[] = [];
+  for (const scroller of scrollers) {
+    const box = {
+      overflowX: getComputedStyle(scroller).overflowX,
+      scrollWidth: scroller.scrollWidth,
+      clientWidth: scroller.clientWidth,
+    };
+    if (!scrollsSideways(box)) continue;
+    findings.push({
+      id: 'page-horizontal-scroll',
+      detail: `the page's scroll container scrolls horizontally (${box.scrollWidth}px content in ${box.clientWidth}px box) — wide content must scroll inside its own container, not the page's`,
+      target: describeElement(scroller),
+    });
+  }
+  return findings;
+}
+
+/**
  * Pairs each heading-level skip with the specific heading element that
  * caused it (not the first heading of that level anywhere in the document —
  * a document with repeated levels, e.g. [1, 3, 1, 3], has one skip per h3
@@ -694,6 +810,7 @@ function collectLayoutFindings(): DesignDefectFinding[] {
     });
   }
 
+  const mains: Element[] = [];
   const headingLevels: number[] = [];
   const headingEls: Element[] = [];
   const controlRows = new Map<Element, Element[]>();
@@ -701,6 +818,8 @@ function collectLayoutFindings(): DesignDefectFinding[] {
 
   for (const el of walkElements(document)) {
     if (!isRendered(el) || isStudioChrome(el)) continue;
+
+    if (el.matches('main, [role="main"]')) mains.push(el);
 
     for (const token of Array.from(el.classList)) {
       if (!isSpacingToken(token)) continue;
@@ -767,6 +886,8 @@ function collectLayoutFindings(): DesignDefectFinding[] {
       }
     }
   }
+
+  findings.push(...collectPageScrollerFindings(mains));
 
   for (const [, group] of controlRows) {
     if (group.length < 2) continue;

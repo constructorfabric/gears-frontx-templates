@@ -19,6 +19,7 @@ import {
   findCardEdgeFlush,
   findControlHeightMismatches,
   findHeadingSkips,
+  findPageScrollers,
   installDesignDefectCheck,
   isClippedText,
   isFullBleedMedia,
@@ -26,6 +27,7 @@ import {
   isTinyText,
   parseCssLengthPx,
   readTextFloors,
+  scrollsSideways,
   shareVisualRow,
   spacingProbeSpec,
 } from '../src/designDefects';
@@ -104,6 +106,84 @@ describe('isClippedText', () => {
 
   it('tolerates sub-pixel rounding', () => {
     expect(isClippedText({ scrollWidth: 101, clientWidth: 100, clientHeight: 20, overflowX: 'hidden', textOverflow: 'clip' })).toBe(false);
+  });
+});
+
+describe('scrollsSideways', () => {
+  it('flags a scroll container whose content is wider than its box', () => {
+    // The shell's screen container holding a 900px screen at a 320px viewport.
+    expect(scrollsSideways({ overflowX: 'auto', scrollWidth: 900, clientWidth: 288 })).toBe(true);
+    expect(scrollsSideways({ overflowX: 'scroll', scrollWidth: 900, clientWidth: 288 })).toBe(true);
+  });
+
+  it('accepts content that fits, within sub-pixel rounding', () => {
+    expect(scrollsSideways({ overflowX: 'auto', scrollWidth: 288, clientWidth: 288 })).toBe(false);
+    expect(scrollsSideways({ overflowX: 'auto', scrollWidth: 289, clientWidth: 288 })).toBe(false);
+  });
+
+  it('ignores boxes that clip or let content spill instead of scrolling', () => {
+    expect(scrollsSideways({ overflowX: 'hidden', scrollWidth: 900, clientWidth: 288 })).toBe(false);
+    expect(scrollsSideways({ overflowX: 'clip', scrollWidth: 900, clientWidth: 288 })).toBe(false);
+    expect(scrollsSideways({ overflowX: 'visible', scrollWidth: 900, clientWidth: 288 })).toBe(false);
+  });
+});
+
+describe('findPageScrollers', () => {
+  interface Box {
+    name: string;
+    scroller: boolean;
+    parent: Box | null;
+    children: Box[];
+  }
+
+  function box(name: string, scroller: boolean, children: Box[] = []): Box {
+    const node: Box = { name, scroller, parent: null, children };
+    for (const child of children) child.parent = node;
+    return node;
+  }
+
+  const tree = {
+    parent: (node: Box) => node.parent,
+    soleChild: (node: Box) => (node.children.length === 1 ? node.children[0] : null),
+    isScroller: (node: Box) => node.scroller,
+  };
+
+  function scrollersFrom(main: Box): string[] {
+    return findPageScrollers(main, tree).map((node) => node.name);
+  }
+
+  it("finds the shell's screen container below a main that does not scroll", () => {
+    // Layout > main (overflow hidden) > div[data-mfe-screen-container] (overflow auto) > slot > screen
+    const main = box('main', false, [box('screen-container', true, [box('slot', false, [box('screen', false)])])]);
+    box('layout', false, [main]);
+
+    expect(scrollersFrom(main)).toEqual(['screen-container']);
+  });
+
+  it('measures every scroller on the sole-child chain, so a screen that scrolls on its own is found too', () => {
+    const main = box('main', false, [box('screen-container', true, [box('slot', false, [box('screen-root', true)])])]);
+
+    expect(scrollersFrom(main)).toEqual(['screen-container', 'screen-root']);
+  });
+
+  it('stops at a level with more than one child, so a table in its own scroll wrapper is not the page', () => {
+    const main = box('main', false, [box('screen', false, [box('heading', false), box('table-wrapper', true)])]);
+
+    expect(scrollersFrom(main)).toEqual([]);
+  });
+
+  it('includes the main landmark itself and the scrollers above it, nearest first', () => {
+    const main = box('main', true, [box('screen', false)]);
+    box('app', true, [box('frame', false, [main])]);
+
+    expect(scrollersFrom(main)).toEqual(['app', 'main']);
+  });
+
+  it('returns nothing when no box on the way scrolls', () => {
+    const main = box('main', false, [box('screen', false)]);
+    box('layout', false, [main]);
+
+    expect(scrollersFrom(main)).toEqual([]);
   });
 });
 
