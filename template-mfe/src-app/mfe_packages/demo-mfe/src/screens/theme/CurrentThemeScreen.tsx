@@ -73,11 +73,11 @@ export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }
   if (loading) {
     return (
       <div ref={containerRef} className="px-0 py-4 sm:p-8" role="status" aria-busy="true">
-        <div className={`${PLACEHOLDER_CLASS} h-8 w-64 mb-4`} />
-        <div className={`${PLACEHOLDER_CLASS} h-4 w-96 mb-6`} />
+        <div className={`${PLACEHOLDER_CLASS} h-8 w-64 max-w-full mb-4`} />
+        <div className={`${PLACEHOLDER_CLASS} h-4 w-96 max-w-full mb-6`} />
         <div className={CARD_CLASS}>
           <div className="p-4 sm:p-6">
-            <div className={`${PLACEHOLDER_CLASS} h-6 w-48 mb-4`} />
+            <div className={`${PLACEHOLDER_CLASS} h-6 w-48 max-w-full mb-4`} />
             <div className="space-y-3">
               <div className={`${PLACEHOLDER_CLASS} h-4 w-full`} />
               <div className={`${PLACEHOLDER_CLASS} h-4 w-full`} />

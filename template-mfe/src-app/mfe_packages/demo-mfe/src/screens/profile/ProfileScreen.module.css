@@ -144,6 +144,7 @@
  */
 .placeholderTitle {
   height: var(--control-height-lg);
+  max-width: 100%;
   width: 16rem;
 }
 

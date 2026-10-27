@@ -16,8 +16,8 @@
 
 /*
  * The category menu sits beside the demos while the demos keep at least half
- * the screen, and moves above them once they would not. Moved above, it is no
- * longer sticky: its line is only as tall as the menu.
+ * the screen, and moves above them once they would not. The screen is a size
+ * container, so the menu's own rules can follow the same point (see `.menu`).
  *
  * On a phone the shell's own 1rem side padding is the screen's margin, so the
  * screen adds none at the sides. From 40rem, Tailwind's `sm`, it pads 2rem all
@@ -26,6 +26,7 @@
 .screen {
   background-color: var(--background);
   color: var(--foreground);
+  container-type: inline-size;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6);
@@ -219,11 +220,12 @@
 }
 
 /*
- * Beside the demos the menu stays in view and scrolls on its own. On a phone,
- * where it sits above them, a capped height would put a second scroll area
- * inside the page, so there it takes its full height.
+ * Beside the demos the menu stays in view and scrolls on its own. Above them,
+ * a capped height would put a second scroll area inside the page, so there it
+ * takes its full height. 35rem is where the screen stops wrapping: the 16rem
+ * menu and the 1.5rem gap (`--space-6`) fit beside the half the demos keep.
  */
-@media (min-width: 40rem) {
+@container (min-width: 35rem) {
   .menu {
     max-height: calc(100vh - var(--space-8));
     overflow-y: auto;
