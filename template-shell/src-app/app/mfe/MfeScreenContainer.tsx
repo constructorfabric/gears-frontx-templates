@@ -110,8 +110,10 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   if (bootstrapFailed) retryFailed = () => window.location.reload();
   else if (loadFailure) retryFailed = retryScreen;
 
+  // The side padding sits inside the scroller, so its scrollbar is at the
+  // window's edge instead of inset by the padding.
   return (
-    <div className="flex-1 overflow-auto" data-mfe-screen-container>
+    <div className="flex-1 overflow-auto px-4" data-mfe-screen-container>
       {retryFailed ? <LoadFailed onRetry={retryFailed} /> : null}
       {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
