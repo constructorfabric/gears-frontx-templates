@@ -46,13 +46,25 @@ with a thrown registration error, not a silent skip):
 
 | Field (on the extension) | Required | Meaning |
 |---|---|---|
-| `label` | yes | menu item text. A raw display string — there is no i18n key for menu labels today, so the label renders identically in every language |
+| `label` | yes | fallback menu item text and tooltip when the current language has no dictionary label |
 | `route` (top level, beside `id`/`domain`/`entry`) | yes | route value (e.g. `/widgets-host`) the FrontX router finds the extension by; with the screen domain's own route it gives the extension its private subroute — keep it unique within the domain and stable across releases. It must reduce to one valid name under the naming rule of `@gears-frontx/routing`; otherwise the router refuses the registration |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 
 `order` is a flat number per domain — there is no grouping or nesting, so
 coordinate values across packages if relative position matters.
+
+For translated labels, declare `"labelDictionaries": [{ "language": "en", "file": "labels/en.json" }]` at the top of `mfe.json`. The file lives in `public/labels/`, relative to this MFE's served root. It contains one language's labels for this MFE:
+
+```json
+{
+  "type": "gts.frontx.i18n.dict.screen_labels.v1~",
+  "language": "en",
+  "labels": [{ "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1", "label": "Widgets Host" }]
+}
+```
+
+List every screen extension the package declares. The shell validates the file against `gts.frontx.i18n.dict.screen_labels.v1~` and uses its label for menu text and tooltip. Missing languages use `presentation.label`.
 
 ## Routes inside the MFE
 

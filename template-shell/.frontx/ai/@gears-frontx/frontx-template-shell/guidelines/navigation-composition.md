@@ -14,6 +14,8 @@ Authoritative files:
 - `src-app/app/layout/Menu.tsx` — menu rendering and mount dispatch
 - `src-app/app/mfe/bootstrap.ts` - manifest ingestion, after the domains the
   host implements are registered
+- `src-app/app/mfe/menuLabels.ts` - loads each MFE's label dictionary for the
+  current language and maps extension ids to menu labels
 - `src-app/app/mfe/screenDomain.ts` - the screen domain's implementation and
   its registration, the screen extension type included
 - `src-app/app/mfe/MfeScreenContainer.tsx` - starts the bootstrap with the
@@ -30,6 +32,7 @@ Authoritative files:
 `mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN)` returns, sorted by
 `presentation.order` (a missing `order` defaults to `999`, i.e. last). The list
 is read once, after bootstrap. The active item carries `aria-current="page"`.
+For the current language, the menu loads each MFE's declared `labelDictionaries` file and uses its screen extension labels for text and tooltip. It falls back to the required `presentation.label` when no dictionary label is available.
 
 A click does **not** navigate. It dispatches a mount action:
 
@@ -105,7 +108,7 @@ URL returning the same shape, and nothing downstream changes. That shape, per
 package (`MfeManifestConfig` in `bootstrap.ts`):
 
 ```ts
-{ manifest, entries, extensions?, domains?, schemas? }
+{ manifest, entries, extensions?, domains?, schemas?, labelDictionaries? }
 ```
 
 `domains` is present only when the package itself owns an extension domain;
@@ -139,6 +142,9 @@ one.
    regardless of package order in the aggregate.
 6. Per package: scoped action schemas → `manifest` → `domains` → `entries` →
    `extensions`.
+7. Hand all packages to the menu labels:
+   `menuLabels.configure(manifests, aggregateUrl, registry.typeSystem)`. The
+   menu then loads the current language's dictionaries on its own.
 
 Two outcomes at the `extensions` step are deliberately different:
 
@@ -163,7 +169,7 @@ top-level `route` and its `presentation`:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `label` | yes | menu item text (raw display string — no i18n key today) |
+| `label` | yes | fallback menu item text; the MFE's label dictionary for the current language overrides it (`labelDictionaries`, see `mfe-package-contract`) |
 | `route` (top level, beside `id`/`domain`/`entry`) | yes | route value the FrontX router finds the extension by |
 | `icon` | no | Iconify icon name (e.g. `lucide:user`) |
 | `order` | no | sort key, lower = earlier; missing = `999` |
@@ -191,7 +197,7 @@ host and MFEs.
   pipeline at all is the `mfe-package-contract` guideline in this bundle.
 - The ID taxonomy used in every declaration is the `gts-id-conventions`
   guideline in the `template-mfe` AI bundle.
-- Known limitations (no menu i18n, no audience targeting, flat `order`) are
+- Known limitations (no audience targeting, flat `order`) are
   properties of the current schemas, tracked upstream in the platform's
   navigation-service planning — not bugs in this shell. Routing itself has its
   own known limitations, tracked against issue #638 rather than this schema

@@ -147,6 +147,7 @@ interface MfeJson {
    * rewrite, and that copy has no reader.
    */
   templateExample?: boolean;
+  labelDictionaries?: Array<{ language: string; file: string }>;
   manifest: MfeJsonManifest;
   entries: MfeJsonEntry[];
   extensions: MfeJsonExtension[];

@@ -1,6 +1,12 @@
 {
   "description": "Worked GTS ID examples drawn from template-mfe's own MFE packages (demo-mfe, _blank-mfe, widgets-fixture-a/b), for direct citation/reuse when authoring a new MFE package's mfe.json. Companion to the gts-id-conventions guideline in this same bundle.",
   "namespaceRoot": "frontx",
+  "menuLabelDictionary": {
+    "type": "gts.frontx.i18n.dict.screen_labels.v1~",
+    "languageType": "gts.frontx.i18n.lang.code.v1~",
+    "extensionTypePattern": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~*",
+    "manifestField": "labelDictionaries"
+  },
   "instanceSegment": {
     "shape": "vendor.package.namespace.type.vN",
     "tokenCount": 5,
