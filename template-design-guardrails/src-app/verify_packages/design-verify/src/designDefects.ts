@@ -179,6 +179,8 @@ function scrollsOnInlineAxis(overflowX: string): boolean {
  * box too. The chain stops at the first level with more than one child: a
  * box with siblings holds only part of the page, and a table scrolling in its
  * own overflow-x: auto wrapper is the isolated scroll the layout rule allows.
+ * It also stops at a scroller whose only child is a table or grid, which is
+ * that grid's own scroll box even when the grid is all the screen holds.
  * Generic over the node type so the walk is unit-testable without layout.
  */
 export function findPageScrollers<T>(
@@ -187,6 +189,7 @@ export function findPageScrollers<T>(
     parent(node: T): T | null;
     soleChild(node: T): T | null;
     isScroller(node: T): boolean;
+    isGrid(node: T): boolean;
   }
 ): T[] {
   const scrollers: T[] = [];
@@ -194,7 +197,10 @@ export function findPageScrollers<T>(
     if (tree.isScroller(node)) scrollers.push(node);
   }
   for (let node: T | null = main; node !== null; node = tree.soleChild(node)) {
-    if (tree.isScroller(node)) scrollers.push(node);
+    if (!tree.isScroller(node)) continue;
+    const child = tree.soleChild(node);
+    if (child !== null && tree.isGrid(child)) break;
+    scrollers.push(node);
   }
   return scrollers;
 }
@@ -805,6 +811,7 @@ function collectPageScrollerFindings(mains: readonly Element[]): DesignDefectFin
       parent: layoutParent,
       soleChild: soleInFlowChild,
       isScroller: (el) => scrollsOnInlineAxis(getComputedStyle(el).overflowX),
+      isGrid: (el) => el.tagName === 'TABLE' || ['grid', 'treegrid'].includes(el.getAttribute('role') ?? ''),
     });
     for (const scroller of found) scrollers.add(scroller);
   }

@@ -134,20 +134,26 @@ describe('findPageScrollers', () => {
   interface Box {
     name: string;
     scroller: boolean;
+    grid: boolean;
     parent: Box | null;
     children: Box[];
   }
 
   function box(name: string, scroller: boolean, children: Box[] = []): Box {
-    const node: Box = { name, scroller, parent: null, children };
+    const node: Box = { name, scroller, grid: false, parent: null, children };
     for (const child of children) child.parent = node;
     return node;
+  }
+
+  function grid(name: string): Box {
+    return { ...box(name, false), grid: true };
   }
 
   const tree = {
     parent: (node: Box) => node.parent,
     soleChild: (node: Box) => (node.children.length === 1 ? node.children[0] : null),
     isScroller: (node: Box) => node.scroller,
+    isGrid: (node: Box) => node.grid,
   };
 
   function scrollersFrom(main: Box): string[] {
@@ -166,6 +172,21 @@ describe('findPageScrollers', () => {
     const main = box('main', false, [box('screen-container', true, [box('slot', false, [box('screen-root', true)])])]);
 
     expect(scrollersFrom(main)).toEqual(['screen-container', 'screen-root']);
+  });
+
+  it("stops at a scroller whose only child is a table or grid: that is the grid's own scroll, not the page's", () => {
+    // The screen's only content is a data grid in its own overflow-x: auto wrapper.
+    const main = box('main', false, [
+      box('screen-container', true, [box('slot', false, [box('table-wrapper', true, [grid('table')])])]),
+    ]);
+
+    expect(scrollersFrom(main)).toEqual(['screen-container']);
+  });
+
+  it('still measures the page container when a grid is all the screen holds and has no scroll box of its own', () => {
+    const main = box('main', false, [box('screen-container', true, [box('slot', false, [grid('table')])])]);
+
+    expect(scrollersFrom(main)).toEqual(['screen-container']);
   });
 
   it('stops at a level with more than one child, so a table in its own scroll wrapper is not the page', () => {
