@@ -197,11 +197,21 @@
   background-color: var(--surface);
   border: var(--border-width) solid var(--border);
   border-radius: var(--radius-lg);
-  max-height: calc(100vh - var(--space-8));
-  overflow-y: auto;
   padding: var(--space-4);
-  position: sticky;
-  top: var(--space-4);
+}
+
+/*
+ * Beside the demos the menu stays in view and scrolls on its own. On a phone,
+ * where it sits above them, a capped height would put a second scroll area
+ * inside the page, so there it takes its full height.
+ */
+@media (min-width: 40rem) {
+  .menu {
+    max-height: calc(100vh - var(--space-8));
+    overflow-y: auto;
+    position: sticky;
+    top: var(--space-4);
+  }
 }
 
 .menuTitle {
