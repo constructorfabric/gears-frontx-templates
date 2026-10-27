@@ -24,13 +24,15 @@ export const NavigationElements: React.FC<NavigationElementsProps> = ({ t }) => 
         description={t('element.tab.description')}
       >
         <Tabs defaultValue="overview">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="settings" disabled>
-              Settings
-            </TabsTrigger>
-          </TabsList>
+          <div className={styles.tabsScroller}>
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="settings" disabled>
+                Settings
+              </TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="overview">
             <p>Usage and quota for the current billing period.</p>
           </TabsContent>
@@ -44,10 +46,12 @@ export const NavigationElements: React.FC<NavigationElementsProps> = ({ t }) => 
 
         {/* The second variant the kit offers; `default` is the raised one above. */}
         <Tabs defaultValue="overview">
-          <TabsList variant="line">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-          </TabsList>
+          <div className={styles.tabsScroller}>
+            <TabsList variant="line">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="overview">
             <p>Usage and quota for the current billing period.</p>
           </TabsContent>

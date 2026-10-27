@@ -387,7 +387,7 @@ function WidgetsHostScreen({
   if (error) {
     return (
       <div
-        className="p-4 text-red-700"
+        className="px-0 py-4 sm:p-4 text-red-700"
         data-demo-mfe-widgets-host="error"
       >
         Widgets host runtime failed: {error}
@@ -397,7 +397,7 @@ function WidgetsHostScreen({
 
   if (!widgetsDomain) {
     return (
-      <div className="p-4" data-demo-mfe-widgets-host="loading">
+      <div className="px-0 py-4 sm:p-4" data-demo-mfe-widgets-host="loading">
         Loading widgets host runtime…
       </div>
     );
@@ -420,7 +420,7 @@ function WidgetsHostScreen({
   return (
     <div
       data-demo-mfe-widgets-host="true"
-      className="flex h-full flex-col gap-2 p-4"
+      className="flex h-full flex-col gap-2 px-0 py-4 sm:p-4"
     >
       <header>
         <h2 className="text-xl font-semibold">Widgets Host</h2>

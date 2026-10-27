@@ -19,8 +19,9 @@
  * the screen, and moves above them once they would not. Moved above, it is no
  * longer sticky: its line is only as tall as the menu.
  *
- * The padding is narrow on a phone and widens at 40rem, Tailwind's `sm`, the
- * same step the Current Theme screen takes.
+ * On a phone the shell's own 1rem side padding is the screen's margin, so the
+ * screen adds none at the sides. From 40rem, Tailwind's `sm`, it pads 2rem all
+ * round, like the other demo screens.
  */
 .screen {
   background-color: var(--background);
@@ -28,7 +29,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-6);
-  padding: var(--space-4);
+  padding: var(--space-4) 0;
 }
 
 @media (min-width: 40rem) {
@@ -124,9 +125,25 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  /* A demo wider than the stage (the tabs list on a phone) scrolls here instead of widening the screen. */
+  /* A demo wider than the stage scrolls here instead of widening the screen. */
   overflow-x: auto;
-  padding: var(--space-6);
+  padding: var(--space-3);
+}
+
+@media (min-width: 40rem) {
+  .demoStage {
+    padding: var(--space-6);
+  }
+}
+
+/*
+ * A tab list wider than the stage scrolls on its own, with its scrollbar right
+ * under the tabs. The list itself has a fixed height, so it cannot scroll
+ * without squeezing its tabs.
+ */
+.tabsScroller {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 /* A row of variants that should wrap rather than overflow. */
@@ -220,13 +237,25 @@
   margin-bottom: var(--space-4);
 }
 
+/*
+ * Categories flow into columns when the menu is wide enough for two, which
+ * happens only once it sits above the demos (a tablet held upright). Beside
+ * them, or on a phone, it keeps one column.
+ */
 .menuList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  column-gap: var(--space-6);
+  column-width: 10rem;
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.menuList > li {
+  break-inside: avoid;
+}
+
+.menuList > li + li {
+  margin-top: var(--space-1);
 }
 
 .menuSubList {

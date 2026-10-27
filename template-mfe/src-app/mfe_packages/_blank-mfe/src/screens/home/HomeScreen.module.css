@@ -20,7 +20,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding: var(--space-8);
+  padding: var(--space-4) 0;
+}
+
+/* On a phone the shell's own 1rem side padding is the screen's margin. */
+@media (min-width: 40rem) {
+  .screen {
+    padding: var(--space-8);
+  }
 }
 
 .intro {
