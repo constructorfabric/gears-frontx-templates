@@ -14,26 +14,40 @@
  * both.
  */
 
+/*
+ * The category menu sits beside the demos while the demos keep at least half
+ * the screen, and moves above them once they would not. Moved above, it is no
+ * longer sticky: its line is only as tall as the menu.
+ *
+ * The padding is narrow on a phone and widens at 40rem, Tailwind's `sm`, the
+ * same step the Current Theme screen takes.
+ */
 .screen {
   background-color: var(--background);
   color: var(--foreground);
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-6);
-  padding: var(--space-8);
+  padding: var(--space-4);
+}
+
+@media (min-width: 40rem) {
+  .screen {
+    padding: var(--space-8);
+  }
 }
 
 .sidebar {
-  flex: 0 0 16rem;
-  width: 16rem;
+  flex: 1 1 16rem;
 }
 
 .content {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 999 1 0;
   gap: var(--space-8);
-  /* Without this a wide demo (the table) stretches the flex item past the screen. */
-  min-width: 0;
+  /* A definite minimum: with `auto`, a wide demo (the table) would stretch the flex item past the screen. */
+  min-width: 50%;
 }
 
 .intro {
@@ -110,6 +124,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* A demo wider than the stage (the tabs list on a phone) scrolls here instead of widening the screen. */
+  overflow-x: auto;
   padding: var(--space-6);
 }
 
@@ -160,6 +176,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-mono-size);
   line-height: var(--text-mono-line-height);
+  /* A GTS id has no break opportunity; this wraps it instead of widening the screen. */
+  word-break: break-all;
 }
 
 /*
@@ -277,6 +295,7 @@
  */
 .placeholderTitle {
   height: var(--control-height-lg);
+  max-width: 100%;
   width: 16rem;
 }
 

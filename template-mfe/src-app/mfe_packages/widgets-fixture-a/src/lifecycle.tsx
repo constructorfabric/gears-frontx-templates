@@ -119,7 +119,7 @@ function WidgetAHome(): React.ReactElement {
     <>
       <strong>Widget A instance:</strong>{' '}
       <span data-testid="widget-a-random">{randomHex}</span>
-      <p className="mt-1 text-xs opacity-75">instance-id: {bridge.extensionId}</p>
+      <p className="mt-1 text-xs opacity-75 break-all">instance-id: {bridge.extensionId}</p>
       <p
         className="mt-1 text-xs"
         data-testid="widget-a-last-ping"

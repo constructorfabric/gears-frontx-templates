@@ -69,6 +69,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-mono-size);
   line-height: var(--text-mono-line-height);
+  /* A GTS id has no break opportunity; this wraps it instead of widening the screen. */
+  word-break: break-all;
 }
 
 .error {
