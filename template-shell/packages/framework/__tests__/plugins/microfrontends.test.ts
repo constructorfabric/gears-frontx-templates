@@ -68,12 +68,11 @@ describe('microfrontends plugin - Phase 7.9', () => {
     ({ resetSharedQueryClient } = await import('../../src/testing'));
     const { loadLayoutDomains } = await import('../../src/plugins/microfrontends/gts/loader');
     [sidebarDomain, popupDomain, screenDomain, overlayDomain] = loadLayoutDomains();
-    const { themeSchema, languageCodeSchema, languageSchema, extensionScreenSchema } = await import(
+    const { themeSchema, languageSchema, extensionScreenSchema } = await import(
       '@gears-frontx/frontx-template-shell'
     );
     typeSystem = gtsPlugin;
     typeSystem.registerSchema(themeSchema);
-    typeSystem.registerSchema(languageCodeSchema);
     typeSystem.registerSchema(languageSchema);
     typeSystem.registerSchema(extensionScreenSchema);
   });

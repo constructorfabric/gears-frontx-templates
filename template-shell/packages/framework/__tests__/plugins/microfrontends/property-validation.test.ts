@@ -42,7 +42,6 @@ function getValuePropertySchema(schema: JSONSchema | undefined): JSONSchema {
 function buildPluginWithDerivedSchemas(): GtsPlugin {
   const plugin = new GtsPlugin({ isolated: true });
   plugin.registerSchema(themeSchema);
-  plugin.registerSchema(languageCodeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
   return plugin;

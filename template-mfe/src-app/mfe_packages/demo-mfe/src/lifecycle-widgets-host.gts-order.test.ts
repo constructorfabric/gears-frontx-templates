@@ -43,7 +43,6 @@ import {
 import type { ExtensionDomain, MfManifest } from '@gears-frontx/react';
 import {
   themeSchema,
-  languageCodeSchema,
   languageSchema,
   extensionScreenSchema,
 } from '@gears-frontx/frontx-template-shell';
@@ -189,7 +188,6 @@ describe('bootstrapWidgetsRuntime — GTS registration order (RM-LIVE1)', () => 
     // declaration, the framework one plus extra actions (its chrome actions
     // in the real shell; any extra action tells the two records apart here).
     registry.typeSystem.registerSchema(themeSchema);
-    registry.typeSystem.registerSchema(languageCodeSchema);
     registry.typeSystem.registerSchema(languageSchema);
     registry.typeSystem.registerSchema(extensionScreenSchema);
     registry.typeSystem.register({
