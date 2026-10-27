@@ -144,6 +144,7 @@
 .tabsScroller {
   max-width: 100%;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 /* A row of variants that should wrap rather than overflow. */
