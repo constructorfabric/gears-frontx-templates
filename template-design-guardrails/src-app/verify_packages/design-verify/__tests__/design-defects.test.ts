@@ -29,8 +29,10 @@ import {
   readTextFloors,
   scrollsSideways,
   shareVisualRow,
+  soleLayoutChild,
   spacingProbeSpec,
 } from '../src/designDefects';
+import type { LayoutRole } from '../src/designDefects';
 
 // axe-core's collection is stubbed to reject so the sweep-failure test below
 // (K-002) can assert the rejection is caught, not left as an unhandled
@@ -184,6 +186,50 @@ describe('findPageScrollers', () => {
     box('layout', false, [main]);
 
     expect(scrollersFrom(main)).toEqual([]);
+  });
+});
+
+describe('soleLayoutChild', () => {
+  interface LayoutNode {
+    name: string;
+    role: LayoutRole;
+    contents: LayoutNode[];
+  }
+
+  const node = (name: string, role: LayoutRole, contents: LayoutNode[] = []): LayoutNode => ({ name, role, contents });
+  const layout = { role: (n: LayoutNode) => n.role, contents: (n: LayoutNode) => n.contents };
+  const sole = (nodes: LayoutNode[]) => soleLayoutChild(nodes, layout)?.name ?? null;
+
+  it('returns the only box, passing over nodes that take no part in the layout', () => {
+    // Whitespace text, a hidden element, a positioned badge.
+    expect(sole([node('ws', 'none'), node('screen', 'box'), node('badge', 'none')])).toBe('screen');
+  });
+
+  it('returns null for a level with more than one box, or text beside a box', () => {
+    expect(sole([node('heading', 'box'), node('table-wrapper', 'box')])).toBeNull();
+    expect(sole([node('label', 'text'), node('screen', 'box')])).toBeNull();
+    expect(sole([node('ws', 'none')])).toBeNull();
+  });
+
+  it("counts the boxes inside a display: contents wrapper, so a sibling is not taken for the level's only child", () => {
+    // The screen's heading and copy sit in a wrapper without a box of its
+    // own, beside a table that scrolls in its own wrapper.
+    const wrapper = node('wrapper', 'contents', [node('heading', 'box'), node('copy', 'box')]);
+
+    expect(sole([wrapper, node('table-wrapper', 'box')])).toBeNull();
+  });
+
+  it('follows a display: contents wrapper (a slot, by default) to the only box it lays out', () => {
+    const slot = node('slot', 'contents', [node('ws', 'none'), node('screen-root', 'box')]);
+
+    expect(sole([slot])).toBe('screen-root');
+    expect(sole([node('outer', 'contents', [node('inner', 'contents', [node('screen-root', 'box')])])])).toBe(
+      'screen-root'
+    );
+  });
+
+  it('returns null when a wrapper lays out text beside the box', () => {
+    expect(sole([node('wrapper', 'contents', [node('label', 'text')]), node('screen', 'box')])).toBeNull();
   });
 });
 

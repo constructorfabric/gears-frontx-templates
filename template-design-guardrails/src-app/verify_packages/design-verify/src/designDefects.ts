@@ -200,6 +200,45 @@ export function findPageScrollers<T>(
 }
 
 /**
+ * How a child node takes part in its parent's layout: a box of its own, a
+ * display: contents wrapper (a slot, by default) whose own children lay out
+ * in its place, text, or nothing (whitespace, hidden, out of flow).
+ */
+export type LayoutRole = 'box' | 'contents' | 'text' | 'none';
+
+/**
+ * The only box among `nodes`, looking through display: contents wrappers
+ * to the nodes they lay out; null when there is none, more than one, or
+ * text beside it. A wrapper without a box of its own still holds boxes of
+ * the level: skipping it would leave a sibling looking like the only child.
+ * Pure; exported for unit tests.
+ */
+export function soleLayoutChild<T>(
+  nodes: Iterable<T>,
+  layout: { role(node: T): LayoutRole; contents(node: T): Iterable<T> }
+): T | null {
+  let sole: T | null = null;
+  for (const node of laidOutNodes(nodes, layout)) {
+    const role = layout.role(node);
+    if (role === 'text') return null;
+    if (role !== 'box') continue;
+    if (sole !== null) return null;
+    sole = node;
+  }
+  return sole;
+}
+
+function* laidOutNodes<T>(
+  nodes: Iterable<T>,
+  layout: { role(node: T): LayoutRole; contents(node: T): Iterable<T> }
+): Generator<T> {
+  for (const node of nodes) {
+    if (layout.role(node) === 'contents') yield* laidOutNodes(layout.contents(node), layout);
+    else yield node;
+  }
+}
+
+/**
  * Pure heading-sequence rule; exported for unit tests. Takes heading levels
  * in document order, returns the (fromLevel, toLevel) pairs that skip.
  * The first heading may be any level — screens inside a host legitimately
@@ -720,27 +759,38 @@ function layoutParent(el: Element): Element | null {
 }
 
 /**
- * The only rendered in-flow child of `el`, or of its shadow root when it
+ * A node's part in its parent's layout (see LayoutRole). Absolutely
+ * positioned and fixed elements sit outside the flow and hold no part of
+ * the page's content.
+ */
+function layoutRole(node: Node): LayoutRole {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').trim().length > 0 ? 'text' : 'none';
+  if (node.nodeType !== Node.ELEMENT_NODE) return 'none';
+  const el = node as Element;
+  const style = getComputedStyle(el);
+  if (style.display === 'contents') return 'contents';
+  if (!isRendered(el)) return 'none';
+  return style.position === 'absolute' || style.position === 'fixed' ? 'none' : 'box';
+}
+
+/**
+ * The nodes a display: contents element lays out in its place: a slot's
+ * assigned nodes (its fallback content when none are assigned), otherwise
+ * its children, or its shadow root's when it hosts one.
+ */
+function contentsNodes(node: Node): Node[] {
+  if (node instanceof HTMLSlotElement) return node.assignedNodes({ flatten: true });
+  const el = node as Element;
+  return Array.from((el.shadowRoot ?? el).childNodes);
+}
+
+/**
+ * The only rendered in-flow child box of `el`, or of its shadow root when it
  * hosts one; null when there is none, more than one, or text beside it.
- * Absolutely positioned and fixed children sit outside the flow and hold no
- * part of the page's content.
  */
 function soleInFlowChild(el: Element): Element | null {
-  let sole: Element | null = null;
-  for (const node of Array.from((el.shadowRoot ?? el).childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      if ((node.textContent ?? '').trim().length > 0) return null;
-      continue;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) continue;
-    const child = node as Element;
-    if (!isRendered(child)) continue;
-    const position = getComputedStyle(child).position;
-    if (position === 'absolute' || position === 'fixed') continue;
-    if (sole !== null) return null;
-    sole = child;
-  }
-  return sole;
+  const children = Array.from((el.shadowRoot ?? el).childNodes);
+  return soleLayoutChild<Node>(children, { role: layoutRole, contents: contentsNodes }) as Element | null;
 }
 
 /**
