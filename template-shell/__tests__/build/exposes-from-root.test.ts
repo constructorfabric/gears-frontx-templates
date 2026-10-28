@@ -8,7 +8,8 @@
  * virtual module with no directory. Vite resolves either from the process's
  * working directory, so without `frontxMfGts` resolving them from the package
  * root such a build fails, or builds a file of the same name it finds in the
- * working directory.
+ * working directory. An expose the package does not have has to fail the
+ * build too, naming its path in the package.
  *
  * The build runs `vite build <package>` in a child process, with NODE_ENV
  * unset and `MFE_VITE_NO_TEST_ENV_CHECK=true`, the federation plugin's
@@ -27,6 +28,9 @@ const viteBin = path.join(__dirname, '..', '..', 'node_modules', 'vite', 'bin', 
 /** The string the fixture's expose renders, from `src/greeting.js`. */
 const FIXTURE_MARKER = 'fixture-greeting-from-package-root';
 
+/** The string a decoy in the working directory renders. */
+const DECOY_MARKER = 'decoy-from-working-directory';
+
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -42,10 +46,21 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
+/** A working directory holding a decoy expose at `src/<file>`. */
+function workingDirWithDecoy(file: string): string {
+  const cwd = tempDir('exposes-from-root-cwd-');
+  fs.mkdirSync(path.join(cwd, 'src'));
+  fs.writeFileSync(
+    path.join(cwd, 'src', file),
+    `export default { mount(container) { container.textContent = '${DECOY_MARKER}'; }, unmount() {} };\n`
+  );
+  return cwd;
+}
+
 /** Builds the fixture with the process's working directory at `cwd`, and returns the output directory. */
-function buildFixture(cwd: string): string {
+function buildFixture(cwd: string, extraEnv: Record<string, string> = {}): string {
   const outDir = tempDir('exposes-from-root-out-');
-  const env: Record<string, string | undefined> = { ...process.env };
+  const env: Record<string, string | undefined> = { ...process.env, ...extraEnv };
   delete env.NODE_ENV;
   env.MFE_VITE_NO_TEST_ENV_CHECK = 'true';
   execFileSync(
@@ -88,17 +103,29 @@ describe('relative exposes, built from another working directory', () => {
   it(
     'builds the expose from the package, not a file at the same path in the working directory',
     () => {
-      const cwd = tempDir('exposes-from-root-cwd-');
-      fs.mkdirSync(path.join(cwd, 'src'));
-      fs.writeFileSync(
-        path.join(cwd, 'src', 'lifecycle.js'),
-        "export default { mount(container) { container.textContent = 'decoy-from-working-directory'; }, unmount() {} };\n"
-      );
+      const cwd = workingDirWithDecoy('lifecycle.js');
 
       const output = [...readOutput(buildFixture(cwd)).values()];
 
       expect(output.some((code) => code.includes(FIXTURE_MARKER))).toBe(true);
-      expect(output.some((code) => code.includes('decoy-from-working-directory'))).toBe(false);
+      expect(output.some((code) => code.includes(DECOY_MARKER))).toBe(false);
+    },
+    BUILD_TEST_TIMEOUT_MS
+  );
+
+  it(
+    'fails naming the path in the package when the expose is missing, instead of building the file at that path in the working directory',
+    () => {
+      const cwd = workingDirWithDecoy('missing.js');
+
+      let stderr = '';
+      try {
+        buildFixture(cwd, { FIXTURE_EXPOSE_PATH: './src/missing.js' });
+      } catch (error) {
+        stderr = String((error as { stderr?: Buffer }).stderr);
+      }
+
+      expect(stderr).toContain(path.join('exposes-from-root', 'src', 'missing.js'));
     },
     BUILD_TEST_TIMEOUT_MS
   );

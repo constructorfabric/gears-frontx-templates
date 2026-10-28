@@ -1908,6 +1908,9 @@ const FEDERATION_EXPOSES_MODULE = /^virtual:mf-exposes(?:-ssr)?:/;
  * expose as a chunk at build start, and from its exposes module. A build run
  * anywhere but the package's own directory would then miss them, or pick up
  * a file of the same name in the working directory instead.
+ *
+ * Every relative id requested with no importer counts, not only the `exposes`
+ * paths: Vite would resolve any of them from the working directory as well.
  */
 function resolvesFromPackageRoot(source: string, importer: string | undefined): boolean {
   if (!source.startsWith('./') && !source.startsWith('../')) return false;
@@ -1922,8 +1925,9 @@ function resolvesFromPackageRoot(source: string, importer: string | undefined): 
  * manifest metadata, shared dep info, and per-entry expose assets.
  *
  * The package root is resolved from Vite's `config.root` — no `__dirname`
- * argument needed. Relative `exposes` paths resolve from it too, so the build
- * can run from any working directory.
+ * argument needed. Relative `exposes` paths, and any other relative id
+ * requested with no importer, resolve from it too, so the build can run from
+ * any working directory.
  *
  * @example
  * ```typescript
@@ -2044,14 +2048,15 @@ export function frontxMfGts(): Plugin {
     // Resolves the relative `exposes` paths from the package root, wherever
     // the build runs (see `resolvesFromPackageRoot`). `order: 'pre'` puts this
     // ahead of Vite's own resolver, which `enforce: 'post'` alone would not.
+    // A path the package does not have stays rooted, so the build fails
+    // naming it: left to Vite, it would be looked up in the working directory.
     resolveId: {
       order: 'pre',
-      handler(source, importer, options) {
+      async handler(source, importer, options) {
         if (!resolvesFromPackageRoot(source, importer)) return null;
-        return this.resolve(path.resolve(packageRoot, source), importer, {
-          ...options,
-          skipSelf: true,
-        });
+        const rooted = path.resolve(packageRoot, source);
+        const resolved = await this.resolve(rooted, importer, { ...options, skipSelf: true });
+        return resolved ?? rooted;
       },
     },
 
