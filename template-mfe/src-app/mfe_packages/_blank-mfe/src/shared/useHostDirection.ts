@@ -24,10 +24,18 @@ import { useEffect, type RefObject } from 'react';
 const RTL_LANGUAGES: readonly string[] = ['ar', 'he', 'fa', 'ur'];
 
 /**
+ * Whether a language is written right-to-left. Only the primary subtag
+ * decides, so a region-tagged code such as `ar-EG` reads as Arabic.
+ */
+function isRtlLanguage(language: string): boolean {
+  return RTL_LANGUAGES.includes(language.split('-')[0].toLowerCase());
+}
+
+/**
  * Hook syncing the Shadow DOM host element's `dir` attribute to the language.
  *
  * @param containerRef - Ref to any element rendered inside the MFE's shadow root
- * @param language - Active language code (e.g. 'en', 'ar')
+ * @param language - Active language code (e.g. 'en', 'ar', 'ar-EG')
  */
 export function useHostDirection(
   containerRef: RefObject<HTMLElement | null>,
@@ -38,7 +46,7 @@ export function useHostDirection(
     if (rootNode && 'host' in rootNode) {
       // The `in` check narrows Node only to Node & Record<'host', unknown>,
       // so the cast to HTMLElement is forced.
-      (rootNode.host as HTMLElement).dir = RTL_LANGUAGES.includes(language) ? 'rtl' : 'ltr';
+      (rootNode.host as HTMLElement).dir = isRtlLanguage(language) ? 'rtl' : 'ltr';
     }
   }, [containerRef, language]);
 }

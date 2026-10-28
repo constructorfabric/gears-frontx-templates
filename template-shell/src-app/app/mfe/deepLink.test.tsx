@@ -1,10 +1,10 @@
 /**
  * A deep link mounts the screen it names, end to end through the real
  * runtime: the framework's `microfrontends()` plugin builds the registry with
- * the router of `@gears-frontx/routing`, `bootstrapMFE` registers the shell's
- * domains and the extensions of the manifest aggregate, and
- * `MfeScreenContainer` renders the screen domain's slot, whose attach starts
- * the routed domain. Nothing routing-related is stubbed. Only the loading of a
+ * the router of `@gears-frontx/routing`, `bootstrapMFE` registers the screen
+ * domain the container implements and the extensions of the manifest
+ * aggregate, and `MfeScreenContainer` renders the screen domain's slot, whose
+ * attach starts the routed domain. Nothing routing-related is stubbed. Only the loading of a
  * remote is: the handler is the real `MfeHandlerMF` with `load` answering an
  * inline lifecycle instead of fetching a Module Federation bundle.
  *
@@ -26,7 +26,7 @@ import {
   type MfeEntryLifecycle,
   type MfeEntryMF,
 } from '@gears-frontx/react';
-import { themeSchema, languageSchema, extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import { themeSchema, languageSchema } from '@gears-frontx/frontx-template-shell';
 import { MfeScreenContainer } from './MfeScreenContainer';
 import { screenState } from './screenState';
 
@@ -102,10 +102,10 @@ function mountedScreenText(root: ParentNode): string[] {
 
 describe('a deep link through the real router', () => {
   beforeEach(() => {
-    // The application schemas `main.tsx` registers before it builds the app.
+    // The application schemas `main.tsx` registers before it builds the app;
+    // the screen extension type is the screen container's to register.
     gtsPlugin.registerSchema(themeSchema);
     gtsPlugin.registerSchema(languageSchema);
-    gtsPlugin.registerSchema(extensionScreenSchema);
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(new Response(JSON.stringify(aggregate))));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });

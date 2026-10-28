@@ -306,4 +306,34 @@ describe('HomeScreen', () => {
 
     host.remove();
   });
+
+  it('sets the host direction from the primary subtag of a region-tagged language', async () => {
+    const bridgeFixture = createMfeBridgeFixture({
+      extDomainId: TEST_DOMAIN_ID,
+      extensionId: TEST_INSTANCE_ID,
+      initialProperties: {
+        [FRONTX_SHARED_PROPERTY_THEME]: TEST_THEME,
+        [FRONTX_SHARED_PROPERTY_LANGUAGE]: 'ar-EG',
+      },
+    });
+    const host = document.createElement('div');
+    const shadowRoot = host.attachShadow({ mode: 'open' });
+    const mountNode = document.createElement('div');
+    shadowRoot.appendChild(mountNode);
+    document.body.appendChild(host);
+    const shadowQueries = within(mountNode);
+
+    render(<HomeScreen bridge={bridgeFixture.bridge} />, { container: mountNode });
+
+    expect((await shadowQueries.findByTestId('screen-language')).textContent).toBe('ar-EG');
+    expect(host.dir).toBe('rtl');
+
+    act(() => {
+      bridgeFixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'zh-TW');
+    });
+
+    expect(host.dir).toBe('ltr');
+
+    host.remove();
+  });
 });

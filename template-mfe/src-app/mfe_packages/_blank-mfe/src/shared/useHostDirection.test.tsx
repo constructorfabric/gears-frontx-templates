@@ -47,6 +47,31 @@ describe('useHostDirection', () => {
     expect(host.dir).toBe('ltr');
   });
 
+  it('decides from the primary subtag, so region-tagged codes follow their language', () => {
+    const { host, mountNode } = shadowMountNode();
+
+    const { rerender } = render(<DirectionProbe language="ar-EG" />, { container: mountNode });
+
+    expect(host.dir).toBe('rtl');
+
+    rerender(<DirectionProbe language="zh-TW" />);
+
+    expect(host.dir).toBe('ltr');
+
+    rerender(<DirectionProbe language="he-IL" />);
+
+    expect(host.dir).toBe('rtl');
+
+    rerender(<DirectionProbe language="en-US" />);
+
+    expect(host.dir).toBe('ltr');
+
+    // Language tags are case-insensitive.
+    rerender(<DirectionProbe language="FA-ir" />);
+
+    expect(host.dir).toBe('rtl');
+  });
+
   it('is a no-op outside a Shadow DOM', () => {
     render(<DirectionProbe language="ar" />);
 

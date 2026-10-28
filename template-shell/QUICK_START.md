@@ -37,8 +37,9 @@ src-app/
 │   ├── components/ui/        # App-owned UI primitives (shadcn)
 │   ├── layout/               # CoreLayout: Menu, header, footer, screen container
 │   ├── mfe/                  # bootstrap.ts: registers MFEs from public/generated-mfe-manifests.json
-│   ├── themes/               # Theme tokens and registries
-│   └── globals.css           # Tailwind entry + theme CSS variables
+│   ├── themes/               # Themes over the ui-kit palette
+│   ├── font.css              # Registers the kit's Inter face
+│   └── globals.css           # Tailwind entry and global styles
 └── mfe_packages/             # Microfrontends (from `frontx-template-mfe`; empty in a shell-only seed)
     ├── demo-mfe/             # Hello World, Profile, Theme, UIKit, Widgets Host
     ├── _blank-mfe/           # Minimal MFE — copy this to start a new one
@@ -180,8 +181,12 @@ destroying the container that holds that screen clears it), which the menu reads
 
 ## Styling
 
-Tailwind CSS with CSS-variable theme tokens (defined in
-`src-app/app/globals.css`):
+Tailwind CSS with CSS-variable theme tokens. Colour, radius and type tokens
+come from `@gears-frontx/ui-kit/theme.css`; the shell's themes
+(`src-app/app/themes/`) add the shell's own tokens (left menu, spacing,
+shadows, transitions) and override a kit token only on purpose, as the
+Dracula themes do. The kit's Inter face is registered in
+`src-app/app/font.css`.
 
 ```tsx
 <div className="bg-background text-foreground">
