@@ -553,26 +553,27 @@ describe('axeResultsToFindings', () => {
     ]);
   });
 
-  it('reports contrast axe could not decide as needing review, with its reasons once each', () => {
+  it('reports each node axe could not decide the contrast of as needing review, with its own target and reasons', () => {
     const gradient = "Element's background color could not be determined due to a background gradient";
+    const overlapped = "Element's background color could not be determined because it's overlapped by another element";
     const findings = map(
       [],
       [
         result('color-contrast', [
           { target: ['p.synced'], messages: [gradient] },
-          { target: ['span.hint'], messages: [gradient] },
-          { target: ['em'], messages: ["Element's background color could not be determined because it's overlapped by another element"] },
+          { target: ['span.hint'], messages: [gradient, gradient] },
+          { target: ['em'], messages: [overlapped, gradient] },
         ]),
       ]
     );
 
     expect(findings).toEqual([
+      { id: 'axe-incomplete/color-contrast', detail: `axe could not decide this: ${gradient}`, target: 'p.synced', kind: 'needs-review' },
+      { id: 'axe-incomplete/color-contrast', detail: `axe could not decide this: ${gradient}`, target: 'span.hint', kind: 'needs-review' },
       {
         id: 'axe-incomplete/color-contrast',
-        detail:
-          `axe could not decide this for 3 node(s): ${gradient}; ` +
-          "Element's background color could not be determined because it's overlapped by another element",
-        target: 'p.synced',
+        detail: `axe could not decide this: ${overlapped}; ${gradient}`,
+        target: 'em',
         kind: 'needs-review',
       },
     ]);
@@ -621,7 +622,7 @@ describe('runDesignDefectCheck console output', () => {
     expect(info).not.toHaveBeenCalled();
     expect(warn.mock.calls.map(([line]) => line)).toEqual([
       '[design-defects] 1 item(s) need review — undecided, so this state is not clean:',
-      '[design-defects] needs review axe-incomplete/color-contrast: axe could not decide this for 1 node(s): background gradient — p.synced',
+      '[design-defects] needs review axe-incomplete/color-contrast: axe could not decide this: background gradient — p.synced',
     ]);
   });
 });

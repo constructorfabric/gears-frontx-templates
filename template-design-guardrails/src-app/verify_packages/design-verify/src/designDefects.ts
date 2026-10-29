@@ -988,9 +988,10 @@ function collectLayoutFindings(): DesignDefectFinding[] {
 const UNDECIDED_RULES_REPORTED = new Set(['color-contrast']);
 
 /**
- * Maps an axe run to findings: each violation as a defect, and each
- * undecided result of a rule in UNDECIDED_RULES_REPORTED as a needs-review
- * entry carrying axe's reasons. Pure; exported for unit tests.
+ * Maps an axe run to findings: each violation as a defect, and each node of
+ * an undecided result of a rule in UNDECIDED_RULES_REPORTED as its own
+ * needs-review entry, with that node's target and axe's reasons for it, since
+ * each element needs its own check by hand. Pure; exported for unit tests.
  */
 export function axeResultsToFindings(results: Pick<AxeResults, 'violations' | 'incomplete'>): DesignDefectFinding[] {
   const violations = results.violations.map((violation) => ({
@@ -999,18 +1000,18 @@ export function axeResultsToFindings(results: Pick<AxeResults, 'violations' | 'i
     target: violation.nodes[0]?.target?.join(' '),
   }));
   const undecided = results.incomplete
-    .filter((result) => UNDECIDED_RULES_REPORTED.has(result.id) && result.nodes.length > 0)
-    .map((result): DesignDefectFinding => {
-      const reasons = new Set(
-        result.nodes.flatMap((node) => [...node.any, ...node.all, ...node.none].map((check) => check.message))
-      );
-      return {
-        id: `axe-incomplete/${result.id}`,
-        detail: `axe could not decide this for ${result.nodes.length} node(s): ${[...reasons].join('; ')}`,
-        target: result.nodes[0]?.target?.join(' '),
-        kind: 'needs-review',
-      };
-    });
+    .filter((result) => UNDECIDED_RULES_REPORTED.has(result.id))
+    .flatMap((result) =>
+      result.nodes.map((node): DesignDefectFinding => {
+        const reasons = new Set([...node.any, ...node.all, ...node.none].map((check) => check.message));
+        return {
+          id: `axe-incomplete/${result.id}`,
+          detail: `axe could not decide this: ${[...reasons].join('; ')}`,
+          target: node.target?.join(' '),
+          kind: 'needs-review',
+        };
+      })
+    );
   return [...violations, ...undecided];
 }
 
