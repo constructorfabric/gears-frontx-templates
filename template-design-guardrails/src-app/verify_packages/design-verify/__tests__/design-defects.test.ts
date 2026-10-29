@@ -524,7 +524,7 @@ describe('installDesignDefectCheck sweep failure', () => {
 
 describe('axeResultsToFindings', () => {
   // Only the fields the mapping reads; axe's own result objects carry more.
-  function result(id: string, nodes: Array<{ target: string[]; messages: string[] }>, extra: Record<string, unknown> = {}) {
+  function result(id: string, nodes: Array<{ target: Array<string | string[]>; messages: string[] }>, extra: Record<string, unknown> = {}) {
     return {
       id,
       help: `${id} help`,
@@ -577,6 +577,17 @@ describe('axeResultsToFindings', () => {
         kind: 'needs-review',
       },
     ]);
+  });
+
+  it('names each shadow host on the way to an element inside a shadow root', () => {
+    // axe's target for an element in a shadow root lists every host and then
+    // the element; MFE content renders into shadow roots.
+    const findings = map(
+      [result('color-contrast', [{ target: [['my-widget', 'p']], messages: [] }])],
+      [result('color-contrast', [{ target: [['my-widget', 'inner-card', 'span.hint']], messages: ['gradient'] }])]
+    );
+
+    expect(findings.map((finding) => finding.target)).toEqual(['my-widget >>> p', 'my-widget >>> inner-card >>> span.hint']);
   });
 
   it("leaves out other rules' undecided results and empty ones", () => {
