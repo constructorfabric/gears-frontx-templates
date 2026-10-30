@@ -17,7 +17,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { BuildOptions } from 'esbuild';
 import { parseAst } from 'vite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -34,19 +33,6 @@ import {
   type MintedSharedChunk,
   type SharedChunk,
 } from '../../src/build/mf-gts';
-
-// The builder sets no `absWorkingDir`, so esbuild resolves each shared dep
-// from its default working directory, which it reads once, when it loads.
-// Passing the current one on every build lets the fixture tests below build
-// from their own directory, as a build run from the MFE's directory does.
-vi.mock('esbuild', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('esbuild')>();
-  return {
-    ...actual,
-    build: (options: BuildOptions) =>
-      actual.build({ absWorkingDir: process.cwd(), ...options }),
-  };
-});
 
 function shared(
   name: string,
@@ -624,8 +610,19 @@ const FIXTURES: Record<string, { pkg?: Record<string, unknown>; files: Files }> 
   },
 };
 
+/** Two packages that require each other, minted apart from `FIXTURES`. */
+const CYCLE_FIXTURES: typeof FIXTURES = {
+  'cycle-a': {
+    pkg: { dependencies: { 'cycle-b': '*' } },
+    files: { 'index.js': 'exports.getB = () => require("cycle-b");\n' },
+  },
+  'cycle-b': {
+    pkg: { dependencies: { 'cycle-a': '*' } },
+    files: { 'index.js': 'exports.getA = () => require("cycle-a");\n' },
+  },
+};
+
 describe('shared chunks built from fixture packages', () => {
-  const originalCwd = process.cwd();
   let root = '';
   let sharedChunks: SharedChunk[] = [];
   let minted: MintedSharedChunk[] = [];
@@ -669,7 +666,7 @@ describe('shared chunks built from fixture packages', () => {
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'mf-gts-shared-imports-'));
     fs.writeFileSync(path.join(root, 'package.json'), '{"name":"fixture-root"}\n');
-    for (const [name, fixture] of Object.entries(FIXTURES)) {
+    for (const [name, fixture] of Object.entries({ ...FIXTURES, ...CYCLE_FIXTURES })) {
       const dir = path.join(root, 'node_modules', name);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(
@@ -681,8 +678,9 @@ describe('shared chunks built from fixture packages', () => {
       }
     }
 
-    // See the esbuild mock at the top of the file.
-    process.chdir(root);
+    // The fixture packages are installed under `root` only, never in the
+    // directory the tests run in, so every build below resolves them from
+    // the package root the builder is given.
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const builder = new StandaloneEsmBuilder(
       Object.keys(FIXTURES),
@@ -701,7 +699,6 @@ describe('shared chunks built from fixture packages', () => {
   });
 
   afterAll(() => {
-    process.chdir(originalCwd);
     vi.restoreAllMocks();
     fs.rmSync(root, { recursive: true, force: true });
   });
@@ -773,5 +770,22 @@ describe('shared chunks built from fixture packages', () => {
     const mod = await load('cjs-uses-default');
     expect((mod.getX as () => unknown)()).toBe(6);
     expect((mod.getDefault as () => unknown)()).toBe('d');
+  });
+
+  it('fails a shared-chunk cycle, reading its edges from the package root', async () => {
+    // The cycle guard reads each chunk's imports from esbuild's metafile,
+    // whose output paths are relative to the package root, not to the
+    // directory the tests run in. Read against the wrong one, a chunk has no
+    // edges and the cycle passes.
+    const builder = new StandaloneEsmBuilder(
+      Object.keys(CYCLE_FIXTURES),
+      path.join(root, 'dist', 'cycle'),
+      root
+    );
+    await expect(
+      builder.build((message) => {
+        throw new Error(message);
+      })
+    ).rejects.toThrow('Cyclic shared-dependency graph: cycle-a -> cycle-b -> cycle-a');
   });
 });

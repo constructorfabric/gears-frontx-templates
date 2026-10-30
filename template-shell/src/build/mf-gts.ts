@@ -344,7 +344,8 @@ export function computeContentHash(chunkFilePath: string): string | undefined {
  *
  * esbuild never bundles a minified path, comment, or absolute prefix into
  * these outputs — only two path-bearing forms occur, both derived from the
- * same cwd-relative path per module: the `// <path>` provenance comment
+ * same path per module, relative to esbuild's working directory (the package
+ * root): the `// <path>` provenance comment
  * above each `__commonJS`-wrapped module, and that same path repeated as
  * the object key esbuild uses to name/register the wrapper (e.g.
  * `"node_modules/react-dom/cjs/react-dom.development.js"(exports, module) {`).
@@ -359,8 +360,8 @@ export function computeContentHash(chunkFilePath: string): string | undefined {
  *     only fires on pnpm output; the peer suffix after `_` is optional and
  *     part of the same segment; the enclosing `node_modules/` on both
  *     sides collapses to the single flat-layout one).
- *   - leading `../` hops before `node_modules/`, produced when esbuild's
- *     cwd sits at a different depth than the dependency's install path,
+ *   - leading `../` hops before `node_modules/`, produced when the package
+ *     root sits at a different depth than the dependency's install path,
  *     e.g. `../../node_modules/` → `node_modules/`.
  *
  * Pure; exported for unit testing — see
@@ -420,8 +421,9 @@ export interface SharedChunkNode {
  * The external (unbundled) import paths esbuild left in `outfile`, read from
  * a build's metafile — the outgoing edges of one minted shared chunk.
  *
- * Metafile output keys are paths relative to esbuild's working directory, so
- * the entry is matched by resolved absolute path rather than by key equality.
+ * Metafile output keys are paths relative to esbuild's working directory,
+ * `workingDir`, so each key is resolved against it and the entry is matched
+ * by absolute path rather than by key equality.
  * External imports carry the specifier exactly as written, which for a shared
  * dep is the bare package name the graph uses as its node key. Both
  * `import`-statement and `require-call` edges count: a CJS package bundled to
@@ -432,11 +434,12 @@ export interface SharedChunkNode {
  */
 export function externalImportsOf(
   metafile: esbuild.Metafile,
-  outfile: string
+  outfile: string,
+  workingDir: string
 ): string[] {
-  const target = path.resolve(outfile);
+  const target = path.resolve(workingDir, outfile);
   for (const [file, output] of Object.entries(metafile.outputs)) {
-    if (path.resolve(file) !== target) continue;
+    if (path.resolve(workingDir, file) !== target) continue;
     return output.imports
       .filter((imported) => imported.external)
       .map((imported) => imported.path);
@@ -829,6 +832,11 @@ class StandaloneEsmBuilder {
 
     const result = await esbuild.build({
       entryPoints: [dep.name],
+      // Resolves the dep from the package root, as named-export discovery
+      // and the package.json lookup do, wherever the build runs. Without it
+      // esbuild uses the process's working directory as it was when esbuild
+      // loaded.
+      absWorkingDir: this.packageRoot,
       bundle: true,
       format: 'esm',
       outfile,
@@ -850,7 +858,7 @@ class StandaloneEsmBuilder {
       outfile,
       node: {
         name: dep.name,
-        imports: externalImportsOf(result.metafile, outfile),
+        imports: externalImportsOf(result.metafile, outfile, this.packageRoot),
       },
     };
   }

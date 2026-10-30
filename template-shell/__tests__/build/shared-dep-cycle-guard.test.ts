@@ -167,16 +167,30 @@ describe('externalImportsOf', () => {
     } as Metafile;
   }
 
+  /** esbuild's working directory: the package root, not the process's. */
+  const root = '/srv/orders-mfe';
+
   it('matches the output entry by resolved path, not by key', () => {
     // esbuild keys outputs relative to its working directory, while the
     // plugin holds an absolute outfile.
-    const abs = `${process.cwd()}/dist/shared/react-dom.js`;
+    const abs = `${root}/dist/shared/react-dom.js`;
     const meta = metafile({
       'dist/shared/react-dom.js': [
         { path: 'react', kind: 'require-call', external: true },
       ],
     });
-    expect(externalImportsOf(meta, abs)).toEqual(['react']);
+    expect(externalImportsOf(meta, abs, root)).toEqual(['react']);
+  });
+
+  it('resolves the output keys against the working directory, not the process cwd', () => {
+    const meta = metafile({
+      'dist/shared/react-dom.js': [
+        { path: 'react', kind: 'require-call', external: true },
+      ],
+    });
+    expect(
+      externalImportsOf(meta, `${process.cwd()}/dist/shared/react-dom.js`, root)
+    ).toEqual([]);
   });
 
   it('counts require-call edges as well as import-statement edges', () => {
@@ -188,7 +202,7 @@ describe('externalImportsOf', () => {
         { path: '@gears-frontx/state', kind: 'import-statement', external: true },
       ],
     });
-    expect(externalImportsOf(meta, 'out.js')).toEqual([
+    expect(externalImportsOf(meta, 'out.js', root)).toEqual([
       'react',
       '@gears-frontx/state',
     ]);
@@ -201,10 +215,10 @@ describe('externalImportsOf', () => {
         { path: './internal.js', kind: 'import-statement', external: false },
       ],
     });
-    expect(externalImportsOf(meta, 'out.js')).toEqual([]);
+    expect(externalImportsOf(meta, 'out.js', root)).toEqual([]);
   });
 
   it('returns no edges when the output is absent from the metafile', () => {
-    expect(externalImportsOf(metafile({}), 'out.js')).toEqual([]);
+    expect(externalImportsOf(metafile({}), 'out.js', root)).toEqual([]);
   });
 });
