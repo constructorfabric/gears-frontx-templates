@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "lib": ["ES2022"],
+    "jsx": "preserve",
+    "rootDir": "./src/core",
+    "types": []
+  },
+  "include": ["src/core/**/*.ts", "src/core/**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/core/**/*.test.ts",
+    "src/core/**/*.test.tsx",
+    "src/core/**/*.spec.ts"
+  ]
+}
