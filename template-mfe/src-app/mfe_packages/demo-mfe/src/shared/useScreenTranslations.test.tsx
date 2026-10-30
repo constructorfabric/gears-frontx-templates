@@ -1,34 +1,21 @@
+import { StrictMode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
 import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useScreenTranslations } from './useScreenTranslations';
 
-function screenTranslationsTestBridge(
-  overrides: Partial<Pick<ChildMfeBridge, 'getProperty' | 'subscribeToProperty'>>
-): ChildMfeBridge {
-  return {
+function screenTranslationsTestBridge(language: string) {
+  return createMfeBridgeFixture({
     extDomainId: 'test-domain',
     extensionId: 'test-instance',
-    executeActionsChain: vi.fn().mockReturnValue(undefined),
-    registerActionHandler: vi.fn(),
-    getProperty: overrides.getProperty ?? vi.fn(),
-    subscribeToProperty: overrides.subscribeToProperty ?? vi.fn().mockReturnValue(() => undefined),
-  };
+    initialProperties: { [FRONTX_SHARED_PROPERTY_LANGUAGE]: language },
+  });
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-type LanguageProperty = {
-  id: string;
-  value: string | undefined;
-};
-
-function languageProperty(value: string | undefined): LanguageProperty {
-  return { id: FRONTX_SHARED_PROPERTY_LANGUAGE, value };
-}
 
 describe('useScreenTranslations', () => {
   it('falls back to English when the requested language file is missing', async () => {
@@ -41,10 +28,7 @@ describe('useScreenTranslations', () => {
     const languageModules = {
       './i18n/en.json': englishImporter,
     };
-    const bridge = screenTranslationsTestBridge({
-      getProperty: vi.fn(() => languageProperty('fr')),
-      subscribeToProperty: vi.fn(() => vi.fn()),
-    });
+    const { bridge } = screenTranslationsTestBridge('fr');
 
     const { result } = renderHook(() => useScreenTranslations(languageModules, bridge));
 
@@ -68,10 +52,7 @@ describe('useScreenTranslations', () => {
         },
       }),
     };
-    const bridge = screenTranslationsTestBridge({
-      getProperty: vi.fn(() => languageProperty('en')),
-      subscribeToProperty: vi.fn(() => vi.fn()),
-    });
+    const { bridge } = screenTranslationsTestBridge('en');
 
     const { result } = renderHook(() => useScreenTranslations(languageModules, bridge));
 
@@ -96,20 +77,13 @@ describe('useScreenTranslations', () => {
         title: 'Accueil',
       },
     }));
-    let subscriptionCallback: ((property: LanguageProperty) => void) | undefined;
-    const bridge = screenTranslationsTestBridge({
-      getProperty: vi.fn(() => languageProperty('en')),
-      subscribeToProperty: vi.fn((_propertyName: string, callback: (property: LanguageProperty) => void) => {
-        subscriptionCallback = callback;
-        return vi.fn();
-      }),
-    });
+    const fixture = screenTranslationsTestBridge('en');
     const languageModules = {
       './i18n/en.json': englishImporter,
       './i18n/fr.json': frenchImporter,
     };
 
-    const { result } = renderHook(() => useScreenTranslations(languageModules, bridge));
+    const { result } = renderHook(() => useScreenTranslations(languageModules, fixture.bridge));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -117,7 +91,7 @@ describe('useScreenTranslations', () => {
     });
 
     await act(async () => {
-      subscriptionCallback?.(languageProperty('fr'));
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
     });
 
     await waitFor(() => {
@@ -129,7 +103,7 @@ describe('useScreenTranslations', () => {
     expect(frenchImporter).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      subscriptionCallback?.(languageProperty('fr'));
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
     });
 
     await waitFor(() => {
@@ -137,12 +111,62 @@ describe('useScreenTranslations', () => {
     });
   });
 
-  it('unsubscribes from bridge language updates on unmount', async () => {
-    const unsubscribe = vi.fn();
-    const bridge = screenTranslationsTestBridge({
-      getProperty: vi.fn(() => languageProperty('en')),
-      subscribeToProperty: vi.fn(() => unsubscribe),
+  it('keeps the newest language when an older load resolves last', async () => {
+    let resolveFrench: (module: { default: Record<string, string> }) => void = () => {};
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { title: 'Home' } }),
+      './i18n/fr.json': () =>
+        new Promise<{ default: Record<string, string> }>((resolve) => {
+          resolveFrench = resolve;
+        }),
+      './i18n/de.json': async () => ({ default: { title: 'Startseite' } }),
+    };
+    const fixture = screenTranslationsTestBridge('en');
+
+    const { result } = renderHook(() => useScreenTranslations(languageModules, fixture.bridge));
+
+    await waitFor(() => {
+      expect(result.current.t('title')).toBe('Home');
     });
+
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
+    });
+    await act(async () => {
+      fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.t('title')).toBe('Startseite');
+    });
+
+    await act(async () => {
+      resolveFrench({ default: { title: 'Accueil' } });
+    });
+
+    expect(result.current.t('title')).toBe('Startseite');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('finishes loading under StrictMode', async () => {
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { title: 'Home' } }),
+    };
+    const { bridge } = screenTranslationsTestBridge('en');
+
+    const { result } = renderHook(() => useScreenTranslations(languageModules, bridge), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.t('title')).toBe('Home');
+    });
+  });
+
+  it('unsubscribes from bridge language updates on unmount', async () => {
+    const fixture = screenTranslationsTestBridge('en');
     const languageModules = {
       './i18n/en.json': async () => ({
         default: {
@@ -151,14 +175,15 @@ describe('useScreenTranslations', () => {
       }),
     };
 
-    const { unmount } = renderHook(() => useScreenTranslations(languageModules, bridge));
+    const { unmount } = renderHook(() => useScreenTranslations(languageModules, fixture.bridge));
 
     await waitFor(() => {
-      expect(bridge.subscribeToProperty).toHaveBeenCalledTimes(1);
+      expect(fixture.subscribeToProperty).toHaveBeenCalledTimes(1);
     });
 
     unmount();
 
-    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(fixture.unsubscriptions).toHaveLength(1);
+    expect(fixture.unsubscriptions[0]?.unsubscribe).toHaveBeenCalledTimes(1);
   });
 });
