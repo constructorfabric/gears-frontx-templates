@@ -208,7 +208,7 @@ describe('ManifestGenerator - GTS identifier validation', () => {
     expect(existsSync(outputFile)).toBe(false);
   });
 
-  it.each(['https://example.com/en.json', '/labels/en.json', '//example.com/en.json', '../en.json', 'labels/../en.json', 'labels\\en.json'])('refuses dictionary path %s outside public', (file) => {
+  it.each(['https://example.com/en.json', '/labels/en.json', '//example.com/en.json', '../en.json', 'labels/../en.json', 'labels\\en.json', 'labels/%2e%2e/x.json', 'labels/en.json?x'])('refuses dictionary path %s outside public', (file) => {
     mfePackageWithIds({ labelDictionaries: [{ language: 'en', file }] });
     writeDictionary();
 
@@ -220,7 +220,7 @@ describe('ManifestGenerator - GTS identifier validation', () => {
     mfePackageWithIds({ labelDictionaries: [{ language: 'en', file: 'labels/en.json' }] });
     const external = join(workspace, 'external');
     mkdirSync(external);
-    symlinkSync(external, join(mfePackagesDir, PACKAGE_NAME, 'public'));
+    symlinkSync(external, join(mfePackagesDir, PACKAGE_NAME, 'public'), 'junction');
 
     expect(messageFromRefusal()).toContain('public/ must be inside the package');
     expect(existsSync(outputFile)).toBe(false);

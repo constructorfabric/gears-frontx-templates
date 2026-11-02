@@ -60,7 +60,12 @@ import {
   templateExamplesSkippedNotice,
 } from './lib/mfe-tools.js';
 
-const screenExtensionPrefix = screenLabelsSchema.properties.labels.items.properties.extension['x-gts-ref'].slice(0, -1);
+const screenExtensionRef = screenLabelsSchema.properties.labels.items.properties.extension['x-gts-ref'];
+if (!screenExtensionRef.endsWith('~*')) {
+  throw new Error(`screen_labels.v1 extension x-gts-ref must end with "~*", got: ${screenExtensionRef}`);
+}
+const screenExtensionPrefix = screenExtensionRef.slice(0, -1);
+const screenLabelsType = screenLabelsSchema.$id.replace(/^gts:\/\//, '');
 
 // ---------------------------------------------------------------------------
 // Raw JSON shape types (what we read from the enriched mfe-manifest.json on disk)
@@ -375,7 +380,7 @@ export class ManifestGenerator {
       if (!languageCodeSchema.enum.includes(language)) return fail(`${field} has unsupported language ${language}`);
       if (languages.has(language)) return fail(`${field} repeats language ${language}`);
       languages.add(language);
-      if (!file || /^[a-z][a-z0-9+.-]*:/i.test(file) || file.startsWith('/') || file.includes('\\') || file.split('/').includes('..')) {
+      if (!/^[A-Za-z0-9._\-/]+$/.test(file) || file.startsWith('/') || file.split('/').some((segment) => segment === '.' || segment === '..')) {
         return fail(`${field} file must be a relative path inside public/`);
       }
       const path = join(publicRoot, file);
@@ -392,7 +397,7 @@ export class ManifestGenerator {
         return fail(`${field} file is not a screen labels dictionary: ${file}`);
       }
       const content = dictionary as Record<string, unknown>;
-      if (content.type !== 'gts.frontx.i18n.dict.screen_labels.v1~') return fail(`${field} file has wrong type: ${file}`);
+      if (content.type !== screenLabelsType) return fail(`${field} file has wrong type: ${file}`);
       if (content.language !== language) return fail(`${field} file language does not match ${language}: ${file}`);
       if (!Array.isArray(content.labels)) return fail(`${field} file labels must be an array: ${file}`);
       const extensions = new Set<string>();

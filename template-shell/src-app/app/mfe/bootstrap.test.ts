@@ -149,16 +149,24 @@ describe('bootstrapMFE (host-app)', () => {
   });
 
   it('configures menu labels on the registry type system', async () => {
-    fetchSpy.mockResolvedValue(new Response(JSON.stringify([{
-      manifest: { id: 'manifest.demo' }, entries: [], extensions: [],
-    }]), { status: 200 }));
+    const aggregate = [{
+      manifest: { id: 'manifest.demo', metaData: { publicPath: '/mfe/demo/' } },
+      entries: [],
+      extensions: [{ id: 'ext.demo', domain: 'foreign-domain' }],
+      labelDictionaries: [{ language: 'fr', file: 'labels/fr.json' }],
+    }];
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(aggregate), { status: 200 }));
     const { bootstrapMFE } = await loadBootstrap();
     const { menuLabels } = await import('./menuLabels');
     const configure = vi.spyOn(menuLabels, 'configure');
 
     await bootstrapMFE(mockApp as never);
 
-    expect(configure).toHaveBeenCalledWith(expect.any(Array), expect.any(String), mockMfeRegistry.typeSystem);
+    expect(configure).toHaveBeenCalledTimes(1);
+    const [manifests, aggregateUrl, typeSystem] = configure.mock.calls[0];
+    expect(manifests).toEqual(aggregate);
+    expect(aggregateUrl).toMatch(/generated-mfe-manifests\.json$/);
+    expect(typeSystem).toBe(mockMfeRegistry.typeSystem);
   });
 
   it('registers no domain and no screen type when the host implements none', async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { eventBus, type ScreenExtension } from '@gears-frontx/react';
@@ -85,6 +85,10 @@ describe('Menu', () => {
     mockUseFrontX.mockReturnValue(app);
     screenState.set(undefined);
     mockBootstrapSettled.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   const emptyState = () => screen.queryByText(/No screens yet/);

@@ -84,7 +84,9 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
       .then(() => cancelled ? new Map<string, string>() : menuLabels.load(language))
       .then((labels) => {
         if (!cancelled) setTranslated({ language, labels });
-      }).catch(() => {});
+      }).catch((error: unknown) => {
+        console.warn('[Menu labels] Failed to load menu labels:', error);
+      });
     return () => { cancelled = true; };
   }, [language]);
 

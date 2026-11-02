@@ -1,4 +1,7 @@
 import { gtsPlugin } from '@gears-frontx/react';
+import { screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
+
+const screenLabelsType = (screenLabelsSchema.$id ?? '').replace(/^gts:\/\//, '');
 
 export interface LabelDictionaryManifest {
   language: string;
@@ -80,7 +83,7 @@ export class MenuLabels {
             throw new Error(`${response.status} ${response.statusText}`);
           }
           const dictionary = (await response.json()) as ScreenLabels;
-          if (dictionary.type !== 'gts.frontx.i18n.dict.screen_labels.v1~') throw new Error('unexpected dictionary type');
+          if (dictionary.type !== screenLabelsType) throw new Error('unexpected dictionary type');
           if (dictionary.language !== language) throw new Error('dictionary language does not match manifest');
           const clean = {
             type: dictionary.type,
