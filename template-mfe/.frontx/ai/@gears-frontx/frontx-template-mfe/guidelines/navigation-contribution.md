@@ -54,17 +54,17 @@ with a thrown registration error, not a silent skip):
 `order` is a flat number per domain — there is no grouping or nesting, so
 coordinate values across packages if relative position matters.
 
-For translated labels, declare `"labelDictionaries": [{ "language": "en", "file": "labels/en.json" }]` at the top of `mfe.json`. The file lives in `public/labels/`, relative to this MFE's served root. It contains one language's labels for this MFE:
+`label` is the English menu label. To translate it, declare one dictionary per language at the top of `mfe.json`, for example `"labelDictionaries": [{ "language": "de", "file": "labels/de.json" }]`. The file lives in `public/labels/`, relative to this MFE's served root. It contains one language's labels for this MFE:
 
 ```json
 {
   "type": "gts.frontx.i18n.dict.screen_labels.v1~",
-  "language": "en",
-  "labels": [{ "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1", "label": "Widgets Host" }]
+  "language": "de",
+  "labels": [{ "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.widgets.host.screen.v1", "label": "Widget-Host" }]
 }
 ```
 
-List every screen extension the package declares. The shell validates the file against `gts.frontx.i18n.dict.screen_labels.v1~` and uses its label for menu text and tooltip. Missing languages use `presentation.label`.
+List every screen extension the package declares. The shell validates the file against `gts.frontx.i18n.dict.screen_labels.v1~` and uses its label for menu text and tooltip. A language with no dictionary uses `presentation.label`. When you rename a screen in `presentation.label`, update its translations too.
 
 ## Routes inside the MFE
 

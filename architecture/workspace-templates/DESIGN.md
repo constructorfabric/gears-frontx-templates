@@ -276,11 +276,11 @@ The shell cannot read a translation key out of a bundle it does not import, and 
 
 - Each wrapped screen declares `presentation.label` inside its extension entry, the string the derived screen-extension schema requires today, as its fallback.
 - Each wrapped screen's MFE ships one label dictionary per language it labels, an instance of `gts.frontx.i18n.dict.screen_labels.v1~` holding that language and an array of `{ extension, label }` pairs, one per screen extension of that MFE, and lists the dictionaries in its manifest as `labelDictionaries: [{ language, file }]` (§3.3). One dictionary holds one language, so the shell loads only the localization it shows.
-- `extension` is a GTS reference (`x-gts-ref`) to a screen extension, so a dictionary cannot label something that is not a screen extension. `language` is a language code such as `en`, typed by a reference to the language-code type `gts.frontx.i18n.lang.code.v1~`, which lists the same codes as the `language` shared property's inline enum, so a dictionary cannot name a language the shell does not know.
+- `extension` is a GTS reference (`x-gts-ref`) to a screen extension, so a dictionary cannot label something that is not a screen extension. `language` is a language code such as `en`, typed by a reference to the language-code type `gts.frontx.i18n.lang.code.v1~`, the one definition of the codes, which the `language` shared property's value references too, so a dictionary cannot name a language the shell does not know.
 - The shell resolves an admitted member's label from that static data alone. No member code runs, no action is dispatched, and nothing depends on which member's screen content is routed - the domain admits every currently-applied member's extension at once (§3.6), so every applied member is labeled, including members that are never mounted.
 - The fallback has two steps: the label the current language's dictionary gives the extension, and `presentation.label` otherwise, including while that dictionary is still loading, when it fails to load or validate, and when the MFE ships none for the language. `presentation.label` is schema-required, so the chain always ends in a rendered string.
 - A shell-wide language change loads the new language's dictionaries, once per MFE and language, with no remount and no read of anything the member's code produces.
-- The family ships `en` dictionaries only; every other language falls back to `presentation.label` until a project adds that language's dictionary.
+- `presentation.label` is the English label. The family's example MFEs ship no dictionaries; a project adds one per language it translates the menu into, and every other language shows `presentation.label`.
 - A screen member's own internal UI copy - everything the member itself renders inside its own zone - is a separate matter and stays with the member's code: it resolves from a namespace local to that member's own code, driven only by the current language it is given - the existing `language` shared property when wrapped - following the working `import.meta.glob('./i18n/*.json')` precedent already exercised in `_blank-mfe`. Only the chrome label is static.
 
 ##### Shell-internal realization (template territory, illustrative)
@@ -331,21 +331,21 @@ Whether the tags are cut by hand, by a release script, or by a workflow. Nothing
 
 ```json
 "labelDictionaries": [
-  { "language": "en", "file": "labels/en.json" }
+  { "language": "de", "file": "labels/de.json" }
 ]
 ```
 
 ```json
 {
   "type": "gts.frontx.i18n.dict.screen_labels.v1~",
-  "language": "en",
+  "language": "de",
   "labels": [
-    { "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.workspace.screens.contacts.v1", "label": "Contacts" }
+    { "extension": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.workspace.screens.contacts.v1", "label": "Kontakte" }
   ]
 }
 ```
 
-- **Technology**: `@gears-frontx/gts-plugin` validates each loaded dictionary against `gts.frontx.i18n.dict.screen_labels.v1~` before the shell uses it: `language` must be a code the language-code type `gts.frontx.i18n.lang.code.v1~` lists, and every `extension` must be a GTS id of a screen extension (`x-gts-ref` to `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~*`). A dictionary that fails is ignored and the menu keeps `presentation.label`; a label for an extension the declaring manifest does not list is ignored too, so one MFE cannot relabel another's screen. The `language` shared property keeps its own inline list of the same codes, and a test keeps the two lists equal.
+- **Technology**: `@gears-frontx/gts-plugin` validates each loaded dictionary against `gts.frontx.i18n.dict.screen_labels.v1~` before the shell uses it: `language` must be a code the language-code type `gts.frontx.i18n.lang.code.v1~` lists, and every `extension` must be a GTS id of a screen extension (`x-gts-ref` to `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~*`). A dictionary that fails is ignored and the menu keeps `presentation.label`; a label for an extension the declaring manifest does not list is ignored too, so one MFE cannot relabel another's screen. The `language` shared property's value references the same language-code type, so the codes have one definition; whoever registers the `language` shared property's schema registers the code type first.
 - **Owner**: Template territory published from this repository, not ecosystem schemas: the derived screen-extension schema `gts://gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~` (`template-shell/src/gts/schemas/extension_screen.v1.json`), the dictionary type (`screen_labels.v1.json`) and the language-code type (`language_code.v1.json`) beside it, and the manifest field, which the shell's own manifest type in `src-app/app/mfe/bootstrap.ts` declares. The ecosystem's own `ext/extension.v1.json` (`@gears-frontx/gts-plugin`) requires only `id`, `domain` and `entry` and is not touched by this family. The shell member, `template-workspace`, publishes these types as part of its own contract surface before any of the four screen members' first split release ships. At runtime the screen extension schema is registered by the shell's screen domain implementation, together with the screen extension domain itself, before the manifests are walked; in `template-shell` that is `src-app/app/mfe/screenDomain.ts`, which the screen container hands to the bootstrap it starts. A project that renders no screen container has no screen domain.
 
 | Public surface | Purpose |
@@ -353,7 +353,7 @@ Whether the tags are cut by hand, by a release script, or by a workflow. Nothing
 | `presentation.label` | Required. The member's own fallback display string, rendered whenever the current language's dictionary gives the extension no label. Already required by the derived screen-extension schema and already carried by every screen extension in this repository. |
 | `labelDictionaries` | Optional, top level of the MFE manifest. One `{ language, file }` item per language the MFE labels; `language` must be a code of `gts.frontx.i18n.lang.code.v1~`. The shell's dictionary loader drops a dictionary whose own `language` differs from it, and the menu keeps `presentation.label`. |
 | `gts.frontx.i18n.dict.screen_labels.v1~` | One MFE's menu labels in one language: `type` (the type id, as every GTS instance carries it), `language`, which must equal the manifest item's `language`, and an array of `{ extension, label }`, `extension` a GTS reference to a screen extension. |
-| `gts.frontx.i18n.lang.code.v1~` | The language codes the shell supports; referenced by the dictionary's `language`; a test keeps it equal to the `language` shared property's inline enum. |
+| `gts.frontx.i18n.lang.code.v1~` | The language codes the shell supports; referenced by the dictionary's `language` and by the `language` shared property's value. |
 
 ### 3.4 Internal Dependencies
 
@@ -429,7 +429,7 @@ Requested as a concrete check for `cpt-frontx-workspace-templates-fr-screen-doma
 ```json
 {
   "manifest": { "id": "...", "remoteEntry": "http://localhost:<port>/assets/remoteEntry.js" },
-  "labelDictionaries": [{ "language": "en", "file": "labels/en.json" }],
+  "labelDictionaries": [{ "language": "de", "file": "labels/de.json" }],
   "entries": [
     {
       "id": "gts.frontx.mfes.mfe.entry.v1~...~frontx.workspace.mfe.contacts.v1",
@@ -459,7 +459,7 @@ Requested as a concrete check for `cpt-frontx-workspace-templates-fr-screen-doma
 }
 ```
 
-One field in this shape is new: the top-level `labelDictionaries`, which points at the MFE's served `labels/en.json`, an instance of the dictionary type (§3.3). `entries[].actions` is empty and stays empty - this family declares no action of its own. Every other field is unchanged: `domain` is the existing screen extension domain identifier; `requiredProperties` names the same two shared properties (`theme`, `language`) every screen entry in this repository already declares; the top-level `route` and `presentation.label`, `.icon`, `.order` are the same four fields the screen extensions already in this repository carry. Beyond that field and its dictionary file, what is new is convention layered on top, stated as obligations rather than schema (§2.3):
+One field in this shape is new: the top-level `labelDictionaries`, which points at the MFE's served `labels/de.json`, an instance of the dictionary type (§3.3); English needs no dictionary, it is `presentation.label`. `entries[].actions` is empty and stays empty - this family declares no action of its own. Every other field is unchanged: `domain` is the existing screen extension domain identifier; `requiredProperties` names the same two shared properties (`theme`, `language`) every screen entry in this repository already declares; the top-level `route` and `presentation.label`, `.icon`, `.order` are the same four fields the screen extensions already in this repository carry. Beyond that field and its dictionary file, what is new is convention layered on top, stated as obligations rather than schema (§2.3):
 
 | Member | Reserved order band | Declared route |
 |---|---|---|
