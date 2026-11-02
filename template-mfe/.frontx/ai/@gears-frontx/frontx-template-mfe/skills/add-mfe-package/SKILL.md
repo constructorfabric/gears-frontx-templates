@@ -85,7 +85,9 @@ authority on each step.
    for a screen-domain contribution). `presentation.label` is the English menu
    label; a menu label in another language goes in a label dictionary under
    `public/labels/` (the `navigation-contribution` guideline), whose
-   `labels[].extension` must use these same extension IDs.
+   `labels[].extension` is the screen extension's own `id`
+   (`gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~...`),
+   not the domain ID.
 5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
