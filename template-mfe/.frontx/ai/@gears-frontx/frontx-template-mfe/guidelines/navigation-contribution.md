@@ -64,7 +64,7 @@ coordinate values across packages if relative position matters.
 }
 ```
 
-List every screen extension the package declares. The shell validates the file against `gts.frontx.i18n.dict.screen_labels.v1~` and uses its label for menu text and tooltip. A language with no dictionary uses `presentation.label`. When you rename a screen in `presentation.label`, update its translations too.
+List the screen extensions you translate; the build does not require every one. The shell validates the file against `gts.frontx.i18n.dict.screen_labels.v1~` and uses its label for menu text and tooltip. A screen missing from the dictionary, and every screen in a language with no dictionary, shows `presentation.label`. When you rename a screen in `presentation.label`, update its translations too.
 
 ## Routes inside the MFE
 
