@@ -42,6 +42,7 @@ function getValuePropertySchema(schema: JSONSchema | undefined): JSONSchema {
 function buildPluginWithDerivedSchemas(): GtsPlugin {
   const plugin = new GtsPlugin({ isolated: true });
   plugin.registerSchema(themeSchema);
+  plugin.registerSchema(languageCodeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
   return plugin;
@@ -101,18 +102,16 @@ describe('application-layer derived GTS schemas', () => {
       expect(new Set(codes)).toEqual(new Set(Object.values(Language)));
     });
 
-    it('matches the language code schema in order', () => {
-      expect(getValuePropertySchema(languageSchema).enum).toEqual(languageCodeSchema.enum);
-    });
-
     it('is accessible via getSchema using the language property type ID', () => {
       const schema = plugin.getSchema(FRONTX_SHARED_PROPERTY_LANGUAGE);
       expect(schema).toBeDefined();
       expect(schema?.$id).toBe(`gts://${FRONTX_SHARED_PROPERTY_LANGUAGE}`);
     });
 
-    it('validates language values without the language code schema', () => {
+    it('resolves language values through the language code schema', () => {
+      expect(getValuePropertySchema(languageSchema)).toEqual({ $ref: 'gts://gts.frontx.i18n.lang.code.v1~' });
       const isolatedPlugin = new GtsPlugin({ isolated: true });
+      isolatedPlugin.registerSchema(languageCodeSchema);
       isolatedPlugin.registerSchema(languageSchema);
       const validId = `${FRONTX_SHARED_PROPERTY_LANGUAGE}frontx.mfes.comm.runtime.v1`;
       const invalidId = `${FRONTX_SHARED_PROPERTY_LANGUAGE}frontx.mfes.comm.runtime.invalid.v1`;

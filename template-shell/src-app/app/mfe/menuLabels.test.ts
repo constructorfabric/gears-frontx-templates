@@ -16,13 +16,13 @@ const dictionary = (language: string, label = 'Profile') => ({
   labels: [{ extension, label }],
 });
 
-function store(labelSchemas = true): typeof gtsPlugin {
+function store(): typeof gtsPlugin {
   const Plugin = gtsPlugin.constructor as new (options: { isolated: boolean }) => typeof gtsPlugin;
   const plugin = new Plugin({ isolated: true });
-  if (labelSchemas) plugin.registerSchema(languageCodeSchema);
+  plugin.registerSchema(languageCodeSchema);
   plugin.registerSchema(languageSchema);
   plugin.registerSchema(extensionScreenSchema);
-  if (labelSchemas) plugin.registerSchema(screenLabelsSchema);
+  plugin.registerSchema(screenLabelsSchema);
   plugin.register({
     id: extension,
     domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
@@ -141,15 +141,13 @@ describe('menu label loading', () => {
   });
 
   it('uses the configured isolated type system for dictionary references', async () => {
-    const plugin = store(false);
+    const plugin = store();
     const loader = new MenuLabels(gtsPlugin);
     loader.configure([{
       manifest: { metaData: { publicPath: 'mfe/demo-mfe/' } },
       extensions: [{ id: extension }],
       labelDictionaries: [{ language: 'en', file: 'labels/en.json' }],
     }], 'https://example.com/generated-mfe-manifests.json', plugin);
-    expect(plugin.getSchema('gts.frontx.i18n.lang.code.v1~')).toBeDefined();
-    expect(plugin.getSchema('gts.frontx.i18n.dict.screen_labels.v1~')).toBeDefined();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => dictionary('en', 'Translated') })));
 
     expect((await loader.load('en')).get(extension)).toBe('Translated');

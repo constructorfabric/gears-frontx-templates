@@ -1,5 +1,4 @@
 import { gtsPlugin } from '@gears-frontx/react';
-import { languageCodeSchema, screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
 
 export interface LabelDictionaryManifest {
   language: string;
@@ -29,12 +28,10 @@ export class MenuLabels {
   private readonly resolved = new Map<string, Map<string, string>>();
   private generation = 0;
 
-  constructor(private typeSystem: Pick<typeof gtsPlugin, 'register' | 'registerSchema'>) {}
+  constructor(private typeSystem: Pick<typeof gtsPlugin, 'register'>) {}
 
   configure(sources: readonly LabelSource[], aggregateUrl: string, typeSystem = this.typeSystem): void {
     this.typeSystem = typeSystem;
-    this.typeSystem.registerSchema(languageCodeSchema);
-    this.typeSystem.registerSchema(screenLabelsSchema);
     this.sources = sources;
     this.aggregateUrl = aggregateUrl;
     this.cache.clear();
