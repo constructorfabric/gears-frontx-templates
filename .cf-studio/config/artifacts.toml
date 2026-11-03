@@ -38,17 +38,18 @@
 # documents); both are accepted. Neither form reports a document that is not
 # there: autodetect with required = false simply finds nothing, and a listed
 # path that does not exist is skipped without an error, so a listed file
-# that goes missing is caught in review, not by cfs. Every kind below is
-# `required = false` because none of the registered directories holds
-# documents yet. The PR that brings a template's PRD and DESIGN sets those
-# two kinds of its system to `required = true`.
+# that goes missing is caught in review, not by cfs. A kind is
+# `required = false` while its directory holds no documents. The PR that
+# brings a template's PRD and DESIGN sets those two kinds of its system to
+# `required = true`, as template-calendar does.
 #
 # The catalogue registers no code. A template's system may register the
 # template's own code paths ([[systems.codebase]] under its block), so that
 # the @cpt- markers there trace to that template's own documents; cfs does
 # not report a registered code path that does not exist, so review checks
-# the paths. The three template blocks below register none, because they
-# have no documents yet for a marker to trace to. ADR-0033 of gears-frontx
+# the paths. template-shell, template-mfe and template-design-guardrails
+# register none, because they have no documents yet for a marker to trace
+# to; template-calendar registers its calendar-kit source. ADR-0033 of gears-frontx
 # only rules that markers in template code bind nothing to gears-frontx
 # artifacts
 # (https://github.com/constructorfabric/gears-frontx/blob/develop/architecture/ADR/0033-template-territory-traceability.md).
@@ -206,3 +207,48 @@ required = false
 pattern = "features/*/FEATURE.md"
 traceability = "DOCS-ONLY"
 required = false
+
+# template-calendar: ids cpt-template-calendar-*. It brings a PRD and a
+# DESIGN, so those two kinds are required, and it registers the
+# calendar-kit source so its @cpt- markers trace to its own FEATURE.
+[[systems]]
+name = "template-calendar"
+slug = "template-calendar"
+kit = "sdlc"
+artifacts_dir = "template-calendar/architecture"
+
+[[systems.autodetect]]
+kit = "sdlc"
+system_root = "{project_root}"
+artifacts_root = "template-calendar/architecture"
+
+[systems.autodetect.artifacts]
+[systems.autodetect.artifacts.PRD]
+pattern = "PRD.md"
+traceability = "DOCS-ONLY"
+required = true
+
+[systems.autodetect.artifacts.DESIGN]
+pattern = "DESIGN.md"
+traceability = "DOCS-ONLY"
+required = true
+
+[systems.autodetect.artifacts.DECOMPOSITION]
+pattern = "DECOMPOSITION.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.ADR]
+pattern = "ADR/**/*.md"
+traceability = "DOCS-ONLY"
+required = false
+
+[systems.autodetect.artifacts.FEATURE]
+pattern = "features/*/FEATURE.md"
+traceability = "FULL"
+required = false
+
+[[systems.codebase]]
+name = "calendar-kit source"
+path = "template-calendar/packages/calendar-kit/src"
+extensions = [".ts", ".tsx"]
