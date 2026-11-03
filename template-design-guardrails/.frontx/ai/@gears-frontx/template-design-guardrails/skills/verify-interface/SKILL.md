@@ -134,7 +134,7 @@ Worked trace: console line `[design-defects] page-horizontal-scroll: the page's 
 
 Every reported finding must carry exactly one gate ID and the severity that `quality-gates.json` assigns to it; if no single gate matches, report the rule id with gate `unmapped` and severity from the checker context rather than inventing one.
 
-The checker traverses open shadow roots, so findings may originate inside MFE content; the `target` locator says where. An axe locator inside a shadow root names each shadow host and then the element, joined by `>>>` (`my-widget >>> p`). Attribute the finding to the owning surface.
+The checker traverses open shadow roots, so findings may originate inside MFE content; the `target` locator says where. An axe locator inside a shadow root names each shadow host and then the element, joined by `>>>` (`my-widget >>> p`). The locator is for reading, not a selector: `>>>` is not CSS, and `document.querySelector('my-widget >>> p')` throws a `SyntaxError`. To reach the element, query each part through the previous host's shadow root: `document.querySelector('my-widget').shadowRoot.querySelector('p')`. Attribute the finding to the owning surface.
 
 ## Report
 
