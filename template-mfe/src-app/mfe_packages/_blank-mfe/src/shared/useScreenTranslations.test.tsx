@@ -117,12 +117,15 @@ describe('useScreenTranslations', () => {
 
   it('keeps the newest language when an older load resolves last', async () => {
     let resolveFrench: (module: { default: Record<string, string> }) => void = () => {};
-    const languageModules = {
-      './i18n/en.json': async () => ({ default: { greeting: 'Hello' } }),
-      './i18n/fr.json': () =>
+    const frImporter = vi.fn(
+      () =>
         new Promise<{ default: Record<string, string> }>((resolve) => {
           resolveFrench = resolve;
         }),
+    );
+    const languageModules = {
+      './i18n/en.json': async () => ({ default: { greeting: 'Hello' } }),
+      './i18n/fr.json': frImporter,
       './i18n/de.json': async () => ({ default: { greeting: 'Hallo' } }),
     };
     const fixture = makeBridge('en');
@@ -136,6 +139,10 @@ describe('useScreenTranslations', () => {
     await act(async () => {
       fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'fr');
     });
+    // The switch starts the French load, and loading lasts until it arrives.
+    expect(frImporter).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(true);
+
     await act(async () => {
       fixture.setProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
     });
