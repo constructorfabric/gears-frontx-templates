@@ -92,22 +92,32 @@ describe('generate', () => {
     expect(readFileSync(design, 'utf8')).toBe(text);
   });
 
-  it('accepts a dark block written as a selector list, quoted or not', () => {
+  it('accepts the allowed selectors in any quote and whitespace style', () => {
     const fixture = readFileSync(THEME, 'utf8');
-    for (const selector of [':root, [data-theme="dark"]', '[data-theme=dark], .dark', ":root,\n[data-theme='dark']"]) {
+    for (const [light, dark] of [
+      [':root, [data-theme="light"]', '[data-theme="dark"]'],
+      [':root,[data-theme=light]', '[data-theme=dark]'],
+      [":root ,\n  [ data-theme = 'light' ]", "[ data-theme='dark' ]"],
+    ]) {
       const theme = path.join(dir, 'theme.css');
-      writeFileSync(theme, fixture.replace("[data-theme='dark'] {", `${selector} {`));
+      writeFileSync(theme, fixture.replace(":root,\n[data-theme='light'] {", `${light} {`).replace("\n[data-theme='dark'] {", `\n${dark} {`));
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
-      expect(frontMatter()['colors-dark'].background).toBe('#0f172a');
+      expect([frontMatter().colors.background, frontMatter()['colors-dark'].background]).toEqual(['#f1f5f9', '#0f172a']);
     }
   });
 
-  it('merges every block of a kind in source order, the later declaration wins', () => {
+  it('merges repeated allowed blocks in source order, the later declaration wins', () => {
     const theme = path.join(dir, 'theme.css');
     const fixture = readFileSync(THEME, 'utf8');
     writeFileSync(theme, fixture);
     cli('generate', '--design', design, '--theme', theme);
-    writeFileSync(theme, `${fixture}\n[data-theme="light"] { --primary: #ff0000; --extra: #00ff00; }\n:root { --space-2: 0.75rem; }\n`);
+    const extra = [
+      ':root, [data-theme="light"] { --primary: #ff0000; --extra: #00ff00; }',
+      '[data-theme="dark"] { --primary: #0000ff; --extra: #00ff00; }',
+      ':root { --space-2: 0.75rem; }',
+      '[data-theme="dark"] { --primary: #000099; }',
+    ].join('\n');
+    writeFileSync(theme, `${fixture}\n${extra}\n`);
     expect(cli('check', '--design', design, '--theme', theme)).toBe(1);
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
     const fm = frontMatter();
@@ -115,7 +125,8 @@ describe('generate', () => {
     expect(fm.colors.background).toBe('#f1f5f9'); // the first light block still counts
     expect(fm.colors.extra).toBe('#00ff00');
     expect(fm.spacing[2]).toBe('12px');
-    expect(fm['colors-dark'].primary).toBe('#0065e3');
+    expect(fm['colors-dark'].primary).toBe('#000099');
+    expect(fm['colors-dark'].background).toBe('#0f172a');
   });
 
   it('keeps the light and dark values of a token the invariant block also declares', () => {
@@ -126,7 +137,7 @@ describe('generate', () => {
     expect(frontMatter()['colors-dark'].primary).toBe('#0065e3');
   });
 
-  describe('resolves each theme as the browser does for the root element', () => {
+  describe('reads only the kit block shape', () => {
     const themeWith = (extra) => {
       const theme = path.join(dir, 'theme.css');
       writeFileSync(theme, `${readFileSync(THEME, 'utf8')}\n${extra}\n`);
@@ -141,26 +152,60 @@ describe('generate', () => {
       expect(primaries(':root { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
     });
 
-    it('applies a block listing both themes to both', () => {
-      expect(primaries('[data-theme="light"], [data-theme="dark"] { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
+    it('accepts a fallback block that equals the dark theme', () => {
+      const fallback = "@media (prefers-color-scheme: dark) {\n  :root:not([data-theme='light']) { --foreground: #ffffff; --primary: var(--primary-foreground); color-scheme: dark; }\n}";
+      expect(primaries(`${fallback}\n[data-theme='dark'] { --primary: #ffffff; }`)).toEqual(['#0065e3', '#ffffff']);
     });
 
-    it('lets a later html block win', () => {
-      expect(primaries('html { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
+    it('ignores a block with no custom property, whatever its selector', () => {
+      cli('generate', '--design', design, '--theme', THEME);
+      const plain = readFileSync(design, 'utf8');
+      const extra = 'body,\n[data-theme] { background-color: var(--background); color: var(--foreground); font-family: var(--font-sans); }\n@media (min-width: 1px) { .x { color: red; } }';
+      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      expect(readFileSync(design, 'utf8')).toBe(plain);
     });
 
-    it('applies :root[data-theme=dark] to dark only', () => {
-      expect(primaries(':root[data-theme=dark] { --primary: #ff0000; }')).toEqual(['#0065e3', '#ff0000']);
+    it('keeps a quoted value exactly: ;, comment marks and double spaces inside quotes', () => {
+      const extra = `:root { --font-sans: 'Inter;  Display',   "A  /* x */ B",\n  sans-serif /* trailing */; --font-mono: "Mono}{" ; }`;
+      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      expect(frontMatter().fonts).toEqual({ sans: `'Inter;  Display', "A  /* x */ B", sans-serif`, mono: '"Mono}{"' });
     });
 
-    it('ignores blocks nested in an at-rule', () => {
-      const nested = '@media (min-width: 1px) { :root { --primary: #ff0000; --space-2: 1rem; } }\n@layer kit { :root { --primary: #ff0000; } }';
-      expect(primaries(nested)).toEqual(['#0065e3', '#0065e3']);
-      expect(frontMatter().spacing[2]).toBe('8px');
-    });
+    const rejected = {
+      'another selector': ['.card { --primary: #ff0000; }', /theme\.css rule "\.card" declares --primary; .*fix:/],
+      'an html block': ['html { --primary: #ff0000; }', /theme\.css rule "html" declares --primary; .*fix:/],
+      ':root[data-theme=dark]': [':root[data-theme=dark] { --primary: #ff0000; }', /theme\.css rule ":root\[data-theme=dark\]" declares --primary; .*fix:/],
+      'a selector list that only partly matches': ['[data-theme=dark], .dark { --primary: #ff0000; }', /theme\.css rule "\[data-theme=dark\], \.dark" declares --primary; .*fix:/],
+      'a light and dark selector list': ['[data-theme="light"], [data-theme="dark"] { --primary: #ff0000; }', /rule "\[data-theme="light"\], \[data-theme="dark"\]" declares --primary/],
+      '@media all': ['@media all { :root { --space-2: 1rem; } }', /theme\.css at-rule "@media all" declares --space-2; .*fix:/],
+      '@media of another feature': ['@media (min-width: 1px) { :root { --primary: #ff0000; } }', /at-rule "@media \(min-width: 1px\)" declares --primary/],
+      '@supports': ['@supports (color: red) { :root { --primary: #ff0000; } }', /theme\.css at-rule "@supports \(color: red\)" declares --primary; .*fix:/],
+      '@layer': ['@layer kit { :root { --primary: #ff0000; } }', /at-rule "@layer kit" declares --primary/],
+      'a nested rule': [':root { --space-2: 0.5rem; & .x { --primary: #ff0000; } }', /theme\.css rule "& \.x" nested in rule ":root" declares --primary; .*fix:/],
+      'font-size in :root': [':root { font-size: 20px; }', /theme\.css rule ":root" sets font-size; .*rem values are converted at 16px.*fix:/],
+      'a named colour': [':root { --primary: white; }', /token --primary in rule ":root" is the named colour white; fix: use hex, rgb\(\) or hsl\(\)/],
+      'transparent': ["[data-theme='dark'] { --card: transparent; }", /token --card .* is the named colour transparent; fix: use hex, rgb\(\) or hsl\(\)/],
+      'two tokens on one output path': [':root { --radius-base: 1rem; }', /tokens --radius and --radius-base are both written to rounded\.base; fix:/],
+      'a fallback block that differs from dark': [
+        "@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #000000; } }",
+        /token --background is #000000 in the prefers-color-scheme fallback block and #0f172a in the dark theme; fix:/,
+      ],
+    };
+    for (const [form, [extra, message]] of Object.entries(rejected)) {
+      it(`rejects ${form} on generate and check and leaves DESIGN.md untouched`, () => {
+        cli('generate', '--design', design, '--theme', THEME);
+        const generated = readFileSync(design);
+        const theme = themeWith(extra);
+        for (const mode of ['generate', 'check']) {
+          expect(cli(mode, '--design', design, '--theme', theme)).toBe(2);
+          expect(out[0]).toMatch(message);
+        }
+        expect(readFileSync(design).equals(generated)).toBe(true);
+      });
+    }
 
     it('classifies a token by name: a themed --radius equal in both themes is written once under rounded', () => {
-      const theme = themeWith('[data-theme="light"] { --radius: 1rem; }\n[data-theme="dark"] { --radius: 1rem; }');
+      const theme = themeWith(':root, [data-theme="light"] { --radius: 1rem; }\n[data-theme="dark"] { --radius: 1rem; }');
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
       const fm = frontMatter();
       expect(fm.rounded).toEqual({ base: '16px', lg: '16px', xl: '18px' });
@@ -200,7 +245,7 @@ describe('generate', () => {
     };
 
     it('writes a colour alias shared by both themes as a colour ref', () => {
-      expect(gen(':root { --brand: #0065e3; }\n[data-theme="light"], [data-theme="dark"] { --primary: var(--brand); }')).toBe(0);
+      expect(gen(':root { --brand: #0065e3; --primary: var(--brand); }')).toBe(0);
       const fm = frontMatter();
       expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand}', '{colors.brand}']);
       expect(fm.other?.primary).toBeUndefined();
@@ -209,7 +254,7 @@ describe('generate', () => {
     });
 
     it('writes an alias to a different colour per theme as a themed colour', () => {
-      const extra = ':root { --brand-a: #0065e3; --brand-b: #1d4ed8; }\n[data-theme="light"] { --primary: var(--brand-a); }\n[data-theme="dark"] { --primary: var(--brand-b); }';
+      const extra = ':root { --brand-a: #0065e3; --brand-b: #1d4ed8; }\n:root, [data-theme="light"] { --primary: var(--brand-a); }\n[data-theme="dark"] { --primary: var(--brand-b); }';
       expect(gen(extra)).toBe(0);
       const fm = frontMatter();
       expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand-a}', '{colors.brand-b}']);
@@ -241,7 +286,7 @@ describe('generate', () => {
   it('parses a long theme.css in linear time', () => {
     const theme = path.join(dir, 'theme.css');
     const fixture = readFileSync(THEME, 'utf8');
-    const filler = `${'a'.repeat(200_000)}\n.x { --pad:${' '.repeat(200_000)}; }\n`;
+    const filler = `${'a'.repeat(200_000)}\n.x { color:${' '.repeat(200_000)}red; }\n:root { --pad:${' '.repeat(200_000)}1px; --font-x: '${' '.repeat(200_000)}'; }\n`;
     writeFileSync(theme, filler + fixture);
     const started = performance.now();
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);

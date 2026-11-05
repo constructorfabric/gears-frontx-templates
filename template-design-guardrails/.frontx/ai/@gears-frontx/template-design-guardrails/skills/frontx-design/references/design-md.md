@@ -50,13 +50,11 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 - `generate` reads `node_modules/@gears-frontx/ui-kit/dist/theme.css`
   (override with `--theme <path>`), rewrites the front matter of `DESIGN.md`
   (override with `--design <path>`) and keeps the body as it is. The `name`
-  already in the file is kept; `--name` sets it. Each theme is resolved as
-  the browser resolves the root element with `data-theme` set to it: every
-  top-level rule whose selector list matches that root (`:root`, `html`,
-  `[data-theme=...]`, `:root[data-theme=...]`) applies in source order and
-  the later declaration wins; rules nested in `@media`, `@supports` or
-  `@layer` are skipped. Every token is then placed by its name, never by the
-  rule it came from: a colour goes to `colors` (light) and `colors-dark`
+  already in the file is kept; `--name` sets it. It reads only the shape of
+  the kit's own `theme.css` (see "Accepted theme.css shape" below); light
+  is the `:root` and light blocks, dark the `:root` and dark blocks, each in
+  source order, the later declaration winning. Every token is then placed by
+  its name, never by the rule it came from: a colour goes to `colors` (light) and `colors-dark`
   (dark), and any other token (radius, spacing, type, motion, controls) has
   one value, so a value that differs between the themes stops `generate` and
   `check` with exit 2 and a message naming the token and both values. A
@@ -84,8 +82,53 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
   changes.
 
 Every finding is one line with a `fix:`. Exit codes: 0 clean, 1 findings,
-2 usage or input error (unknown mode or flag, missing `theme.css`, no
-front matter to lint).
+2 usage or input error (unknown mode or flag, missing `theme.css`, a
+`theme.css` outside the accepted shape, no front matter to lint).
+
+## Accepted theme.css shape
+
+The script does not emulate the CSS cascade. It accepts the shape the kit
+ships and nothing else:
+
+- custom properties only in `:root`, `:root, [data-theme='light']` and
+  `[data-theme='dark']` blocks (matched on the whole selector list, quote
+  style and whitespace ignored); each may repeat and merges in source order;
+- `@media (prefers-color-scheme: dark)` holding only
+  `:root:not([data-theme='light'])` blocks: not used for output, but every
+  token it declares must resolve to its dark value;
+- blocks that declare no custom property (such as `body, [data-theme]`) are
+  ignored, whatever their selector;
+- beside the tokens only `color-scheme`; no other property, so nothing
+  changes the root font size and `rem` values are converted at 16 px;
+- values: no bare named colour (`white`, `transparent`, `currentcolor`);
+  use hex, `rgb()` or `hsl()`;
+- each token maps to its own output path.
+
+Anything else that declares a custom property is exit 2 naming the selector
+or at-rule and the first token. Declarations split on `;` outside quotes and
+parentheses; quoted text is kept exactly, and comments are removed only
+outside quotes.
+
+## Known gaps
+
+These forms stop `generate` and `check` with exit 2 instead of being
+converted; extend the script when the kit starts using one:
+
+- `var()` with a fallback, and whitespace inside `var( --x )`;
+- `calc()` with multiplication or division, nested `calc()`, non-px units
+  inside `calc()`;
+- named font weights (`bold`) and percentage opacity (`50%`);
+- named colours;
+- custom properties in any selector other than the three above (`html`,
+  `:root[data-theme='dark']`, a list such as `[data-theme='dark'], .dark`),
+  in `@media` of another kind, `@supports`, `@layer`, `@container` or a
+  nested rule;
+- a plain property other than `color-scheme` in a token block;
+- two tokens that map to one path (`--radius` and `--radius-base`).
+
+Plain properties outside the token blocks are not read, so a root font size
+set elsewhere (for example `html { font-size: 20px }`) is not seen by the
+16 px `rem` conversion.
 
 ## Change it with care
 

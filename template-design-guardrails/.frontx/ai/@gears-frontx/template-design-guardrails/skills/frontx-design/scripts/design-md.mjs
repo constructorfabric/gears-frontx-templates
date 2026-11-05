@@ -9,10 +9,25 @@
  *
  * The kit's theme.css is the source; DESIGN.md mirrors it, never the reverse.
  * generate rewrites only the YAML front matter and keeps the markdown body.
- * Each theme is resolved as the browser resolves the root element with that
- * data-theme (see parseTheme); rules nested in at-rules are skipped, so the
- * kit's prefers-color-scheme fallback block, which only repeats the explicit
- * dark values, is skipped on purpose.
+ *
+ * Contract: the script reads only the shape of the kit's own theme.css and
+ * does not emulate the CSS cascade (see parseTheme):
+ *   - custom properties come from `:root`, `:root, [data-theme='light']` and
+ *     `[data-theme='dark']` blocks (each may repeat, source order wins);
+ *   - `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }`
+ *     is not read for output, but each token it declares must equal its dark value;
+ *   - blocks with no custom property (such as `body, [data-theme]`) are ignored;
+ *   - only color-scheme may sit beside the tokens, so nothing changes the root
+ *     font size and rem values are converted at 16px;
+ *   - a token value must not be a bare named colour (white, transparent,
+ *     currentcolor): use hex, rgb() or hsl();
+ *   - two tokens must not map to one output path (--radius, --radius-base).
+ * Anything else that declares a custom property (another selector, html,
+ * :root[data-theme=dark], a selector list that only partly matches, @media of
+ * another kind, @supports, @layer, @container, nesting) is exit 2.
+ * Known gaps, also exit 2 rather than converted: var() with a fallback or with
+ * spaces inside, calc() with multiplication, named font weights, percentage
+ * opacity (full list in references/design-md.md).
  * var() chains are resolved per theme before a token is classified or
  * converted, and the script fails closed: a value it cannot resolve, classify
  * or convert is a usage error, never a written guess.
@@ -32,83 +47,273 @@ class UsageError extends Error {}
 
 // ---------------------------------------------------------------- theme.css
 
-/** Top-level `selector { body }` rules with no brace inside the body, in one linear pass; rules inside at-rules are skipped. */
-function* topLevelRules(text) {
-  let afterBrace = 0; // where the text after the last brace starts
-  let open = -1; // the `{` of a top-level rule not yet closed and with no brace inside
+const isQuote = (c) => c === '"' || c === "'";
+
+/** The CSS with every comment outside a quoted string removed. */
+function stripComments(css) {
+  const parts = [];
+  let from = 0;
+  let quote = null;
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (isQuote(c)) quote = c;
+    else if (c === '/' && css[i + 1] === '*') {
+      parts.push(css.slice(from, i));
+      const end = css.indexOf('*/', i + 2);
+      i = end === -1 ? css.length : end + 1;
+      from = i + 1;
+    }
+  }
+  parts.push(css.slice(from));
+  return parts.join('');
+}
+
+/** Index of the `}` closing the `{` at `open`; braces inside quotes do not count. */
+function closingBrace(text, open) {
   let depth = 0;
-  let selector = '';
+  let quote = null;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (isQuote(c)) quote = c;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return i;
+  }
+  throw new UsageError('theme.css has a { that is never closed');
+}
+
+/**
+ * The items of a style sheet or block body in source order: `{ decl }` for text
+ * ended by `;` (a declaration, or a statement such as @import at the top level)
+ * and `{ prelude, inner }` for a nested block. `;` and braces inside quotes or
+ * parentheses do not split.
+ */
+function splitBlock(text) {
+  const items = [];
+  let start = 0;
+  let quote = null;
+  let parens = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c !== '{' && c !== '}') continue;
-    if (c === '{') {
-      if (depth === 0) {
-        selector = text.slice(afterBrace, i);
-        open = i;
-      } else open = -1; // a nested block: the outer one is an at-rule or nesting, not a plain rule
-      depth++;
-    } else {
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) {
-        if (open !== -1) yield [selector, text.slice(open + 1, i)];
-        open = -1;
-      }
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (isQuote(c)) quote = c;
+    else if (c === '(') parens++;
+    else if (c === ')') parens = Math.max(0, parens - 1);
+    else if (parens) continue;
+    else if (c === ';') {
+      items.push({ decl: text.slice(start, i) });
+      start = i + 1;
+    } else if (c === '{') {
+      const end = closingBrace(text, i);
+      items.push({ prelude: text.slice(start, i), inner: text.slice(i + 1, end) });
+      start = end + 1;
+      i = end;
+    } else if (c === '}') throw new UsageError('theme.css has a } with no matching {');
+  }
+  items.push({ decl: text.slice(start) });
+  return items.filter((item) => item.inner !== undefined || item.decl.trim());
+}
+
+/** Whitespace runs outside quoted strings collapsed to one space and trimmed; quoted text is kept exactly. */
+function squeeze(text) {
+  let out = '';
+  let quote = null;
+  let space = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      out += c;
+      if (c === '\\' && i + 1 < text.length) out += text[++i];
+      else if (c === quote) quote = null;
+      continue;
     }
-    afterBrace = i + 1;
+    if (/\s/.test(c)) {
+      space = true;
+      continue;
+    }
+    if (space && out) out += ' ';
+    space = false;
+    if (isQuote(c)) quote = c;
+    out += c;
+  }
+  return out;
+}
+
+/** `{ name, value }` of a declaration (the name contains no quote, so the first colon ends it); null when the text is no declaration. */
+function parseDecl(text) {
+  const colon = text.indexOf(':');
+  if (colon === -1) return null;
+  const name = text.slice(0, colon).trim();
+  if (!/^(--[\w-]+|-?[a-z][a-z-]*)$/i.test(name)) return null;
+  return { name, value: squeeze(text.slice(colon + 1)) };
+}
+
+/** The first custom property a block body declares, nested blocks included, in source order; null when it declares none. */
+function firstToken(inner) {
+  for (const item of splitBlock(inner)) {
+    const name = item.inner === undefined ? parseDecl(item.decl)?.name : firstToken(item.inner);
+    if (name?.startsWith('--')) return name;
+  }
+  return null;
+}
+
+const KIT_SHAPE =
+  ":root, \":root, [data-theme='light']\", \"[data-theme='dark']\" and \":root:not([data-theme='light'])\" inside \"@media (prefers-color-scheme: dark)\"";
+
+/** A usage error when a block outside the kit's shape declares a custom property; such a block without one is ignored. */
+function rejectTokens(form, inner) {
+  const token = firstToken(inner);
+  if (token) {
+    throw new UsageError(
+      `theme.css ${form} declares ${token}; design-md reads custom properties only from the kit's own blocks (${KIT_SHAPE}); fix: move the token into one of those blocks or report the need to the kit owner`,
+    );
   }
 }
 
-const THEMES = ['light', 'dark'];
-/** Selectors that match the root element when it carries data-theme="<theme>" (quotes and spaces already stripped). */
-const ROOT_SELECTORS = Object.fromEntries(
-  THEMES.map((t) => [t, new Set([':root', 'html', `[data-theme=${t}]`, `:root[data-theme=${t}]`, `html[data-theme=${t}]`])]),
+/**
+ * The custom properties of one allowed block, `[name, value]` in source order.
+ * Only color-scheme may sit beside them: any other plain property (font-size
+ * would change the rem base) and any nested block that declares a custom
+ * property is a usage error.
+ */
+function blockTokens(form, inner) {
+  const tokens = [];
+  for (const item of splitBlock(inner)) {
+    if (item.inner !== undefined) {
+      rejectTokens(`rule "${squeeze(item.prelude)}" nested in ${form}`, item.inner);
+      continue;
+    }
+    const decl = parseDecl(item.decl);
+    if (!decl) throw new UsageError(`theme.css ${form} holds "${squeeze(item.decl)}", which is not a declaration; fix: correct the CSS`);
+    if (!decl.name.startsWith('--')) {
+      if (decl.name === 'color-scheme') continue;
+      throw new UsageError(
+        `theme.css ${form} sets ${decl.name}; design-md accepts only custom properties and color-scheme there (rem values are converted at 16px); fix: move ${decl.name} out of the token blocks or report it to the kit owner`,
+      );
+    }
+    if (!decl.value) continue;
+    if (NAMED_COLOURS.has(decl.value.toLowerCase())) {
+      throw new UsageError(`token ${decl.name} in ${form} is the named colour ${decl.value}; fix: use hex, rgb() or hsl()`);
+    }
+    tokens.push([decl.name.slice(2), decl.value]);
+  }
+  return tokens;
+}
+
+/** CSS named colour keywords, plus transparent and currentcolor. */
+const NAMED_COLOURS = new Set(
+  `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
+  cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray
+  darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen
+  darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue
+  firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew
+  hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan
+  lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray
+  lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue
+  mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred
+  midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+  palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple
+  rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue
+  slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white
+  whitesmoke yellow yellowgreen transparent currentcolor`.split(/\s+/),
 );
 
+const THEMES = ['light', 'dark'];
+/** The allowed token blocks by normalised selector list (whitespace and quotes removed). */
+const BLOCK_KINDS = { ':root': 'root', ':root,[data-theme=light]': 'light', '[data-theme=dark]': 'dark' };
+const FALLBACK_AT = '@media(prefers-color-scheme:dark)';
+const FALLBACK_SELECTOR = ':root:not([data-theme=light])';
+const selectorKey = (s) => s.replace(/\s+|["']/g, '');
+
 /**
- * Resolve the custom properties of each theme T as the browser does for the
- * root element with data-theme="T": every top-level rule whose selector list
- * matches that root (:root, html, [data-theme=T], :root[data-theme=T]) applies,
- * in source order, and a later declaration wins (these selectors share one
- * specificity). Rules nested in an at-rule (@media, @supports, @layer and so on)
- * and rules for other elements are skipped. That skips on purpose the kit's
- * prefers-color-scheme fallback block, which only repeats the explicit dark values.
+ * Read the custom properties of the kit's theme.css shape and nothing else:
+ *
+ *   :root { ... }                                  invariant tokens, both themes
+ *   :root, [data-theme='light'] { ... }            light tokens
+ *   [data-theme='dark'] { ... }                    dark tokens
+ *   @media (prefers-color-scheme: dark) {
+ *     :root:not([data-theme='light']) { ... } }    fallback: must equal dark
+ *
+ * Each block may repeat; declarations apply in source order, the later wins
+ * (the three selectors share one specificity). Light reads the :root and light
+ * blocks, dark the :root and dark blocks. The browser also applies the light
+ * block (it lists :root) to dark where no dark block overrides it; the kit's
+ * dark block repeats every light token, so here a light-only token is not
+ * inherited: it is a one-theme colour (lint: orphaned-token) or, for any
+ * other token, a usage error. A block that
+ * declares no custom property (such as `body, [data-theme]`) is ignored;
+ * any other selector, at-rule or nesting that declares one is a usage error.
  *
  * Returns { light, dark, order }: a Map of name to value per theme, and every
- * name in output order (first declared by a rule that names a theme, then the
- * rest, each in source order; this keeps the kit's palette order stable).
+ * name in output order (first declared by a themed block, then the rest, each
+ * in source order; this keeps the kit's palette order stable).
  */
 export function parseTheme(css) {
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const themes = { light: new Map(), dark: new Map() };
-  const named = { light: false, dark: false };
-  const firstAt = new Map();
-  const themedAt = new Map();
-  for (const [rawSelector, body] of topLevelRules(text)) {
-    const selector = rawSelector.slice(rawSelector.lastIndexOf(';') + 1); // drop a statement such as @import before it
-    const parts = selector.replace(/\s+/g, '').replace(/["']/g, '').split(',');
-    const applies = THEMES.filter((t) => parts.some((p) => ROOT_SELECTORS[t].has(p)));
-    if (!applies.length) continue;
-    const namesTheme = parts.some((p) => p.includes('[data-theme='));
-    for (const t of applies) if (parts.some((p) => ROOT_SELECTORS[t].has(p) && p.includes('[data-theme='))) named[t] = true;
-    for (const decl of body.split(';')) {
-      const colon = decl.indexOf(':');
-      if (colon === -1) continue;
-      const name = decl.slice(0, colon).trim();
-      const value = decl.slice(colon + 1).trim().replace(/\s+/g, ' ');
-      if (!/^--[\w-]+$/.test(name) || !value) continue;
-      const n = name.slice(2);
-      if (!firstAt.has(n)) firstAt.set(n, firstAt.size);
-      if (namesTheme && !themedAt.has(n)) themedAt.set(n, themedAt.size);
-      for (const t of applies) themes[t].set(n, value);
+  const blocks = []; // [kind, tokens] in source order
+  const fallback = new Map();
+  for (const item of splitBlock(stripComments(css))) {
+    if (item.inner === undefined) continue; // a statement such as @import or @charset
+    const prelude = squeeze(item.prelude);
+    if (!prelude.startsWith('@')) {
+      const kind = BLOCK_KINDS[selectorKey(prelude)];
+      if (kind) blocks.push([kind, blockTokens(`rule "${prelude}"`, item.inner)]);
+      else rejectTokens(`rule "${prelude}"`, item.inner);
+    } else if (selectorKey(prelude) !== FALLBACK_AT) rejectTokens(`at-rule "${prelude}"`, item.inner);
+    else {
+      for (const child of splitBlock(item.inner)) {
+        if (child.inner === undefined) rejectTokens(`at-rule "${prelude}"`, child.decl);
+        else if (selectorKey(child.prelude) !== FALLBACK_SELECTOR) rejectTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner);
+        else for (const [n, v] of blockTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner)) fallback.set(n, v);
+      }
     }
   }
-  for (const t of THEMES) if (!named[t]) throw new UsageError(`theme.css has no [data-theme='${t}'] block`);
+
+  const themes = { light: new Map(), dark: new Map() };
+  const firstAt = new Map();
+  const themedAt = new Map();
+  for (const [kind, tokens] of blocks) {
+    for (const [n, v] of tokens) {
+      if (!firstAt.has(n)) firstAt.set(n, firstAt.size);
+      if (kind !== 'root' && !themedAt.has(n)) themedAt.set(n, themedAt.size);
+      if (kind !== 'dark') themes.light.set(n, v);
+      if (kind !== 'light') themes.dark.set(n, v);
+    }
+  }
+  for (const t of THEMES) if (!blocks.some(([kind]) => kind === t)) throw new UsageError(`theme.css has no [data-theme='${t}'] block`);
+  checkFallback(fallback, themes);
+
   const rank = (n) => [themedAt.get(n) ?? Infinity, firstAt.get(n)];
   const order = [...firstAt.keys()].sort((a, b) => {
     const [ra, rb] = [rank(a), rank(b)];
     return ra[0] === rb[0] ? ra[1] - rb[1] : ra[0] < rb[0] ? -1 : 1;
   });
   return { ...themes, order };
+}
+
+/**
+ * Every token the prefers-color-scheme fallback declares must resolve to its
+ * dark value. The fallback is matched on a root with no data-theme, on top of
+ * the :root and light blocks (its selector is more specific), so its var()
+ * refs resolve there.
+ */
+function checkFallback(fallback, themes) {
+  const scope = new Map([...themes.light, ...fallback]);
+  for (const [n, v] of fallback) {
+    const got = resolveVars([n], v, scope, 'prefers-color-scheme fallback');
+    const want = themes.dark.has(n) ? resolveVars([n], themes.dark.get(n), themes.dark, 'dark') : 'not set';
+    if (got !== want) {
+      throw new UsageError(
+        `token --${n} is ${got} in the prefers-color-scheme fallback block and ${want} in the dark theme; fix: give the fallback block the dark theme's value`,
+      );
+    }
+  }
 }
 
 const isColor = (v) => /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mix|color)\(|transparent$|currentcolor$)/i.test(v);
@@ -231,10 +436,16 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
   const final = { light: new Map(), dark: new Map() };
   for (const t of THEMES) for (const [n, v] of raw[t]) final[t].set(n, resolveVars([n], v, raw[t], t));
 
+  const tokenAt = new Map(); // dotted path -> the CSS token name written there
   for (const n of order) {
     const [g, key] = classify(n, THEMES.filter((t) => final[t].has(n)).map((t) => final[t].get(n)));
+    const at = `${g}.${key}`;
+    if (tokenAt.has(at)) {
+      throw new UsageError(`tokens --${tokenAt.get(at)} and --${n} are both written to ${at}; fix: keep one of them, or rename one so it maps to its own path`);
+    }
+    tokenAt.set(at, n);
     where.set(n, [g, key]);
-    pathOf.set(n, `${g}.${key}`);
+    pathOf.set(n, at);
   }
   const ref = (v) => v.replace(VAR_RE, (_, n) => `{${pathOf.get(n)}}`); // every name exists: resolveVars checked it
 
