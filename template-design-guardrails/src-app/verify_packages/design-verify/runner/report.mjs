@@ -11,7 +11,7 @@
  *       absent, page unreachable, sweep threw), or a screenshot the run was
  *       asked for (--screenshots) could not be captured or written. Never
  *       masked by 0/1 - an unverified state is not a pass, and the closing
- *       visual review the verify-interface skill requires cannot happen over
+ *       visual review the design skill requires cannot happen over
  *       a PNG that was never produced.
  */
 

@@ -9,7 +9,7 @@
  * This replaces the ad-hoc CDP scripts agents previously authored per run
  * (the guardrails pilot wrote and re-ran /tmp/verify.mjs + /tmp/shots.mjs
  * from scratch - minutes of throwaway harness work every time). The runner
- * is the owned form of that harness; the verify-interface skill's ban on
+ * is the owned form of that harness; the design skill's ban on
  * improvised browser automation stands, and this is the sanctioned path.
  *
  * Invocation (from the shell project root):

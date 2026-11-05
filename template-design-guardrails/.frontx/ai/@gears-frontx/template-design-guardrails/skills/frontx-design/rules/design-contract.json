@@ -1,6 +1,6 @@
 {
   "id": "design-contract",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "status": "pilot",
   "normativeLanguage": {
     "MUST": "Required; violation is a blocker or major finding according to quality-gates.json.",
@@ -10,7 +10,6 @@
   },
   "uiBase": {
     "package": "@gears-frontx/ui-kit",
-    "observedVersion": "0.4.0-alpha.2",
     "implementation": ["React 19", "Base UI", "CSS Modules", "CVA"],
     "inventory": "The installed llms.txt is the component inventory and API reference; this bundle does not duplicate it.",
     "naming": "Component names and composition patterns follow shadcn/ui conventions, so that familiar structure applies. Every component and API still comes from @gears-frontx/ui-kit; shadcn is not a dependency and must never be imported directly."
@@ -26,8 +25,8 @@
   "sourcePrecedence": [
     "Approved product requirements and design references",
     "Installed FrontX manifests and UI-kit documentation",
-    "Machine-readable contracts in this bundle",
-    "Guidelines in this bundle",
+    "Rule files of the frontx-design skill (rules/)",
+    "References of the frontx-design skill (references/)",
     "Installed application behavior and existing screens",
     "Local screen request",
     "Model defaults"

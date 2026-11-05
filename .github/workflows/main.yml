@@ -100,12 +100,6 @@ jobs:
     - name: Check template mfes import boundary (ADR-0003)
       run: npm run policy:template-mfes-import-boundary
 
-    # The design-guardrails bundle routes guideline loading through the
-    # generated reference-artifacts/guideline-index.json, derived from each
-    # guideline's front matter. This asserts the checked-in index matches it.
-    - name: Check guideline index is generated from front matter
-      run: npm run policy:guideline-index
-
   # Architecture documents of the catalogue (architecture/) and of each
   # template (<template>/architecture): ids, PRD to DESIGN coverage and
   # references, validated the way gears-frontx validates its own. The

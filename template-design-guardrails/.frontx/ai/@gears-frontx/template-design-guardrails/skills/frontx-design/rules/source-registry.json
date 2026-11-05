@@ -1,8 +1,7 @@
 {
-  "version": "0.1.0-alpha.2",
-  "revisionDate": "2026-08-18",
+  "version": "0.1.0-alpha.3",
+  "revisionDate": "2026-11-05",
   "policy": "Primary official sources inform the contract. They are not copied as visual themes.",
-  "auditedKit": {"package": "@gears-frontx/ui-kit", "version": "0.4.0-alpha.2", "commit": "0ce3ab78"},
   "sources": [
     {"id": "wcag-22", "authority": "W3C", "url": "https://www.w3.org/TR/WCAG22/", "use": ["contrast", "reflow", "zoom", "focus", "target size", "drag alternatives"]},
     {"id": "wai-aria-apg", "authority": "W3C WAI", "url": "https://www.w3.org/WAI/ARIA/apg/", "use": ["component semantics", "keyboard conventions", "focus management"]},

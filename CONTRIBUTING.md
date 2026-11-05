@@ -71,14 +71,15 @@ Two ways to lose the links without meaning to:
 
 ```bash
 npm ci
-npm test                              # scripts/**/*.test.mjs
+npm test                              # scripts/**/*.test.mjs, including the design skill map check
 npm run validate:templates
 npm run policy:template-pin-drift     # registry mode locally; set FRONTX_ECOSYSTEM_DIR for sibling mode
 npm run policy:template-lockfile-selflink
 npm run policy:token-format
 npm run policy:template-mfes-import-boundary
-npm run policy:guideline-index
 ```
+
+The former `policy:guideline-index` check is gone with the generated index: `scripts/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
 
 Each template is also independently validatable:
 

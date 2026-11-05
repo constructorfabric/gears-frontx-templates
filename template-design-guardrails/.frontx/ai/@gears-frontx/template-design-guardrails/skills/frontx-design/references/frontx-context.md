@@ -2,7 +2,8 @@
 
 What a design task has to know about where a screen sits, so its layout and
 styles fit the shell. This is a map, not the contract: the detail lives in the
-guidelines of the shell and MFE templates, installed beside this bundle when
+guidelines of the shell and MFE templates, installed beside this template's
+bundle when
 those templates are applied:
 
 - `.frontx/ai/@gears-frontx/frontx-template-shell/guidelines/mfe-package-contract.md`
@@ -83,7 +84,7 @@ When a statement here and one of those files differ, the file wins.
   copy at mount. Utility classes from the host are not a styling path for a
   screen: their colour utilities break against the kit's full-colour tokens,
   and a class no rule defines renders as nothing (SYS-004, `dead-spacing-class`
-  in `verify-interface`).
+  in `references/verify.md`).
 - Package CSS never carries a CSS reset of its own; the lifecycle already
   provides the box-model resets a shadow root needs.
 
@@ -92,4 +93,4 @@ When a statement here and one of those files differ, the file wins.
 - The screen renders inside the shell with `npm run dev:all`; an MFE has no
   standalone preview.
 - Theme switching is verified in a host screen and inside an MFE shadow root:
-  they are separate code paths (`create-theme`, Register and verify).
+  they are separate code paths (`references/theme.md`, Register and verify).

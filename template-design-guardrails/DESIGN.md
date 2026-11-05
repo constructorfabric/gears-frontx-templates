@@ -337,23 +337,17 @@ Scope: interface generation and advisory design review
 
 The YAML front matter above is the kit's design tokens (light `colors`, dark `colors-dark`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`) and the kit components that use them, written as `{group.token}` references. It was generated once from `@gears-frontx/ui-kit` 0.4.1 `theme.css`, and its `version` is that kit version. A regeneration tool comes in a later step; until then a kit upgrade means updating the front matter by hand against the installed `theme.css` and the kit docs. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
 
-## Before generating a screen
+## The design skill
 
-1. Inspect the installed FrontX templates and the existing application structure.
-2. Read the UI kit's installed `llms.txt` and component documentation. Installed package documentation wins over this file when component APIs differ.
-3. Start with the `frontx-design` skill: it sets precedence and the surface, and routes to `generate-interface` and its generation workflow.
-4. Reuse the installed application shell, UI kit components, semantic tokens, typography ramp, icon family, and existing composition patterns.
+Every visual task starts with the one design skill, `frontx-design`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`. Its `SKILL.md` is a short map: the binding essentials, which reference to load for each task (theme, build, place, review, verify, DESIGN.md, handoff), and every file the skill holds. Paths below are relative to that directory.
 
-## Contract layers
+- `references/`: the procedures and the topic rules (layout, tokens, typography, colour, motion, components, accessibility, data display, compositions).
+- `rules/`: the machine-readable rules. `rules/quality-gates.json` is the one rule registry; when sources disagree, `sourcePrecedence` in `rules/design-contract.json` is the one order.
+- `templates/`: the state inventory and the handoff every task closes with.
 
-Apply these layers in order. Do not mix them into one improvised style:
+Before building a screen, inspect the installed FrontX templates and the existing application, and read the UI kit's installed `llms.txt` and component docs; they win over this file on component APIs. The screen request selects content and behavior; it does not authorize a new visual system.
 
-1. The installed application, FrontX template manifests, and `@gears-frontx/ui-kit` documentation are the implementation truth.
-2. The bundle's machine-readable contracts define non-negotiable quality gates and fallback layout constraints. Token values come only from the installed system.
-3. The bundle guidelines define layout, tokens, typography, color, motion, interaction, accessibility, data-display, and composition rules. Which guidelines a screen task loads is routed through `reference-artifacts/guideline-index.json`, generated from each guideline's front matter (`summary`, `tier`, `loadWhen`) by the repository's `scripts/generate-guideline-index.mjs`; the front matter is the source of truth and the index is never edited by hand.
-4. The screen request selects content and behavior; it does not authorize a new visual system.
-
-Rules marked **MUST** are required. **SHOULD** rules may be changed only when the implementation records why (in the component's source comment or the change's PR description). **MAY** rules are optional. Each quality gate in `reference-artifacts/quality-gates.json` also states whether it can be waived: `never`, `with-reason`, or `finish`.
+Rules marked **MUST** are required. **SHOULD** rules may be changed only when the implementation records why (in the component's source comment or the change's PR description). **MAY** rules are optional. Each gate in `rules/quality-gates.json` also states whether it can be waived: `never`, `with-reason`, or `finish`.
 
 ## Required qualities
 
@@ -370,11 +364,11 @@ Rules marked **MUST** are required. **SHOULD** rules may be changed only when th
 
 ## After generation
 
-Use `review-interface`. The v0.1 review is advisory: it returns blockers and prioritized corrections but does not stop delivery. When the assembled application is running in dev mode, use `verify-interface` to turn the review's unverified items (contrast, rendered widths, live states) into observed findings from the runtime design-defect checker this template delivers (the `@gears-frontx/design-verify` workspace package). The package also ships a headless runner, `npm run verify:ui --workspace=@gears-frontx/design-verify`, that drives the checker across a routes × themes × widths matrix over the Chrome DevTools Protocol and emits `findings.json` plus screenshots, so sweep evidence is one command instead of an improvised browser script. Storybook checks, screenshot comparison, and release gates still belong to a separate testing stage.
+Review the screen as `references/review.md` describes, in a fresh context. The review is advisory: it returns a one-word verdict, blockers and prioritized corrections but does not stop delivery. When the assembled application is running in dev mode, the browser check in `references/verify.md` turns the review's unverified items (contrast, rendered widths, live states) into observed findings from the runtime design-defect checker this template delivers (the `@gears-frontx/design-verify` workspace package). The package also ships a headless runner, `npm run verify:ui --workspace=@gears-frontx/design-verify`, that drives the checker across a routes × themes × widths matrix over the Chrome DevTools Protocol and emits `findings.json` plus screenshots, so sweep evidence is one command instead of an improvised browser script. Storybook checks, screenshot comparison, and release gates still belong to a separate testing stage.
 
 Install this template into an existing FrontX shell project with `frontx add @gears-frontx/template-design-guardrails <target>`. After installing, run `npm install` (not `npm ci`) once: the shell's committed lockfile predates this template's workspace package, and `npm ci` fails on the out-of-sync lockfile instead of resolving it. In dev the shell reports verify-package load status under `[verify-packages]` and the running checker reports under `[design-defects]`, so absence, breakage, and a clean sweep are distinguishable; if verification cannot proceed, the correct outcome is an explicit environment-unavailable report, not a stalled run.
 
-When authoring or changing a shell theme, use `create-theme`; theme token format is a contract with the UI kit, and violations render as broken components rather than errors.
+When authoring or changing a shell theme, follow `references/theme.md`; theme token format is a contract with the UI kit, and violations render as broken components rather than errors.
 
 ## Do's and Don'ts
 
@@ -392,7 +386,7 @@ Don't:
 - Use color as the only status signal.
 - Invent helper copy, decorative cards, gradients, or metrics to fill space.
 - Use Tailwind or any other utility-class framework, or home-made utility classes; the global classes the kit itself ships and documents (`@gears-frontx/ui-kit/utilities.css`) are kit surface and allowed. The UI kit is React, Base UI, CSS Modules and CVA; styling outside kit components is CSS Modules on kit tokens.
-- Copy an external design system's visual identity. Material, Carbon, Fluent, W3C, and Vercel sources in this bundle are research references, not replacement themes.
+- Copy an external design system's visual identity. Material, Carbon, Fluent, W3C, and Vercel sources in `rules/source-registry.json` are research references, not replacement themes.
 
 ## Responsive
 
@@ -407,7 +401,7 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 
 ## Iteration Guide
 
-- Change the look through the kit or a theme (`create-theme`), never through this file's front matter. After a kit upgrade or a theme change, update the front matter by hand against the installed `theme.css` and the kit docs, review it as the frontx-design skill's `references/design-md.md` describes, and commit it.
+- Change the look through the kit or a theme (`references/theme.md`), never through this file's front matter. After a kit upgrade or a theme change, update the front matter by hand against the installed `theme.css` and the kit docs, review it as the frontx-design skill's `references/design-md.md` describes, and commit it.
 - Change one screen or component at a time and verify it rendered before the next.
 - Product-specific design decisions go into the product's own documents, linked from here, not into this template-owned file.
 

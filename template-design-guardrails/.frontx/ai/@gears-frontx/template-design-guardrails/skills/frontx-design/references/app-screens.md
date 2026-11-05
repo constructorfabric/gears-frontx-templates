@@ -1,7 +1,7 @@
 # Application screens
 
 How to apply the application-screen gates. The rule text, severity and waiver
-level of each gate live in `reference-artifacts/quality-gates.json`; this file
+level of each gate live in `rules/quality-gates.json`; this file
 says what each one means on a FrontX screen and how to check it.
 
 An application screen is a work surface: the user comes to find, compare,
@@ -23,9 +23,9 @@ impression.
 
 - A KPI is an installed kit type role, a label, a unit or basis, and a delta
   or status when it means something (the KPI anatomy in
-  `guidelines/data-display-and-dashboard.md`). Use the kit's KPI role where
-  the installed kit has one; kit `0.4.1` has none, so the value takes the
-  display or heading role (see `typography` in `DESIGN.md`).
+  `references/data.md`). Use the kit's KPI role where the installed kit has
+  one; the kit `DESIGN.md` mirrors has none (its Known Gaps), so the value
+  takes the display or heading role (see `typography` in `DESIGN.md`).
 - No decorative icon tile, gradient, tinted card or oversized illustration
   around the number. Hierarchy comes from the type role and position.
 - Check: the value's computed font size and weight resolve to one kit type
@@ -42,7 +42,7 @@ impression.
 ## APP-004: every component state
 
 - Each interactive component shows every state that
-  `reference-artifacts/component-state-matrix.json` lists for its family:
+  `rules/component-state-matrix.json` lists for its family:
   the global states plus the family's own (loading on a button, invalid on a
   field, empty on a combobox).
 - Use the kit variant for each state; do not restyle one.
@@ -64,7 +64,8 @@ floor (LAY-002):
 - Declare the transformation of each region before building it (LAY-001).
   Shrinking everything uniformly is not a transformation.
 - Controls keep their kit size at every width; touch targets meet A11Y-002.
-- Check: run `verify-interface` with `--widths 1440,768,390,320` in both
+- Check: run the browser check (`references/verify.md`) with
+  `--widths 1440,768,390,320` in both
   themes and look at the closing screenshots. Report each width as observed
   or unverified.
 

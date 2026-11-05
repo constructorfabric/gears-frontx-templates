@@ -1,7 +1,7 @@
 /**
  * Dev-server handling for the runner: bounded readiness polling against the
  * app URL, and optional spawning of the server command. Bounded by contract
- * - the verify-interface skill treats open-ended waits as a hung agent, so
+ * - the design skill's verify reference treats open-ended waits as a hung agent, so
  * every wait here has a deadline and a named failure.
  */
 import { spawn } from 'node:child_process';

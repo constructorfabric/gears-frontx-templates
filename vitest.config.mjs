@@ -1,7 +1,8 @@
 /**
  * Vitest project for this repo's root `scripts/` toolchain - the guards that
  * validate the templates (manifest + content self-containment, pin-drift,
- * lockfile self-links, token format, guideline-index, version-bump-on-change).
+ * lockfile self-links, token format, the design skill map,
+ * version-bump-on-change).
  *
  * Anchored at `scripts/` rather than an unanchored `**` glob: each template
  * directory (`template-shell/`, `template-mfe/`) owns its own Vitest config

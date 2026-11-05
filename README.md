@@ -32,14 +32,15 @@ The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api
 
 ```bash
 npm ci
-npm test                              # scripts/**/*.test.mjs (no network)
+npm test                              # scripts/**/*.test.mjs (no network), including the design skill map check
 npm run validate:templates            # frontx validate (manifest + content self-containment) per template
 npm run policy:template-pin-drift     # every exact ecosystem pin is a real published version (registry mode)
 npm run policy:template-lockfile-selflink
 npm run policy:token-format
 npm run policy:template-mfes-import-boundary  # ADR-0003 consumer half - no template may import a concrete @gears-frontx/mfes name
-npm run policy:guideline-index
 ```
+
+The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `scripts/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
 
 `policy:template-pin-drift` runs in one of two modes, for TEMPLATE pin sites:
 
@@ -80,7 +81,7 @@ cd template-shell && npm run dev
 
 ## CI
 
-- **`main.yml`** - the guards above (`validate:templates`, `policy:template-pin-drift` in registry mode, `policy:template-lockfile-selflink`, `policy:token-format`, `policy:template-mfes-import-boundary`, `policy:guideline-index`, `policy:version-bump-on-change` on pull requests) plus two jobs: `template-validate` (each self-contained template installed and checked standalone; overlays composed onto `template-shell` and checked as a seeded project would see them) and `studio-validate` (Studio Validate Artifacts: `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate` over the catalogue's `architecture/`, each registered template's `<template>/architecture` and any code paths a template registers for itself, after a bootstrap that also validates the installed sdlc kit).
+- **`main.yml`** - the guards above (`validate:templates`, `policy:template-pin-drift` in registry mode, `policy:template-lockfile-selflink`, `policy:token-format`, `policy:template-mfes-import-boundary`, `policy:version-bump-on-change` on pull requests) plus two jobs: `template-validate` (each self-contained template installed and checked standalone; overlays composed onto `template-shell` and checked as a seeded project would see them) and `studio-validate` (Studio Validate Artifacts: `python3 .cf-studio/.core/skills/studio/scripts/studio.py validate` over the catalogue's `architecture/`, each registered template's `<template>/architecture` and any code paths a template registers for itself, after a bootstrap that also validates the installed sdlc kit).
 - **`template-drift.yml`** - checks out `gears-frontx`'s `main` branch into a sibling path, builds its packages, then runs the same pin-to-local + install + link + build/type-check sequence a developer runs locally. Last, it runs `policy:template-pin-drift` in sibling mode against that checkout as a non-blocking signal (`continue-on-error`), since the checkout is expected to run ahead of the pins until the next publish and pin bump; registry mode is what `main.yml` runs instead, with no sibling checkout available there. Push/PR to this repo can't see a `gears-frontx` change, so this also runs on a daily schedule and via `workflow_dispatch`.
 - **`publish-packages.yml`** - publishes the six `template-shell/packages/*` workspace subpackages, version-gated, in dependency order. `template-shell` itself is `"private": true` and is never published. Must run after the ecosystem packages a version bump here pins are themselves published on `gears-frontx` - a template publish that races ahead installs nothing until that lands.
 

@@ -1,0 +1,157 @@
+# Verify in the browser
+
+Turn "unverified" into "observed". Building and review reason from source;
+this step reads what the browser rendered, through the runtime design-defect
+checker in `src-app/verify_packages/design-verify/` (`@gears-frontx/design-verify`).
+It observes and does not fix: hand findings back to the build
+(`references/generate.md`). Advisory; asked to gate a build, decline and still
+return the findings.
+
+## Preconditions
+
+1. The assembled project runs in dev mode (`import.meta.env.DEV`); the shell
+   loads the checker only there, and production builds drop it.
+2. A way to observe: the package's runner
+   (`npm run verify:ui --workspace=@gears-frontx/design-verify -- --help`),
+   which drives a headless Chrome over CDP and needs a Chrome or Chromium
+   executable, or a running one through `--cdp-url`. Fallback: a way to read
+   the app's console (for example a DevTools connection). No other
+   browser-automation framework or home-made driver script.
+
+When a precondition fails, report `environment unavailable` with the missing
+piece and how to supply it, and return: that report is a complete result.
+Never simulate findings. Never wait open-endedly or start a dev server as an
+unbounded foreground command: after two settle-and-read attempts with no
+output, the environment is unavailable. `--start-server "npm run dev:all"`
+is the sanctioned way to bring a server up (bounded waits, stopped at the
+end); it runs the command from the directory npm was invoked in, so run the
+runner from the project root or pass `--server-cwd <project root>`. Runner
+exit code 2 is the `environment unavailable` report: relay its message. The
+same exit code fires when a screenshot asked for with `--screenshots` could
+not be captured or written (listed as `SCREENSHOT <route> <theme> <width>px`):
+that screen is not verified until the capture succeeds.
+
+The shell logs the checker's status in dev; trust the lines:
+
+- `[verify-packages] none installed`, followed by "no dev-time verification
+  will run": the missing piece; the remedy is
+  `frontx add` for this template, then `npm install` (not `npm ci`: the
+  shell's lockfile predates the package). Name it; do not run it.
+- `[verify-packages] ... failed to load: ...`: a blocking environment
+  finding with the logged cause.
+- `[design-defects] clean: no objective design defects detected`, or
+  `[design-defects]` finding or `needs review` lines: the checker runs.
+
+## Run
+
+One runner call sweeps every screen, theme and width and writes
+`design-verify-report/findings.json`:
+
+```
+npm run verify:ui --workspace=@gears-frontx/design-verify -- \
+  --menu "Login,Tasks" --widths 1440,768,390,320 --themes light,dark \
+  [--start-server "npm run dev:all"]
+```
+
+- Navigation flag: this template's shell mounts a screen when its menu item
+  is clicked, so use `--menu` with the visible labels. `--routes` is only for
+  apps that mount on URL load; against a click-mounted shell every sweep
+  measures the empty shell and reads as clean.
+- Checks the sweep could not decide sit in each state's `needsReview` list;
+  a state with any is not clean.
+- The runner does not switch data states. States behind user actions or
+  mocks (`references/state-completeness.md`) need the manual protocol; name
+  them unverified if neither path reached them.
+- The checker skips the FrontX Studio dev panel, so every finding belongs to
+  the app. Never explain a finding away as the dev panel; a locator you
+  cannot place is investigated.
+
+Manual protocol (no Chrome, or states reached by hand):
+
+1. Open the screen and let it settle: MFEs mount asynchronously, so wait for
+   the first `[design-defects]` line.
+2. Read the automatic sweep: every line starts with `[design-defects]`; a
+   clean run prints exactly one line.
+3. In each reachable state (theme, width, data state) re-run with
+   `window.__frontxDesignDefects()` and read its return or the new lines. If
+   the function is missing or throws despite a clean load line, that is a
+   blocking environment finding.
+4. Exercise the widths on purpose, including 320 CSS px. The horizontal
+   scroll rule measures the document and every box the main landmark's
+   content scrolls in; the FrontX shell scrolls the screen in its own
+   container, so the finding names that container. A box holding only a
+   table or grid is that grid's own scroll and is not measured.
+
+## Phases
+
+- First pass and closing pass: every width, both themes, populated and empty
+  data.
+- Fix loop: re-run only the render state where the finding was seen (its
+  width, theme, data state) and judge only that finding; note other findings
+  for the closing pass.
+- Closing pass: save the first pass's `findings.json` under another name (the
+  runner overwrites it), then run with `--baseline <that file>` and
+  `--screenshots`; the summary splits findings into new, resolved and carried
+  over.
+
+Screenshots stay off until the closing pass, and their files are not read
+back during the fix loop. The checker measures only what it can measure; it
+does not judge hierarchy, density, component choice or overall quality, so a
+clean sweep is not yet a correct screen. On the closing pass look at the
+PNGs once (every screen, both themes, at least the widest width and 320 CSS
+px) against `rules/review-rubric.json` and report what you see as visual
+findings with gate id, screen, theme and width. A defect finding and a visual
+finding are different kinds; neither replaces the other. Outside the closing
+pass, `--screenshots` is only for a person who asks for images.
+
+## Checker rule to gate
+
+Every finding carries exactly one gate id, with the `level` and `waiver`
+that `rules/quality-gates.json` gives it:
+
+| Checker rule | Gate | Note |
+|---|---|---|
+| `axe/color-contrast` | COL-001 | The one axe rule the jsdom suite cannot run: new evidence. |
+| `axe-incomplete/color-contrast` (`needs review`) | COL-001 unverified | Axe could not decide (gradient, image, overlap; the detail says why). Not a pass and not a finding: list it as unverified, never count its state clean, check the painted colours by hand. |
+| other `axe/*` (labels, landmarks, lists, heading-one) | A11Y-001 | |
+| `skipped-heading` | A11Y-001 | |
+| `page-horizontal-scroll` | LAY-002 | Blocker at 320 CSS px. |
+| `card-content-overflow` | LAY-002 | Wide content scrolls or wraps inside its own box (`overflow-x: auto`, truncation, `overflow-wrap: anywhere`). Content inside an `auto` or `scroll` box is measured at that box. |
+| `tiny-text`, `small-control-text`, `clipped-text` | TYP-001 | Floors are the kit's `--text-mono-size` and `--text-label-size`; the fix is the kit role, never a literal size. |
+| `control-height-mismatch` | LAY-005 | Fix with matching kit size variants, never spacers or margins. |
+| `card-missing-padding` | LAY-005 | Padding floor and range in `references/layout.md`; the full-bleed media card is already exempt. |
+| `dead-spacing-class` | SYS-004 | A class no CSS rule defines: replace it with a CSS Module rule on a `--space-*` token, never with inline styles. |
+
+A rule id with no row here is reported with gate `unmapped` and the
+checker's own severity; never invent a gate.
+
+Worked trace: console line `[design-defects] page-horizontal-scroll: the
+page's scroll container scrolls horizontally (900px content in 273px box) ...
+div.flex-1.overflow-auto` becomes `LAY-002 (blocker, never) ·
+page-horizontal-scroll at 320 CSS px · evidence: that line · location:
+div.flex-1.overflow-auto (the shell's screen container)`.
+
+The checker walks open shadow roots. An axe locator inside one names each
+shadow host and then the element, joined by `>>>` (`my-widget >>> p`). That
+is for reading, not CSS: query each part through the previous host's
+`shadowRoot` (`document.querySelector('my-widget').shadowRoot.querySelector('p')`).
+Attribute the finding to the owning surface.
+
+## Report
+
+In the finding shape of `rules/quality-gates.json`:
+
+- confirmed findings first; evidence is the verbatim `[design-defects]` line
+  or the raw `window.__frontxDesignDefects()` entry, never a paraphrase;
+- the states and widths that came back clean; a clean claim quotes the
+  `[design-defects] clean:` line;
+- the closing visual review: its findings, or that it found none, naming the
+  screens, themes and widths whose PNGs were reviewed; without it the
+  verification is not complete;
+- states not reached, as unverified, and every `axe-incomplete` entry with
+  its state and reason;
+- whether the automatic sweep and at least one on-demand re-run both ran.
+
+A completion claim needs the closing full pass; a fix-loop re-run verifies
+only its own finding. Results hold only for the render state observed in
+this run: a later session re-runs before claiming clean.

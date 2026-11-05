@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0-alpha.1",
-  "kitGuaranteed": "Focus rings, focus trapping and return, Escape and outside-press dismissal, popup positioning, keyboard navigation, tab semantics, and label/description/error wiring come from @gears-frontx/ui-kit (Base UI) by construction and are not re-listed as screen obligations. They hold only while the kit component is used unmodified; bypassing the kit or duplicating its primitives is already prohibited by the design contract, and verify-interface still observes the rendered result.",
+  "version": "0.1.0-alpha.2",
+  "kitGuaranteed": "Focus rings, focus trapping and return, Escape and outside-press dismissal, popup positioning, keyboard navigation, tab semantics, and label/description/error wiring come from @gears-frontx/ui-kit (Base UI) by construction and are not re-listed as screen obligations. They hold only while the kit component is used unmodified; bypassing the kit or duplicating its primitives is already prohibited by the design contract, and the browser check (references/verify.md) still observes the rendered result.",
   "globalStates": ["default", "hover", "active", "focus-visible", "disabled"],
   "families": [
     {

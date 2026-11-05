@@ -151,7 +151,7 @@ export class CdpSession {
   /**
    * Wait until a console line matching `pattern` arrives (scanning from
    * `fromIndex`), or the timeout elapses. Bounded by contract: the
-   * verify-interface skill forbids open-ended waits on console output.
+   * design skill forbids open-ended waits on console output.
    *
    * @param {RegExp} pattern
    * @param {number} fromIndex
