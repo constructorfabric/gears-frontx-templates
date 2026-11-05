@@ -59,7 +59,14 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
   rule it came from: a colour goes to `colors` (light) and `colors-dark`
   (dark), and any other token (radius, spacing, type, motion, controls) has
   one value, so a value that differs between the themes stops `generate` and
-  `check` with exit 2 and a message naming the token and both values. Run it
+  `check` with exit 2 and a message naming the token and both values. A
+  `var()` chain is resolved per theme before the token is placed or
+  converted: a name the script does not know is placed by its final value
+  (an alias to a colour is a colour and keeps its `{ref}`), and font weights,
+  opacities, line heights and sizes are converted from the final value. The
+  script fails closed: an alias to a missing token, a `var()` cycle or
+  fallback, or a final value that is not a number or length where one is
+  needed stops `generate` and `check` with exit 2 and writes nothing. Run it
   after every kit upgrade and every theme change that touches kit tokens.
 - `check` exits 1 when the front matter differs from what `generate` would
   write: the kit moved and `DESIGN.md` did not, or someone edited the front

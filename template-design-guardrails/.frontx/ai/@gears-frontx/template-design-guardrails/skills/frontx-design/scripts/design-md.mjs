@@ -13,6 +13,9 @@
  * data-theme (see parseTheme); rules nested in at-rules are skipped, so the
  * kit's prefers-color-scheme fallback block, which only repeats the explicit
  * dark values, is skipped on purpose.
+ * var() chains are resolved per theme before a token is classified or
+ * converted, and the script fails closed: a value it cannot resolve, classify
+ * or convert is a usage error, never a written guess.
  * Findings print one per line with a fix. Exit codes: 0 ok, 1 findings,
  * 2 usage or input error. Node standard library only.
  */
@@ -112,22 +115,54 @@ const isColor = (v) => /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mi
 const fmtPx = (n) => `${Number(n.toFixed(4))}px`;
 const remToPx = (v) => v.replace(/(-?\d*\.?\d+)rem\b/g, (_, n) => fmtPx(Number(n) * 16));
 
-/** Resolve var() to other token values, rem to px, and simple px calc() to one length. */
-function resolveLength(value, tokens, seen = new Set()) {
-  let v = value.replace(/var\(--([\w-]+)\)/g, (whole, name) => {
-    if (!tokens.has(name) || seen.has(name)) return whole;
-    return resolveLength(tokens.get(name), tokens, new Set([...seen, name]));
+const VAR_RE = /var\(--([\w-]+)\)/g;
+
+/**
+ * The value with every var() replaced, recursively, by the referenced token's
+ * value in one theme. A missing token, a cycle or a var() form this script does
+ * not read (such as a fallback) is a usage error: nothing unresolved is written.
+ */
+function resolveVars(chain, value, tokens, theme) {
+  const v = value.replace(VAR_RE, (_, ref) => {
+    if (chain.includes(ref)) {
+      throw new UsageError(`token --${chain[0]} has a var() cycle in the ${theme} theme: ${[...chain, ref].map((t) => `--${t}`).join(' -> ')}; fix: point one of them at a literal value`);
+    }
+    if (!tokens.has(ref)) {
+      throw new UsageError(`token --${chain.at(-1)} refers to var(--${ref}), which the ${theme} theme does not declare; fix: declare --${ref} or point the token at an existing one`);
+    }
+    return resolveVars([...chain, ref], tokens.get(ref), tokens, theme);
   });
-  v = remToPx(v);
+  if (v.includes('var(')) {
+    throw new UsageError(`token --${chain.at(-1)} has the value ${value}, a var() form design-md cannot resolve; fix: use var(--name) with no fallback`);
+  }
+  return v;
+}
+
+const NUMBER_RE = /^-?(\d+\.?\d*|\.\d+)$/;
+const LENGTH_RE = /^-?(\d+\.?\d*|\.\d+)(px|em|%|ch|ex|lh|vw|vh|vmin|vmax)?$/;
+
+/** A resolved value as a length: rem to px and a simple px calc() to one length; anything else is a usage error. */
+function toLength(n, value) {
+  let v = remToPx(value);
   const calc = v.match(/^calc\((.*)\)$/);
   if (calc && /^[\s\d.px+-]+$/.test(calc[1])) {
     const terms = calc[1].match(/[+-]?\s*\d*\.?\d+px/g) ?? [];
     const joined = terms.join('').replace(/\s/g, '');
     if (joined === calc[1].replace(/\s/g, '')) {
-      return fmtPx(terms.reduce((sum, t) => sum + Number(t.replace(/\s|px/g, '')), 0));
+      v = fmtPx(terms.reduce((sum, t) => sum + Number(t.replace(/\s|px/g, '')), 0));
     }
   }
+  if (!LENGTH_RE.test(v)) throw new UsageError(`token --${n} resolves to ${value}, not a length design-md can write; fix: give it a number with a unit (px, rem, em, %) or a calc() of px and rem terms`);
   return v;
+}
+
+/** A resolved value as a finite number; anything else is a usage error. */
+function toNumber(n, value) {
+  const num = Number(value);
+  if (!NUMBER_RE.test(value) || !Number.isFinite(num)) {
+    throw new UsageError(`token --${n} resolves to ${value}, not a number; fix: give it a plain number (such as 400 or 0.42)`);
+  }
+  return num;
 }
 
 const TYPE_PROPS = { size: 'fontSize', 'line-height': 'lineHeight', weight: 'fontWeight', tracking: 'letterSpacing' };
@@ -162,8 +197,10 @@ const COMPONENTS = [
   ['sheet-overlay', { backgroundColor: 'colors.overlay-panel', blur: 'elevation.overlay-panel-blur' }],
 ];
 
-/** The front matter object generate writes. */
-/** [group, key] a token is written under, from its name; only a name no rule knows falls back to its value. */
+/**
+ * [group, key] a token is written under, from its name; only a name no rule
+ * knows falls back to its values, which are already resolved through var().
+ */
 function classify(n, values) {
   const type = n.match(/^text-(.+)-(size|line-height|weight|tracking)$/);
   if (n === 'radius' || n.startsWith('radius-')) return ['rounded', n === 'radius' ? 'base' : n.slice('radius-'.length)];
@@ -189,12 +226,17 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
   const pathOf = new Map(); // CSS token name -> the dotted path it is written under; every {ref} uses it
   const fontOf = (role) => (role === 'mono' ? 'mono' : /^(display|heading)/.test(role) ? 'heading' : 'sans');
 
+  // Every var() chain resolved per theme first: classification and numeric conversion read the final value.
+  const raw = { light, dark };
+  const final = { light: new Map(), dark: new Map() };
+  for (const t of THEMES) for (const [n, v] of raw[t]) final[t].set(n, resolveVars([n], v, raw[t], t));
+
   for (const n of order) {
-    const [g, key] = classify(n, [light.get(n), dark.get(n)].filter((v) => v !== undefined));
+    const [g, key] = classify(n, THEMES.filter((t) => final[t].has(n)).map((t) => final[t].get(n)));
     where.set(n, [g, key]);
     pathOf.set(n, `${g}.${key}`);
   }
-  const ref = (v) => v.replace(/var\(--([\w-]+)\)/g, (whole, n) => (pathOf.has(n) ? `{${pathOf.get(n)}}` : whole));
+  const ref = (v) => v.replace(VAR_RE, (_, n) => `{${pathOf.get(n)}}`); // every name exists: resolveVars checked it
 
   for (const n of order) {
     const [g, key] = where.get(n);
@@ -203,20 +245,28 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
       if (dark.has(n)) groups['colors-dark'][n] = ref(dark.get(n));
       continue;
     }
-    const [v, d] = [light.get(n), dark.get(n)];
-    if (v !== d) {
+    // One slot for both themes. A group written as a resolved length or number compares the
+    // converted values; a group written with {refs} compares the raw values (the refs carry any theming).
+    const prop = g === 'typography' ? key.split('.')[1] : null;
+    const convert =
+      prop === 'fontWeight' || (g === 'controls' && /^opacity-/.test(n))
+        ? (v) => toNumber(n, v)
+        : g === 'rounded' || g === 'spacing' || g === 'controls' || g === 'typography'
+          ? (v) => toLength(n, v)
+          : null;
+    const out = THEMES.map((t) => (!raw[t].has(n) ? undefined : convert ? convert(final[t].get(n)) : ref(remToPx(raw[t].get(n)))));
+    if (out[0] !== out[1]) {
+      const shown = (t) => (!raw[t].has(n) ? 'not set' : raw[t].get(n) === final[t].get(n) ? raw[t].get(n) : `${raw[t].get(n)} (resolves to ${final[t].get(n)})`);
       throw new UsageError(
-        `token --${n} is ${v ?? 'not set'} in the light theme and ${d ?? 'not set'} in the dark theme, but DESIGN.md has one ${g}.${key} value for both; fix: give it the same value in both themes (declare it once in :root) or report the per-theme need to the kit owner`,
+        `token --${n} is ${shown('light')} in the light theme and ${shown('dark')} in the dark theme, but DESIGN.md has one ${g}.${key} value for both; fix: give it the same value in both themes (declare it once in :root) or report the per-theme need to the kit owner`,
       );
     }
-    if (g === 'rounded' || g === 'spacing') groups[g][key] = resolveLength(v, light);
-    else if (g === 'fonts' || g === 'motion') groups[g][key] = v;
-    else if (g === 'controls') groups.controls[key] = /^opacity-/.test(n) ? Number(v) : resolveLength(v, light);
-    else if (g === 'typography') {
-      const [role, prop] = key.split('.');
+    if (g === 'typography') {
+      const role = key.split('.')[0];
       groups.typography[role] ??= { fontFamily: `{fonts.${fontOf(role)}}` };
-      groups.typography[role][prop] = prop === 'fontWeight' ? Number(v) : resolveLength(v, light);
-    } else groups[g][key] = ref(remToPx(v));
+      groups.typography[role][prop] = out[0];
+    } else if (g === 'fonts' || g === 'motion') groups[g][key] = ref(light.get(n));
+    else groups[g][key] = out[0];
   }
 
   for (const spec of Object.values(groups.typography)) {

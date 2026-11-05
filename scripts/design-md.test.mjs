@@ -192,6 +192,52 @@ describe('generate', () => {
     expect(cli('lint', '--design', design)).toBe(0);
   });
 
+  describe('resolves var() chains before it classifies or converts, and fails closed', () => {
+    const gen = (extra) => {
+      const theme = path.join(dir, 'theme.css');
+      writeFileSync(theme, `${readFileSync(THEME, 'utf8')}\n${extra}\n`);
+      return cli('generate', '--design', design, '--theme', theme);
+    };
+
+    it('writes a colour alias shared by both themes as a colour ref', () => {
+      expect(gen(':root { --brand: #0065e3; }\n[data-theme="light"], [data-theme="dark"] { --primary: var(--brand); }')).toBe(0);
+      const fm = frontMatter();
+      expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand}', '{colors.brand}']);
+      expect(fm.other?.primary).toBeUndefined();
+      expect(fm.components['button-primary'].backgroundColor).toBe('{colors.primary}');
+      expect(cli('lint', '--design', design)).toBe(0);
+    });
+
+    it('writes an alias to a different colour per theme as a themed colour', () => {
+      const extra = ':root { --brand-a: #0065e3; --brand-b: #1d4ed8; }\n[data-theme="light"] { --primary: var(--brand-a); }\n[data-theme="dark"] { --primary: var(--brand-b); }';
+      expect(gen(extra)).toBe(0);
+      const fm = frontMatter();
+      expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand-a}', '{colors.brand-b}']);
+      expect(fm.components['button-primary']).toBeDefined();
+      expect(cli('lint', '--design', design)).toBe(0);
+    });
+
+    it('resolves an aliased font weight and opacity to numbers', () => {
+      expect(gen(':root { --weight-regular: 400; --text-body-weight: var(--weight-regular); --dim: 0.5; --opacity-disabled: var(--dim); }')).toBe(0);
+      expect(frontMatter().typography.body.fontWeight).toBe(400);
+      expect(frontMatter().controls['opacity-disabled']).toBe(0.5);
+    });
+
+    it('rejects an alias to a missing token and a non-numeric weight, and writes nothing', () => {
+      const cases = [
+        [':root { --text-body-weight: var(--weight-missing); }', /token --text-body-weight refers to var\(--weight-missing\), which the light theme does not declare; fix:/],
+        [':root { --text-body-weight: bold; }', /token --text-body-weight resolves to bold, not a number; fix:/],
+        [':root { --opacity-disabled: var(--dim); --dim: 50%; }', /token --opacity-disabled resolves to 50%, not a number; fix:/],
+      ];
+      for (const [extra, message] of cases) {
+        writeFileSync(design, BODY);
+        expect(gen(extra)).toBe(2);
+        expect(out[0]).toMatch(message);
+        expect(readFileSync(design, 'utf8')).toBe(BODY);
+      }
+    });
+  });
+
   it('parses a long theme.css in linear time', () => {
     const theme = path.join(dir, 'theme.css');
     const fixture = readFileSync(THEME, 'utf8');
