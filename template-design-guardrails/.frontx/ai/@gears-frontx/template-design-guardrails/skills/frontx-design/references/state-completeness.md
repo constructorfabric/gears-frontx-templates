@@ -7,9 +7,11 @@ check it.
 
 ## Data regions
 
-A data region is any part of the screen fed by its own request or source: a
+A data region is any part of the screen that shows its own set of data: a
 table, a list, a chart, a KPI set, a detail panel, a form that loads values.
-Two regions fed by one request share their states but each still shows them.
+Regions fed by one request may share loading and error, but empty and full
+are decided from each region's own data: one response can hold a populated
+KPI summary and an empty filtered list.
 
 List the regions before building (`templates/state-inventory.md`). Every
 region has four states (STA-004). A state that cannot occur is not skipped

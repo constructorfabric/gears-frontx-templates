@@ -1,6 +1,7 @@
 {
   "version": "0.1.0-alpha.2",
   "kitGuaranteed": "Focus rings, focus trapping and return, Escape and outside-press dismissal, popup positioning, keyboard navigation, tab semantics, and label/description/error wiring come from @gears-frontx/ui-kit (Base UI) by construction and are not re-listed as screen obligations. They hold only while the kit component is used unmodified; bypassing the kit or duplicating its primitives is already prohibited by the design contract, and the browser check (references/verify.md) still observes the rendered result.",
+  "applicability": "A family lists every state its members can have; a component owes only the states it can reach on its screen. visited-link applies to navigation links only, never to buttons; destructive applies only to destructive actions; loading only to actions that start pending work.",
   "globalStates": ["default", "hover", "active", "focus-visible", "disabled"],
   "families": [
     {

@@ -41,6 +41,8 @@ describe('rules/quality-gates.json', () => {
 
   it('gives every gate a unique id, a known severity and a known waiver level', () => {
     const ids = registry.gates.map((g) => g.id);
+    // A missing id would pass the uniqueness check below (undefined is unique).
+    expect(ids.filter((id) => typeof id !== 'string' || !/^[A-Z][A-Z0-9]{1,4}-\d{3}$/.test(id))).toEqual([]);
     expect(new Set(ids).size).toBe(ids.length);
     for (const gate of registry.gates) {
       expect(Object.keys(registry.severity)).toContain(gate.level);

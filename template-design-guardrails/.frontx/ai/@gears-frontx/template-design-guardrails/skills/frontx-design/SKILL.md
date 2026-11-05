@@ -62,7 +62,7 @@ Surface: application screens by default. On marketing and documentation pages ev
 - `rules/quality-gates.json` - the one rule registry: gate id, severity `level`, `waiver` (never, with-reason, finish), evidence, fix, finding shape.
 - `rules/design-contract.json` - UI base, `sourcePrecedence`, required qualities, fallback policy, prohibitions.
 - `rules/layout-contract.json` - spacing scale, fallback grid, regions, alignment and responsive order.
-- `rules/component-state-matrix.json` - required states per component family, what the kit guarantees, state combinations.
+- `rules/component-state-matrix.json` - states per component family (a component owes those it can reach), what the kit guarantees, state combinations.
 - `rules/review-rubric.json` - review categories, points, blocker gate ids, deductions, score bands.
 - `rules/source-registry.json` - the public standards the rules draw on; research only, never a visual theme.
 

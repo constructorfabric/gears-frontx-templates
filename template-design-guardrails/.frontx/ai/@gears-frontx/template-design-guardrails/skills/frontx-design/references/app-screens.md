@@ -41,10 +41,11 @@ impression.
 
 ## APP-004: every component state
 
-- Each interactive component shows every state that
-  `rules/component-state-matrix.json` lists for its family:
-  the global states plus the family's own (loading on a button, invalid on a
-  field, empty on a combobox).
+- Each interactive component shows the states from its family in
+  `rules/component-state-matrix.json` that it can reach on this screen:
+  the global states plus the family's own (loading on a button that starts
+  pending work, invalid on a field, empty on a combobox). Link-only states
+  such as visited-link apply to navigation links, never to buttons.
 - Use the kit variant for each state; do not restyle one.
 - Check: exercise hover, focus-visible, active and disabled on each control
   family once, and each family state the screen can reach. A state not
