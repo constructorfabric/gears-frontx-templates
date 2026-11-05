@@ -50,16 +50,25 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 - `generate` reads `node_modules/@gears-frontx/ui-kit/dist/theme.css`
   (override with `--theme <path>`), rewrites the front matter of `DESIGN.md`
   (override with `--design <path>`) and keeps the body as it is. The `name`
-  already in the file is kept; `--name` sets it. Run it after every kit
+  already in the file is kept; `--name` sets it. Blocks of one kind (`:root`,
+  light, dark) are merged in source order and the later declaration wins, as
+  in the browser; a light or dark value wins over the `:root` value of the
+  same token. Run it after every kit
   upgrade and every theme change that touches kit tokens.
 - `check` exits 1 when the front matter differs from what `generate` would
   write: the kit moved and `DESIGN.md` did not, or someone edited the front
   matter by hand.
 - `lint` checks the front matter on its own: references that do not resolve
-  (`broken-ref`), colours defined for one theme only (`orphaned-token`), and
-  component text and fill pairs below the WCAG 4.5:1 text contrast in either
-  theme (`contrast`). A contrast finding on a kit pair is a token finding for
-  the kit owner; record it under Known Gaps until the kit changes.
+  (`broken-ref`), references that loop back on themselves (`ref-cycle`),
+  colours defined for one theme only (`orphaned-token`), and component text
+  and fill pairs below the WCAG 4.5:1 text contrast in either theme
+  (`contrast`). It reads hex, `rgb()` and `hsl()` colours (comma or space
+  syntax). A pair it cannot compute (another colour syntax such as `oklch()`
+  or `color-mix()`, a translucent colour, a cycle or a broken chain) is a
+  `contrast-unchecked` finding and counts toward exit 1: use a supported
+  syntax or check the pair by hand. A contrast finding on a kit pair is a
+  token finding for the kit owner; record it under Known Gaps until the kit
+  changes.
 
 Every finding is one line with a `fix:`. Exit codes: 0 clean, 1 findings,
 2 usage or input error (unknown mode or flag, missing `theme.css`, no

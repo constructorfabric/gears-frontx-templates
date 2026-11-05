@@ -23,7 +23,7 @@ Approved requirements and designs decide how a screen looks; the UI kit document
 
 design-contract.json's `sourcePrecedence` is the canonical ordering; this list restates it.
 
-The bundle's own value sources are the layout constraints in `layout-contract.json` and the motion timing/easing roles in the motion guideline; all other token values come from the installed system.
+The bundle's own value source is the layout constraints in `layout-contract.json`; all other token values, motion durations and easing included, come from the installed system. The motion guideline maps roles to the kit's motion tokens by name.
 
 ## System ownership
 

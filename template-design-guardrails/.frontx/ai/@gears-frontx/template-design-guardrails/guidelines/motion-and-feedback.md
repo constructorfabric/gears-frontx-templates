@@ -24,22 +24,24 @@ If motion performs no job, remove it.
 
 ## Motion tokens
 
-This guideline is the authoritative motion source; the kit ships no motion token set. Timing:
+Motion values come from the installed `@gears-frontx/ui-kit` tokens (its `theme.css`, mirrored in the `motion` map of the `DESIGN.md` front matter). This guideline maps roles to those tokens by name; it sets no values of its own. Never restate a token's value as a literal in screen code.
 
-- instant: 0 ms for reduced-motion substitutions and direct state changes;
-- fast: 100 ms for hover, press and small opacity changes;
-- standard: 160 ms for menus, tooltips and compact state changes;
-- deliberate: 240 ms for dialogs, inspectors and spatial transitions;
-- slow: 320 ms for rare large-layout transitions.
+Timing:
+
+- instant: no transition, for reduced-motion substitutions and direct state changes;
+- `--duration-micro`: hover, focus, press, colour swaps and small opacity changes;
+- `--duration-standard`: a state change that moves something, such as menus, tooltips and compact disclosures;
+- `--duration-panel`: a surface sliding in or out, such as sheets, dialogs and inspectors;
+- `--duration-tab`: the travelling tab indicator only.
+
+A transition that needs a step the kit does not draw (for example a rare large-layout transition) uses the nearest kit step and records the missing step as a kit gap; it does not add a local duration.
 
 Durations above 400 ms **SHOULD** be reserved for intentional narrative or onboarding sequences, not routine product work.
 
 Easing:
 
-- enter: decelerating curve;
-- exit: accelerating curve;
-- move: standard ease-in-out;
-- linear: only for continuous progress or time representation.
+- `--ease-standard`: enter, exit and move; the kit draws one curve. A separate enter or exit curve is a kit gap, not a local `cubic-bezier()`;
+- `linear`: only for continuous progress or time representation.
 
 ## Animation properties
 

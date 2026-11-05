@@ -20,18 +20,17 @@ bundle.
 
 ## Precedence
 
-When sources disagree, the higher one wins:
+When sources disagree, follow `sourcePrecedence` in
+`reference-artifacts/design-contract.json`, the one canonical order
+(`guidelines/foundations.md` explains it). This skill keeps no order of its
+own.
 
-1. The owner's or the product's explicit decision.
-2. The bundle rules: `quality-gates.json`, `design-contract.json`, the
-   guidelines under `guidelines/`.
-3. The kit: `@gears-frontx/ui-kit`, its components and its tokens. The kit
-   binds identity: colour, type, radius, spacing, elevation and motion come
-   from it and nowhere else.
-4. Outside design skills, galleries and references. They only advise; they
-   never bring a palette, a font, a component set or a styling stack.
+Values (colour, type, radius, spacing, elevation, motion) come only from the
+kit's tokens, whatever the source above. Outside design skills, galleries
+and references only advise; they never bring a palette, a font, a component
+set or a styling stack.
 
-An explicit decision outranks the bundle on what to build. It does not waive
+Approved requirements outrank the bundle on what to build. They do not waive
 a gate whose `waiver` is `never`: record the conflict in the handoff and
 raise it with the owner instead of shipping around it.
 
