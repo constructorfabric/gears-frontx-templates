@@ -2,6 +2,8 @@
 
 Date: <YYYY-MM-DD> | Surface: <application screen, marketing page or documentation page>
 
+Review verdict: <blocked, revise, unverified or pass, per `references/review.md`; or "no review yet">
+
 ## Built
 
 - <file or screen>: <what changed, one line each>

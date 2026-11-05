@@ -113,8 +113,13 @@ that `rules/quality-gates.json` gives it:
 |---|---|---|
 | `axe/color-contrast` | COL-001 | The one axe rule the jsdom suite cannot run: new evidence. |
 | `axe-incomplete/color-contrast` (`needs review`) | COL-001 unverified | Axe could not decide (gradient, image, overlap; the detail says why). Not a pass and not a finding: list it as unverified, never count its state clean, check the painted colours by hand. |
-| other `axe/*` (labels, landmarks, lists, heading-one) | A11Y-001 | |
-| `skipped-heading` | A11Y-001 | |
+| `axe/label`, `axe/form-field-multiple-labels`, `axe/label-title-only`, `axe/select-name`, `axe/aria-input-field-name`, `axe/aria-toggle-field-name` | A11Y-001 | Field labels. |
+| `axe/button-name`, `axe/input-button-name`, `axe/link-name`, `axe/image-alt`, `axe/input-image-alt`, `axe/svg-img-alt`, `axe/role-img-alt`, `axe/area-alt`, `axe/object-alt`, `axe/frame-title`, `axe/summary-name`, `axe/aria-command-name`, `axe/aria-dialog-name`, `axe/aria-meter-name`, `axe/aria-progressbar-name`, `axe/aria-tooltip-name`, `axe/aria-treeitem-name` | A11Y-001 | Accessible names. |
+| `axe/landmark-banner-is-top-level`, `axe/landmark-contentinfo-is-top-level`, `axe/landmark-main-is-top-level`, `axe/landmark-no-duplicate-banner`, `axe/landmark-no-duplicate-contentinfo`, `axe/landmark-no-duplicate-main`, `axe/landmark-one-main`, `axe/landmark-unique`, `axe/region` | A11Y-001 | Landmarks. |
+| `axe/list`, `axe/listitem`, `axe/definition-list`, `axe/dlitem` | A11Y-001 | Lists. |
+| `axe/page-has-heading-one`, `skipped-heading` | A11Y-001 | Headings. |
+| `axe/aria-roles`, `axe/aria-allowed-role`, `axe/aria-required-children`, `axe/aria-required-parent`, `axe/aria-allowed-attr`, `axe/aria-required-attr`, `axe/aria-valid-attr`, `axe/aria-valid-attr-value`, `axe/aria-prohibited-attr`, `axe/aria-conditional-attr`, `axe/aria-hidden-focus`, `axe/presentation-role-conflict`, `axe/nested-interactive` | A11Y-001 | ARIA roles and attributes. |
+| `axe/target-size` | A11Y-002 | Major, not a blocker. Off in axe-core 4.13's default rule set, which the checker runs; the row holds if a later axe enables it. |
 | `page-horizontal-scroll` | LAY-002 | Blocker at 320 CSS px. |
 | `card-content-overflow` | LAY-002 | Wide content scrolls or wraps inside its own box (`overflow-x: auto`, truncation, `overflow-wrap: anywhere`). Content inside an `auto` or `scroll` box is measured at that box. |
 | `tiny-text`, `small-control-text`, `clipped-text` | TYP-001 | Floors are the kit's `--text-mono-size` and `--text-label-size`; the fix is the kit role, never a literal size. |
@@ -122,8 +127,11 @@ that `rules/quality-gates.json` gives it:
 | `card-missing-padding` | LAY-005 | Padding floor and range in `references/layout.md`; the full-bleed media card is already exempt. |
 | `dead-spacing-class` | SYS-004 | A class no CSS rule defines: replace it with a CSS Module rule on a `--space-*` token, never with inline styles. |
 
-A rule id with no row here is reported with gate `unmapped` and the
-checker's own severity; never invent a gate.
+A rule id with no row here (any other `axe/*` rule included, such as
+`axe/heading-order`, `axe/tabindex` or `axe/scrollable-region-focusable`)
+keeps its id and is reported with gate `unmapped`, the checker's own
+severity, and the closest gate named in the note; never fold it into
+A11Y-001 and never invent a gate.
 
 Worked trace: console line `[design-defects] page-horizontal-scroll: the
 page's scroll container scrolls horizontally (900px content in 273px box) ...

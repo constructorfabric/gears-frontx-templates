@@ -56,11 +56,15 @@ blocker.
 
 ## Report
 
-It opens with a one-word verdict:
+It opens with a one-word verdict, the first of these that applies:
 
-- `pass`: no open blocker or major finding, and the primary flow was observed;
+- `blocked`: at least one open blocker;
 - `revise`: open major or minor findings, no open blocker;
-- `blocked`: at least one open blocker.
+- `unverified`: no open finding, but the primary flow or a required state
+  was not observed (for example a source-only review); the report lists
+  what was not observed;
+- `pass`: no open finding, and the primary flow and every required state
+  were observed.
 
 Then one or two sentences on why, and:
 

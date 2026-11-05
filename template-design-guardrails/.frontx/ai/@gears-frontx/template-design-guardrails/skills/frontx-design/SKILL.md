@@ -26,7 +26,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Author or fix a theme | `references/theme.md`, `references/color.md`, then `references/verify.md` |
 | Build or revise a screen | `references/generate.md`, `references/app-screens.md`, `references/state-completeness.md`, then the topic references below that match the screen |
 | Place a screen in FrontX | `references/frontx-context.md` |
-| Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict |
+| Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
 | Verify in the browser | `references/verify.md` |
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
