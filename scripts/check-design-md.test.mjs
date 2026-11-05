@@ -228,6 +228,14 @@ describe('check-design-md', () => {
       ['a camelCase group', () => runOn(DESIGN.replace('elevation:', 'fontSizes:')), /line 9: top-level key "fontSizes" must match/],
       ['a snake_case group', () => runOn(DESIGN.replace('elevation:', 'font_sizes:')), /line 9: top-level key "font_sizes" must match/],
       ['a meta key holding a map', () => runOn(DESIGN.replace('name: "Fixture"', 'name:\n  value: "Fixture"')), /"name" must be a scalar/],
+      ['a nested map under colors', () => runOn(DESIGN.replace('  primary: "var(--primary)"', '  primary:\n    shade: "var(--primary)"')), /line 6: "colors.primary" must be a scalar/],
+      ['a scalar directly under typography', () => runOn(DESIGN.replace('  body:\n    fontSize:', '  body: "var(--text-body-size)"\n  other:\n    fontSize:')), /line 12: "typography.body" must be a map/],
+      ['a scalar directly under components', () => runOn(DESIGN.replace('  button:\n', '  link: "{colors.primary}"\n  button:\n')), /line 15: "components.link" must be a map/],
+      ...['name', 'version', 'description'].map((key) => [
+        `a missing ${key}`,
+        () => runOn(DESIGN.replace(new RegExp(`^${key}: .*\\n`, 'm'), '')),
+        new RegExp(`"${key}" is missing`),
+      ]),
     ];
 
     it.each(cases)('%s', (_name, exec, stderr = /./) => {

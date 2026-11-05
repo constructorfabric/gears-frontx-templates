@@ -23,9 +23,11 @@
  *
  * Exit 0 clean, 1 findings, 2 usage or input error: a missing file or a
  * directory, front matter missing, unclosed or outside the supported subset,
- * a top-level key other than `name`, `version`, `description` that is not a
- * map or not a lowercase group name (`[a-z][a-z0-9-]*`, the shape body
- * references use), one of those three holding a map, a reserved key
+ * `name`, `version` or `description` missing or holding a map, any other
+ * top-level key that is not a map or not a lowercase group name
+ * (`[a-z][a-z0-9-]*`, the shape body references use), a key off the shape of
+ * its group (a `typography` or `components` key that is not a map of scalars,
+ * a key in any other token map that is not a scalar), a reserved key
  * (`__proto__`, `constructor`, `prototype`) at any level, or a kit theme it
  * cannot resolve.
  */
@@ -37,6 +39,8 @@ import { parseArgs } from 'node:util';
 const USAGE = 'usage: node check-design-md.mjs [--design <path>] [--theme <path>]';
 const KIT_THEME = '@gears-frontx/ui-kit/theme.css';
 const META_KEYS = new Set(['name', 'version', 'description']);
+// Groups whose keys hold maps of scalars: typography roles and components.
+const NESTED = new Set(['typography', 'components']);
 // A token map group or `components`: the group shape a body reference can name.
 const GROUP = /^[a-z][a-z0-9-]*$/;
 // Keys that would reach Object.prototype through a lookup or an assignment.
@@ -86,8 +90,9 @@ function declaredNames(css) {
 }
 
 /**
- * Parses the front matter subset DESIGN.md uses: maps nested at most two
- * levels below the top, two-space indent, keys plain or double-quoted, values
+ * Parses the front matter subset DESIGN.md uses: the three meta scalars, token
+ * maps of scalars, `typography` and `components` as maps of scalar maps,
+ * two-space indent, keys plain or double-quoted, values
  * double-quoted strings or plain words and numbers. Anything else is an input
  * error rather than a guess. Returns the maps and the index of the closing
  * `---` line.
@@ -98,6 +103,7 @@ function parseFrontMatter(lines) {
   if (end === -1) throw new InputError('DESIGN.md front matter is not closed with ---');
   const stack = [Object.create(null)]; // stack[d] is the open map at depth d
   let open = null; // the last key that had no value: its map starts on the next line
+  let group = null; // the current top-level key
   for (let i = 1; i < end; i += 1) {
     const line = lines[i];
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
@@ -119,11 +125,13 @@ function parseFrontMatter(lines) {
     if (depth === 0 && !META_KEYS.has(key) && !GROUP.test(key)) {
       throw bad(`top-level key "${key}" must match ${GROUP.source}`);
     }
-    if (depth === 0 && META_KEYS.has(key) !== (m[3] !== undefined)) {
-      throw bad(`"${key}" must be ${META_KEYS.has(key) ? 'a scalar' : 'a map'}`);
+    if (depth === 0) group = key;
+    // The shape is fixed per group: only `typography` and `components` hold maps of scalars.
+    const wantsMap = depth === 0 ? !META_KEYS.has(key) : depth === 1 && NESTED.has(group);
+    if (wantsMap === (m[3] !== undefined)) {
+      throw bad(`"${depth === 0 ? key : `${group}.${key}`}" must be ${wantsMap ? 'a map' : 'a scalar'}`);
     }
     if (m[3] === undefined) {
-      if (depth === 2) throw bad('nested deeper than two levels');
       open = { map, key, depth };
     } else {
       map[key] = m[3].replace(/^"|"$/g, '');
@@ -131,6 +139,9 @@ function parseFrontMatter(lines) {
     }
   }
   if (open) throw new InputError(`DESIGN.md front matter: "${open.key}" has no entries`);
+  for (const key of META_KEYS) {
+    if (!Object.hasOwn(stack[0], key)) throw new InputError(`DESIGN.md front matter: "${key}" is missing`);
+  }
   return { front: stack[0], end };
 }
 

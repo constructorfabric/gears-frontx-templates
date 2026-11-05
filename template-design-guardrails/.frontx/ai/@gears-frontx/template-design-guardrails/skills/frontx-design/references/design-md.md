@@ -69,11 +69,12 @@ notation.
 
 Exit 0 is clean, 1 means findings, 2 means a usage or input error: a missing
 file or a directory, front matter missing, unclosed or outside the supported
-YAML subset, a top-level key other than `name`, `version` and `description`
-that is not a map or not a lowercase group name (`[a-z][a-z0-9-]*`, the shape
-body references use), one of those three holding a map, a reserved key
-(`__proto__`, `constructor`, `prototype`) at any level, or a kit theme it
-cannot resolve.
+YAML subset, `name`, `version` or `description` missing or holding a map, any
+other top-level key that is not a map or not a lowercase group name
+(`[a-z][a-z0-9-]*`, the shape body references use), a key off the shape of its
+group (a `typography` or `components` key that is not a map of scalars, a key
+in any other token map that is not a scalar), a reserved key (`__proto__`,
+`constructor`, `prototype`) at any level, or a kit theme it cannot resolve.
 It never reads values.
 
 After a kit upgrade, run it, add or drop the names it reports, and bump
