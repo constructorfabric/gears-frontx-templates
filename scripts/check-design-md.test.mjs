@@ -64,7 +64,7 @@ describe('check-design-md', () => {
     [
       'a var() the theme does not declare',
       DESIGN.replace('var(--radius)', 'var(--radiuss)'),
-      ['rounded.base: --radiuss is not declared by the kit theme', '--radius: declared by the kit theme, not named in the front matter'],
+      ['rounded.base: --radiuss is not declared by the kit theme', '--radius: declared by the kit theme, not named in the token maps'],
     ],
     [
       'a reference to a missing map key',
@@ -79,20 +79,20 @@ describe('check-design-md', () => {
     [
       'a literal value in a token map',
       DESIGN.replace('"var(--primary)"', '"#0065e3"'),
-      ['colors.primary: "#0065e3" is not exactly one var(--name)', '--primary: declared by the kit theme, not named in the front matter'],
+      ['colors.primary: "#0065e3" is not exactly one var(--name)', '--primary: declared by the kit theme, not named in the token maps'],
     ],
     [
       'a value wrapping a var()',
       DESIGN.replace('"var(--text-body-size)"', '"calc(var(--text-body-size) + 2px)"'),
       [
         'typography.body.fontSize: "calc(var(--text-body-size) + 2px)" is not exactly one var(--name)',
-        '--text-body-size: declared by the kit theme, not named in the front matter',
+        '--text-body-size: declared by the kit theme, not named in the token maps',
       ],
     ],
     [
       'a kit property the front matter does not name',
       DESIGN.replace('elevation:\n  shadow: "var(--shadow)"\n', ''),
-      ['--shadow: declared by the kit theme, not named in the front matter'],
+      ['--shadow: declared by the kit theme, not named in the token maps'],
     ],
     [
       'a reference to an inherited group',
@@ -125,6 +125,11 @@ describe('check-design-md', () => {
       [`DESIGN.md line ${NEXT_LINE}: {rounded.0.5} names no front matter token`],
     ],
     [
+      'a body reference on the first line after the front matter',
+      DESIGN.replace('---\n\n# Fixture', '---\nSee {colors.huge}.\n# Fixture'),
+      [`DESIGN.md line ${DESIGN.split('\n').indexOf('---', 1) + 2}: {colors.huge} names no front matter token`],
+    ],
+    [
       'a missing reference inside a fenced code block',
       `${DESIGN}\n\`\`\`md\n{colors.huge}\n\`\`\`\n`,
       [`DESIGN.md line ${NEXT_LINE + 2}: {colors.huge} names no front matter token`],
@@ -142,7 +147,7 @@ describe('check-design-md', () => {
     [
       'a token map key that only components name',
       DESIGN.replace('elevation:\n  shadow: "var(--shadow)"\n', '').replace('  button:\n', '  button:\n    shadow: "var(--shadow)"\n'),
-      ['--shadow: declared by the kit theme, not named in the front matter'],
+      ['--shadow: declared by the kit theme, not named in the token maps'],
     ],
   ])('reports %s and exits 1', (_name, design, expected) => {
     const result = runOn(design);
@@ -217,8 +222,11 @@ describe('check-design-md', () => {
       ['a __proto__ group', () => runOn(DESIGN.replace('rounded:\n', '__proto__:\n  primary: "#0065e3"\nrounded:\n')), /line 7: reserved key/],
       ['a constructor key in a token map', () => runOn(DESIGN.replace('  base: "var(--radius)"', '  base: "var(--radius)"\n  constructor: "var(--radius)"')), /reserved key/],
       ['a prototype key in components', () => runOn(DESIGN.replace('  button:\n', '  prototype:\n    rounded: "{rounded.base}"\n  button:\n')), /reserved key/],
-      ['a misspelled top-level scalar', () => runOn(DESIGN.replace('version:', 'verison:')), /line 3: unknown top-level key "verison"/],
-      ['a token at the top level', () => runOn(DESIGN.replace('colors:\n', 'primary: "var(--primary)"\ncolors:\n')), /line 5: unknown top-level key "primary"/],
+      ['a misspelled top-level scalar', () => runOn(DESIGN.replace('version:', 'verison:')), /line 3: "verison" must be a map/],
+      ['a token at the top level', () => runOn(DESIGN.replace('colors:\n', 'primary: "var(--primary)"\ncolors:\n')), /line 5: "primary" must be a map/],
+      ['a token map group holding a scalar', () => runOn(DESIGN.replace('elevation:\n  shadow: "var(--shadow)"\n', 'elevation: "var(--shadow)"\n')), /line 9: "elevation" must be a map/],
+      ['a camelCase group', () => runOn(DESIGN.replace('elevation:', 'fontSizes:')), /line 9: top-level key "fontSizes" must match/],
+      ['a snake_case group', () => runOn(DESIGN.replace('elevation:', 'font_sizes:')), /line 9: top-level key "font_sizes" must match/],
       ['a meta key holding a map', () => runOn(DESIGN.replace('name: "Fixture"', 'name:\n  value: "Fixture"')), /"name" must be a scalar/],
     ];
 

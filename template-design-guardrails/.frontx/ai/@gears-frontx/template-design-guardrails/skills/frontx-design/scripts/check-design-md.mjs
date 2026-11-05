@@ -23,9 +23,11 @@
  *
  * Exit 0 clean, 1 findings, 2 usage or input error: a missing file or a
  * directory, front matter missing, unclosed or outside the supported subset,
- * a top-level scalar other than `name`, `version`, `description` (or one of
- * those holding a map), a reserved key (`__proto__`, `constructor`,
- * `prototype`) at any level, or a kit theme it cannot resolve.
+ * a top-level key other than `name`, `version`, `description` that is not a
+ * map or not a lowercase group name (`[a-z][a-z0-9-]*`, the shape body
+ * references use), one of those three holding a map, a reserved key
+ * (`__proto__`, `constructor`, `prototype`) at any level, or a kit theme it
+ * cannot resolve.
  */
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -35,6 +37,8 @@ import { parseArgs } from 'node:util';
 const USAGE = 'usage: node check-design-md.mjs [--design <path>] [--theme <path>]';
 const KIT_THEME = '@gears-frontx/ui-kit/theme.css';
 const META_KEYS = new Set(['name', 'version', 'description']);
+// A token map group or `components`: the group shape a body reference can name.
+const GROUP = /^[a-z][a-z0-9-]*$/;
 // Keys that would reach Object.prototype through a lookup or an assignment.
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 // Prefixes of kit custom properties the front matter need not name. Empty:
@@ -112,8 +116,11 @@ function parseFrontMatter(lines) {
     const key = m[2].replace(/^"|"$/g, '');
     if (RESERVED.has(key)) throw bad('reserved key');
     if (Object.hasOwn(map, key)) throw bad('duplicate key');
+    if (depth === 0 && !META_KEYS.has(key) && !GROUP.test(key)) {
+      throw bad(`top-level key "${key}" must match ${GROUP.source}`);
+    }
     if (depth === 0 && META_KEYS.has(key) !== (m[3] !== undefined)) {
-      throw bad(META_KEYS.has(key) ? `"${key}" must be a scalar` : `unknown top-level key "${key}"`);
+      throw bad(`"${key}" must be ${META_KEYS.has(key) ? 'a scalar' : 'a map'}`);
     }
     if (m[3] === undefined) {
       if (depth === 2) throw bad('nested deeper than two levels');
@@ -168,7 +175,7 @@ function check(lines, front, end, themeNames) {
 
   for (const name of themeNames) {
     if (!named.has(name) && !IGNORE.some((prefix) => name.startsWith(prefix))) {
-      findings.push(`${name}: declared by the kit theme, not named in the front matter`);
+      findings.push(`${name}: declared by the kit theme, not named in the token maps`);
     }
   }
   return findings;
