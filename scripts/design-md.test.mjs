@@ -66,6 +66,51 @@ describe('generate', () => {
     });
   });
 
+  it('replaces existing front matter and keeps the body byte for byte', () => {
+    const body = '\n# Body\n\n---\n\nA rule above, `---` inline, trailing spaces  \n\n\nend';
+    writeFileSync(design, `---\nname: "Old"\ncolors:\n  primary: "#000000"\n---\n${body}`);
+    expect(cli('generate', '--design', design, '--theme', THEME)).toBe(0);
+    const text = readFileSync(design, 'utf8');
+    expect(splitDesign(text).body).toBe(body);
+    expect(text.split('\n').filter((l) => l === '---')).toHaveLength(3); // open, close, the body's own rule
+    expect(frontMatter().name).toBe('Old');
+    expect(frontMatter().colors.primary).toBe('#0065e3');
+  });
+
+  it('keeps CRLF line endings and does not stack a second front matter', () => {
+    const body = '\r\n# Body\r\n\r\nText.\r\n';
+    writeFileSync(design, `---\r\nname: "Crlf"\r\n---\r\n${body}`);
+    expect(cli('generate', '--design', design, '--theme', THEME)).toBe(0);
+    const text = readFileSync(design, 'utf8');
+    expect(text.split('\r\n').filter((l) => l === '---')).toHaveLength(2);
+    expect(text.replace(/\r\n/g, '')).not.toContain('\n');
+    expect(splitDesign(text).body).toBe(body);
+    expect(frontMatter().name).toBe('Crlf');
+    expect(cli('check', '--design', design, '--theme', THEME)).toBe(0);
+    expect(cli('generate', '--design', design, '--theme', THEME)).toBe(0);
+    expect(readFileSync(design, 'utf8')).toBe(text);
+  });
+
+  it('accepts a dark block written as a selector list, quoted or not', () => {
+    const fixture = readFileSync(THEME, 'utf8');
+    for (const selector of [':root, [data-theme="dark"]', '[data-theme=dark], .dark', ":root,\n[data-theme='dark']"]) {
+      const theme = path.join(dir, 'theme.css');
+      writeFileSync(theme, fixture.replace("[data-theme='dark'] {", `${selector} {`));
+      expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+      expect(frontMatter()['colors-dark'].background).toBe('#0f172a');
+    }
+  });
+
+  it('parses a long theme.css in linear time', () => {
+    const theme = path.join(dir, 'theme.css');
+    const fixture = readFileSync(THEME, 'utf8');
+    const filler = `${'a'.repeat(200_000)}\n.x { --pad:${' '.repeat(200_000)}; }\n`;
+    writeFileSync(theme, filler + fixture);
+    const started = performance.now();
+    expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('keeps an existing name and is stable on a second run', () => {
     cli('generate', '--design', design, '--theme', THEME, '--name', 'Acme console');
     const first = readFileSync(design, 'utf8');
@@ -91,6 +136,28 @@ describe('check', () => {
   it('reports drift when DESIGN.md has no front matter yet', () => {
     expect(cli('check', '--design', design, '--theme', THEME)).toBe(1);
   });
+
+  const themeChanges = {
+    'a changed token': (css) => css.replace('--primary: #0065e3;\n  --primary-foreground: #ffffff;\n  color-scheme: light;', '--primary: #0050b3;\n  --primary-foreground: #ffffff;\n  color-scheme: light;'),
+    'a removed token': (css) => css.replace('  --space-4: 1rem;\n', ''),
+    'an added token': (css) => css.replace('  --space-4: 1rem;\n', '  --space-4: 1rem;\n  --space-8: 2rem;\n'),
+  };
+  for (const [change, edit] of Object.entries(themeChanges)) {
+    it(`reports drift after ${change} in the theme and leaves DESIGN.md untouched`, () => {
+      const theme = path.join(dir, 'theme.css');
+      const fixture = readFileSync(THEME, 'utf8');
+      writeFileSync(theme, fixture);
+      cli('generate', '--design', design, '--theme', theme);
+      const generated = readFileSync(design);
+      const changed = edit(fixture);
+      expect(changed).not.toBe(fixture);
+      writeFileSync(theme, changed);
+      expect(cli('check', '--design', design, '--theme', theme)).toBe(1);
+      expect(out.join('\n')).toMatch(/drift: /);
+      cli('lint', '--design', design);
+      expect(readFileSync(design).equals(generated)).toBe(true);
+    });
+  }
 });
 
 describe('lint', () => {
@@ -150,6 +217,29 @@ describe('usage errors exit 2', () => {
   it('rejects lint on a DESIGN.md without front matter', () => {
     expect(cli('lint', '--design', design)).toBe(2);
   });
+
+  it('rejects a directory given as DESIGN.md or as theme.css', () => {
+    expect(cli('generate', '--design', dir, '--theme', THEME)).toBe(2);
+    expect(out[0]).toMatch(/is not a file/);
+    expect(cli('lint', '--design', dir)).toBe(2);
+    expect(cli('check', '--design', design, '--theme', dir)).toBe(2);
+    expect(out[0]).toMatch(/theme\.css .* is not a file/);
+  });
+
+  const malformed = {
+    'a line with no colon': ['---\nname: "X"\ncolors\n---\n', 3],
+    'an unterminated double quote': ['---\nname: "X\n---\n', 2],
+    'an unterminated single quote': ["---\nname: 'X\n---\n", 2],
+  };
+  for (const [what, [text, line]] of Object.entries(malformed)) {
+    it(`rejects front matter with ${what} on lint and on check`, () => {
+      writeFileSync(design, text + BODY);
+      expect(cli('lint', '--design', design)).toBe(2);
+      expect(out[0]).toContain(`front matter line ${line} `);
+      expect(cli('check', '--design', design, '--theme', THEME)).toBe(2);
+      expect(readFileSync(design, 'utf8')).toBe(text + BODY);
+    });
+  }
 });
 
 describe('contrastRatio', () => {

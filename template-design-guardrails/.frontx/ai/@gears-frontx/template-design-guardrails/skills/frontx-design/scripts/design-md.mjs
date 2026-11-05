@@ -11,7 +11,7 @@
  * Findings print one per line with a fix. Exit codes: 0 ok, 1 findings,
  * 2 usage or input error. Node standard library only.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,23 +24,45 @@ class UsageError extends Error {}
 
 // ---------------------------------------------------------------- theme.css
 
+/** Innermost `selector { body }` rules (no brace inside the body), in one linear pass. */
+function* innermostRules(text) {
+  let afterBrace = 0; // where the text after the last brace starts
+  let open = -1; // the `{` of a rule not yet closed and with no brace inside
+  let selector = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c !== '{' && c !== '}') continue;
+    if (c === '{') {
+      selector = text.slice(afterBrace, i);
+      open = i;
+    } else {
+      if (open !== -1) yield [selector, text.slice(open + 1, i)];
+      open = -1;
+    }
+    afterBrace = i + 1;
+  }
+}
+
 /** Custom properties of the invariant (:root), light and dark blocks, in source order. */
 export function parseTheme(css) {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const blocks = { invariant: null, light: null, dark: null };
-  for (const match of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selector = match[1].trim().replace(/\s+/g, '').replace(/["']/g, '');
+  for (const [rawSelector, body] of innermostRules(text)) {
+    const selector = rawSelector.replace(/\s+/g, '').replace(/["']/g, '');
     if (selector.includes(':not(') || selector.startsWith('@')) continue;
     const parts = selector.split(',');
     let kind = null;
     if (selector === ':root') kind = 'invariant';
     else if (parts.includes('[data-theme=light]')) kind = 'light';
-    else if (selector === '[data-theme=dark]') kind = 'dark';
+    else if (parts.includes('[data-theme=dark]')) kind = 'dark';
     if (!kind || blocks[kind]) continue;
     const decls = new Map();
-    for (const decl of match[2].split(';')) {
-      const m = decl.match(/^\s*--([\w-]+)\s*:\s*([\s\S]+?)\s*$/);
-      if (m) decls.set(m[1], m[2].replace(/\s+/g, ' '));
+    for (const decl of body.split(';')) {
+      const colon = decl.indexOf(':');
+      if (colon === -1) continue;
+      const name = decl.slice(0, colon).trim();
+      const value = decl.slice(colon + 1).trim().replace(/\s+/g, ' ');
+      if (/^--[\w-]+$/.test(name) && value) decls.set(name.slice(2), value);
     }
     blocks[kind] = decls;
   }
@@ -201,29 +223,39 @@ export function toYaml(obj, indent = 0) {
 export function parseYaml(text) {
   const root = {};
   const stack = [{ indent: -1, node: root }];
-  text.split('\n').forEach((raw, i) => {
+  text.split(/\r?\n/).forEach((raw, i) => {
     if (!raw.trim() || raw.trim().startsWith('#')) return;
+    const bad = (why) => new UsageError(`front matter line ${i + 2} ${why}: ${raw.trim()}`);
+    const unquote = (s) => {
+      try {
+        return JSON.parse(s);
+      } catch {
+        throw bad('has a broken double-quoted string');
+      }
+    };
     const m = raw.match(/^( *)("(?:[^"\\]|\\.)*"|[^:\s][^:]*?)\s*:(?:\s+(.*))?$/);
-    if (!m) throw new UsageError(`front matter line ${i + 2} is not "key: value" YAML: ${raw.trim()}`);
+    if (!m) throw bad('is not "key: value" YAML');
     const indent = m[1].length;
-    const key = m[2].startsWith('"') ? JSON.parse(m[2]) : m[2];
+    const key = m[2].startsWith('"') ? unquote(m[2]) : m[2];
     while (stack.at(-1).indent >= indent) stack.pop();
     const parent = stack.at(-1).node;
     const value = m[3]?.trim();
     if (value === undefined || value === '') {
       parent[key] = {};
       stack.push({ indent, node: parent[key] });
-    } else if (value.startsWith('"')) parent[key] = JSON.parse(value);
-    else if (value.startsWith("'")) parent[key] = value.slice(1, -1).replace(/''/g, "'");
-    else if (/^-?\d+(\.\d+)?$/.test(value)) parent[key] = Number(value);
+    } else if (value.startsWith('"')) parent[key] = unquote(value);
+    else if (value.startsWith("'")) {
+      if (!/^'(?:[^']|'')*'$/.test(value)) throw bad('has a broken single-quoted string');
+      parent[key] = value.slice(1, -1).replace(/''/g, "'");
+    } else if (/^-?\d+(\.\d+)?$/.test(value)) parent[key] = Number(value);
     else parent[key] = value;
   });
   return root;
 }
 
-/** Split a DESIGN.md into its front matter text (null when absent) and body. */
+/** Split a DESIGN.md into its front matter text (null when absent) and body; LF or CRLF. */
 export function splitDesign(text) {
-  const m = text.match(/^---\n([\s\S]*?\n)?---\n?/);
+  const m = text.match(/^---\r?\n([\s\S]*?\r?\n)?---(?:\r?\n)?/);
   if (!m) return { yaml: null, body: text };
   return { yaml: m[1] ?? '', body: text.slice(m[0].length) };
 }
@@ -320,20 +352,32 @@ function readKitVersion(themePath) {
   }
 }
 
+/** Read a text file; a path that is missing, a directory or unreadable is a usage error. */
+function readText(file, what, hint = '') {
+  try {
+    if (statSync(file).isFile()) return readFileSync(file, 'utf8');
+  } catch (e) {
+    if (!e.code) throw e;
+    throw new UsageError(`${what} ${file} cannot be read (${e.code})${hint}`);
+  }
+  throw new UsageError(`${what} ${file} is not a file${hint}`);
+}
+
 function render(opts, existing) {
-  if (!existsSync(opts.theme)) throw new UsageError(`theme.css not found at ${opts.theme}; pass --theme <path to @gears-frontx/ui-kit/dist/theme.css>`);
+  const theme = readText(opts.theme, 'theme.css', '; pass --theme <path to @gears-frontx/ui-kit/dist/theme.css>');
   const { yaml, body } = splitDesign(existing ?? '');
   const current = yaml === null ? {} : parseYaml(yaml);
   const name = opts.name ?? (typeof current.name === 'string' ? current.name : 'FrontX');
   const kitVersion = opts.kitVersion ?? readKitVersion(opts.theme);
-  const { frontMatter, skipped } = buildFrontMatter(parseTheme(readFileSync(opts.theme, 'utf8')), { name, kitVersion });
-  return { text: `---\n${toYaml(frontMatter)}---\n${body}`, skipped, yaml };
+  const { frontMatter, skipped } = buildFrontMatter(parseTheme(theme), { name, kitVersion });
+  const eol = existing?.includes('\r\n') ? '\r\n' : '\n';
+  return { text: `---${eol}${toYaml(frontMatter).replace(/\n/g, eol)}---${eol}${body}`, skipped, yaml };
 }
 
 export function run(argv, log = console.log, err = console.error) {
   try {
     const opts = parseArgs(argv);
-    const existing = existsSync(opts.design) ? readFileSync(opts.design, 'utf8') : null;
+    const existing = existsSync(opts.design) ? readText(opts.design, 'DESIGN.md') : null;
     if (opts.mode === 'lint') {
       if (existing === null) throw new UsageError(`${opts.design} not found`);
       const { yaml } = splitDesign(existing);
