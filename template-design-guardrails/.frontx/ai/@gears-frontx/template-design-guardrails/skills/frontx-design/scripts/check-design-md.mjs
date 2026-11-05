@@ -10,12 +10,16 @@
  * `@gears-frontx/ui-kit/theme.css` resolved from the current directory.
  *
  * Findings, one line each: a token map value that is not exactly one
- * `var(--name)`; a `var(--name)` in a token map or a `components` value that
- * the theme does not declare (as `--name:` or `@property --name`); a
- * `{group.key}` reference in `components` or in the markdown body (outside
- * fenced code; there only a lowercase group, a dot and key characters with no
- * spaces) with no such map key; a theme property the token maps do not name
- * (coverage).
+ * `var(--name)`; a `components` value that is not exactly one `{group.key}` or
+ * one `var(--name)`; a `var(--name)` in a token map or a `components` value
+ * that the theme does not declare (as `--name:` or `@property --name`); a
+ * `{group.key}` reference in `components` or in the markdown body with no such
+ * map key; a theme property the token maps do not name (coverage).
+ *
+ * In the body, `{group.key}` with a lowercase group (`[a-z][a-z0-9-]*`), a dot
+ * and key characters with no spaces is reserved for token references on every
+ * line, fenced code and code spans included: an example that must show braces
+ * uses another notation.
  *
  * Exit 0 clean, 1 findings, 2 usage or input error: a missing file or a
  * directory, front matter missing, unclosed or outside the supported subset,
@@ -39,13 +43,9 @@ const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 // applies to all of them.
 const IGNORE = [];
 const VAR_ONLY = /^var\((--[\w-]+)\)$/;
-const REF = /\{([^{}.]+)\.([^{}]+)\}/g;
+const REF_ONLY = /^\{([^{}.]+)\.([^{}]+)\}$/;
 // In the body only this shape is a reference, so CSS such as `.card { padding: 0.5rem }` is not one.
-const BODY_REF = /\{([a-z][\w-]*)\.([\w.-]+)\}/g;
-const VAR = /var\(\s*(--[\w-]+)/g;
-// A fence run of 3 or more backticks or tildes at any indent (list items nest
-// them), then an info string on an opening line or only spaces on a closing one.
-const FENCE = /^\s*(`{3,}|~{3,})(.*)$/;
+const BODY_REF = /\{([a-z][a-z0-9-]*)\.([\w.-]+)\}/g;
 
 class InputError extends Error {}
 
@@ -149,27 +149,18 @@ function check(lines, front, end, themeNames) {
   }
 
   for (const [at, value] of leaves(front.components ?? {}, 'components')) {
-    for (const ref of value.matchAll(REF)) {
+    const ref = REF_ONLY.exec(value);
+    const name = VAR_ONLY.exec(value)?.[1];
+    if (ref) {
       if (missing(ref)) findings.push(`${at}: ${ref[0]} names no front matter token`);
-    }
-    for (const [, name] of value.matchAll(VAR)) {
-      if (!themeNames.has(name)) findings.push(`${at}: ${name} is not declared by the kit theme`);
+    } else if (!name) {
+      findings.push(`${at}: "${value}" is not exactly one {group.key} or var(--name)`);
+    } else if (!themeNames.has(name)) {
+      findings.push(`${at}: ${name} is not declared by the kit theme`);
     }
   }
 
-  // The open fence run. Only a run of the same character, at least as long,
-  // with nothing after it closes it; an unclosed fence runs to the end of the file.
-  let fence = null;
   for (let i = end + 1; i < lines.length; i += 1) {
-    const m = FENCE.exec(lines[i]);
-    if (fence) {
-      if (m && m[1][0] === fence[0] && m[1].length >= fence.length && m[2].trim() === '') fence = null;
-      continue;
-    }
-    if (m) {
-      fence = m[1];
-      continue;
-    }
     for (const ref of lines[i].matchAll(BODY_REF)) {
       if (missing(ref)) findings.push(`DESIGN.md line ${i + 1}: ${ref[0]} names no front matter token`);
     }

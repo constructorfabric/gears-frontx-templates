@@ -50,12 +50,8 @@ function runOn(design, theme = THEME) {
 }
 
 const lines = (text) => text.trim().split('\n');
-
-/** DESIGN with `body` appended, then a broken `{colors.after}` line, and the one finding expected for it. */
-function withBody(body) {
-  const design = `${DESIGN}${body}Use {colors.after}.\n`;
-  return [design, [`DESIGN.md line ${design.split('\n').length - 1}: {colors.after} names no front matter token`]];
-}
+// The line number of the first line appended to DESIGN.
+const NEXT_LINE = DESIGN.split('\n').length;
 
 describe('check-design-md', () => {
   it('passes when every name matches and every kit property is named', () => {
@@ -121,17 +117,33 @@ describe('check-design-md', () => {
     [
       'a body reference to a missing map key',
       `${DESIGN}Use \`{colors.huge}\` for nothing.\n`,
-      [`DESIGN.md line ${DESIGN.split('\n').length}: {colors.huge} names no front matter token`],
+      [`DESIGN.md line ${NEXT_LINE}: {colors.huge} names no front matter token`],
+    ],
+    [
+      'a body reference to a missing dotted key',
+      `${DESIGN}Use {rounded.0.5} for nothing.\n`,
+      [`DESIGN.md line ${NEXT_LINE}: {rounded.0.5} names no front matter token`],
+    ],
+    [
+      'a missing reference inside a fenced code block',
+      `${DESIGN}\n\`\`\`md\n{colors.huge}\n\`\`\`\n`,
+      [`DESIGN.md line ${NEXT_LINE + 2}: {colors.huge} names no front matter token`],
+    ],
+    [
+      'a literal value in components',
+      DESIGN.replace('"{colors.primary}"', '"red"'),
+      ['components.button.backgroundColor: "red" is not exactly one {group.key} or var(--name)'],
+    ],
+    [
+      'a components value mixing a literal and a reference',
+      DESIGN.replace('"{colors.primary}"', '"1px solid {colors.primary}"'),
+      ['components.button.backgroundColor: "1px solid {colors.primary}" is not exactly one {group.key} or var(--name)'],
     ],
     [
       'a token map key that only components name',
       DESIGN.replace('elevation:\n  shadow: "var(--shadow)"\n', '').replace('  button:\n', '  button:\n    shadow: "var(--shadow)"\n'),
       ['--shadow: declared by the kit theme, not named in the front matter'],
     ],
-    ['a body reference after a ~~~ block holding a lone ```', ...withBody('~~~md\n```\n{colors.inside}\n~~~\n')],
-    ['a body reference after a ```` block holding a lone ```', ...withBody('````md\n```\n{colors.inside}\n````\n')],
-    ['a body reference after a list fence closed at a deeper indent', ...withBody('- item\n\n  ```md\n  {colors.inside}\n    ```\n')],
-    ['a body reference after a fence at 4 spaces under a nested list item', ...withBody('- a\n  - b\n\n    ```\n    {colors.inside}\n    ```\n')],
   ])('reports %s and exits 1', (_name, design, expected) => {
     const result = runOn(design);
     expect(result.code).toBe(1);
@@ -150,8 +162,8 @@ describe('check-design-md', () => {
     ['a UTF-8 BOM before the front matter', `\u{FEFF}${DESIGN}`, THEME],
     ['a full-line # comment in the front matter', DESIGN.replace('colors:\n', '# Brand colours\ncolors:\n'), THEME],
     ['a valid body reference', `${DESIGN}Use \`{colors.primary}\` once.\n`, THEME],
-    ['a missing reference inside a fenced code block', `${DESIGN}\n\`\`\`md\n{colors.huge}\n\`\`\`\n`, THEME],
-    ['a missing reference inside an unclosed fence', `${DESIGN}\n~~~md\n{colors.huge}\n\`\`\`\n`, THEME],
+    ['an uppercase group in the body', `${DESIGN}See {iOS.notes} and {Colors.huge}.\n`, THEME],
+    ['a components value that is one var() the theme declares', DESIGN.replace('"{colors.primary}"', '"var(--primary)"'), THEME],
     ['CSS braces in a body code span', `${DESIGN}Set \`.card { padding: 0.5rem }\` in CSS.\n`, THEME],
   ])('passes with %s', (_name, design, theme) => {
     const result = runOn(design, theme);

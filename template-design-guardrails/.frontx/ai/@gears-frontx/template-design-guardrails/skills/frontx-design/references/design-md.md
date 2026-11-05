@@ -17,9 +17,10 @@ Two parts:
     border widths, disabled opacity) and `elevation`. Every value is exactly
     one `var(--name)`, naming a custom property the kit theme declares; one
     name covers the light and the dark theme;
-  - `components`: the kit components a screen most often pairs, each naming
-    its tokens as references such as `{colors.primary}` or
-    `{typography.label}`, which resolve to keys in the token maps.
+  - `components`: the kit components a screen most often pairs, each value
+    exactly one reference such as `{colors.primary}` or `{typography.label}`,
+    which resolves to a key in the token maps (or one `var(--name)`), never a
+    literal.
 - **Markdown body**, written by people: the guardrails, then Do's and
   Don'ts, Responsive, Iteration Guide and Known Gaps. Prose names tokens by
   reference (`{colors.primary}`) and describes their role, not their value.
@@ -51,17 +52,20 @@ names) and the custom property names the installed kit theme declares (or the
 file `--theme <path>` names), as `--name:` declarations or `@property --name`
 registrations, and reports, one line each:
 
-- a token value that is not exactly one `var(--name)`;
+- a token map value that is not exactly one `var(--name)`;
+- a `components` value that is not exactly one `{group.key}` or one
+  `var(--name)`;
 - a `var()` in a token map or in a `components` value naming a property the
   theme does not declare;
-- a `{group.key}` reference in `components` or in the body (outside fenced
-  code, with its line number) with no such map key;
+- a `{group.key}` reference in `components` or in the body (with its line
+  number) with no such map key;
 - a kit property the token maps do not name.
 
-In the body the `{group.key}` shape (a lowercase group, a dot, key characters,
-no spaces) is reserved for token references: the check reads every one outside
-fenced code, inline code spans included, so write `{colors.primary}` only to
-name a token.
+In the body the `{group.key}` shape (a lowercase group `[a-z][a-z0-9-]*`, a
+dot, key characters, no spaces) is reserved for token references on every
+line, fenced code and inline code spans included: write `{colors.primary}`
+only to name a token, and give an example that must show braces in another
+notation.
 
 Exit 0 is clean, 1 means findings, 2 means a usage or input error: a missing
 file or a directory, front matter missing, unclosed or outside the supported
