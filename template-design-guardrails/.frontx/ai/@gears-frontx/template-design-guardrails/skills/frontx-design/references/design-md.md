@@ -46,7 +46,8 @@ From the project root, with the kit installed:
 node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs
 ```
 
-It reads the custom property names the installed kit theme declares (or the
+It reads `DESIGN.md` in the current directory (or the file `--design <path>`
+names) and the custom property names the installed kit theme declares (or the
 file `--theme <path>` names), as `--name:` declarations or `@property --name`
 registrations, and reports, one line each:
 
@@ -57,11 +58,17 @@ registrations, and reports, one line each:
   code, with its line number) with no such map key;
 - a kit property the token maps do not name.
 
+In the body the `{group.key}` shape (a lowercase group, a dot, key characters,
+no spaces) is reserved for token references: the check reads every one outside
+fenced code, inline code spans included, so write `{colors.primary}` only to
+name a token.
+
 Exit 0 is clean, 1 means findings, 2 means a usage or input error: a missing
 file or a directory, front matter missing, unclosed or outside the supported
 YAML subset, a top-level scalar other than `name`, `version` and
-`description`, a reserved key (`__proto__`, `constructor`, `prototype`), or a
-kit it cannot resolve. It never reads values.
+`description` (or one of those holding a map), a reserved key (`__proto__`,
+`constructor`, `prototype`) at any level, or a kit theme it cannot resolve.
+It never reads values.
 
 After a kit upgrade, run it, add or drop the names it reports, and bump
 `version` to the new kit version.
