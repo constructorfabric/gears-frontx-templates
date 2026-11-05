@@ -74,9 +74,9 @@ Rules phrased "Never" or "Do not" are binding — blocker-mapped where `quality-
 
 - Import `@gears-frontx/ui-kit/theme.css` once at the application entry.
 - Compose with UI kit components and native semantic elements.
-- Use the existing app's composition styling mechanism. Never override UI kit internals.
-- Use semantic tokens for visual values. Map Tailwind utilities to tokens. Never use an arbitrary color, radius, or spacing value when a semantic token exists (design-contract prohibition; SYS-002).
-- Use the spacing scale and primary rhythm declared in `layout-contract.json`; verify against the project's Tailwind config.
+- Style composition outside kit components with CSS Modules on kit tokens, even where the shell carries another styling mechanism. Never override UI kit internals.
+- Use semantic tokens for visual values, written in CSS Modules (`var(--space-4)`, `var(--foreground)`). Never use utility classes (Tailwind or similar). Never use an arbitrary color, radius, or spacing value when a semantic token exists (design-contract prohibition; SYS-002).
+- Use the spacing scale and primary rhythm declared in `layout-contract.json`; verify against the kit's `--space-*` tokens in the installed `theme.css`.
 - Use one page heading and exactly one primary-styled action per local region; use at most one non-neutral semantic status color per region unless each maps to a distinct state. Data-visualization series palettes are exempt: multi-series charts use the categorical colors the color-and-theming guideline permits for series differentiation.
 - Keep copy concise — at most one sentence per label or help text; do not add subtitles that repeat visible structure.
 - Express each spacing intent exactly once. Never stack additive spacing as
@@ -110,17 +110,31 @@ regardless of list order.
 
 For example, a two-control form row with matched control heights, one spacing expression on the 8 px rhythm, and token-only values:
 
+```css
+/* FormRow.module.css */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rowWithoutGap {
+  display: flex;
+  align-items: center;
+}
+```
+
 ```tsx
-// Correct — Input has one height that matches Button's default size
-<div className="flex items-center gap-2">
+// Correct: Input has one height that matches Button's default size
+<div className={styles.row}>
   <Input />
   <Button>Save</Button>
 </div>
 
 // Violation: a size variant that breaks the row's shared height, a spacer div, and an eyeballed margin standing in for the row's own gap
-<div className="flex items-center">
+<div className={styles.rowWithoutGap}>
   <Input />
-  <div className="w-[13px]" />
+  <div style={{ width: '13px' }} />
   <Button size="lg" style={{ marginTop: '3px' }}>Save</Button>
 </div>
 ```

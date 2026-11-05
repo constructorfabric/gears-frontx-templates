@@ -18,7 +18,7 @@ Escalation rule: see final step — stop and ask only for permissions/persistenc
    - motion;
    - non-goals.
 6. Build semantic structure and interaction behavior before visual polish.
-7. Apply tokens and the established composition layer. Do not restyle kit internals.
+7. Apply tokens through CSS Modules for composition outside kit components. Do not restyle kit internals.
 8. Implement applicable state behavior:
    - loading;
    - empty;

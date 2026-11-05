@@ -9,12 +9,12 @@ tier: core
 
 This section is the single guideline-layer home of the spacing system; the machine-readable values live in `layout-contract.json`.
 
-- The installed spacing tokens are authoritative: the shell ships Tailwind's 4 px base scale with an 8 px primary rhythm.
+- The installed spacing tokens are authoritative: the kit's `--space-*` scale has a 4 px base and an 8 px primary rhythm.
 - Preferred values are `4, 8, 12, 16, 20, 24, 32` px — the kit's `--space-*` scale; larger region gaps compose from these (e.g. 2 × 24 px).
 - Use 4 px only for optical correction, icon proximity and dense internal component gaps. Use 8 px multiples for page and pattern structure.
 - Use 4–8 px within a compact control, 8–16 px between related fields or row content, 16–24 px between pattern groups and 24–32 px between page regions.
 - A bounded container — a card, a bordered or shadowed row, any element that draws its own edge — **MUST** carry internal padding on the sides it draws: 4 px is the floor, 12–24 px the normal range. Content ink (text, a checkbox, an icon) never sits flush against a drawn edge. The one exemption is a full-bleed media card, where an image or video deliberately spans the container's full width; any non-media content in that card is still padded. The runtime checker measures this as `card-missing-padding`.
-- A spacing utility class **MUST** actually resolve to a CSS rule in the running app. In a host-composed setup (MFE sources styled by the host's Tailwind build) a class the build never scanned matches nothing and renders flush while the source reads correct — verify spacing in the rendered app, never by reading class names. The runtime checker measures this as `dead-spacing-class`.
+- Spacing **MUST** come from CSS Module rules on `--space-*` tokens, never from utility classes. A utility class left in MFE markup may match no CSS rule inside the shadow root, so it renders flush while the source reads correct. Verify spacing in the rendered app, never by reading class names. The runtime checker measures this as `dead-spacing-class`.
 - Negative margins **SHOULD NOT** correct structural alignment. Use grid ownership or an explicit optical token.
 - Do not create adjacent gaps that differ by only 1–3 px unless correcting a documented optical alignment.
 

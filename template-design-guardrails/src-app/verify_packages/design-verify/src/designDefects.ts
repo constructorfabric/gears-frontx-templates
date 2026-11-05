@@ -26,9 +26,9 @@
  *     the scroller's visible content box; bounded containers carry horizontal
  *     padding; the one exemption is a card filled by a full-bleed media child);
  *     a negative inset reports as card-content-overflow instead;
- *   - dead spacing class (a Tailwind spacing utility present in the DOM that
- *     no CSS rule defines — e.g. an MFE source outside the host's Tailwind
- *     scan: the source reads correct, the padding renders as nothing).
+ *   - dead spacing class (a spacing utility class present in the DOM that
+ *     no CSS rule defines: the source reads correct, the padding renders as
+ *     nothing; screens style spacing with CSS Modules on kit tokens instead).
  *
  * Delivery model: no browser-automation stack. The checker ships inside the
  * dev bundle only (the shell's main.tsx imports it behind `import.meta.env.DEV`
@@ -422,11 +422,11 @@ export function findCardEdgeFlush(
 }
 
 /**
- * Tailwind spacing-utility grammar for the dead-class probe. Bare numeric
- * utilities only: variants (`md:p-8`) and arbitrary values (`p-[13px]`) are
- * out of scope — the failure mode this rule catches is a class the CSS build
- * never emitted at all (e.g. an MFE source outside the host's Tailwind scan),
- * where the element looks styled in the source and renders flush.
+ * Utility-class spacing grammar for the dead-class probe. Bare numeric
+ * classes only: variants (`md:p-8`) and arbitrary values (`p-[13px]`) are
+ * out of scope. The failure mode this rule catches is a utility class no
+ * CSS rule defines, where the element looks styled in the source and
+ * renders flush.
  */
 const PADDING_MARGIN_RE = /^-?([pm])([trblxyse])?-(\d+(?:\.\d+)?|px)$/;
 const GAP_RE = /^gap(?:-([xy]))?-(\d+(?:\.\d+)?|px)$/;
@@ -524,7 +524,7 @@ function probeDeadSpacingTokens(
       if (dead) {
         findings.push({
           id: 'dead-spacing-class',
-          detail: `spacing utility "${token}" is used by ${count} element(s) but no CSS rule defines it — the class silently does nothing (is this source scanned by the host Tailwind build?)`,
+          detail: `spacing utility "${token}" is used by ${count} element(s) but no CSS rule defines it, so the class silently does nothing; style the spacing with a CSS Module rule on a --space-* token`,
         });
       }
       probe.remove();

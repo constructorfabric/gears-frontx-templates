@@ -1,6 +1,6 @@
 # FrontX design guardrails
 
-Version: `0.1.0-alpha.4`  
+Version: `0.1.0-alpha.5`  
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 
@@ -26,7 +26,7 @@ Rules marked **MUST** are required. **SHOULD** rules may be changed only when th
 
 - Clear hierarchy and one obvious primary task per screen.
 - Token-backed spacing, color, typography, radius, elevation, motion, and state treatment.
-- A 4 px base grid with an 8 px primary rhythm — the shell's installed Tailwind scale.
+- A 4 px base grid with an 8 px primary rhythm: the kit's `--space-*` scale.
 - Shared alignment lines, explicit density, and declared wide, medium, and narrow transformations.
 - Responsive behavior without shrinking controls or labels into ambiguity.
 - Keyboard access, visible focus, semantic HTML, accessible names, useful validation copy, and WCAG 2.2 AA contrast.
@@ -49,5 +49,5 @@ When authoring or changing a shell theme, use `create-theme`; theme token format
 - Hardcode visual values when a semantic token exists.
 - Use color as the only status signal.
 - Invent helper copy, decorative cards, gradients, or metrics to fill space.
-- Assume the UI kit itself uses Tailwind. Its current implementation is React, Base UI, CSS Modules, and CVA; an application template may use Tailwind only for its own composition layer.
+- Use Tailwind or any other utility-class framework. The UI kit is React, Base UI, CSS Modules and CVA; styling outside kit components is CSS Modules on kit tokens.
 - Copy an external design system's visual identity. Material, Carbon, Fluent, W3C, and Vercel sources in this bundle are research references, not replacement themes.
