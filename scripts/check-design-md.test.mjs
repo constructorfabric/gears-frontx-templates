@@ -92,10 +92,53 @@ describe('check-design-md', () => {
       DESIGN.replace('elevation:\n  shadow: "var(--shadow)"\n', ''),
       ['--shadow: declared by the kit theme, not named in the front matter'],
     ],
+    [
+      'a reference to an inherited group',
+      DESIGN.replace('{colors.primary}', '{constructor.name}'),
+      ['components.button.backgroundColor: {constructor.name} names no front matter token'],
+    ],
+    [
+      'a reference to an inherited method',
+      DESIGN.replace('{colors.primary}', '{toString.length}'),
+      ['components.button.backgroundColor: {toString.length} names no front matter token'],
+    ],
+    [
+      'a reference to an inherited key',
+      DESIGN.replace('{colors.primary}', '{colors.constructor}'),
+      ['components.button.backgroundColor: {colors.constructor} names no front matter token'],
+    ],
+    [
+      'a components var() the theme does not declare',
+      DESIGN.replace('"{colors.primary}"', '"var(--does-not-exist)"'),
+      ['components.button.backgroundColor: --does-not-exist is not declared by the kit theme'],
+    ],
+    [
+      'a body reference to a missing map key',
+      `${DESIGN}Use \`{colors.huge}\` for nothing.\n`,
+      [`DESIGN.md line ${DESIGN.split('\n').length}: {colors.huge} names no front matter token`],
+    ],
   ])('reports %s and exits 1', (_name, design, expected) => {
     const result = runOn(design);
     expect(result.code).toBe(1);
     expect(lines(result.stdout).sort()).toEqual([...expected].sort());
+  });
+
+  it('does not take a selector such as .btn--primary:hover for a declaration', () => {
+    const theme = `${THEME.replace(/^ *--primary: [^;]+;\n/gm, '')}\n.btn--primary:hover { color: red; }\n`;
+    const result = runOn(DESIGN, theme);
+    expect(result.code).toBe(1);
+    expect(lines(result.stdout)).toEqual(['colors.primary: --primary is not declared by the kit theme']);
+  });
+
+  it.each([
+    ['a named token the theme declares only through @property', DESIGN.replace('colors:\n', 'colors:\n  brand: "var(--brand)"\n'), `${THEME}\n@property --brand {\n  syntax: '<color>';\n  inherits: true;\n  initial-value: red;\n}\n`],
+    ['a UTF-8 BOM before the front matter', `\u{FEFF}${DESIGN}`, THEME],
+    ['a full-line # comment in the front matter', DESIGN.replace('colors:\n', '# Brand colours\ncolors:\n'), THEME],
+    ['a valid body reference', `${DESIGN}Use \`{colors.primary}\` once.\n`, THEME],
+    ['a missing reference inside a fenced code block', `${DESIGN}\n\`\`\`md\n{colors.huge}\n\`\`\`\n`, THEME],
+  ])('passes with %s', (_name, design, theme) => {
+    const result = runOn(design, theme);
+    expect(result.code, result.stdout + result.stderr).toBe(0);
   });
 
   it('does not join the two sides of a comment into one declared name', () => {
@@ -133,7 +176,7 @@ describe('check-design-md', () => {
     const cases = [
       ['an unknown option', () => run(['--colors'])],
       ['a missing DESIGN.md', () => run(['--design', 'missing.md', '--theme', path.join(fixtures, 'theme.css')], project({}))],
-      ['a DESIGN.md that is a directory', () => run(['--design', fixtures, '--theme', path.join(fixtures, 'theme.css')])],
+      ['a DESIGN.md that is a directory', () => run(['--design', fixtures, '--theme', path.join(fixtures, 'theme.css')]), /is not a file/],
       ['a missing theme', () => run(['--design', path.join(fixtures, 'DESIGN.md'), '--theme', 'missing.css'], project({}))],
       ['no front matter', () => runOn('# DESIGN\n')],
       ['an unclosed front matter', () => runOn(DESIGN.replace('\n---\n\n# Fixture', '\n\n# Fixture'))],
@@ -142,11 +185,18 @@ describe('check-design-md', () => {
       ['a map nested three levels deep', () => runOn(DESIGN.replace('    fontSize: "var(--text-body-size)"', '    fontSize:\n      value: "var(--text-body-size)"'))],
       ['a group with no entries', () => runOn(DESIGN.replace('  primary: "var(--primary)"\n', ''))],
       ['a duplicate key', () => runOn(DESIGN.replace('  base: "var(--radius)"', '  base: "var(--radius)"\n  base: "var(--radius)"'))],
+      ['a __proto__ group', () => runOn(DESIGN.replace('rounded:\n', '__proto__:\n  primary: "#0065e3"\nrounded:\n')), /line 7: reserved key/],
+      ['a constructor key in a token map', () => runOn(DESIGN.replace('  base: "var(--radius)"', '  base: "var(--radius)"\n  constructor: "var(--radius)"')), /reserved key/],
+      ['a prototype key in components', () => runOn(DESIGN.replace('  button:\n', '  prototype:\n    rounded: "{rounded.base}"\n  button:\n')), /reserved key/],
+      ['a misspelled top-level scalar', () => runOn(DESIGN.replace('version:', 'verison:')), /line 3: unknown top-level key "verison"/],
+      ['a token at the top level', () => runOn(DESIGN.replace('colors:\n', 'primary: "var(--primary)"\ncolors:\n')), /line 5: unknown top-level key "primary"/],
+      ['a meta key holding a map', () => runOn(DESIGN.replace('name: "Fixture"', 'name:\n  value: "Fixture"')), /"name" must be a scalar/],
     ];
 
-    it.each(cases)('%s', (_name, exec) => {
+    it.each(cases)('%s', (_name, exec, stderr = /./) => {
       const result = exec();
       expect(result.code).toBe(2);
+      expect(result.stderr).toMatch(stderr);
       expect(result.stderr).not.toMatch(/\n\s+at /);
       expect(result.stdout).toBe('');
     });

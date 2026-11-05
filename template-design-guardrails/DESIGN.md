@@ -266,7 +266,7 @@ Template version: `0.1.0-alpha.5`
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 
-The YAML front matter above names the kit's design tokens (`colors`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`), each as the `var(--name)` of a custom property the kit theme declares, and the kit components that use them, written as `{group.token}` references. It holds names only: the values live in the installed kit theme and in the product theme, and one `var()` covers both light and dark. Its `version` is the kit version the names were taken from. After a kit upgrade, run `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs` from the project root and add or drop the names it reports. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
+The YAML front matter above names the kit's design tokens (`colors`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`), each as the `var(--name)` of a custom property the kit theme declares, and the kit components that use them, written as references such as `{colors.primary}`. It holds names only: the values live in the installed kit theme and in the product theme, and one `var()` covers both light and dark. Its `version` is the kit version the names were taken from. After a kit upgrade, run `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs` from the project root and add or drop the names it reports. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
 
 ## The design skill
 

@@ -47,12 +47,21 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 ```
 
 It reads the custom property names the installed kit theme declares (or the
-file `--theme <path>` names) and reports, one line each: a `var()` naming a
-property the theme does not declare, a `{group.key}` reference with no map
-key, a token value that is not exactly one `var(--name)`, and a kit property
-the front matter does not name. Exit 0 is clean, 1 means findings, 2 means a
-usage or input error such as a missing file, malformed front matter or a kit
-it cannot resolve. It never reads values.
+file `--theme <path>` names), as `--name:` declarations or `@property --name`
+registrations, and reports, one line each:
+
+- a token value that is not exactly one `var(--name)`;
+- a `var()` in a token map or in a `components` value naming a property the
+  theme does not declare;
+- a `{group.key}` reference in `components` or in the body (outside fenced
+  code, with its line number) with no such map key;
+- a kit property the token maps do not name.
+
+Exit 0 is clean, 1 means findings, 2 means a usage or input error: a missing
+file or a directory, front matter missing, unclosed or outside the supported
+YAML subset, a top-level scalar other than `name`, `version` and
+`description`, a reserved key (`__proto__`, `constructor`, `prototype`), or a
+kit it cannot resolve. It never reads values.
 
 After a kit upgrade, run it, add or drop the names it reports, and bump
 `version` to the new kit version.
