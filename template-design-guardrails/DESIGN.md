@@ -1,7 +1,7 @@
 ---
 name: "FrontX"
 version: "0.4.1"
-description: "Generated from @gears-frontx/ui-kit@0.4.1 theme.css by .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/design-md.mjs. Do not edit by hand: run generate after a kit upgrade or theme change."
+description: "Generated once from @gears-frontx/ui-kit@0.4.1 theme.css. Until a regeneration tool ships, update it by hand against the installed theme.css after a kit upgrade or theme change."
 colors:
   background: "#f1f5f9"
   foreground: "#0f172a"
@@ -335,7 +335,7 @@ Template version: `0.1.0-alpha.5`
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 
-The YAML front matter above is the kit's design tokens (light `colors`, dark `colors-dark`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`) and the kit components that use them, written as `{group.token}` references. It is generated from the installed kit's `theme.css`; never edit it by hand. Its `version` is the kit version it was generated from. How to regenerate and check it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
+The YAML front matter above is the kit's design tokens (light `colors`, dark `colors-dark`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`) and the kit components that use them, written as `{group.token}` references. It was generated once from `@gears-frontx/ui-kit` 0.4.1 `theme.css`, and its `version` is that kit version. A regeneration tool comes in a later step; until then a kit upgrade means updating the front matter by hand against the installed `theme.css` and the kit docs. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
 
 ## Before generating a screen
 
@@ -407,16 +407,15 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 
 ## Iteration Guide
 
-- Change the look through the kit or a theme (`create-theme`), never through this file's front matter. After a kit upgrade or a theme change, regenerate the front matter and commit it.
-- From the project root: `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/design-md.mjs generate` regenerates the front matter and keeps this body; `check` fails when the front matter has drifted from the installed kit; `lint` reports broken `{refs}`, tokens defined for one theme only, and text and fill pairs below 4.5:1.
+- Change the look through the kit or a theme (`create-theme`), never through this file's front matter. After a kit upgrade or a theme change, update the front matter by hand against the installed `theme.css` and the kit docs, review it as the frontx-design skill's `references/design-md.md` describes, and commit it.
 - Change one screen or component at a time and verify it rendered before the next.
 - Product-specific design decisions go into the product's own documents, linked from here, not into this template-owned file.
 
 ## Known Gaps
 
-- `lint` reports three kit badge pairs below 4.5:1 in the light theme: `{colors.success}` on `{colors.success-soft}`, `{colors.warning}` on `{colors.warning-soft}` and `{colors.danger}` on `{colors.danger-soft}`. The kit keeps these drawn values on purpose and routes contrast to its designer; do not rely on badge colour alone, and raise the pairs with the kit owner.
+- Three kit badge pairs are below 4.5:1 in the light theme: `{colors.success}` on `{colors.success-soft}`, `{colors.warning}` on `{colors.warning-soft}` and `{colors.danger}` on `{colors.danger-soft}`. The kit keeps these drawn values on purpose and routes contrast to its designer; do not rely on badge colour alone, and raise the pairs with the kit owner.
 - The kit has no generic layout grid or stack component; page layout is composed with CSS Modules on `--space-*` tokens.
 - Only the kit's `Table` has a density axis; other components have one density.
 - Kit `0.4.1` has no KPI type role; a KPI value takes the display or heading roles (APP-002).
 - The `components` map covers the kit components whose colours and sizes a screen most often pairs, not every kit component or state; the installed kit documentation stays the reference for the rest.
-- `design-md.mjs` reads only the kit's own `theme.css` shape and value grammar and stops with exit 2 on anything else: a value outside the grammar (`lab()`, `lch()`, `oklch()`, `light-dark()`, named colours, an empty value, `var()` with a fallback or with spaces inside, `calc()` with multiplication, named font weights, a quoted font name holding `var(`), percentage opacity, `!important` on a declaration beside the tokens, any construct outside the kit's file shape (another rule such as `html` or `:root[data-theme='dark']`, with or without tokens; any other at-rule such as `@property`, `@import`, `@font-face`, other `@media`, `@supports` or `@layer`; nesting; text outside a block; spaces or another case inside an attribute selector), CSS escapes (a backslash anywhere), blocks out of the kit's order, a plain property beside the tokens other than the block's own `color-scheme` (so no `font-size` or `font`), anything in `body, [data-theme]` but `background-color`, `color` and `font-family` as one `var()`, two tokens on one path, and a token name that maps to a `__proto__`, `prototype` or `constructor` path. A themed copy of the kit must keep that shape; the full list is in the frontx-design skill's `references/design-md.md`.
+- No tool regenerates the front matter or checks it against the installed kit yet; both come in a later step. Until then the front matter matches kit `0.4.1` only, and a kit upgrade or theme change means updating it by hand against the installed `theme.css` and the kit docs.
