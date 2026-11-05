@@ -27,7 +27,8 @@
  * another kind, @supports, @layer, @container, nesting) is exit 2.
  * Known gaps, also exit 2 rather than converted: var() with a fallback or with
  * spaces inside, calc() with multiplication, named font weights, percentage
- * opacity (full list in references/design-md.md).
+ * opacity, !important on a declaration in a token block (full list in
+ * references/design-md.md).
  * var() chains are resolved per theme before a token is classified or
  * converted, and the script fails closed: a value it cannot resolve, classify
  * or convert is a usage error, never a written guess.
@@ -146,6 +147,23 @@ function squeeze(text) {
   return out;
 }
 
+/** The text with every quoted string (quotes included) removed. */
+function unquoted(text) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (isQuote(c)) quote = c;
+    else out += c;
+  }
+  return out;
+}
+
+const IMPORTANT_RE = /!\s*important\b/i;
+
 /** `{ name, value }` of a declaration (the name contains no quote, so the first colon ends it); null when the text is no declaration. */
 function parseDecl(text) {
   const colon = text.indexOf(':');
@@ -192,6 +210,9 @@ function blockTokens(form, inner) {
     }
     const decl = parseDecl(item.decl);
     if (!decl) throw new UsageError(`theme.css ${form} holds "${squeeze(item.decl)}", which is not a declaration; fix: correct the CSS`);
+    if (IMPORTANT_RE.test(unquoted(decl.value))) {
+      throw new UsageError(`${decl.name.startsWith('--') ? 'token' : 'property'} ${decl.name} in ${form} carries !important; fix: remove !important; the kit does not use it`);
+    }
     if (!decl.name.startsWith('--')) {
       if (decl.name === 'color-scheme') continue;
       throw new UsageError(

@@ -171,6 +171,12 @@ describe('generate', () => {
       expect(frontMatter().fonts).toEqual({ sans: `'Inter;  Display', "A  /* x */ B", sans-serif`, mono: '"Mono}{"' });
     });
 
+    it('accepts "!important" inside a quoted font-family', () => {
+      const extra = `:root { --font-sans: "Brand !important", 'X ! IMPORTANT', sans-serif; }`;
+      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      expect(frontMatter().fonts.sans).toBe(`"Brand !important", 'X ! IMPORTANT', sans-serif`);
+    });
+
     const rejected = {
       'another selector': ['.card { --primary: #ff0000; }', /theme\.css rule "\.card" declares --primary; .*fix:/],
       'an html block': ['html { --primary: #ff0000; }', /theme\.css rule "html" declares --primary; .*fix:/],
@@ -185,6 +191,9 @@ describe('generate', () => {
       'font-size in :root': [':root { font-size: 20px; }', /theme\.css rule ":root" sets font-size; .*rem values are converted at 16px.*fix:/],
       'a named colour': [':root { --primary: white; }', /token --primary in rule ":root" is the named colour white; fix: use hex, rgb\(\) or hsl\(\)/],
       'transparent': ["[data-theme='dark'] { --card: transparent; }", /token --card .* is the named colour transparent; fix: use hex, rgb\(\) or hsl\(\)/],
+      '!important on a colour': [':root { --primary: #ff0000 !important; }', /token --primary in rule ":root" carries !important; fix: remove !important; the kit does not use it/],
+      '!IMPORTANT with spaces on a ref': ["[data-theme='dark'] { --primary: var(--primary-foreground) ! IMPORTANT; }", /token --primary in rule "\[data-theme='dark'\]" carries !important; fix: remove !important/],
+      '!important on a length': [':root { --space-2: 1rem!Important; }', /token --space-2 in rule ":root" carries !important; fix: remove !important/],
       'two tokens on one output path': [':root { --radius-base: 1rem; }', /tokens --radius and --radius-base are both written to rounded\.base; fix:/],
       'a fallback block that differs from dark': [
         "@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #000000; } }",

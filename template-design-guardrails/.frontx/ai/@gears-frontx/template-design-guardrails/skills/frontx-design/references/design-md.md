@@ -119,6 +119,8 @@ converted; extend the script when the kit starts using one:
   inside `calc()`;
 - named font weights (`bold`) and percentage opacity (`50%`);
 - named colours;
+- `!important` on any declaration in a token block (any case or spacing,
+  outside quotes; the kit does not use it);
 - custom properties in any selector other than the three above (`html`,
   `:root[data-theme='dark']`, a list such as `[data-theme='dark'], .dark`),
   in `@media` of another kind, `@supports`, `@layer`, `@container` or a
