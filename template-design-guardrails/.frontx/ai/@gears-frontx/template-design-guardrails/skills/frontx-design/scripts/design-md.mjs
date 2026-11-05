@@ -13,22 +13,33 @@
  * Contract: the script reads only the shape of the kit's own theme.css and
  * does not emulate the CSS cascade (see parseTheme):
  *   - custom properties come from `:root`, `:root, [data-theme='light']` and
- *     `[data-theme='dark']` blocks (each may repeat, source order wins);
- *   - `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }`
- *     is not read for output, but each token it declares must equal its dark value;
+ *     `[data-theme='dark']` blocks, in that order: all :root blocks, then the
+ *     light blocks, then the dark blocks, then the optional
+ *     `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }`
+ *     fallback; each may repeat, a block out of this order is exit 2;
+ *   - light = :root + light blocks, dark = :root + light + dark blocks (the light
+ *     block lists :root, so the browser applies it to the dark root too);
+ *   - the fallback is not read for output, but each token it declares must
+ *     equal its dark value;
  *   - blocks with no custom property (such as `body, [data-theme]`) are ignored;
- *   - only color-scheme may sit beside the tokens, so nothing changes the root
- *     font size and rem values are converted at 16px;
- *   - a token value must not be a bare named colour (white, transparent,
- *     currentcolor): use hex, rgb() or hsl();
- *   - two tokens must not map to one output path (--radius, --radius-base).
+ *   - only color-scheme may sit beside the tokens, and font-size or font
+ *     anywhere in the file is exit 2, so rem values are converted at 16px;
+ *   - every token value matches the kit's value grammar (see valueForm): hex,
+ *     a number with px, rem, em, %, ms, s or deg, var(--x), calc(a + b) or
+ *     calc(a - b) of those, color-mix(in oklab, <hex or var> <p>%, transparent),
+ *     rgb() or hsl(); by name also a font list (font-*), a shadow of four
+ *     lengths and a colour (*shadow*) and cubic-bezier() (ease-*);
+ *   - a colour token resolves to hex, rgb(), hsl() or such a color-mix();
+ *   - two tokens must not map to one output path (--radius, --radius-base),
+ *     and no path segment may be __proto__, prototype or constructor.
  * Anything else that declares a custom property (another selector, html,
  * :root[data-theme=dark], a selector list that only partly matches, @media of
  * another kind, @supports, @layer, @container, nesting) is exit 2.
- * Known gaps, also exit 2 rather than converted: var() with a fallback or with
- * spaces inside, calc() with multiplication, named font weights, percentage
- * opacity, !important on a declaration in a token block (full list in
- * references/design-md.md).
+ * Known gaps, also exit 2 rather than converted: any value outside the
+ * grammar (lab(), lch(), oklch(), light-dark(), named colours, an empty value,
+ * var() with a fallback or spaces inside, calc() with * or /, named font
+ * weights, percentage opacity, !important, a quoted font name holding var(),
+ * an unquoted family name with a space); full list in references/design-md.md.
  * var() chains are resolved per theme before a token is classified or
  * converted, and the script fails closed: a value it cannot resolve, classify
  * or convert is a usage error, never a written guess.
@@ -162,7 +173,86 @@ function unquoted(text) {
   return out;
 }
 
+/** The text with `fn` applied to each run outside quoted strings; quoted strings are kept exactly. */
+function outsideQuotes(text, fn) {
+  let out = '';
+  let from = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) {
+        quote = null;
+        out += text.slice(from, i + 1);
+        from = i + 1;
+      }
+    } else if (isQuote(c)) {
+      out += fn(text.slice(from, i));
+      from = i;
+      quote = c;
+    }
+  }
+  return out + (quote ? text.slice(from) : fn(text.slice(from)));
+}
+
+/** The items of a comma-separated list; commas inside quotes do not split. */
+function commaItems(text) {
+  const items = [];
+  let from = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+    } else if (isQuote(c)) quote = c;
+    else if (c === ',') {
+      items.push(text.slice(from, i).trim());
+      from = i + 1;
+    }
+  }
+  items.push(text.slice(from).trim());
+  return items;
+}
+
 const IMPORTANT_RE = /!\s*important\b/i;
+
+// The kit's value grammar: every custom property value in ui-kit 0.4.x has one of these shapes.
+const G_PLAIN = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)`;
+const G_NUM = String.raw`${G_PLAIN}(?:px|rem|em|%|ms|s|deg)?`;
+const G_HEX = '#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})';
+const G_REF = String.raw`var\(--[\w-]+\)`;
+const G_MIX = String.raw`color-mix\(in oklab, ?(?:${G_HEX}|${G_REF}) (?:\d+\.?\d*|\.\d+)%, ?transparent\)`;
+const G_OPERAND = `(?:${G_REF}|${G_NUM})`;
+const whole = (re) => new RegExp(`^(?:${re})$`);
+const VALUE_FORMS = [
+  ['hex', whole(G_HEX)],
+  ['number', whole(G_NUM)],
+  ['ref', whole(G_REF)],
+  ['calc', whole(String.raw`calc\( ?${G_OPERAND} [+-] ${G_OPERAND} ?\)`)],
+  ['mix', whole(G_MIX)],
+];
+const SHADOW_FORM = whole(`(?:${G_NUM} ){4}(?:${G_REF}|${G_MIX})`);
+const SHADOW_FINAL_RE = new RegExp(`^(?:${G_NUM} ){4}(.+)$`);
+const EASE_FORM =whole(String.raw`cubic-bezier\(${G_PLAIN}, ?${G_PLAIN}, ?${G_PLAIN}, ?${G_PLAIN}\)`);
+const FAMILY_FORM = /^(?:"[^"\\]*"|'[^'\\]*'|-?[A-Za-z][A-Za-z0-9-]*)$/;
+
+/**
+ * The grammar form a token value has, or null when it has none. Font lists,
+ * shadows and cubic-bezier() are accepted only for tokens named for them.
+ */
+function valueForm(n, v) {
+  for (const [form, re] of VALUE_FORMS) if (re.test(v)) return form;
+  if (/^(rgba?|hsla?)\(/.test(v) && parseColour(v)) return 'rgb';
+  if (n.startsWith('font-') && commaItems(v).every((item) => FAMILY_FORM.test(item) && !/var\(/i.test(item))) return 'fonts';
+  if (/shadow/.test(n) && SHADOW_FORM.test(v)) return 'shadow';
+  if (n.startsWith('ease-') && EASE_FORM.test(v)) return 'ease';
+  return null;
+}
+
+const GRAMMAR =
+  'hex; a number with px, rem, em, %, ms, s or deg; var(--name); calc(a + b) or calc(a - b) of those; color-mix(in oklab, <hex or var> <p>%, transparent); rgb() or hsl(); by token name a font list, a shadow of four lengths and a colour, or cubic-bezier()';
 
 /** `{ name, value }` of a declaration (the name contains no quote, so the first colon ends it); null when the text is no declaration. */
 function parseDecl(text) {
@@ -219,11 +309,16 @@ function blockTokens(form, inner) {
         `theme.css ${form} sets ${decl.name}; design-md accepts only custom properties and color-scheme there (rem values are converted at 16px); fix: move ${decl.name} out of the token blocks or report it to the kit owner`,
       );
     }
-    if (!decl.value) continue;
     if (NAMED_COLOURS.has(decl.value.toLowerCase())) {
       throw new UsageError(`token ${decl.name} in ${form} is the named colour ${decl.value}; fix: use hex, rgb() or hsl()`);
     }
-    tokens.push([decl.name.slice(2), decl.value]);
+    const n = decl.name.slice(2);
+    if (!valueForm(n, decl.value)) {
+      throw new UsageError(
+        `token ${decl.name} in ${form} has the value "${decl.value}"; fix: the value is outside the kit's value grammar (${GRAMMAR}); use one of those forms or report the need to the kit owner`,
+      );
+    }
+    tokens.push([n, decl.value]);
   }
   return tokens;
 }
@@ -248,13 +343,44 @@ const NAMED_COLOURS = new Set(
 
 const THEMES = ['light', 'dark'];
 /** The allowed token blocks by normalised selector list (whitespace and quotes removed). */
-const BLOCK_KINDS = { ':root': 'root', ':root,[data-theme=light]': 'light', '[data-theme=dark]': 'dark' };
+const BLOCK_KINDS = new Map([
+  [':root', 'root'],
+  [':root,[data-theme=light]', 'light'],
+  ['[data-theme=dark]', 'dark'],
+]);
+const BLOCK_RANK = new Map([
+  ['root', [0, ':root']],
+  ['light', [1, ":root, [data-theme='light']"]],
+  ['dark', [2, "[data-theme='dark']"]],
+  ['fallback', [3, '@media (prefers-color-scheme: dark)']],
+]);
 const FALLBACK_AT = '@media(prefers-color-scheme:dark)';
 const FALLBACK_SELECTOR = ':root:not([data-theme=light])';
 const selectorKey = (s) => s.replace(/\s+|["']/g, '');
 
 /**
- * Read the custom properties of the kit's theme.css shape and nothing else:
+ * font-size and the font shorthand change the rem base, so they are a usage
+ * error in any rule or at-rule of the file, with or without tokens beside them.
+ */
+function rejectFontSize(items, within) {
+  for (const item of items) {
+    if (item.inner !== undefined) {
+      const prelude = squeeze(item.prelude);
+      rejectFontSize(splitBlock(item.inner), within ? `rule "${prelude}" in ${within}` : `${prelude.startsWith('@') ? 'at-rule' : 'rule'} "${prelude}"`);
+      continue;
+    }
+    const name = parseDecl(item.decl)?.name.toLowerCase();
+    if (name === 'font-size' || name === 'font') {
+      throw new UsageError(
+        `theme.css ${within ?? 'top level'} sets ${name}; it changes the rem base, and rem values are converted at 16px; fix: remove ${name} from theme.css or report the need to the kit owner`,
+      );
+    }
+  }
+}
+
+/**
+ * Read the custom properties of the kit's theme.css shape and nothing else,
+ * with its blocks in this order:
  *
  *   :root { ... }                                  invariant tokens, both themes
  *   :root, [data-theme='light'] { ... }            light tokens
@@ -262,30 +388,44 @@ const selectorKey = (s) => s.replace(/\s+|["']/g, '');
  *   @media (prefers-color-scheme: dark) {
  *     :root:not([data-theme='light']) { ... } }    fallback: must equal dark
  *
- * Each block may repeat; declarations apply in source order, the later wins
- * (the three selectors share one specificity). Light reads the :root and light
- * blocks, dark the :root and dark blocks. The browser also applies the light
- * block (it lists :root) to dark where no dark block overrides it; the kit's
- * dark block repeats every light token, so here a light-only token is not
- * inherited: it is a one-theme colour (lint: orphaned-token) or, for any
- * other token, a usage error. A block that
- * declares no custom property (such as `body, [data-theme]`) is ignored;
- * any other selector, at-rule or nesting that declares one is a usage error.
+ * Each block may repeat; a block that comes before one of a kind listed above
+ * it is a usage error. In this order the browser result is exact: light is
+ * the :root and light blocks, dark the :root, light and dark blocks (the light
+ * block lists :root, so it applies to the dark root too, and the dark blocks
+ * come later and win). A token declared only in the light block is inherited
+ * by dark. A block that declares no custom property (such as
+ * `body, [data-theme]`) is ignored; any other selector, at-rule or nesting
+ * that declares one is a usage error.
  *
  * Returns { light, dark, order }: a Map of name to value per theme, and every
  * name in output order (first declared by a themed block, then the rest, each
  * in source order; this keeps the kit's palette order stable).
  */
 export function parseTheme(css) {
+  const items = splitBlock(stripComments(css));
+  rejectFontSize(items, null);
   const blocks = []; // [kind, tokens] in source order
   const fallback = new Map();
-  for (const item of splitBlock(stripComments(css))) {
+  let last = 'root';
+  const enter = (kind, form) => {
+    const [rank] = BLOCK_RANK.get(kind);
+    const [lastRank, lastName] = BLOCK_RANK.get(last);
+    if (rank < lastRank) {
+      throw new UsageError(
+        `theme.css ${form} comes after a ${lastName} block; design-md reads the kit's block order: :root, then ":root, [data-theme='light']", then "[data-theme='dark']", then the "@media (prefers-color-scheme: dark)" fallback; fix: move the block to its place in that order`,
+      );
+    }
+    last = kind;
+  };
+  for (const item of items) {
     if (item.inner === undefined) continue; // a statement such as @import or @charset
     const prelude = squeeze(item.prelude);
     if (!prelude.startsWith('@')) {
-      const kind = BLOCK_KINDS[selectorKey(prelude)];
-      if (kind) blocks.push([kind, blockTokens(`rule "${prelude}"`, item.inner)]);
-      else rejectTokens(`rule "${prelude}"`, item.inner);
+      const kind = BLOCK_KINDS.get(selectorKey(prelude));
+      if (kind) {
+        blocks.push([kind, blockTokens(`rule "${prelude}"`, item.inner)]);
+        enter(kind, `rule "${prelude}"`);
+      } else rejectTokens(`rule "${prelude}"`, item.inner);
     } else if (selectorKey(prelude) !== FALLBACK_AT) rejectTokens(`at-rule "${prelude}"`, item.inner);
     else {
       for (const child of splitBlock(item.inner)) {
@@ -293,6 +433,7 @@ export function parseTheme(css) {
         else if (selectorKey(child.prelude) !== FALLBACK_SELECTOR) rejectTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner);
         else for (const [n, v] of blockTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner)) fallback.set(n, v);
       }
+      enter('fallback', `at-rule "${prelude}"`);
     }
   }
 
@@ -304,7 +445,7 @@ export function parseTheme(css) {
       if (!firstAt.has(n)) firstAt.set(n, firstAt.size);
       if (kind !== 'root' && !themedAt.has(n)) themedAt.set(n, themedAt.size);
       if (kind !== 'dark') themes.light.set(n, v);
-      if (kind !== 'light') themes.dark.set(n, v);
+      themes.dark.set(n, v); // blocks are in kit order, so dark blocks come last and win
     }
   }
   for (const t of THEMES) if (!blocks.some(([kind]) => kind === t)) throw new UsageError(`theme.css has no [data-theme='${t}'] block`);
@@ -337,19 +478,30 @@ function checkFallback(fallback, themes) {
   }
 }
 
-const isColor = (v) => /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mix|color)\(|transparent$|currentcolor$)/i.test(v);
+/** A resolved value that looks like a colour; isFinalColour then decides whether it is one design-md accepts. */
+const isColor = (v) => /^(#|(rgba?|hsla?|color-mix)\()/i.test(v);
+const MIX_FINAL_RE = /^color-mix\(in oklab, ?(.+) (?:\d+\.?\d*|\.\d+)%, ?transparent\)$/;
+
+/** A resolved colour value: hex, rgb() or hsl(), or color-mix(in oklab, <one of those> <p>%, transparent). */
+function isFinalColour(v, mix = true) {
+  if (/^(#|rgba?\(|hsla?\()/.test(v)) return parseColour(v) !== null;
+  const m = mix ? v.match(MIX_FINAL_RE) : null;
+  return Boolean(m) && isFinalColour(m[1], false);
+}
+
 const fmtPx = (n) => `${Number(n.toFixed(4))}px`;
-const remToPx = (v) => v.replace(/(-?\d*\.?\d+)rem\b/g, (_, n) => fmtPx(Number(n) * 16));
+const remToPx = (v) => outsideQuotes(v, (s) => s.replace(/(-?\d*\.?\d+)rem\b/g, (_, n) => fmtPx(Number(n) * 16)));
 
 const VAR_RE = /var\(--([\w-]+)\)/g;
 
 /**
- * The value with every var() replaced, recursively, by the referenced token's
- * value in one theme. A missing token, a cycle or a var() form this script does
- * not read (such as a fallback) is a usage error: nothing unresolved is written.
+ * The value with every var() outside quoted strings replaced, recursively, by
+ * the referenced token's value in one theme. A missing token, a cycle or a
+ * var() form this script does not read (such as a fallback) is a usage error:
+ * nothing unresolved is written.
  */
 function resolveVars(chain, value, tokens, theme) {
-  const v = value.replace(VAR_RE, (_, ref) => {
+  const v = outsideQuotes(value, (s) => s.replace(VAR_RE, (_, ref) => {
     if (chain.includes(ref)) {
       throw new UsageError(`token --${chain[0]} has a var() cycle in the ${theme} theme: ${[...chain, ref].map((t) => `--${t}`).join(' -> ')}; fix: point one of them at a literal value`);
     }
@@ -357,8 +509,8 @@ function resolveVars(chain, value, tokens, theme) {
       throw new UsageError(`token --${chain.at(-1)} refers to var(--${ref}), which the ${theme} theme does not declare; fix: declare --${ref} or point the token at an existing one`);
     }
     return resolveVars([...chain, ref], tokens.get(ref), tokens, theme);
-  });
-  if (v.includes('var(')) {
+  }));
+  if (unquoted(v).includes('var(')) {
     throw new UsageError(`token --${chain.at(-1)} has the value ${value}, a var() form design-md cannot resolve; fix: use var(--name) with no fallback`);
   }
   return v;
@@ -423,6 +575,15 @@ const COMPONENTS = [
   ['sheet-overlay', { backgroundColor: 'colors.overlay-panel', blur: 'elevation.overlay-panel-blur' }],
 ];
 
+/** Token names the components read as colours: such a token must resolve to a colour. */
+const COLOUR_NAMES = new Set(
+  COMPONENTS.flatMap(([, props]) => Object.values(props))
+    .filter((p) => p.startsWith('colors.'))
+    .map((p) => p.slice('colors.'.length)),
+);
+const RESERVED_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
+const dict = () => Object.create(null);
+
 /**
  * [group, key] a token is written under, from its name; only a name no rule
  * knows falls back to its values, which are already resolved through var().
@@ -436,7 +597,7 @@ function classify(n, values) {
   if (n.startsWith('font-')) return ['fonts', n.slice('font-'.length)];
   if (/^(duration|ease)-/.test(n)) return ['motion', n];
   if (/^(control-|icon-size-|border-width|ring-|opacity-)/.test(n)) return ['controls', n];
-  if (values.some(isColor)) return ['colors', n];
+  if (COLOUR_NAMES.has(n) || values.some(isColor)) return ['colors', n];
   if (/shadow|blur/.test(n)) return ['elevation', n];
   return ['other', n];
 }
@@ -447,7 +608,8 @@ function classify(n, values) {
  * token has one slot, so a value that differs between the themes is a usage error.
  */
 export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
-  const groups = { colors: {}, 'colors-dark': {}, typography: {}, fonts: {}, rounded: {}, spacing: {}, motion: {}, controls: {}, elevation: {}, other: {} };
+  const groups = dict();
+  for (const g of ['colors', 'colors-dark', 'typography', 'fonts', 'rounded', 'spacing', 'motion', 'controls', 'elevation', 'other']) groups[g] = dict();
   const where = new Map(); // CSS token name -> [group, key]
   const pathOf = new Map(); // CSS token name -> the dotted path it is written under; every {ref} uses it
   const fontOf = (role) => (role === 'mono' ? 'mono' : /^(display|heading)/.test(role) ? 'heading' : 'sans');
@@ -461,6 +623,10 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
   for (const n of order) {
     const [g, key] = classify(n, THEMES.filter((t) => final[t].has(n)).map((t) => final[t].get(n)));
     const at = `${g}.${key}`;
+    const reserved = key.split('.').find((s) => RESERVED_SEGMENTS.has(s));
+    if (reserved) {
+      throw new UsageError(`token --${n} would be written to ${at}, and ${reserved} is a reserved name; fix: rename the token`);
+    }
     if (tokenAt.has(at)) {
       throw new UsageError(`tokens --${tokenAt.get(at)} and --${n} are both written to ${at}; fix: keep one of them, or rename one so it maps to its own path`);
     }
@@ -468,10 +634,26 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
     where.set(n, [g, key]);
     pathOf.set(n, at);
   }
-  const ref = (v) => v.replace(VAR_RE, (_, n) => `{${pathOf.get(n)}}`); // every name exists: resolveVars checked it
+  // Every name exists (resolveVars checked it); quoted text is never rewritten.
+  const ref = (v) => outsideQuotes(v, (s) => s.replace(VAR_RE, (_, n) => `{${pathOf.get(n)}}`));
 
   for (const n of order) {
     const [g, key] = where.get(n);
+    for (const t of THEMES) {
+      const v = final[t].get(n);
+      if (v === undefined) continue;
+      let bad = false;
+      if (g === 'colors') bad = !isFinalColour(v);
+      else if (g === 'elevation' && /shadow/.test(n) && v.includes(' ')) {
+        const m = v.match(SHADOW_FINAL_RE);
+        bad = !m || !isFinalColour(m[1]);
+      }
+      if (bad) {
+        throw new UsageError(
+          `token --${n} is a ${g === 'colors' ? 'colour' : 'shadow'} token but resolves to ${v} in the ${t} theme; fix: give it ${g === 'colors' ? 'a hex, rgb() or hsl() colour, color-mix(in oklab, <colour> <p>%, transparent)' : 'four lengths and a colour'} or a var() to one`,
+        );
+      }
+    }
     if (g === 'colors') {
       if (light.has(n)) groups.colors[n] = ref(light.get(n));
       if (dark.has(n)) groups['colors-dark'][n] = ref(dark.get(n));
@@ -505,13 +687,14 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
     if (lookup(groups, spec.fontFamily.slice(1, -1)) === undefined) spec.fontFamily = '{fonts.sans}';
   }
 
-  const fm = { name };
+  const fm = dict();
+  fm.name = name;
   if (kitVersion) fm.version = kitVersion;
   fm.description = `Generated from @gears-frontx/ui-kit${kitVersion ? `@${kitVersion}` : ''} theme.css by ${SCRIPT}. Do not edit by hand: run generate after a kit upgrade or theme change.`;
   for (const [g, map] of Object.entries(groups)) if (Object.keys(map).length) fm[g] = map;
 
   const skipped = [];
-  const components = {};
+  const components = dict();
   for (const [id, props] of COMPONENTS) {
     const missing = Object.values(props).filter((p) => lookup(fm, p) === undefined);
     if (missing.length) {
@@ -527,7 +710,7 @@ export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
 function lookup(tree, dotted) {
   let node = tree;
   for (const key of dotted.split('.')) {
-    if (node === null || typeof node !== 'object' || !(key in node)) return undefined;
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return undefined;
     node = node[key];
   }
   return node;
@@ -551,7 +734,7 @@ export function toYaml(obj, indent = 0) {
 
 /** Parse the YAML subset toYaml writes (nested maps, scalar values); hand edits in that shape parse too. */
 export function parseYaml(text) {
-  const root = {};
+  const root = dict();
   const stack = [{ indent: -1, node: root }];
   text.split(/\r?\n/).forEach((raw, i) => {
     if (!raw.trim() || raw.trim().startsWith('#')) return;
@@ -571,7 +754,7 @@ export function parseYaml(text) {
     const parent = stack.at(-1).node;
     const value = m[3]?.trim();
     if (value === undefined || value === '') {
-      parent[key] = {};
+      parent[key] = dict();
       stack.push({ indent, node: parent[key] });
     } else if (value.startsWith('"')) parent[key] = unquote(value);
     else if (value.startsWith("'")) {
@@ -747,8 +930,8 @@ export function lintFrontMatter(fm) {
   }
   const light = fm.colors ?? {};
   const dark = fm['colors-dark'] ?? {};
-  for (const n of Object.keys(light)) if (!(n in dark)) findings.push(`orphaned-token colors.${n}: no dark value in colors-dark; fix: regenerate from the kit or declare the dark value in the theme`);
-  for (const n of Object.keys(dark)) if (!(n in light)) findings.push(`orphaned-token colors-dark.${n}: no light value in colors; fix: regenerate from the kit or declare the light value in the theme`);
+  for (const n of Object.keys(light)) if (!Object.hasOwn(dark, n)) findings.push(`orphaned-token colors.${n}: no dark value in colors-dark; fix: regenerate from the kit or declare the dark value in the theme`);
+  for (const n of Object.keys(dark)) if (!Object.hasOwn(light, n)) findings.push(`orphaned-token colors-dark.${n}: no light value in colors; fix: regenerate from the kit or declare the light value in the theme`);
 
   for (const [id, spec] of Object.entries(fm.components ?? {})) {
     if (!spec.backgroundColor || !spec.textColor) continue;
@@ -778,7 +961,7 @@ function parseArgs(argv) {
   const opts = { mode, design: DEFAULT_DESIGN, theme: DEFAULT_THEME, name: null, kitVersion: null };
   const flags = { '--design': 'design', '--theme': 'theme', '--name': 'name', '--kit-version': 'kitVersion' };
   for (let i = 0; i < rest.length; i += 2) {
-    const key = flags[rest[i]];
+    const key = Object.hasOwn(flags, rest[i]) ? flags[rest[i]] : undefined;
     if (!key || rest[i + 1] === undefined) throw new UsageError(`unknown or incomplete flag: ${rest[i]}`);
     opts[key] = rest[i + 1];
   }

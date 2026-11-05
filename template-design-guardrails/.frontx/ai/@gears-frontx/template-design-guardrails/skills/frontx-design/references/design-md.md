@@ -52,8 +52,10 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
   (override with `--design <path>`) and keeps the body as it is. The `name`
   already in the file is kept; `--name` sets it. It reads only the shape of
   the kit's own `theme.css` (see "Accepted theme.css shape" below); light
-  is the `:root` and light blocks, dark the `:root` and dark blocks, each in
-  source order, the later declaration winning. Every token is then placed by
+  is the `:root` and light blocks, dark the `:root`, light and dark blocks,
+  each in source order, the later declaration winning, as the browser
+  resolves them (a token declared only in the light block is inherited by
+  dark). Every token is then placed by
   its name, never by the rule it came from: a colour goes to `colors` (light) and `colors-dark`
   (dark), and any other token (radius, spacing, type, motion, controls) has
   one value, so a value that differs between the themes stops `generate` and
@@ -96,41 +98,72 @@ ships and nothing else:
 - `@media (prefers-color-scheme: dark)` holding only
   `:root:not([data-theme='light'])` blocks: not used for output, but every
   token it declares must resolve to its dark value;
+- block order: all `:root` blocks, then the light blocks, then the dark
+  blocks, then the optional fallback; a block out of this order is exit 2
+  naming it. In this order the browser result is exact: dark is `:root` +
+  light + dark, so the later dark blocks win;
 - blocks that declare no custom property (such as `body, [data-theme]`) are
   ignored, whatever their selector;
-- beside the tokens only `color-scheme`; no other property, so nothing
-  changes the root font size and `rem` values are converted at 16 px;
-- values: no bare named colour (`white`, `transparent`, `currentcolor`);
-  use hex, `rgb()` or `hsl()`;
-- each token maps to its own output path.
+- beside the tokens only `color-scheme`, and `font-size` or the `font`
+  shorthand nowhere in the file (any rule or at-rule), so nothing changes the
+  root font size and `rem` values are converted at 16 px;
+- each token maps to its own output path, and no path segment is
+  `__proto__`, `prototype` or `constructor`.
 
-Anything else that declares a custom property is exit 2 naming the selector
-or at-rule and the first token. Declarations split on `;` outside quotes and
-parentheses; quoted text is kept exactly, and comments are removed only
-outside quotes.
+Values follow the kit's value grammar. After comments are stripped and
+whitespace outside quotes is collapsed, a token value is exactly one of:
+
+- hex: `#` and 3, 4, 6 or 8 hex digits;
+- a number with an optional unit from `px`, `rem`, `em`, `%`, `ms`, `s`,
+  `deg`;
+- `var(--name)`, no fallback and no inner spaces;
+- `calc(A + B)` or `calc(A - B)`, each side a `var(--name)` or a number;
+- `color-mix(in oklab, C P, transparent)`, C a hex or `var(--name)`, P a
+  percentage;
+- `rgb()`, `rgba()`, `hsl()`, `hsla()`;
+- for `--font-*` tokens: a comma list of quoted names (no `var(` inside) or
+  bare family identifiers such as `system-ui` or `-apple-system`;
+- for tokens named `*shadow*`: four lengths and a `var(--name)` or a
+  `color-mix()` as above;
+- for `--ease-*` tokens: `cubic-bezier()` of four plain numbers.
+
+A colour token (by value, or by name when a component reads it as a colour)
+must resolve to hex, `rgb()`, `hsl()` or such a `color-mix()`; a shadow's
+colour must resolve to one too. Anything else is exit 2 naming the token and
+the value. Anything else that declares a custom property is exit 2 naming the
+selector or at-rule and the first token. Declarations split on `;` outside
+quotes and parentheses; quoted text is kept exactly, comments are removed
+only outside quotes, and `var()` is resolved and rewritten only outside
+quotes.
 
 ## Known gaps
 
 These forms stop `generate` and `check` with exit 2 instead of being
 converted; extend the script when the kit starts using one:
 
-- `var()` with a fallback, and whitespace inside `var( --x )`;
-- `calc()` with multiplication or division, nested `calc()`, non-px units
-  inside `calc()`;
-- named font weights (`bold`) and percentage opacity (`50%`);
-- named colours;
+- any value outside the grammar: `lab()`, `lch()`, `oklch()`, `oklab()`,
+  `light-dark()`, `color()`, named colours, an empty value, `var()` with a
+  fallback or with spaces inside, `calc()` with `*` or `/` or more than two
+  terms, other units (`ch`, `vw`, ...), named font weights (`bold`), a quoted
+  font name holding `var(`, an unquoted family name with a space, a shadow
+  list or a shadow in another order, other easing functions;
+- nested `calc()` and non-px units inside `calc()` after `var()` resolution;
+- percentage opacity (`50%`);
 - `!important` on any declaration in a token block (any case or spacing,
   outside quotes; the kit does not use it);
 - custom properties in any selector other than the three above (`html`,
   `:root[data-theme='dark']`, a list such as `[data-theme='dark'], .dark`),
   in `@media` of another kind, `@supports`, `@layer`, `@container` or a
   nested rule;
-- a plain property other than `color-scheme` in a token block;
-- two tokens that map to one path (`--radius` and `--radius-base`).
+- token blocks out of the kit's order (a `:root` or light block after a dark
+  block, a dark block after the fallback);
+- a plain property other than `color-scheme` in a token block, and
+  `font-size` or `font` anywhere in the file;
+- two tokens that map to one path (`--radius` and `--radius-base`), and a
+  token name that maps to a `__proto__`, `prototype` or `constructor` path
+  segment.
 
-Plain properties outside the token blocks are not read, so a root font size
-set elsewhere (for example `html { font-size: 20px }`) is not seen by the
-16 px `rem` conversion.
+Other plain properties outside the token blocks are not read.
 
 ## Change it with care
 

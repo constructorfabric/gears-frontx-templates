@@ -32,6 +32,21 @@ const cli = (...args) => {
 };
 const frontMatter = () => parseYaml(splitDesign(readFileSync(design, 'utf8')).yaml);
 
+/**
+ * The fixture with extra blocks at their place in the kit's block order:
+ * `root` after the :root block, `light` after the light block, `dark` after the
+ * dark block (before the fallback), `end` after everything. Returns the path.
+ */
+const placed = ({ root = '', light = '', dark = '', end = '' }) => {
+  const theme = path.join(dir, 'theme.css');
+  const css = readFileSync(THEME, 'utf8')
+    .replace(":root,\n[data-theme='light'] {", `${root}\n:root,\n[data-theme='light'] {`)
+    .replace("\n[data-theme='dark'] {", `\n${light}\n[data-theme='dark'] {`)
+    .replace('@media (prefers-color-scheme: dark)', `${dark}\n@media (prefers-color-scheme: dark)`);
+  writeFileSync(theme, `${css}\n${end}\n`);
+  return theme;
+};
+
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'design-md-'));
   design = path.join(dir, 'DESIGN.md');
@@ -107,17 +122,12 @@ describe('generate', () => {
   });
 
   it('merges repeated allowed blocks in source order, the later declaration wins', () => {
-    const theme = path.join(dir, 'theme.css');
-    const fixture = readFileSync(THEME, 'utf8');
-    writeFileSync(theme, fixture);
-    cli('generate', '--design', design, '--theme', theme);
-    const extra = [
-      ':root, [data-theme="light"] { --primary: #ff0000; --extra: #00ff00; }',
-      '[data-theme="dark"] { --primary: #0000ff; --extra: #00ff00; }',
-      ':root { --space-2: 0.75rem; }',
-      '[data-theme="dark"] { --primary: #000099; }',
-    ].join('\n');
-    writeFileSync(theme, `${fixture}\n${extra}\n`);
+    cli('generate', '--design', design, '--theme', THEME);
+    const theme = placed({
+      root: ':root { --space-2: 0.75rem; }',
+      light: ':root, [data-theme="light"] { --primary: #ff0000; --extra: #00ff00; }',
+      dark: '[data-theme="dark"] { --primary: #0000ff; --extra: #00ff00; }\n[data-theme="dark"] { --primary: #000099; }',
+    });
     expect(cli('check', '--design', design, '--theme', theme)).toBe(1);
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
     const fm = frontMatter();
@@ -143,18 +153,45 @@ describe('generate', () => {
       writeFileSync(theme, `${readFileSync(THEME, 'utf8')}\n${extra}\n`);
       return theme;
     };
-    const primaries = (extra) => {
-      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
-      return [frontMatter().colors.primary, frontMatter()['colors-dark'].primary];
-    };
-
-    it('lets a later :root block win over the themed blocks in both themes', () => {
-      expect(primaries(':root { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
-    });
-
     it('accepts a fallback block that equals the dark theme', () => {
       const fallback = "@media (prefers-color-scheme: dark) {\n  :root:not([data-theme='light']) { --foreground: #ffffff; --primary: var(--primary-foreground); color-scheme: dark; }\n}";
-      expect(primaries(`${fallback}\n[data-theme='dark'] { --primary: #ffffff; }`)).toEqual(['#0065e3', '#ffffff']);
+      const theme = placed({ dark: "[data-theme='dark'] { --primary: #ffffff; }", end: fallback });
+      expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+      expect([frontMatter().colors.primary, frontMatter()['colors-dark'].primary]).toEqual(['#0065e3', '#ffffff']);
+    });
+
+    it('lets dark inherit a token declared only in the light block, as the browser does', () => {
+      const theme = placed({ light: ':root, [data-theme="light"] { --only-light: #123456; --space-6: 1.5rem; --primary: #b91c1c; }' });
+      expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+      const fm = frontMatter();
+      expect([fm.colors['only-light'], fm['colors-dark']['only-light']]).toEqual(['#123456', '#123456']);
+      expect(fm.spacing[6]).toBe('24px');
+      expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['#b91c1c', '#0065e3']); // the dark block still wins
+      expect(cli('lint', '--design', design)).toBe(0);
+    });
+
+    it('accepts every value form the kit uses', () => {
+      const root = `:root {
+        --k-hex3: #fff; --k-hex4: #ffff; --k-hex6: #ffffff; --k-hex8: #ffffffff;
+        --k-px: -1px; --k-rem: 1.5rem; --k-em: -0.04em; --k-pct: 50%; --k-ms: 120ms; --k-s: .2s; --k-deg: 45deg; --k-plain: 600;
+        --k-ref: var(--space-2);
+        --radius-sm: calc(var(--radius) - 4px); --space-gap: calc(var(--space-2) + 1px);
+        --border-width: 1px; --border-width-focus: 2px; --ring-inset: calc(var(--border-width-focus) - var(--border-width));
+        --k-mix-hex: color-mix(in oklab, #0f172a 48%, transparent); --k-mix-ref: color-mix(in oklab, var(--foreground) 12%, transparent);
+        --k-rgb: rgb(1 2 3); --k-hsl: hsla(0, 0%, 100%, 1);
+        --font-x: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif, monospace;
+        --k-shadow: 0 1px 2px 0 var(--popover-border); --k2-shadow: 0 1px 2px 0 color-mix(in oklab, #000000 10%, transparent);
+        --ease-k: cubic-bezier(0.2, 0, 0, 1);
+      }`;
+      expect(cli('generate', '--design', design, '--theme', placed({ root }))).toBe(0);
+      const fm = frontMatter();
+      expect([fm.colors['k-hex3'], fm.colors['k-hex8'], fm.colors['k-rgb'], fm['colors-dark']['k-hsl']]).toEqual(['#fff', '#ffffffff', 'rgb(1 2 3)', 'hsla(0, 0%, 100%, 1)']);
+      expect(fm.colors['k-mix-ref']).toBe('color-mix(in oklab, {colors.foreground} 12%, transparent)');
+      expect(fm.other).toMatchObject({ 'k-px': '-1px', 'k-rem': '24px', 'k-em': '-0.04em', 'k-pct': '50%', 'k-ms': '120ms', 'k-s': '.2s', 'k-deg': '45deg', 'k-ref': '{spacing.2}' });
+      expect([fm.rounded.sm, fm.spacing.gap, fm.controls['ring-inset']]).toEqual(['6px', '9px', '1px']);
+      expect(fm.fonts.x).toBe(`'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif, monospace`);
+      expect([fm.elevation['k-shadow'], fm.elevation['k2-shadow']]).toEqual(['0 1px 2px 0 {colors.popover-border}', '0 1px 2px 0 color-mix(in oklab, #000000 10%, transparent)']);
+      expect(fm.motion['ease-k']).toBe('cubic-bezier(0.2, 0, 0, 1)');
     });
 
     it('ignores a block with no custom property, whatever its selector', () => {
@@ -166,14 +203,14 @@ describe('generate', () => {
     });
 
     it('keeps a quoted value exactly: ;, comment marks and double spaces inside quotes', () => {
-      const extra = `:root { --font-sans: 'Inter;  Display',   "A  /* x */ B",\n  sans-serif /* trailing */; --font-mono: "Mono}{" ; }`;
-      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      const root = `:root { --font-sans: 'Inter;  Display',   "A  /* x */ B",\n  sans-serif /* trailing */; --font-mono: "Mono}{" ; }`;
+      expect(cli('generate', '--design', design, '--theme', placed({ root }))).toBe(0);
       expect(frontMatter().fonts).toEqual({ sans: `'Inter;  Display', "A  /* x */ B", sans-serif`, mono: '"Mono}{"' });
     });
 
     it('accepts "!important" inside a quoted font-family', () => {
-      const extra = `:root { --font-sans: "Brand !important", 'X ! IMPORTANT', sans-serif; }`;
-      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      const root = `:root { --font-sans: "Brand !important", 'X ! IMPORTANT', sans-serif; }`;
+      expect(cli('generate', '--design', design, '--theme', placed({ root }))).toBe(0);
       expect(frontMatter().fonts.sans).toBe(`"Brand !important", 'X ! IMPORTANT', sans-serif`);
     });
 
@@ -194,7 +231,35 @@ describe('generate', () => {
       '!important on a colour': [':root { --primary: #ff0000 !important; }', /token --primary in rule ":root" carries !important; fix: remove !important; the kit does not use it/],
       '!IMPORTANT with spaces on a ref': ["[data-theme='dark'] { --primary: var(--primary-foreground) ! IMPORTANT; }", /token --primary in rule "\[data-theme='dark'\]" carries !important; fix: remove !important/],
       '!important on a length': [':root { --space-2: 1rem!Important; }', /token --space-2 in rule ":root" carries !important; fix: remove !important/],
-      'two tokens on one output path': [':root { --radius-base: 1rem; }', /tokens --radius and --radius-base are both written to rounded\.base; fix:/],
+      'two tokens on one output path': [{ root: ':root { --radius-base: 1rem; }' }, /tokens --radius and --radius-base are both written to rounded\.base; fix:/],
+      'a light block repeated after the dark block': [
+        { dark: ':root, [data-theme="light"] { --primary: #ff0000; }' },
+        /theme\.css rule ":root, \[data-theme="light"\]" comes after a \[data-theme='dark'\] block; .*fix: move the block/,
+      ],
+      'a :root block after the dark block': [{ dark: ':root { --primary: #ff0000; }' }, /theme\.css rule ":root" comes after a \[data-theme='dark'\] block; .*fix:/],
+      'a dark block after the fallback': ["[data-theme='dark'] { --primary: #ff0000; }", /rule "\[data-theme='dark'\]" comes after a @media \(prefers-color-scheme: dark\) block; .*fix:/],
+      'font-size in an html rule': ['html { font-size: 20px; }', /theme\.css rule "html" sets font-size; it changes the rem base.*fix:/],
+      'font-size inside @media': ['@media (min-width: 1px) { html { font-size: 20px; } }', /theme\.css rule "html" in at-rule "@media \(min-width: 1px\)" sets font-size; .*fix:/],
+      'the font shorthand': ['body { font: 16px/1.5 sans-serif; }', /theme\.css rule "body" sets font; it changes the rem base.*fix:/],
+      'a lab() colour': [{ root: ':root { --primary: lab(50% 40 59); }' }, /token --primary in rule ":root" has the value "lab\(50% 40 59\)"; fix: the value is outside the kit's value grammar/],
+      'an lch() colour': [{ root: ':root { --info: lch(50% 40 200); }' }, /token --info in rule ":root" has the value "lch\(50% 40 200\)"; fix: the value is outside the kit's value grammar/],
+      'a light-dark() colour': [{ light: ':root, [data-theme="light"] { --card: light-dark(#ffffff, #000000); }' }, /token --card .* has the value "light-dark\(#ffffff, #000000\)"; fix: the value is outside the kit's value grammar/],
+      'an oklch() colour': [{ root: ':root { --info: oklch(0.6 0.1 250); }' }, /token --info .* has the value "oklch\(0\.6 0\.1 250\)"; fix: the value is outside/],
+      'an empty value': [{ root: ':root { --space-4: ; }' }, /token --space-4 in rule ":root" has the value ""; fix: the value is outside the kit's value grammar/],
+      'a quoted font name holding var()': [{ root: ':root { --font-sans: "var(--primary)", sans-serif; }' }, /token --font-sans .* has the value ""var\(--primary\)", sans-serif"; fix: the value is outside/],
+      'var() with a fallback': [{ root: ':root { --info: var(--primary, #ffffff); }' }, /token --info .* has the value "var\(--primary, #ffffff\)"; fix: the value is outside/],
+      'calc() with multiplication': [{ root: ':root { --radius-sm: calc(var(--radius) * 2); }' }, /token --radius-sm .* has the value "calc\(var\(--radius\) \* 2\)"; fix: the value is outside/],
+      'a shadow outside the shadow form': [{ root: ':root { --raised-shadow: 0 1px 2px var(--popover-border); }' }, /token --raised-shadow .* has the value "0 1px 2px var\(--popover-border\)"; fix: the value is outside/],
+      'cubic-bezier() on a non-easing token': [{ root: ':root { --duration-x: cubic-bezier(0.2, 0, 0, 1); }' }, /token --duration-x .* fix: the value is outside/],
+      'a token name with a __proto__ segment': [{ root: ':root { --text-__proto__-size: 1rem; }' }, /token --text-__proto__-size would be written to typography\.__proto__\.fontSize, and __proto__ is a reserved name; fix: rename the token/],
+      'a token name with a constructor segment': [{ root: ':root { --constructor: #ffffff; }' }, /token --constructor would be written to colors\.constructor, and constructor is a reserved name/],
+      'a token name with a prototype segment': [{ root: ':root { --space-prototype: 1rem; }' }, /token --space-prototype would be written to spacing\.prototype, and prototype is a reserved name/],
+      'a colour token that resolves to a length': [{ root: ':root { --info: 12px; }' }, /token --info is a colour token but resolves to 12px in the light theme; fix:/],
+      'a color-mix() over a length': [
+        { root: ':root { --tint: color-mix(in oklab, var(--space-2) 12%, transparent); }' },
+        /token --tint is a colour token but resolves to color-mix\(in oklab, 0\.5rem 12%, transparent\) in the light theme; fix:/,
+      ],
+      'a shadow whose colour is a length': [{ root: ':root { --raised-shadow: 0 1px 2px 0 var(--space-2); }' }, /token --raised-shadow is a shadow token but resolves to 0 1px 2px 0 0\.5rem in the light theme; fix:/],
       'a fallback block that differs from dark': [
         "@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #000000; } }",
         /token --background is #000000 in the prefers-color-scheme fallback block and #0f172a in the dark theme; fix:/,
@@ -204,7 +269,7 @@ describe('generate', () => {
       it(`rejects ${form} on generate and check and leaves DESIGN.md untouched`, () => {
         cli('generate', '--design', design, '--theme', THEME);
         const generated = readFileSync(design);
-        const theme = themeWith(extra);
+        const theme = typeof extra === 'string' ? themeWith(extra) : placed(extra);
         for (const mode of ['generate', 'check']) {
           expect(cli(mode, '--design', design, '--theme', theme)).toBe(2);
           expect(out[0]).toMatch(message);
@@ -213,8 +278,16 @@ describe('generate', () => {
       });
     }
 
+    it('leaves Object.prototype untouched for a token named with __proto__', () => {
+      const theme = placed({ root: ':root { --text-__proto__-size: 1rem; --__proto__: #ffffff; }' });
+      expect(cli('generate', '--design', design, '--theme', theme)).toBe(2);
+      expect({}.fontSize).toBeUndefined();
+      expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+      expect(Object.keys(Object.prototype)).toEqual([]);
+    });
+
     it('classifies a token by name: a themed --radius equal in both themes is written once under rounded', () => {
-      const theme = themeWith(':root, [data-theme="light"] { --radius: 1rem; }\n[data-theme="dark"] { --radius: 1rem; }');
+      const theme = placed({ light: ':root, [data-theme="light"] { --radius: 1rem; }', dark: '[data-theme="dark"] { --radius: 1rem; }' });
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
       const fm = frontMatter();
       expect(fm.rounded).toEqual({ base: '16px', lg: '16px', xl: '18px' });
@@ -226,7 +299,7 @@ describe('generate', () => {
     it('rejects a non-colour token whose value differs between the themes', () => {
       cli('generate', '--design', design, '--theme', THEME);
       const generated = readFileSync(design, 'utf8');
-      const theme = themeWith('[data-theme="dark"] { --radius: 1rem; }');
+      const theme = placed({ dark: '[data-theme="dark"] { --radius: 1rem; }' });
       for (const mode of ['generate', 'check']) {
         expect(cli(mode, '--design', design, '--theme', theme)).toBe(2);
         expect(out[0]).toMatch(/token --radius is 0\.625rem in the light theme and 1rem in the dark theme, but DESIGN\.md has one rounded\.base value for both; fix:/);
@@ -237,24 +310,23 @@ describe('generate', () => {
 
   it('writes every var() ref under the path the token is written to, so lint finds no broken ref', () => {
     const theme = path.join(dir, 'theme.css');
-    const extra = '  --raised-shadow: 0 var(--space-2) var(--text-body-size) 0 var(--popover-border);\n  --outline-gap: var(--radius);\n';
+    const extra = '  --raised-shadow: 0 8px 24px 0 var(--popover-border);\n  --outline-gap: var(--radius);\n  --gap-alias: var(--space-2);\n  --size-alias: var(--text-body-size);\n';
     writeFileSync(theme, readFileSync(THEME, 'utf8').replace(':root {\n', `:root {\n${extra}`));
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
     const fm = frontMatter();
-    expect(fm.elevation['raised-shadow']).toBe('0 {spacing.2} {typography.body.fontSize} 0 {colors.popover-border}');
+    expect(fm.elevation['raised-shadow']).toBe('0 8px 24px 0 {colors.popover-border}');
     expect(fm.other['outline-gap']).toBe('{rounded.base}');
+    expect(fm.other['gap-alias']).toBe('{spacing.2}');
+    expect(fm.other['size-alias']).toBe('{typography.body.fontSize}');
     expect(cli('lint', '--design', design)).toBe(0);
   });
 
   describe('resolves var() chains before it classifies or converts, and fails closed', () => {
-    const gen = (extra) => {
-      const theme = path.join(dir, 'theme.css');
-      writeFileSync(theme, `${readFileSync(THEME, 'utf8')}\n${extra}\n`);
-      return cli('generate', '--design', design, '--theme', theme);
-    };
+    const gen = (extra) => cli('generate', '--design', design, '--theme', placed(typeof extra === 'string' ? { root: extra } : extra));
 
     it('writes a colour alias shared by both themes as a colour ref', () => {
-      expect(gen(':root { --brand: #0065e3; --primary: var(--brand); }')).toBe(0);
+      const alias = (sel) => `${sel} { --primary: var(--brand); }`;
+      expect(gen({ root: ':root { --brand: #0065e3; }', light: alias(':root, [data-theme="light"]'), dark: alias('[data-theme="dark"]') })).toBe(0);
       const fm = frontMatter();
       expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand}', '{colors.brand}']);
       expect(fm.other?.primary).toBeUndefined();
@@ -263,7 +335,11 @@ describe('generate', () => {
     });
 
     it('writes an alias to a different colour per theme as a themed colour', () => {
-      const extra = ':root { --brand-a: #0065e3; --brand-b: #1d4ed8; }\n:root, [data-theme="light"] { --primary: var(--brand-a); }\n[data-theme="dark"] { --primary: var(--brand-b); }';
+      const extra = {
+        root: ':root { --brand-a: #0065e3; --brand-b: #1d4ed8; }',
+        light: ':root, [data-theme="light"] { --primary: var(--brand-a); }',
+        dark: '[data-theme="dark"] { --primary: var(--brand-b); }',
+      };
       expect(gen(extra)).toBe(0);
       const fm = frontMatter();
       expect([fm.colors.primary, fm['colors-dark'].primary]).toEqual(['{colors.brand-a}', '{colors.brand-b}']);
@@ -280,7 +356,7 @@ describe('generate', () => {
     it('rejects an alias to a missing token and a non-numeric weight, and writes nothing', () => {
       const cases = [
         [':root { --text-body-weight: var(--weight-missing); }', /token --text-body-weight refers to var\(--weight-missing\), which the light theme does not declare; fix:/],
-        [':root { --text-body-weight: bold; }', /token --text-body-weight resolves to bold, not a number; fix:/],
+        [':root { --text-body-weight: bold; }', /token --text-body-weight in rule ":root" has the value "bold"; fix: the value is outside the kit's value grammar/],
         [':root { --opacity-disabled: var(--dim); --dim: 50%; }', /token --opacity-disabled resolves to 50%, not a number; fix:/],
       ];
       for (const [extra, message] of cases) {
