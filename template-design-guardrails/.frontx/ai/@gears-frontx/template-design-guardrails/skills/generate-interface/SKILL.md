@@ -77,7 +77,7 @@ Rules phrased "Never" or "Do not" are binding (blocker-mapped where `quality-gat
 - Import `@gears-frontx/ui-kit/theme.css` once at the application entry.
 - Compose with UI kit components and native semantic elements.
 - Style composition outside kit components with CSS Modules on kit tokens, even where the shell carries another styling mechanism. Never override UI kit internals.
-- Use semantic tokens for visual values, written in CSS Modules (`var(--space-4)`, `var(--foreground)`). Never use utility classes (Tailwind or similar). Never use an arbitrary color, radius, or spacing value when a semantic token exists (design-contract prohibition; SYS-002).
+- Use semantic tokens for visual values, written in CSS Modules (`var(--space-4)`, `var(--foreground)`). Never use a utility-class framework (Tailwind or similar) or home-made utility classes; the global classes the kit itself ships and documents (`@gears-frontx/ui-kit/utilities.css`, such as `shimmer` or `sr-only`) are kit surface and allowed (SYS-004). Never use an arbitrary color, radius, or spacing value when a semantic token exists (design-contract prohibition; SYS-002).
 - Use the spacing scale and primary rhythm declared in `layout-contract.json`; verify against the kit's `--space-*` tokens in the installed `theme.css`.
 - Use one page heading and exactly one primary-styled action per local region; use at most one non-neutral semantic status color per region unless each maps to a distinct state. Data-visualization series palettes are exempt: multi-series charts use the categorical colors the color-and-theming guideline permits for series differentiation.
 - Keep copy concise — at most one sentence per label or help text; do not add subtitles that repeat visible structure.

@@ -391,7 +391,7 @@ Don't:
 - Hardcode visual values when a semantic token exists.
 - Use color as the only status signal.
 - Invent helper copy, decorative cards, gradients, or metrics to fill space.
-- Use Tailwind or any other utility-class framework. The UI kit is React, Base UI, CSS Modules and CVA; styling outside kit components is CSS Modules on kit tokens.
+- Use Tailwind or any other utility-class framework, or home-made utility classes; the global classes the kit itself ships and documents (`@gears-frontx/ui-kit/utilities.css`) are kit surface and allowed. The UI kit is React, Base UI, CSS Modules and CVA; styling outside kit components is CSS Modules on kit tokens.
 - Copy an external design system's visual identity. Material, Carbon, Fluent, W3C, and Vercel sources in this bundle are research references, not replacement themes.
 
 ## Responsive
@@ -403,7 +403,7 @@ Don't:
 | 390 CSS px | phone | One column beside the shell's 56 px menu rail; tables become lists or scroll inside their own region. |
 | 320 CSS px | reflow floor | No horizontal page scroll (LAY-002). |
 
-Below 768 px the shell collapses the menu to its icon rail and an expanded menu overlays the screen. Controls keep their kit sizes at every width; touch targets meet A11Y-002. Each screen declares its region transformations (LAY-001) and is checked at these widths (APP-005).
+Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the screen; only an expanded menu lies over the screen, behind a backdrop. The screen lays itself out for the width left beside the rail. Controls keep their kit sizes at every width; touch targets meet A11Y-002. Each screen declares its region transformations (LAY-001) and is checked at these widths (APP-005).
 
 ## Iteration Guide
 

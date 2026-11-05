@@ -44,5 +44,8 @@ inventory.
 5. For full, use the longest realistic strings and the largest realistic
    counts the product has, at 390 CSS px as well as 1440.
 6. Record each region and state in the inventory as observed, waived with the
-   recorded reason, or unverified. `verify-interface` covers populated and
-   empty data in its sweep; loading and error usually need the mocks above.
+   recorded reason, or unverified. The `verify-interface` runner sweeps
+   routes x themes x widths only, on whatever data the screen loads; it does
+   not switch data states. Render each state through the mocks above and check
+   it with that skill's manual protocol (`window.__frontxDesignDefects()` per
+   state).

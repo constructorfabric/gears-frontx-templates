@@ -42,7 +42,8 @@ raise it with the owner instead of shipping around it.
   use before writing markup.
 - Style anything outside kit components with CSS Modules on kit tokens
   (SYS-004). No Tailwind anywhere: not in screens, not in examples, not as a
-  quick fix.
+  quick fix; no home-made utility classes either. Global classes the kit
+  itself ships and documents (`utilities.css`) are kit surface and allowed.
 - A pattern the kit lacks is a recorded kit gap, never a local look-alike of
   a kit component (SYS-005). Compose it from kit parts and native elements
   and list the gap in the handoff.

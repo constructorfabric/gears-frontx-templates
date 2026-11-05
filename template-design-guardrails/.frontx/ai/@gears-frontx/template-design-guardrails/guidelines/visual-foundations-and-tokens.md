@@ -9,7 +9,7 @@ tier: core
 
 - Installed product tokens are authoritative and are the only token source; the bundle ships no fallback token set. This section is the single guideline-layer home of the token-sourcing policy.
 - All visual values **MUST** resolve to an installed token or a value derived from one (for example via `color-mix`). A missing semantic role is a gap to record for the UI-kit owner, not a license to invent a value. Layout constraints come from `layout-contract.json`.
-- Generated code **MUST** reference the installed semantic tokens such as `var(--foreground)` from a CSS Module, not literal values, palette steps or utility classes.
+- Generated code **MUST** reference the installed semantic tokens such as `var(--foreground)` from a CSS Module, not literal values, palette steps or utility classes. The global classes the kit itself ships and documents (`@gears-frontx/ui-kit/utilities.css`) are kit surface and allowed.
 - Primitive palette values **MAY** exist inside the theme implementation; application code **MUST NOT** depend on them directly.
 - Tokens **MUST** use a stable name, value, type and description. Alias semantic tokens to foundations rather than duplicating values.
 - A theme change **MUST NOT** require changing component markup.
@@ -81,7 +81,7 @@ Typography **MUST** communicate hierarchy without depending on many unrelated fo
 Reject:
 
 - `#7c3aed`, `18px`, `13px` and `border-radius: 11px` scattered through feature code;
-- utility classes (Tailwind or similar) and arbitrary values that bypass existing tokens;
+- utility-class frameworks (Tailwind or similar), home-made utility classes and arbitrary values that bypass existing tokens (the kit's own documented classes are allowed);
 - semantic statuses mapped directly to brand colors;
 - a second shadow or radius system introduced by a generated page;
 - inline styles that cannot respond to theme or density changes.

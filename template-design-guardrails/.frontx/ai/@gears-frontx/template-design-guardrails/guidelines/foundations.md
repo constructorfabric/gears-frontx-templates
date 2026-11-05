@@ -30,7 +30,7 @@ The bundle's own value sources are the layout constraints in `layout-contract.js
 - Generated UI **MUST** reuse the installed shell, navigation, components, icon family, typography and semantic tokens.
 - Local code **MUST NOT** override UI-kit internals or duplicate a kit primitive with styled `div` elements.
 - A missing primitive **MUST** be recorded as a gap. A native semantic element plus local composition is preferred to a fake component.
-- Styling outside kit components **MUST** be CSS Modules on kit tokens. Utility-class frameworks (Tailwind included), arbitrary values and parallel color, radius or type scales **MUST NOT** be used.
+- Styling outside kit components **MUST** be CSS Modules on kit tokens. Utility-class frameworks (Tailwind included), home-made utility classes, arbitrary values and parallel color, radius or type scales **MUST NOT** be used. Global classes the kit itself ships and documents (`@gears-frontx/ui-kit/utilities.css`) are kit surface and allowed.
 - Token sourcing and gap handling follow the visual-foundations guideline's token policy (installed tokens only; derive via `color-mix` or record the gap).
 
 ## Product hierarchy
