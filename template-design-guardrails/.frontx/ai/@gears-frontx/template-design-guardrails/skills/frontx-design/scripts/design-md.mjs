@@ -389,7 +389,12 @@ export function run(argv, log = console.log, err = console.error) {
     const { text, skipped } = render(opts, existing);
     for (const s of skipped) err(`${opts.design}: note: component ${s} not written`);
     if (opts.mode === 'generate') {
-      writeFileSync(opts.design, text);
+      try {
+        writeFileSync(opts.design, text);
+      } catch (e) {
+        if (!e.code) throw e;
+        throw new UsageError(`DESIGN.md ${opts.design} cannot be written (${e.code})`);
+      }
       return 0;
     }
     if (existing === text) return 0;

@@ -226,6 +226,12 @@ describe('usage errors exit 2', () => {
     expect(out[0]).toMatch(/theme\.css .* is not a file/);
   });
 
+  it('reports a DESIGN.md target it cannot write as a usage error', () => {
+    const target = path.join(dir, 'missing', 'DESIGN.md');
+    expect(cli('generate', '--design', target, '--theme', THEME)).toBe(2);
+    expect(out.join('\n')).toContain(`${target} cannot be written (ENOENT)`);
+  });
+
   const malformed = {
     'a line with no colon': ['---\nname: "X"\ncolors\n---\n', 3],
     'an unterminated double quote': ['---\nname: "X\n---\n', 2],
