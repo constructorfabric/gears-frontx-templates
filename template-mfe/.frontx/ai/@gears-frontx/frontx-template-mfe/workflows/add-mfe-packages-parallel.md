@@ -52,10 +52,11 @@ Each dispatch prompt must carry, explicitly:
 - skill steps 5-6 (lifecycle, screen from the installed ui-kit) as its
   contract, plus the skill's Boundaries section;
 - when a design-contract bundle is installed (any AI bundle shipping a
-  `generate-interface` skill — check for
-  `.frontx/ai/*/*/skills/generate-interface/`),
-  the full contract handover that skill requires:
-  the concrete paths of the contract files and routed guidelines, and the
+  `frontx-design` skill; check for
+  `.frontx/ai/*/*/skills/frontx-design/`),
+  the full contract handover that skill's `references/generate.md` requires:
+  the concrete paths of its `SKILL.md`, `references/generate.md` and the
+  references it loads, and the
   instruction to read them first — the contract does not transfer by
   implication, and per-agent dispatch is exactly the delegation case that
   rule exists for;
@@ -75,8 +76,8 @@ Hard boundaries for every parallel agent, stated in the dispatch prompt:
   server — rendered verification belongs to Phase 3.
 
 Each agent returns its changed files, the states it implemented, and its
-unresolved or unverified gaps (the `generate-interface` return shape when the
-guardrails bundle governs).
+unresolved or unverified gaps (the report shape of `references/generate.md`
+in the `frontx-design` skill when the guardrails bundle governs).
 
 ## Phase 3 — Integrate serially (orchestrator)
 
@@ -85,8 +86,8 @@ guardrails bundle governs).
 2. The full gate, once: `npm run type-check`, `npm run test:unit`,
    `npm run arch:deps`.
 3. `npm run dev:all`; confirm every new screen mounts with zero console
-   errors. When the guardrails bundle is installed, run its `verify-interface`
-   flow once across all new screens' routes — one closing pass, not one per
+   errors. When the guardrails bundle is installed, run its `frontx-design`
+   skill's `references/verify.md` flow once across all new screens' routes: one closing pass, not one per
    package.
 4. Review the new screens against each other: parallel agents never saw each
    other's output, so cross-screen consistency (shared terminology, matching

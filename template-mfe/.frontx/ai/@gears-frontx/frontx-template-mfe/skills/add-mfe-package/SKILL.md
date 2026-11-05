@@ -106,10 +106,10 @@ authority on each step.
    plan as a gap — never guessed at or recreated locally. Then compose from
    kit components and semantic tokens; hand-rolling a
    look-alike of an existing kit component is a defect, not a style choice. If a
-   design-contract bundle is installed in the project — any AI bundle that ships a
-   `generate-interface` skill (check for `.frontx/ai/*/*/skills/generate-interface/`) —
-   that skill and its design contract govern how the screen is generated — follow
-   them. If none is installed, say so in the plan: the screen is being generated
+   design-contract bundle is installed in the project (any AI bundle that ships a
+   `frontx-design` skill; check for `.frontx/ai/*/*/skills/frontx-design/`),
+   that skill's `references/generate.md` and its design contract govern how the
+   screen is generated: follow them. If none is installed, say so in the plan: the screen is being generated
    without a design contract.
    Replace the scaffold's `HomeScreen` content wholesale: its "Bridge Info"
    card (domain id, instance id, theme, language) is scaffold demo residue,
@@ -138,7 +138,8 @@ authority on each step.
    mounts with zero console errors. Automated checks passing is not the end
    of verification: complete a final visual review of the screen at its
    target widths and themes before calling the MFE complete — when a
-   design-contract bundle is installed, its `verify-interface` flow is that
+   design-contract bundle is installed, its `frontx-design` skill's
+   `references/verify.md` flow is that
    review; without one, look at the rendered screen yourself and check
    layout alignment, overflow, and each visual state.
 

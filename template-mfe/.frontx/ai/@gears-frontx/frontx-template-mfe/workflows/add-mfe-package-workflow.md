@@ -60,10 +60,11 @@ each step names the concrete command or file template-mfe ships.
      screen's grid columns, alignment anchors, and responsive breakpoints; a
      pattern with no kit mapping is reported as a gap, never guessed at.
      Hand-rolling a look-alike of an existing kit component is a defect.
-   - If a design-contract bundle is installed — any AI bundle that ships a
-     `generate-interface` skill (check for
-     `.frontx/ai/*/*/skills/generate-interface/`) — that skill and its design
-     contract govern the screen's generation — follow them. If none is
+   - If a design-contract bundle is installed (any AI bundle that ships a
+     `frontx-design` skill; check for
+     `.frontx/ai/*/*/skills/frontx-design/`), that skill's
+     `references/generate.md` and its design contract govern the screen's
+     generation: follow them. If none is
      installed, state in the plan that the screen is generated without a
      design contract.
    - Update `src/screens/home/i18n/*.json` (or rename the directory) with real copy
@@ -99,9 +100,9 @@ each step names the concrete command or file template-mfe ships.
    npm run dev:all
    ```
    - Open the app, confirm the new screen mounts, and confirm zero console errors.
-   - When the installed design-contract bundle ships a `verify-interface`
-     skill (check for `.frontx/ai/*/*/skills/verify-interface/`), run its
-     `verify-interface` flow against the new screen's route and review the
+   - When the installed design-contract bundle ships a `frontx-design`
+     skill (check for `.frontx/ai/*/*/skills/frontx-design/`), run its
+     `references/verify.md` flow against the new screen's route and review the
      screenshots it produces — the same closing pass `add-mfe-packages-parallel.md`
      requires. When no such bundle is installed, complete a manual visual
      review instead — look at the rendered screen at its target widths and
