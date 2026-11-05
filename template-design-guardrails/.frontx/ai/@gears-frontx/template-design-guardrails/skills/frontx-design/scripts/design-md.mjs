@@ -9,6 +9,10 @@
  *
  * The kit's theme.css is the source; DESIGN.md mirrors it, never the reverse.
  * generate rewrites only the YAML front matter and keeps the markdown body.
+ * Each theme is resolved as the browser resolves the root element with that
+ * data-theme (see parseTheme); rules nested in at-rules are skipped, so the
+ * kit's prefers-color-scheme fallback block, which only repeats the explicit
+ * dark values, is skipped on purpose.
  * Findings print one per line with a fix. Exit codes: 0 ok, 1 findings,
  * 2 usage or input error. Node standard library only.
  */
@@ -25,66 +29,94 @@ class UsageError extends Error {}
 
 // ---------------------------------------------------------------- theme.css
 
-/** Innermost `selector { body }` rules (no brace inside the body), in one linear pass. */
-function* innermostRules(text) {
+/** Top-level `selector { body }` rules with no brace inside the body, in one linear pass; rules inside at-rules are skipped. */
+function* topLevelRules(text) {
   let afterBrace = 0; // where the text after the last brace starts
-  let open = -1; // the `{` of a rule not yet closed and with no brace inside
+  let open = -1; // the `{` of a top-level rule not yet closed and with no brace inside
+  let depth = 0;
   let selector = '';
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c !== '{' && c !== '}') continue;
     if (c === '{') {
-      selector = text.slice(afterBrace, i);
-      open = i;
+      if (depth === 0) {
+        selector = text.slice(afterBrace, i);
+        open = i;
+      } else open = -1; // a nested block: the outer one is an at-rule or nesting, not a plain rule
+      depth++;
     } else {
-      if (open !== -1) yield [selector, text.slice(open + 1, i)];
-      open = -1;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) {
+        if (open !== -1) yield [selector, text.slice(open + 1, i)];
+        open = -1;
+      }
     }
     afterBrace = i + 1;
   }
 }
 
+const THEMES = ['light', 'dark'];
+/** Selectors that match the root element when it carries data-theme="<theme>" (quotes and spaces already stripped). */
+const ROOT_SELECTORS = Object.fromEntries(
+  THEMES.map((t) => [t, new Set([':root', 'html', `[data-theme=${t}]`, `:root[data-theme=${t}]`, `html[data-theme=${t}]`])]),
+);
+
 /**
- * Custom properties of the invariant (:root), light and dark blocks. Every block
- * of a kind is merged in source order and a later declaration wins, as in the
- * browser cascade (the selectors of one kind share a specificity).
+ * Resolve the custom properties of each theme T as the browser does for the
+ * root element with data-theme="T": every top-level rule whose selector list
+ * matches that root (:root, html, [data-theme=T], :root[data-theme=T]) applies,
+ * in source order, and a later declaration wins (these selectors share one
+ * specificity). Rules nested in an at-rule (@media, @supports, @layer and so on)
+ * and rules for other elements are skipped. That skips on purpose the kit's
+ * prefers-color-scheme fallback block, which only repeats the explicit dark values.
+ *
+ * Returns { light, dark, order }: a Map of name to value per theme, and every
+ * name in output order (first declared by a rule that names a theme, then the
+ * rest, each in source order; this keeps the kit's palette order stable).
  */
 export function parseTheme(css) {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const blocks = { invariant: null, light: null, dark: null };
-  for (const [rawSelector, body] of innermostRules(text)) {
-    const selector = rawSelector.replace(/\s+/g, '').replace(/["']/g, '');
-    if (selector.includes(':not(') || selector.startsWith('@')) continue;
-    const parts = selector.split(',');
-    let kind = null;
-    if (selector === ':root') kind = 'invariant';
-    else if (parts.includes('[data-theme=light]')) kind = 'light';
-    else if (parts.includes('[data-theme=dark]')) kind = 'dark';
-    if (!kind) continue;
-    const decls = (blocks[kind] ??= new Map());
+  const themes = { light: new Map(), dark: new Map() };
+  const named = { light: false, dark: false };
+  const firstAt = new Map();
+  const themedAt = new Map();
+  for (const [rawSelector, body] of topLevelRules(text)) {
+    const selector = rawSelector.slice(rawSelector.lastIndexOf(';') + 1); // drop a statement such as @import before it
+    const parts = selector.replace(/\s+/g, '').replace(/["']/g, '').split(',');
+    const applies = THEMES.filter((t) => parts.some((p) => ROOT_SELECTORS[t].has(p)));
+    if (!applies.length) continue;
+    const namesTheme = parts.some((p) => p.includes('[data-theme='));
+    for (const t of applies) if (parts.some((p) => ROOT_SELECTORS[t].has(p) && p.includes('[data-theme='))) named[t] = true;
     for (const decl of body.split(';')) {
       const colon = decl.indexOf(':');
       if (colon === -1) continue;
       const name = decl.slice(0, colon).trim();
       const value = decl.slice(colon + 1).trim().replace(/\s+/g, ' ');
-      if (/^--[\w-]+$/.test(name) && value) decls.set(name.slice(2), value);
+      if (!/^--[\w-]+$/.test(name) || !value) continue;
+      const n = name.slice(2);
+      if (!firstAt.has(n)) firstAt.set(n, firstAt.size);
+      if (namesTheme && !themedAt.has(n)) themedAt.set(n, themedAt.size);
+      for (const t of applies) themes[t].set(n, value);
     }
   }
-  for (const kind of ['invariant', 'light', 'dark']) {
-    if (!blocks[kind]) throw new UsageError(`theme.css has no ${kind === 'invariant' ? ':root' : `[data-theme='${kind}']`} block`);
-  }
-  return blocks;
+  for (const t of THEMES) if (!named[t]) throw new UsageError(`theme.css has no [data-theme='${t}'] block`);
+  const rank = (n) => [themedAt.get(n) ?? Infinity, firstAt.get(n)];
+  const order = [...firstAt.keys()].sort((a, b) => {
+    const [ra, rb] = [rank(a), rank(b)];
+    return ra[0] === rb[0] ? ra[1] - rb[1] : ra[0] < rb[0] ? -1 : 1;
+  });
+  return { ...themes, order };
 }
 
 const isColor = (v) => /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color-mix|color)\(|transparent$|currentcolor$)/i.test(v);
 const fmtPx = (n) => `${Number(n.toFixed(4))}px`;
 const remToPx = (v) => v.replace(/(-?\d*\.?\d+)rem\b/g, (_, n) => fmtPx(Number(n) * 16));
 
-/** Resolve var() to other invariant values, rem to px, and simple px calc() to one length. */
-function resolveLength(value, invariant, seen = new Set()) {
+/** Resolve var() to other token values, rem to px, and simple px calc() to one length. */
+function resolveLength(value, tokens, seen = new Set()) {
   let v = value.replace(/var\(--([\w-]+)\)/g, (whole, name) => {
-    if (!invariant.has(name) || seen.has(name)) return whole;
-    return resolveLength(invariant.get(name), invariant, new Set([...seen, name]));
+    if (!tokens.has(name) || seen.has(name)) return whole;
+    return resolveLength(tokens.get(name), tokens, new Set([...seen, name]));
   });
   v = remToPx(v);
   const calc = v.match(/^calc\((.*)\)$/);
@@ -131,49 +163,59 @@ const COMPONENTS = [
 ];
 
 /** The front matter object generate writes. */
-export function buildFrontMatter(blocks, { name, kitVersion }) {
-  const { invariant, light, dark } = blocks;
+/** [group, key] a token is written under, from its name; only a name no rule knows falls back to its value. */
+function classify(n, values) {
+  const type = n.match(/^text-(.+)-(size|line-height|weight|tracking)$/);
+  if (n === 'radius' || n.startsWith('radius-')) return ['rounded', n === 'radius' ? 'base' : n.slice('radius-'.length)];
+  if (/^space-\w+$/.test(n)) return ['spacing', n.slice('space-'.length)];
+  if (type) return ['typography', `${type[1]}.${TYPE_PROPS[type[2]]}`];
+  if (n.startsWith('text-')) return ['other', n];
+  if (n.startsWith('font-')) return ['fonts', n.slice('font-'.length)];
+  if (/^(duration|ease)-/.test(n)) return ['motion', n];
+  if (/^(control-|icon-size-|border-width|ring-|opacity-)/.test(n)) return ['controls', n];
+  if (values.some(isColor)) return ['colors', n];
+  if (/shadow|blur/.test(n)) return ['elevation', n];
+  return ['other', n];
+}
+
+/**
+ * The front matter object generate writes from parseTheme's resolved themes.
+ * A colour token is written to colors (light) and colors-dark (dark). Any other
+ * token has one slot, so a value that differs between the themes is a usage error.
+ */
+export function buildFrontMatter({ light, dark, order }, { name, kitVersion }) {
   const groups = { colors: {}, 'colors-dark': {}, typography: {}, fonts: {}, rounded: {}, spacing: {}, motion: {}, controls: {}, elevation: {}, other: {} };
-  const where = new Map(); // invariant token -> group
+  const where = new Map(); // CSS token name -> [group, key]
   const pathOf = new Map(); // CSS token name -> the dotted path it is written under; every {ref} uses it
   const fontOf = (role) => (role === 'mono' ? 'mono' : /^(display|heading)/.test(role) ? 'heading' : 'sans');
 
-  for (const [n, v] of invariant) {
-    let g = 'other';
-    let key = n;
-    const type = n.match(/^text-(.+)-(size|line-height|weight|tracking)$/);
-    if (n === 'radius' || n.startsWith('radius-')) [g, key] = ['rounded', n === 'radius' ? 'base' : n.slice('radius-'.length)];
-    else if (/^space-\w+$/.test(n)) [g, key] = ['spacing', n.slice('space-'.length)];
-    else if (type) [g, key] = ['typography', `${type[1]}.${TYPE_PROPS[type[2]]}`];
-    else if (n.startsWith('text-')) g = 'other';
-    else if (n.startsWith('font-')) [g, key] = ['fonts', n.slice('font-'.length)];
-    else if (/^(duration|ease)-/.test(n)) g = 'motion';
-    else if (/^(control-|icon-size-|border-width|ring-|opacity-)/.test(n)) g = 'controls';
-    else if (isColor(v)) g = 'colors';
-    else if (/shadow|blur/.test(n)) g = 'elevation';
-    where.set(n, g);
+  for (const n of order) {
+    const [g, key] = classify(n, [light.get(n), dark.get(n)].filter((v) => v !== undefined));
+    where.set(n, [g, key]);
     pathOf.set(n, `${g}.${key}`);
   }
-  for (const n of [...light.keys(), ...dark.keys()]) pathOf.set(n, `colors.${n}`);
   const ref = (v) => v.replace(/var\(--([\w-]+)\)/g, (whole, n) => (pathOf.has(n) ? `{${pathOf.get(n)}}` : whole));
 
-  for (const [n, v] of light) groups.colors[n] = ref(v);
-  for (const [n, v] of dark) groups['colors-dark'][n] = ref(v);
-
-  for (const [n, v] of invariant) {
-    const g = where.get(n);
-    const key = pathOf.get(n).slice(g.length + 1);
-    if (g === 'rounded' || g === 'spacing') groups[g][key] = resolveLength(v, invariant);
+  for (const n of order) {
+    const [g, key] = where.get(n);
+    if (g === 'colors') {
+      if (light.has(n)) groups.colors[n] = ref(light.get(n));
+      if (dark.has(n)) groups['colors-dark'][n] = ref(dark.get(n));
+      continue;
+    }
+    const [v, d] = [light.get(n), dark.get(n)];
+    if (v !== d) {
+      throw new UsageError(
+        `token --${n} is ${v ?? 'not set'} in the light theme and ${d ?? 'not set'} in the dark theme, but DESIGN.md has one ${g}.${key} value for both; fix: give it the same value in both themes (declare it once in :root) or report the per-theme need to the kit owner`,
+      );
+    }
+    if (g === 'rounded' || g === 'spacing') groups[g][key] = resolveLength(v, light);
     else if (g === 'fonts' || g === 'motion') groups[g][key] = v;
-    else if (g === 'controls') groups.controls[key] = /^opacity-/.test(n) ? Number(v) : resolveLength(v, invariant);
-    else if (g === 'colors') {
-      // An invariant value sits under the themed ones: a light or dark declaration of the same token wins.
-      groups.colors[n] ??= ref(v);
-      groups['colors-dark'][n] ??= ref(v);
-    } else if (g === 'typography') {
+    else if (g === 'controls') groups.controls[key] = /^opacity-/.test(n) ? Number(v) : resolveLength(v, light);
+    else if (g === 'typography') {
       const [role, prop] = key.split('.');
       groups.typography[role] ??= { fontFamily: `{fonts.${fontOf(role)}}` };
-      groups.typography[role][prop] = prop === 'fontWeight' ? Number(v) : resolveLength(v, invariant);
+      groups.typography[role][prop] = prop === 'fontWeight' ? Number(v) : resolveLength(v, light);
     } else groups[g][key] = ref(remToPx(v));
   }
 

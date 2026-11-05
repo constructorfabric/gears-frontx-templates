@@ -126,6 +126,61 @@ describe('generate', () => {
     expect(frontMatter()['colors-dark'].primary).toBe('#0065e3');
   });
 
+  describe('resolves each theme as the browser does for the root element', () => {
+    const themeWith = (extra) => {
+      const theme = path.join(dir, 'theme.css');
+      writeFileSync(theme, `${readFileSync(THEME, 'utf8')}\n${extra}\n`);
+      return theme;
+    };
+    const primaries = (extra) => {
+      expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
+      return [frontMatter().colors.primary, frontMatter()['colors-dark'].primary];
+    };
+
+    it('lets a later :root block win over the themed blocks in both themes', () => {
+      expect(primaries(':root { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
+    });
+
+    it('applies a block listing both themes to both', () => {
+      expect(primaries('[data-theme="light"], [data-theme="dark"] { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
+    });
+
+    it('lets a later html block win', () => {
+      expect(primaries('html { --primary: #ff0000; }')).toEqual(['#ff0000', '#ff0000']);
+    });
+
+    it('applies :root[data-theme=dark] to dark only', () => {
+      expect(primaries(':root[data-theme=dark] { --primary: #ff0000; }')).toEqual(['#0065e3', '#ff0000']);
+    });
+
+    it('ignores blocks nested in an at-rule', () => {
+      const nested = '@media (min-width: 1px) { :root { --primary: #ff0000; --space-2: 1rem; } }\n@layer kit { :root { --primary: #ff0000; } }';
+      expect(primaries(nested)).toEqual(['#0065e3', '#0065e3']);
+      expect(frontMatter().spacing[2]).toBe('8px');
+    });
+
+    it('classifies a token by name: a themed --radius equal in both themes is written once under rounded', () => {
+      const theme = themeWith('[data-theme="light"] { --radius: 1rem; }\n[data-theme="dark"] { --radius: 1rem; }');
+      expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+      const fm = frontMatter();
+      expect(fm.rounded).toEqual({ base: '16px', lg: '16px', xl: '18px' });
+      expect(fm.colors.radius).toBeUndefined();
+      expect(fm['colors-dark'].radius).toBeUndefined();
+      expect(cli('lint', '--design', design)).toBe(0);
+    });
+
+    it('rejects a non-colour token whose value differs between the themes', () => {
+      cli('generate', '--design', design, '--theme', THEME);
+      const generated = readFileSync(design, 'utf8');
+      const theme = themeWith('[data-theme="dark"] { --radius: 1rem; }');
+      for (const mode of ['generate', 'check']) {
+        expect(cli(mode, '--design', design, '--theme', theme)).toBe(2);
+        expect(out[0]).toMatch(/token --radius is 0\.625rem in the light theme and 1rem in the dark theme, but DESIGN\.md has one rounded\.base value for both; fix:/);
+      }
+      expect(readFileSync(design, 'utf8')).toBe(generated);
+    });
+  });
+
   it('writes every var() ref under the path the token is written to, so lint finds no broken ref', () => {
     const theme = path.join(dir, 'theme.css');
     const extra = '  --raised-shadow: 0 var(--space-2) var(--text-body-size) 0 var(--popover-border);\n  --outline-gap: var(--radius);\n';

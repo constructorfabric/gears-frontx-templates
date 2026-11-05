@@ -50,11 +50,17 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 - `generate` reads `node_modules/@gears-frontx/ui-kit/dist/theme.css`
   (override with `--theme <path>`), rewrites the front matter of `DESIGN.md`
   (override with `--design <path>`) and keeps the body as it is. The `name`
-  already in the file is kept; `--name` sets it. Blocks of one kind (`:root`,
-  light, dark) are merged in source order and the later declaration wins, as
-  in the browser; a light or dark value wins over the `:root` value of the
-  same token. Run it after every kit
-  upgrade and every theme change that touches kit tokens.
+  already in the file is kept; `--name` sets it. Each theme is resolved as
+  the browser resolves the root element with `data-theme` set to it: every
+  top-level rule whose selector list matches that root (`:root`, `html`,
+  `[data-theme=...]`, `:root[data-theme=...]`) applies in source order and
+  the later declaration wins; rules nested in `@media`, `@supports` or
+  `@layer` are skipped. Every token is then placed by its name, never by the
+  rule it came from: a colour goes to `colors` (light) and `colors-dark`
+  (dark), and any other token (radius, spacing, type, motion, controls) has
+  one value, so a value that differs between the themes stops `generate` and
+  `check` with exit 2 and a message naming the token and both values. Run it
+  after every kit upgrade and every theme change that touches kit tokens.
 - `check` exits 1 when the front matter differs from what `generate` would
   write: the kit moved and `DESIGN.md` did not, or someone edited the front
   matter by hand.
