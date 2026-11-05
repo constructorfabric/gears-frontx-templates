@@ -103,7 +103,7 @@ function parseFrontMatter(lines) {
   if (end === -1) throw new InputError('DESIGN.md front matter is not closed with ---');
   const stack = [Object.create(null)]; // stack[d] is the open map at depth d
   let open = null; // the last key that had no value: its map starts on the next line
-  let group = null; // the current top-level key
+  const keys = []; // keys[d] is the open key at depth d, so keys.join('.') is its full path
   for (let i = 1; i < end; i += 1) {
     const line = lines[i];
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
@@ -112,7 +112,7 @@ function parseFrontMatter(lines) {
     const depth = m ? m[1].length / 2 : -1;
     if (!m || !Number.isInteger(depth)) throw bad('unsupported YAML');
     if (open) {
-      if (depth !== open.depth + 1) throw bad(`"${open.key}" has no entries`);
+      if (depth !== open.depth + 1) throw bad(`"${open.at}" has no entries`);
       stack[depth] = open.map[open.key] = Object.create(null);
     } else if (depth >= stack.length) {
       throw bad('unexpected indent');
@@ -125,20 +125,22 @@ function parseFrontMatter(lines) {
     if (depth === 0 && !META_KEYS.has(key) && !GROUP.test(key)) {
       throw bad(`top-level key "${key}" must match ${GROUP.source}`);
     }
-    if (depth === 0) group = key;
+    keys.length = depth;
+    keys.push(key);
+    const at = keys.join('.');
     // The shape is fixed per group: only `typography` and `components` hold maps of scalars.
-    const wantsMap = depth === 0 ? !META_KEYS.has(key) : depth === 1 && NESTED.has(group);
+    const wantsMap = depth === 0 ? !META_KEYS.has(key) : depth === 1 && NESTED.has(keys[0]);
     if (wantsMap === (m[3] !== undefined)) {
-      throw bad(`"${depth === 0 ? key : `${group}.${key}`}" must be ${wantsMap ? 'a map' : 'a scalar'}`);
+      throw bad(`"${at}" must be ${wantsMap ? 'a map' : 'a scalar'}`);
     }
     if (m[3] === undefined) {
-      open = { map, key, depth };
+      open = { map, key, depth, at };
     } else {
       map[key] = m[3].replace(/^"|"$/g, '');
       open = null;
     }
   }
-  if (open) throw new InputError(`DESIGN.md front matter: "${open.key}" has no entries`);
+  if (open) throw new InputError(`DESIGN.md front matter: "${open.at}" has no entries`);
   for (const key of META_KEYS) {
     if (!Object.hasOwn(stack[0], key)) throw new InputError(`DESIGN.md front matter: "${key}" is missing`);
   }
