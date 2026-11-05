@@ -1,0 +1,49 @@
+/* A trimmed @gears-frontx/ui-kit theme.css for the design-md.mjs tests. */
+:root {
+  --radius: 0.625rem;
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --space-2: 0.5rem;
+  --space-4: 1rem;
+  --control-height-md: 2.25rem;
+  --opacity-disabled: 0.42;
+  --duration-micro: 120ms;
+  --overlay-modal: color-mix(in oklab, #0f172a 48%, transparent);
+  --popover-border: color-mix(in oklab, var(--foreground) 12%, transparent);
+  --popover-shadow: 0 8px 24px 0 var(--popover-border);
+  --font-sans: 'Inter', sans-serif;
+  --text-body-size: 0.875rem;
+  --text-body-line-height: 1.25rem;
+  --text-body-weight: 400;
+  --text-label-size: 0.75rem;
+  --text-label-weight: 500;
+}
+
+:root,
+[data-theme='light'] {
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;
+  --primary: #0065e3;
+  --primary-foreground: #ffffff;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --background: #0f172a;
+  --foreground: #ffffff;
+  --card: #0f172a;
+  --card-foreground: #ffffff;
+  --border: #334155;
+  --primary: #0065e3;
+  --primary-foreground: #ffffff;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --background: #0f172a;
+  }
+}

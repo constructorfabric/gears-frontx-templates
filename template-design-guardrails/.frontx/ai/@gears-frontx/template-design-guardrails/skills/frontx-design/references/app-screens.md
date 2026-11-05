@@ -21,13 +21,15 @@ impression.
 
 ## APP-002: a KPI is typography
 
-- A KPI is the kit's KPI type role, a label, a unit or basis, and a delta or
-  status when it means something (the KPI anatomy in
-  `guidelines/data-display-and-dashboard.md`).
+- A KPI is an installed kit type role, a label, a unit or basis, and a delta
+  or status when it means something (the KPI anatomy in
+  `guidelines/data-display-and-dashboard.md`). Use the kit's KPI role where
+  the installed kit has one; kit `0.4.1` has none, so the value takes the
+  display or heading role (see `typography` in `DESIGN.md`).
 - No decorative icon tile, gradient, tinted card or oversized illustration
   around the number. Hierarchy comes from the type role and position.
-- Check: the value's computed font size and weight resolve to the KPI role
-  tokens; nothing behind it but the kit card surface.
+- Check: the value's computed font size and weight resolve to one kit type
+  role's tokens; nothing behind it but the kit card surface.
 
 ## APP-003: flat surfaces from kit tokens
 
