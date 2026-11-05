@@ -8,31 +8,26 @@ agent can read it as a plain file, with or without this skill.
 
 Two parts:
 
-- **YAML front matter**, taken from the kit's `theme.css`:
-  - `name`, `version` (the kit version it was taken from) and a
-    `description` that says where it came from;
-  - token maps: `colors` (light theme), `colors-dark` (dark theme, same
-    names), `typography` (one entry per kit type role with `fontFamily`,
-    `fontSize`, `lineHeight`, `fontWeight`, `letterSpacing`), `fonts`,
+- **YAML front matter**, naming the kit's design tokens:
+  - `name`, `version` (the kit version the names were taken from) and a
+    `description` that says what it holds and how to check it;
+  - token maps: `colors`, `typography` (one entry per kit type role with
+    `fontFamily`, `fontSize`, `lineHeight`, `fontWeight`, `letterSpacing`),
     `rounded`, `spacing`, `motion`, `controls` (control heights, icon sizes,
-    border widths, disabled opacity) and `elevation`;
+    border widths, disabled opacity) and `elevation`. Every value is exactly
+    one `var(--name)`, naming a custom property the kit theme declares; one
+    name covers the light and the dark theme;
   - `components`: the kit components a screen most often pairs, each naming
     its tokens as references such as `{colors.primary}` or
-    `{typography.label}`. A `{colors.<name>}` reference resolves in
-    `colors` for the light theme and in `colors-dark` for the dark theme.
+    `{typography.label}`, which resolve to keys in the token maps.
 - **Markdown body**, written by people: the guardrails, then Do's and
   Don'ts, Responsive, Iteration Guide and Known Gaps. Prose names tokens by
-  reference (`{colors.primary}`), not by value.
+  reference (`{colors.primary}`) and describes their role, not their value.
 
-The kit is the source and `DESIGN.md` mirrors it, never the reverse. The
-front matter mirrors the kit's `theme.css` only, so it changes only with a
-kit upgrade. A product theme does not change it: product overrides live in
-the theme configuration (`references/theme.md`), not in `DESIGN.md`. The shipped
-front matter was generated once from `@gears-frontx/ui-kit` 0.4.1; until a
-tool ships, a kit upgrade means updating it by hand against the installed
-`theme.css` and the kit docs.
-
-A generator and a drift check are planned for a later step.
+The front matter holds names only. The values live in the installed kit
+theme (`@gears-frontx/ui-kit/theme.css`) and in the product theme
+(`references/theme.md`), so a product theme never needs a `DESIGN.md` edit.
+The names change only when the kit adds, renames or drops a token.
 
 ## Read it before visual work
 
@@ -40,23 +35,39 @@ Read `DESIGN.md` before building, restyling or reviewing anything visual. It
 names the UI base, the required qualities, the token vocabulary and what not
 to do. When it and the installed kit documentation differ on a component
 API, the installed documentation wins; when it and this skill differ on a
-rule, the gate in `rules/quality-gates.json` wins.
+rule, the gate in `rules/quality-gates.json` wins. For the value a token has
+in this app, read the rendered app, not this file.
 
-## Review it by hand
+## Check it
+
+From the project root, with the kit installed:
+
+```sh
+node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs
+```
+
+It reads the custom property names the installed kit theme declares (or the
+file `--theme <path>` names) and reports, one line each: a `var()` naming a
+property the theme does not declare, a `{group.key}` reference with no map
+key, a token value that is not exactly one `var(--name)`, and a kit property
+the front matter does not name. Exit 0 is clean, 1 means findings, 2 means a
+usage or input error such as a missing file, malformed front matter or a kit
+it cannot resolve. It never reads values.
+
+After a kit upgrade, run it, add or drop the names it reports, and bump
+`version` to the new kit version.
+
+## Review a change
 
 After any change to the front matter:
 
-- Every value matches the installed `theme.css` for its theme: `colors`
-  against the light blocks, `colors-dark` against the dark ones, the other
-  maps against values shared by both themes.
-- Every `{group.token}` reference in `components` and in the body resolves to
-  an entry in the front matter; a `{colors.<name>}` reference resolves in
-  both `colors` and `colors-dark`.
-- Every colour name exists in both `colors` and `colors-dark`.
-- Each component's text and fill pair (foreground on background) reaches the
-  WCAG 4.5:1 text contrast in both themes. A pair below it on a kit token is
-  a finding for the kit owner; record it under Known Gaps until the kit
-  changes.
+- The check script exits 0.
+- A new name sits in the map of its job and, when a screen often pairs it,
+  in the `components` entry that uses it.
+- Real values and contrast come from the rendered app, in both themes, from
+  the verify runner (`references/verify.md`). A text and fill pair below the
+  WCAG 4.5:1 text contrast on a kit token is a finding for the kit owner;
+  record it under Known Gaps with the kit version it was measured on.
 
 ## Change it with care
 

@@ -10,7 +10,7 @@ goes.
 ## Kit motion tokens
 
 Durations and easing are the kit's `--duration-*` and `--ease-*` tokens (the
-`motion` map in `DESIGN.md` mirrors them). This file maps roles to them by
+`motion` map in `DESIGN.md` names them). This file maps roles to them by
 name and sets no values; never write a token's value as a literal (MOT-002).
 
 | Role | Token |

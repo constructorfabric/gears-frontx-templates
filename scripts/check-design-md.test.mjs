@@ -105,6 +105,16 @@ describe('check-design-md', () => {
     expect(result.code).toBe(0);
   });
 
+  it('passes on the shipped DESIGN.md against the kit 0.4.1 theme', () => {
+    const result = run([
+      '--design',
+      path.join(here, '../template-design-guardrails/DESIGN.md'),
+      '--theme',
+      path.join(fixtures, 'ui-kit-0.4.1-theme.css'),
+    ]);
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+  });
+
   it('resolves the kit theme through the package exports when --theme is not given', () => {
     const cwd = project({
       'DESIGN.md': DESIGN,

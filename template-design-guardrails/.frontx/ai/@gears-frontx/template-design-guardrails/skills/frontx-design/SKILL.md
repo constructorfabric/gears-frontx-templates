@@ -31,9 +31,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
-A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first.
-
-Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
+A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
 
 ## Map
 
@@ -70,10 +68,12 @@ Surface: application screens by default. On marketing and documentation pages ev
 - `templates/state-inventory.md` - one row per data region with each state's outcome, widths and themes seen.
 - `templates/handoff.md` - built, checked (gate id and outcome), not checked, known gaps.
 
+`scripts/` (run from the project root):
+- `scripts/check-design-md.mjs` - checks the `DESIGN.md` front matter token names against the installed kit theme; exit 0 clean, 1 findings, 2 input error.
+
 Outside this directory:
-- `DESIGN.md` at the project root - kit tokens in its front matter (the kit version is its `version`) and the human summary.
+- `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.
 - `src-app/verify_packages/design-verify/` - the runtime design-defect checker the shell loads in dev, and its headless runner `npm run verify:ui --workspace=@gears-frontx/design-verify`.
-- No `scripts/` yet: code checks for token drift and rendering come in a later step.
 
 ## Every task ends with
 

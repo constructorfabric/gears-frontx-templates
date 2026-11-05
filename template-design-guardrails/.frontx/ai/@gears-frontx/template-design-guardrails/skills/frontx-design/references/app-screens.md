@@ -24,7 +24,7 @@ impression.
 - A KPI is an installed kit type role, a label, a unit or basis, and a delta
   or status when it means something (the KPI anatomy in
   `references/data.md`). Use the kit's KPI role where the installed kit has
-  one; the kit `DESIGN.md` mirrors has none (its Known Gaps), so the value
+  one; the kit `DESIGN.md` names has none (its Known Gaps), so the value
   takes the display or heading role (see `typography` in `DESIGN.md`).
 - No decorative icon tile, gradient, tinted card or oversized illustration
   around the number. Hierarchy comes from the type role and position.

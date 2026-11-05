@@ -15,7 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const template = path.join(here, '..', 'template-design-guardrails');
 const bundle = path.join(template, '.frontx/ai/@gears-frontx/template-design-guardrails');
 const skill = path.join(bundle, 'skills/frontx-design');
-const SKILL_DIRS = ['references', 'rules', 'templates'];
+const SKILL_DIRS = ['references', 'rules', 'templates', 'scripts'];
 
 const readText = (file) => readFileSync(file, 'utf8');
 const readJson = (rel) => JSON.parse(readText(path.join(skill, rel)));
@@ -29,7 +29,7 @@ const skillMd = readText(path.join(skill, 'SKILL.md'));
 // Gate ids look like SYS-001 or A11Y-003.
 const GATE_ID = /\b[A-Z][A-Z0-9]{1,4}-\d{3}\b/g;
 // A path into the skill, as the markdown writes it.
-const SKILL_PATH = /\b(?:references|rules|templates)\/[\w.-]+\.(?:md|json)\b/g;
+const SKILL_PATH = /\b(?:references|rules|templates|scripts)\/[\w.-]+\.(?:md|json|mjs)\b/g;
 
 describe('rules/quality-gates.json', () => {
   const registry = readJson('rules/quality-gates.json');
@@ -87,7 +87,7 @@ describe('the SKILL.md map', () => {
     expect([...named].filter((rel) => !existsSync(path.join(skill, rel)))).toEqual([]);
   });
 
-  it('names every file under references/, rules/ and templates/', () => {
+  it('names every file under references/, rules/, templates/ and scripts/', () => {
     expect(skillFiles.length).toBeGreaterThan(0);
     expect(skillFiles.filter((rel) => !named.has(rel))).toEqual([]);
   });
