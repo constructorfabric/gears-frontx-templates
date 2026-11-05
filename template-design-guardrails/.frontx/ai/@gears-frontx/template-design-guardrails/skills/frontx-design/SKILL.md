@@ -15,7 +15,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 - Style outside kit components with CSS Modules on kit tokens. No Tailwind, no other utility-class framework, no home-made utility classes; the kit's own `utilities.css` classes are allowed.
 - A pattern the kit lacks is a recorded kit gap, never a local look-alike.
 - Values (colour, type, radius, spacing, elevation, motion) come only from kit tokens.
-- When sources disagree, follow `sourcePrecedence` in `rules/design-contract.json`; no other file orders them.
+- A gate whose `waiver` is `never` binds whatever the sources say: an approved requirement that conflicts with one goes into the handoff and to the owner, it does not waive the gate. `sourcePrecedence` in `rules/design-contract.json` orders sources only for what those gates leave open; no other file orders them.
 - Claim only what was observed: a width, theme or state not seen rendered is unverified.
 - A missing file of this skill stops the task as `contract unavailable`; a missing app, kit doc or browser as `environment unavailable`.
 
@@ -31,7 +31,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
-A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close.
+A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first.
 
 Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
 

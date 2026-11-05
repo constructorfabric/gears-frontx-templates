@@ -31,6 +31,7 @@
     "Local screen request",
     "Model defaults"
   ],
+  "sourcePrecedenceScope": "The order applies only to what the gates leave open. A gate in quality-gates.json whose waiver is never stays binding whatever any source says, approved product requirements included; record such a conflict in the handoff and raise it with the owner.",
   "contractFiles": {
     "layout": "layout-contract.json",
     "componentStates": "component-state-matrix.json",

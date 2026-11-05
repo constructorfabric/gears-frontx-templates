@@ -24,8 +24,10 @@ Two parts:
   Don'ts, Responsive, Iteration Guide and Known Gaps. Prose names tokens by
   reference (`{colors.primary}`), not by value.
 
-The kit is the source and `DESIGN.md` mirrors it, never the reverse. Values
-change in the kit or in a theme, then the front matter follows. The shipped
+The kit is the source and `DESIGN.md` mirrors it, never the reverse. The
+front matter mirrors the kit's `theme.css` only, so it changes only with a
+kit upgrade. A product theme does not change it: product overrides live in
+the theme configuration (`references/theme.md`), not in `DESIGN.md`. The shipped
 front matter was generated once from `@gears-frontx/ui-kit` 0.4.1; until a
 tool ships, a kit upgrade means updating it by hand against the installed
 `theme.css` and the kit docs.

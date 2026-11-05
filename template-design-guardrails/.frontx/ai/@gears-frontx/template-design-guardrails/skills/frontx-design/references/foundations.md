@@ -12,6 +12,11 @@ Requirement words (`MUST`, `MUST NOT`, `SHOULD`, `MAY`) carry the meaning
   native semantic element plus local composition beats a fake component.
 - Styling outside kit components follows SYS-004; no arbitrary values and no
   parallel colour, radius or type scale.
+- A gate whose `waiver` is `never` (for example COL-001) **MUST** hold even
+  when an approved product requirement conflicts with it: record the conflict
+  in the handoff and raise it with the owner. `sourcePrecedence` orders
+  sources only for what such gates leave open (`sourcePrecedenceScope` in
+  `rules/design-contract.json`).
 
 ## Tokens
 

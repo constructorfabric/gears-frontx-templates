@@ -53,8 +53,8 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   [--start-server "npm run dev:all"]
 ```
 
-- Navigation flag: this template's shell mounts a screen when its menu item
-  is clicked, so use `--menu` with the visible labels. `--routes` is only for
+- Navigation flag: the FrontX shell mounts a screen when its menu item is
+  clicked, so use `--menu` with the visible labels. `--routes` is only for
   apps that mount on URL load; against a click-mounted shell every sweep
   measures the empty shell and reads as clean.
 - Checks the sweep could not decide sit in each state's `needsReview` list;

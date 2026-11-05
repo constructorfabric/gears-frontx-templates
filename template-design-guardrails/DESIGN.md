@@ -1,7 +1,7 @@
 ---
 name: "FrontX"
 version: "0.4.1"
-description: "Generated once from @gears-frontx/ui-kit@0.4.1 theme.css. Until a regeneration tool ships, update it by hand against the installed theme.css after a kit upgrade or theme change."
+description: "Generated once from @gears-frontx/ui-kit@0.4.1 theme.css. Until a regeneration tool ships, update it by hand against the installed theme.css after a kit upgrade; a product theme does not change it."
 colors:
   background: "#f1f5f9"
   foreground: "#0f172a"
@@ -401,7 +401,7 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 
 ## Iteration Guide
 
-- Change the look through the kit or a theme (`references/theme.md`), never through this file's front matter. After a kit upgrade or a theme change, update the front matter by hand against the installed `theme.css` and the kit docs, review it as the frontx-design skill's `references/design-md.md` describes, and commit it.
+- Change the look through the kit or a theme (`references/theme.md`), never through this file's front matter. The front matter mirrors the kit's `theme.css` only: product theme overrides live in the theme configuration, not here, and do not change it. After a kit upgrade, update the front matter by hand against the installed `theme.css` and the kit docs, review it as the frontx-design skill's `references/design-md.md` describes, and commit it.
 - Change one screen or component at a time and verify it rendered before the next.
 - Product-specific design decisions go into the product's own documents, linked from here, not into this template-owned file.
 
@@ -412,4 +412,4 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 - Only the kit's `Table` has a density axis; other components have one density.
 - Kit `0.4.1` has no KPI type role; a KPI value takes the display or heading roles (APP-002).
 - The `components` map covers the kit components whose colours and sizes a screen most often pairs, not every kit component or state; the installed kit documentation stays the reference for the rest.
-- No tool regenerates the front matter or checks it against the installed kit yet; both come in a later step. Until then the front matter matches kit `0.4.1` only, and a kit upgrade or theme change means updating it by hand against the installed `theme.css` and the kit docs.
+- No tool regenerates the front matter or checks it against the installed kit yet; both come in a later step. Until then the front matter matches kit `0.4.1` only, and a kit upgrade means updating it by hand against the installed `theme.css` and the kit docs.

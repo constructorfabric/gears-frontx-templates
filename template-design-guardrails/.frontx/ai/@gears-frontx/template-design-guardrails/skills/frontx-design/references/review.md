@@ -13,8 +13,11 @@ reasoning. Its brief names: the screen and its route; the source files; the
 screenshots of the closing browser pass (`references/verify.md`); the paths
 of `SKILL.md`, this file, the topic references for the screen and the files
 in `rules/`; and the instruction to read them before judging. A review built
-on the builder's own account of the screen, or without those files, is not a
-review.
+on the builder's own account of the screen, or without the skill and rule
+files, is not a review. Rendered findings need the screenshots; when they
+cannot be taken (`environment unavailable`), the fresh-context review still
+runs on the source, names the missing evidence and returns `unverified` at
+best (a source finding still makes it `revise` or `blocked`).
 
 ## Basis
 
