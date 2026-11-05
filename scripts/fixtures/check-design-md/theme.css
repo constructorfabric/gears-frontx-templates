@@ -1,0 +1,12 @@
+/* Fixture theme for check-design-md. Comments declare nothing: --ghost: red; */
+:root {
+  --primary: #0065e3;
+  --radius: 0.625rem;
+  /* --commented-out: 1px; */
+  --text-body-size: 0.875rem;
+  --shadow: 0 8px 24px 0 var(--primary);
+}
+
+[data-theme='dark'] {
+  --primary: #6ba5f0;
+}
