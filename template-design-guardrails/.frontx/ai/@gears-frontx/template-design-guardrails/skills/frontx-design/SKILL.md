@@ -11,7 +11,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 ## Binding essentials
 
 - Kit first: components and tokens from `@gears-frontx/ui-kit` (read its installed `llms.txt`).
-- The visual reference is the kit itself and the FrontX showcase (https://frontx.constructor.rocks/), whose UI Kit screen shows every kit component and token page live: match them, import no look from anywhere else.
+- The visual reference is the kit only: its installed components, `llms.txt` and component docs. Match them; import no look from anywhere else.
 - Style outside kit components with CSS Modules on kit tokens. No Tailwind, no other utility-class framework, no home-made utility classes; the kit's own `utilities.css` classes are allowed.
 - A pattern the kit lacks is a recorded kit gap, never a local look-alike.
 - Values (colour, type, radius, spacing, elevation, motion) come only from kit tokens.
