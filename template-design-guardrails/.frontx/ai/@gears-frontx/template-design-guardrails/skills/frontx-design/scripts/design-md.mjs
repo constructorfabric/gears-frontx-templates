@@ -4,7 +4,8 @@
  *
  *   node design-md.mjs generate [--design DESIGN.md] [--theme <theme.css>] [--name <name>] [--kit-version <v>]
  *   node design-md.mjs check    [same flags]   exit 1 when the front matter differs from what generate writes
- *   node design-md.mjs lint     [--design DESIGN.md]   broken {refs}, orphaned tokens, WCAG contrast
+ *   node design-md.mjs lint     [--design DESIGN.md]   broken {refs}, ref cycles, orphaned tokens, WCAG contrast;
+ *                                                      a pair it cannot compute (not opaque hex, rgb() or hsl()) is a finding
  *
  * The kit's theme.css is the source; DESIGN.md mirrors it, never the reverse.
  * generate rewrites only the YAML front matter and keeps the markdown body.
@@ -43,7 +44,11 @@ function* innermostRules(text) {
   }
 }
 
-/** Custom properties of the invariant (:root), light and dark blocks, in source order. */
+/**
+ * Custom properties of the invariant (:root), light and dark blocks. Every block
+ * of a kind is merged in source order and a later declaration wins, as in the
+ * browser cascade (the selectors of one kind share a specificity).
+ */
 export function parseTheme(css) {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const blocks = { invariant: null, light: null, dark: null };
@@ -55,8 +60,8 @@ export function parseTheme(css) {
     if (selector === ':root') kind = 'invariant';
     else if (parts.includes('[data-theme=light]')) kind = 'light';
     else if (parts.includes('[data-theme=dark]')) kind = 'dark';
-    if (!kind || blocks[kind]) continue;
-    const decls = new Map();
+    if (!kind) continue;
+    const decls = (blocks[kind] ??= new Map());
     for (const decl of body.split(';')) {
       const colon = decl.indexOf(':');
       if (colon === -1) continue;
@@ -64,7 +69,6 @@ export function parseTheme(css) {
       const value = decl.slice(colon + 1).trim().replace(/\s+/g, ' ');
       if (/^--[\w-]+$/.test(name) && value) decls.set(name.slice(2), value);
     }
-    blocks[kind] = decls;
   }
   for (const kind of ['invariant', 'light', 'dark']) {
     if (!blocks[kind]) throw new UsageError(`theme.css has no ${kind === 'invariant' ? ':root' : `[data-theme='${kind}']`} block`);
@@ -130,45 +134,47 @@ const COMPONENTS = [
 export function buildFrontMatter(blocks, { name, kitVersion }) {
   const { invariant, light, dark } = blocks;
   const groups = { colors: {}, 'colors-dark': {}, typography: {}, fonts: {}, rounded: {}, spacing: {}, motion: {}, controls: {}, elevation: {}, other: {} };
-  const where = new Map(); // invariant token -> group, for var() refs inside invariant values
+  const where = new Map(); // invariant token -> group
+  const pathOf = new Map(); // CSS token name -> the dotted path it is written under; every {ref} uses it
   const fontOf = (role) => (role === 'mono' ? 'mono' : /^(display|heading)/.test(role) ? 'heading' : 'sans');
 
   for (const [n, v] of invariant) {
-    if (n === 'radius' || n.startsWith('radius-')) where.set(n, 'rounded');
-    else if (/^space-\w+$/.test(n)) where.set(n, 'spacing');
-    else if (n.startsWith('text-')) where.set(n, 'typography');
-    else if (n.startsWith('font-')) where.set(n, 'fonts');
-    else if (/^(duration|ease)-/.test(n)) where.set(n, 'motion');
-    else if (/^(control-|icon-size-|border-width|ring-|opacity-)/.test(n)) where.set(n, 'controls');
-    else if (isColor(v)) where.set(n, 'colors');
-    else if (/shadow|blur/.test(n)) where.set(n, 'elevation');
-    else where.set(n, 'other');
+    let g = 'other';
+    let key = n;
+    const type = n.match(/^text-(.+)-(size|line-height|weight|tracking)$/);
+    if (n === 'radius' || n.startsWith('radius-')) [g, key] = ['rounded', n === 'radius' ? 'base' : n.slice('radius-'.length)];
+    else if (/^space-\w+$/.test(n)) [g, key] = ['spacing', n.slice('space-'.length)];
+    else if (type) [g, key] = ['typography', `${type[1]}.${TYPE_PROPS[type[2]]}`];
+    else if (n.startsWith('text-')) g = 'other';
+    else if (n.startsWith('font-')) [g, key] = ['fonts', n.slice('font-'.length)];
+    else if (/^(duration|ease)-/.test(n)) g = 'motion';
+    else if (/^(control-|icon-size-|border-width|ring-|opacity-)/.test(n)) g = 'controls';
+    else if (isColor(v)) g = 'colors';
+    else if (/shadow|blur/.test(n)) g = 'elevation';
+    where.set(n, g);
+    pathOf.set(n, `${g}.${key}`);
   }
-  const groupOf = (n) => where.get(n) ?? 'colors';
-  const refInvariant = (v) => v.replace(/var\(--([\w-]+)\)/g, (whole, n) => (light.has(n) || invariant.has(n) ? `{${groupOf(n)}.${n}}` : whole));
+  for (const n of [...light.keys(), ...dark.keys()]) pathOf.set(n, `colors.${n}`);
+  const ref = (v) => v.replace(/var\(--([\w-]+)\)/g, (whole, n) => (pathOf.has(n) ? `{${pathOf.get(n)}}` : whole));
 
-  for (const [n, v] of light) groups.colors[n] = refInvariant(v);
-  for (const [n, v] of dark) groups['colors-dark'][n] = refInvariant(v);
+  for (const [n, v] of light) groups.colors[n] = ref(v);
+  for (const [n, v] of dark) groups['colors-dark'][n] = ref(v);
 
   for (const [n, v] of invariant) {
     const g = where.get(n);
-    if (g === 'rounded') groups.rounded[n === 'radius' ? 'base' : n.slice('radius-'.length)] = resolveLength(v, invariant);
-    else if (g === 'spacing') groups.spacing[n.slice('space-'.length)] = resolveLength(v, invariant);
-    else if (g === 'fonts') groups.fonts[n.slice('font-'.length)] = v;
-    else if (g === 'motion') groups.motion[n] = v;
-    else if (g === 'controls') groups.controls[n] = /^opacity-/.test(n) ? Number(v) : resolveLength(v, invariant);
+    const key = pathOf.get(n).slice(g.length + 1);
+    if (g === 'rounded' || g === 'spacing') groups[g][key] = resolveLength(v, invariant);
+    else if (g === 'fonts' || g === 'motion') groups[g][key] = v;
+    else if (g === 'controls') groups.controls[key] = /^opacity-/.test(n) ? Number(v) : resolveLength(v, invariant);
     else if (g === 'colors') {
-      groups.colors[n] = refInvariant(v);
-      groups['colors-dark'][n] = refInvariant(v);
+      // An invariant value sits under the themed ones: a light or dark declaration of the same token wins.
+      groups.colors[n] ??= ref(v);
+      groups['colors-dark'][n] ??= ref(v);
     } else if (g === 'typography') {
-      const m = n.match(/^text-(.+)-(size|line-height|weight|tracking)$/);
-      if (!m) {
-        groups.other[n] = refInvariant(v);
-        continue;
-      }
-      const role = (groups.typography[m[1]] ??= { fontFamily: `{fonts.${fontOf(m[1])}}` });
-      role[TYPE_PROPS[m[2]]] = m[2] === 'weight' ? Number(v) : resolveLength(v, invariant);
-    } else groups[g][n] = refInvariant(remToPx(v));
+      const [role, prop] = key.split('.');
+      groups.typography[role] ??= { fontFamily: `{fonts.${fontOf(role)}}` };
+      groups.typography[role][prop] = prop === 'fontWeight' ? Number(v) : resolveLength(v, invariant);
+    } else groups[g][key] = ref(remToPx(v));
   }
 
   for (const spec of Object.values(groups.typography)) {
@@ -262,25 +268,79 @@ export function splitDesign(text) {
 
 // -------------------------------------------------------------------- lint
 
-function luminance(hex) {
-  let h = hex.slice(1);
-  if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join('');
-  if (h.length === 8) {
-    if (h.slice(6) !== 'ff') return null;
-    h = h.slice(0, 6);
-  }
-  if (h.length !== 6) return null;
-  const [r, g, b] = [0, 2, 4].map((i) => {
-    const c = parseInt(h.slice(i, i + 2), 16) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+const NUM = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?`;
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const HUE_UNITS = { '': 1, deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+
+/** A number, or a percentage scaled so 100% is `full`; null for anything else. */
+function amount(token, full, percentOnly = false) {
+  const m = token.match(new RegExp(`^(${NUM})(%?)$`, 'i'));
+  if (!m || (percentOnly && !m[2])) return null;
+  return m[2] ? (Number(m[1]) / 100) * full : Number(m[1]);
 }
 
+/**
+ * [r, g, b, alpha] (channels 0-255, alpha 0-1) for a hex, rgb() or hsl() colour,
+ * comma or space syntax, optional alpha; null for any other syntax.
+ */
+export function parseColour(text) {
+  const s = String(text).trim().toLowerCase();
+  const hex = s.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/);
+  if (hex) {
+    const h = hex[1].length <= 4 ? [...hex[1]].map((c) => c + c).join('') : hex[1];
+    const [r, g, b, a = 255] = h.match(/../g).map((p) => parseInt(p, 16));
+    return [r, g, b, a / 255];
+  }
+  const fn = s.match(/^(rgba?|hsla?)\(\s*(.*?)\s*\)$/);
+  if (!fn) return null;
+  let parts;
+  let alpha;
+  if (fn[2].includes(',')) {
+    parts = fn[2].split(',').map((p) => p.trim());
+    if (parts.length === 4) alpha = parts.pop();
+  } else {
+    const slash = fn[2].split('/');
+    if (slash.length > 2) return null;
+    parts = slash[0].trim().split(/\s+/);
+    alpha = slash[1]?.trim();
+  }
+  if (parts.length !== 3) return null;
+  const a = alpha === undefined ? 1 : amount(alpha, 1);
+  if (a === null) return null;
+  let rgb;
+  if (fn[1].startsWith('rgb')) {
+    rgb = parts.map((p) => amount(p, 255));
+  } else {
+    const hue = parts[0].match(new RegExp(`^(${NUM})(deg|grad|rad|turn)?$`, 'i'));
+    const sat = amount(parts[1], 1, fn[2].includes(','));
+    const lig = amount(parts[2], 1, fn[2].includes(','));
+    if (!hue || sat === null || lig === null) return null;
+    // Space syntax takes bare numbers on the 0-100 scale, as percentages.
+    const [S, L] = [sat, lig].map((v, i) => clamp(/%$/.test(parts[i + 1]) ? v : v / 100, 0, 1));
+    const H = (((Number(hue[1]) * HUE_UNITS[hue[2] ?? '']) % 360) + 360) % 360;
+    const k = (n) => (n + H / 30) % 12;
+    const f = (n) => L - S * Math.min(L, 1 - L) * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+    rgb = [f(0), f(8), f(4)].map((c) => c * 255);
+  }
+  if (rgb.some((c) => c === null)) return null;
+  return [...rgb.map((c) => clamp(c, 0, 255)), clamp(a, 0, 1)];
+}
+
+function luminance([r, g, b]) {
+  const [R, G, B] = [r, g, b].map((v) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
+
+/** WCAG contrast of two opaque colours (hex, rgb() or hsl()); null when either is unsupported or translucent. */
 export function contrastRatio(a, b) {
-  const la = luminance(a);
-  const lb = luminance(b);
-  if (la === null || lb === null) return null;
+  const ca = parseColour(a);
+  const cb = parseColour(b);
+  if (!ca || !cb || ca[3] < 1 || cb[3] < 1) return null;
+  const la = luminance(ca);
+  const lb = luminance(cb);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
@@ -291,32 +351,92 @@ function* strings(node, at = []) {
   }
 }
 
-/** Findings for a parsed front matter: broken refs, tokens in one theme only, low text contrast. */
+const REF_RE = /\{([^{}\s]+)\}/g;
+const refsIn = (value) => (typeof value === 'string' ? [...value.matchAll(REF_RE)].map((m) => m[1]) : []);
+
+/** The value a ref names in one theme: in dark, colors.<n> reads colors-dark.<n> first. */
+function refValue(fm, target, theme) {
+  if (theme === 'dark' && target.startsWith('colors.')) {
+    const dark = lookup(fm, `colors-dark.${target.slice('colors.'.length)}`);
+    if (dark !== undefined) return dark;
+  }
+  return lookup(fm, target);
+}
+
+/** Every ref cycle, in either theme, as "{a} -> {b} -> {a}" starting at its smallest member. */
+function refCycles(fm) {
+  const cycles = new Set();
+  for (const theme of ['light', 'dark']) {
+    const done = new Set();
+    const visit = (target, stack) => {
+      const at = stack.indexOf(target);
+      if (at !== -1) {
+        const loop = stack.slice(at);
+        const start = loop.indexOf([...loop].sort()[0]);
+        const ordered = [...loop.slice(start), ...loop.slice(0, start)];
+        cycles.add([...ordered, ordered[0]].map((t) => `{${t}}`).join(' -> '));
+        return;
+      }
+      if (done.has(target)) return;
+      for (const next of refsIn(refValue(fm, target, theme))) visit(next, [...stack, target]);
+      done.add(target);
+    };
+    for (const [, value] of strings(fm)) for (const target of refsIn(value)) visit(target, []);
+  }
+  return [...cycles];
+}
+
+/** Follow a whole-value ref chain to a colour in one theme: { colour } or { reason } it cannot be checked. */
+function resolveColour(fm, value, theme) {
+  const seen = new Set();
+  let v = value;
+  for (let m; typeof v === 'string' && (m = v.match(/^\{([^{}\s]+)\}$/)); ) {
+    if (seen.has(m[1])) return { reason: `${value} is a reference cycle` };
+    seen.add(m[1]);
+    v = refValue(fm, m[1], theme);
+  }
+  if (typeof v !== 'string') return { reason: `${value} does not resolve to a value` };
+  const rgba = parseColour(v);
+  if (!rgba) return { reason: `${value} resolves to ${v}, not a hex, rgb() or hsl() colour` };
+  if (rgba[3] < 1) return { reason: `${value} resolves to ${v}, which is translucent` };
+  return { colour: v };
+}
+
+/**
+ * Findings for a parsed front matter: broken refs, ref cycles, tokens in one
+ * theme only, low text contrast, and text and fill pairs whose contrast cannot
+ * be computed (a colour syntax other than hex, rgb() or hsl(), a translucent
+ * colour, a cycle or a broken chain). An unchecked pair is a finding and counts
+ * toward exit 1: an unverified pair must not pass as clean.
+ */
 export function lintFrontMatter(fm) {
   const findings = [];
   for (const [where, value] of strings(fm)) {
-    for (const [, target] of value.matchAll(/\{([^{}\s]+)\}/g)) {
+    for (const target of refsIn(value)) {
       if (lookup(fm, target) === undefined) {
         findings.push(`broken-ref ${where}: {${target}} does not resolve; fix: point it at an existing token or run generate`);
       }
     }
+  }
+  for (const cycle of refCycles(fm)) {
+    findings.push(`ref-cycle ${cycle}: the refs never reach a value; fix: point one of them at a token with a literal value or run generate`);
   }
   const light = fm.colors ?? {};
   const dark = fm['colors-dark'] ?? {};
   for (const n of Object.keys(light)) if (!(n in dark)) findings.push(`orphaned-token colors.${n}: no dark value in colors-dark; fix: regenerate from the kit or declare the dark value in the theme`);
   for (const n of Object.keys(dark)) if (!(n in light)) findings.push(`orphaned-token colors-dark.${n}: no light value in colors; fix: regenerate from the kit or declare the light value in the theme`);
 
-  const resolve = (value, palette, depth = 0) => {
-    const m = typeof value === 'string' && value.match(/^\{colors\.([\w-]+)\}$/);
-    if (!m || depth > 8) return value;
-    return resolve(palette[m[1]], palette, depth + 1);
-  };
   for (const [id, spec] of Object.entries(fm.components ?? {})) {
     if (!spec.backgroundColor || !spec.textColor) continue;
-    for (const [theme, palette] of [['light', light], ['dark', { ...light, ...dark }]]) {
-      const bg = resolve(spec.backgroundColor, palette);
-      const fg = resolve(spec.textColor, palette);
-      if (typeof bg !== 'string' || typeof fg !== 'string' || !bg.startsWith('#') || !fg.startsWith('#')) continue;
+    for (const theme of ['light', 'dark']) {
+      const bgRes = resolveColour(fm, spec.backgroundColor, theme);
+      const fgRes = resolveColour(fm, spec.textColor, theme);
+      const why = [fgRes.reason, bgRes.reason].filter(Boolean);
+      if (why.length) {
+        findings.push(`contrast-unchecked components.${id} (${theme}): ${why.join('; ')}; fix: use a supported colour syntax (opaque hex, rgb() or hsl()) and refs that resolve, or check the pair by hand`);
+        continue;
+      }
+      const [bg, fg] = [bgRes.colour, fgRes.colour];
       const ratio = contrastRatio(fg, bg);
       if (ratio !== null && ratio < MIN_TEXT_CONTRAST) {
         findings.push(`contrast components.${id} (${theme}): textColor ${spec.textColor} ${fg} on backgroundColor ${spec.backgroundColor} ${bg} is ${ratio.toFixed(2)}:1, below ${MIN_TEXT_CONTRAST}:1; fix: choose a text and fill token pair that reaches ${MIN_TEXT_CONTRAST}:1; a failing pair inside the kit goes to the kit owner as a token finding`);

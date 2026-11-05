@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   contrastRatio,
+  parseColour,
   parseYaml,
   run,
   splitDesign,
@@ -99,6 +100,41 @@ describe('generate', () => {
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
       expect(frontMatter()['colors-dark'].background).toBe('#0f172a');
     }
+  });
+
+  it('merges every block of a kind in source order, the later declaration wins', () => {
+    const theme = path.join(dir, 'theme.css');
+    const fixture = readFileSync(THEME, 'utf8');
+    writeFileSync(theme, fixture);
+    cli('generate', '--design', design, '--theme', theme);
+    writeFileSync(theme, `${fixture}\n[data-theme="light"] { --primary: #ff0000; --extra: #00ff00; }\n:root { --space-2: 0.75rem; }\n`);
+    expect(cli('check', '--design', design, '--theme', theme)).toBe(1);
+    expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+    const fm = frontMatter();
+    expect(fm.colors.primary).toBe('#ff0000');
+    expect(fm.colors.background).toBe('#f1f5f9'); // the first light block still counts
+    expect(fm.colors.extra).toBe('#00ff00');
+    expect(fm.spacing[2]).toBe('12px');
+    expect(fm['colors-dark'].primary).toBe('#0065e3');
+  });
+
+  it('keeps the light and dark values of a token the invariant block also declares', () => {
+    const theme = path.join(dir, 'theme.css');
+    writeFileSync(theme, readFileSync(THEME, 'utf8').replace(':root {\n', ':root {\n  --primary: #123456;\n'));
+    expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+    expect(frontMatter().colors.primary).toBe('#0065e3');
+    expect(frontMatter()['colors-dark'].primary).toBe('#0065e3');
+  });
+
+  it('writes every var() ref under the path the token is written to, so lint finds no broken ref', () => {
+    const theme = path.join(dir, 'theme.css');
+    const extra = '  --raised-shadow: 0 var(--space-2) var(--text-body-size) 0 var(--popover-border);\n  --outline-gap: var(--radius);\n';
+    writeFileSync(theme, readFileSync(THEME, 'utf8').replace(':root {\n', `:root {\n${extra}`));
+    expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
+    const fm = frontMatter();
+    expect(fm.elevation['raised-shadow']).toBe('0 {spacing.2} {typography.body.fontSize} 0 {colors.popover-border}');
+    expect(fm.other['outline-gap']).toBe('{rounded.base}');
+    expect(cli('lint', '--design', design)).toBe(0);
   });
 
   it('parses a long theme.css in linear time', () => {
@@ -196,6 +232,74 @@ describe('lint', () => {
     expect(out[2]).toMatch(/contrast components\.label \(light\): .*1\.36:1, below 4\.5:1; fix:/);
     expect(out[3]).toMatch(/contrast components\.label \(dark\): .*fix:/);
   });
+
+  const pairDesign = (colors, dark = colors) =>
+    [
+      '---',
+      'name: "Pairs"',
+      'colors:',
+      ...Object.entries(colors).map(([k, v]) => `  ${k}: "${v}"`),
+      'colors-dark:',
+      ...Object.entries(dark).map(([k, v]) => `  ${k}: "${v}"`),
+      'components:',
+      '  label:',
+      '    backgroundColor: "{colors.background}"',
+      '    textColor: "{colors.foreground}"',
+      '---',
+      BODY,
+    ].join('\n');
+
+  it('checks contrast on rgb() and hsl() colours, comma and space syntax', () => {
+    const cases = [
+      ['rgb(255, 255, 255)', 'rgb(221 221 221)'],
+      ['rgba(255, 255, 255, 1)', 'rgb(221 221 221 / 100%)'],
+      ['hsl(0, 0%, 100%)', 'hsl(0deg 0% 86.67%)'],
+      ['hsla(0, 0%, 100%, 1)', 'hsl(0 0 86.67 / 1)'],
+    ];
+    for (const [background, foreground] of cases) {
+      writeFileSync(design, pairDesign({ background, foreground }));
+      expect(cli('lint', '--design', design)).toBe(1);
+      expect(out).toHaveLength(2);
+      expect(out[0]).toMatch(/contrast components\.label \(light\): .*1\.36:1, below 4\.5:1/);
+    }
+    writeFileSync(design, pairDesign({ background: 'hsl(210, 40%, 96%)', foreground: 'rgb(15 23 42)' }));
+    expect(cli('lint', '--design', design)).toBe(0);
+  });
+
+  it('reports a pair it cannot compute instead of passing it', () => {
+    const cases = {
+      'oklch(0.98 0.01 250)': /oklch\(0\.98 0\.01 250\), not a hex, rgb\(\) or hsl\(\) colour/,
+      'color-mix(in oklab, #000 50%, white)': /not a hex, rgb\(\) or hsl\(\) colour/,
+      'rgb(0 0 0 / 50%)': /which is translucent/,
+      '#00000080': /which is translucent/,
+    };
+    for (const [background, reason] of Object.entries(cases)) {
+      writeFileSync(design, pairDesign({ background, foreground: '#ffffff' }));
+      expect(cli('lint', '--design', design)).toBe(1);
+      expect(out).toHaveLength(2);
+      expect(out[0]).toMatch(/^.*: contrast-unchecked components\.label \(light\): \{colors\.background\} resolves to /);
+      expect(out[0]).toMatch(reason);
+      expect(out[0]).toMatch(/fix: use a supported colour syntax .* or check the pair by hand/);
+    }
+  });
+
+  it('reports a ref cycle and the pair it leaves unchecked', () => {
+    writeFileSync(design, pairDesign({ background: '#ffffff', foreground: '{colors.foreground}' }));
+    expect(cli('lint', '--design', design)).toBe(1);
+    expect(out[0]).toMatch(/ref-cycle \{colors\.foreground\} -> \{colors\.foreground\}: .*fix:/);
+    expect(out.filter((l) => /contrast-unchecked components\.label \(\w+\): \{colors\.foreground\} is a reference cycle/.test(l))).toHaveLength(2);
+
+    writeFileSync(design, pairDesign({ background: '#ffffff', foreground: '{colors.ink}', ink: '{colors.foreground}' }));
+    expect(cli('lint', '--design', design)).toBe(1);
+    expect(out.filter((l) => l.includes('ref-cycle {colors.foreground} -> {colors.ink} -> {colors.foreground}'))).toHaveLength(1);
+  });
+
+  it('reports a ref chain that ends in a missing token', () => {
+    writeFileSync(design, pairDesign({ background: '#ffffff', foreground: '{colors.ink}', ink: '{colors.missing}' }));
+    expect(cli('lint', '--design', design)).toBe(1);
+    expect(out.some((l) => /broken-ref colors\.ink: \{colors\.missing\}/.test(l))).toBe(true);
+    expect(out.some((l) => /contrast-unchecked components\.label \(light\): \{colors\.foreground\} does not resolve to a value/.test(l))).toBe(true);
+  });
 });
 
 describe('usage errors exit 2', () => {
@@ -253,5 +357,17 @@ describe('contrastRatio', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5);
     expect(contrastRatio('#ffffff', '#0065e3')).toBeCloseTo(5.29, 2);
     expect(contrastRatio('#fff', '#ffffff')).toBeCloseTo(1, 5);
+    expect(contrastRatio('rgb(0, 0, 0)', 'hsl(0 0% 100%)')).toBeCloseTo(21, 5);
+    expect(contrastRatio('oklch(0 0 0)', '#ffffff')).toBeNull();
+  });
+
+  it('reads hex, rgb() and hsl() the same way', () => {
+    expect(parseColour('#0065e3')).toEqual([0, 101, 227, 1]);
+    expect(parseColour('rgb(0 101 227)')).toEqual([0, 101, 227, 1]);
+    expect(parseColour('rgba(0, 101, 227, 0.5)')).toEqual([0, 101, 227, 0.5]);
+    expect(parseColour('hsl(120, 100%, 25%)').map(Math.round)).toEqual([0, 128, 0, 1]);
+    expect(parseColour('hsl(0.5turn 100% 50% / 25%)').map((c) => Math.round(c * 100) / 100)).toEqual([0, 255, 255, 0.25]);
+    expect(parseColour('oklch(0.5 0.1 200)')).toBeNull();
+    expect(parseColour('rgb(1, 2)')).toBeNull();
   });
 });
