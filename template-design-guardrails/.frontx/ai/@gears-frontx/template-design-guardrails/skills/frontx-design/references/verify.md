@@ -53,10 +53,11 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   [--start-server "npm run dev:all"]
 ```
 
-- Navigation flag: the FrontX shell mounts a screen when its menu item is
-  clicked, so use `--menu` with the visible labels. `--routes` is only for
-  apps that mount on URL load; against a click-mounted shell every sweep
-  measures the empty shell and reads as clean.
+- Navigation flag: reach each screen by its menu label (`--menu "A,B"`, the
+  user's path) or by its composed address (`--routes "/?screen=orders"`).
+  Never pass the bare route value (`/orders`) or an address that names no
+  registered screen: the shell leaves the content area empty and the sweep
+  reads as clean.
 - Checks the sweep could not decide sit in each state's `needsReview` list;
   a state with any is not clean.
 - The runner does not switch data states. States behind user actions or

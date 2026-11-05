@@ -102,9 +102,10 @@ each step names the concrete command or file template-mfe ships.
    - Open the app, confirm the new screen mounts, and confirm zero console errors.
    - When the installed design-contract bundle ships a `frontx-design`
      skill (check for `.frontx/ai/*/*/skills/frontx-design/`), run its
-     `references/verify.md` flow by the new screen's menu label
-     (`--menu "<label>"`; the shell mounts a screen on its menu action, so a
-     route sweep sees the empty shell) and review the screenshots it
+     `references/verify.md` flow on the new screen, by its menu label
+     (`--menu "<label>"`) or its composed address
+     (`--routes "/?screen=<route>"`), never by the bare route value, which
+     leaves the content area empty and reads as clean, and review the screenshots it
      produces: the same closing pass `add-mfe-packages-parallel.md` requires. When no such bundle is installed, complete a manual visual
      review instead — look at the rendered screen at its target widths and
      themes and check layout alignment, overflow, and each visual state —

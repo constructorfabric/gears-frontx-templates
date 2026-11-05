@@ -87,10 +87,11 @@ in the `frontx-design` skill when the guardrails bundle governs).
    `npm run arch:deps`.
 3. `npm run dev:all`; confirm every new screen mounts with zero console
    errors. When the guardrails bundle is installed, run its `frontx-design`
-   skill's `references/verify.md` flow once across all new screens, by their
-   menu labels (`--menu "A,B"`): one closing pass, not one per package. The
-   FrontX shell mounts a screen on its menu action, so a `--routes` sweep
-   inspects the empty shell and reads as clean.
+   skill's `references/verify.md` flow once across all new screens: one
+   closing pass, not one per package. Reach each screen by its menu label
+   (`--menu "A,B"`) or its composed address (`--routes "/?screen=orders"`),
+   never by the bare route value (`/orders`), which leaves the content area
+   empty and reads as clean.
 4. Review the new screens against each other: parallel agents never saw each
    other's output, so cross-screen consistency (shared terminology, matching
    list/detail conventions, consistent density and action placement) is the
