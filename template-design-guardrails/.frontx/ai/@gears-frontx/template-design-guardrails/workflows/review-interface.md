@@ -8,7 +8,7 @@ Advisory only; never a release gate — see final paragraph.
 2. Identify the screen job and expected composition. If the job or pattern cannot be determined from the request and code, ask the requester to confirm it, or flag the assumed job/pattern as unconfirmed in the verdict.
 3. Inspect code for UI kit imports, semantic HTML, token use, real component reuse, and interaction states.
 4. Inspect the rendered screen at available widths. Do not claim widths or states that were not observed.
-5. Apply the five-tier review order from the `review-interface` skill (blockers, system violations, layout and behavior, hierarchy and data, polish); within each tier, record gate IDs at their severities using the finding shape from `quality-gates.json`.
+5. Apply the five-tier review order from the `review-interface` skill (blockers, system violations, layout and behavior, hierarchy and data, polish); within each tier, record gate IDs at their severities and waiver levels using the finding shape from `quality-gates.json`.
 6. Score every rubric category using observed evidence only.
 7. Mark unavailable widths, states, keyboard behavior, motion and automation as unverified.
 8. For implemented fixes, do not mark a finding resolved until the fix was re-observed rendered or re-verified via `verify-interface` in the same round; otherwise label it applied-but-unverified. Route contrast, tiny-text, control-height, and horizontal-scroll checks through `verify-interface` before finalizing the correction list. If a finding is not resolved after two correction rounds, stop iterating and report it as blocked with the observed evidence.

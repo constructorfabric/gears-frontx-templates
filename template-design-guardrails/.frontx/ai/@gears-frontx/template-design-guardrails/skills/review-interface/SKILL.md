@@ -71,7 +71,10 @@ Score the result with `review-rubric.json`, but never let the total hide a block
 
 Severity is exactly one of blocker, major, minor, as assigned by
 `quality-gates.json`; blocker denotes priority for human triage, never an
-automated gate.
+automated gate. Each finding also carries its gate's `waiver` level: a `never`
+finding stays open until fixed; a `with-reason` finding is reported as waived
+only when a recorded reason exists, quoted in the finding; `finish` findings
+come last and never hide an open finding of another level.
 
 Return:
 

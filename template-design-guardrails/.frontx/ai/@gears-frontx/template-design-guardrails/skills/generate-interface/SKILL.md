@@ -70,7 +70,7 @@ Stop and ask for product input when an unresolved decision changes permissions, 
 
 ## Implement
 
-Rules phrased "Never" or "Do not" are binding — blocker-mapped where `quality-gates.json` says so; rules phrased "avoid" or "prefer" are strong defaults that may yield to a documented product reason.
+Rules phrased "Never" or "Do not" are binding (blocker-mapped where `quality-gates.json` says so); rules phrased "avoid" or "prefer" are strong defaults that may yield to a documented product reason. Each gate's `waiver` field in `quality-gates.json` decides whether a deviation can stand: `never` gates cannot be waived, `with-reason` gates need a recorded reason, `finish` gates are checked last.
 
 - Import `@gears-frontx/ui-kit/theme.css` once at the application entry.
 - Compose with UI kit components and native semantic elements.

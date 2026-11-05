@@ -132,7 +132,7 @@ The checker reports stable rule ids. Map them before reporting; never forward ra
 
 Worked trace: console line `[design-defects] page-horizontal-scroll: the page's scroll container scrolls horizontally (900px content in 273px box) — wide content must scroll inside its own container, not the page's — div.flex-1.overflow-auto` → gate `LAY-002` → report line `LAY-002 (blocker) — page-horizontal-scroll at 320 CSS px; evidence: the console line above; locator: div.flex-1.overflow-auto (the shell's screen container)`.
 
-Every reported finding must carry exactly one gate ID and the severity that `quality-gates.json` assigns to it; if no single gate matches, report the rule id with gate `unmapped` and severity from the checker context rather than inventing one.
+Every reported finding must carry exactly one gate ID and the severity and `waiver` level that `quality-gates.json` assigns to it; if no single gate matches, report the rule id with gate `unmapped` and severity from the checker context rather than inventing one.
 
 The checker traverses open shadow roots, so findings may originate inside MFE content; the `target` locator says where. An axe locator inside a shadow root names each shadow host and then the element, joined by `>>>` (`my-widget >>> p`). The locator is for reading, not a selector: `>>>` is not CSS, and `document.querySelector('my-widget >>> p')` throws a `SyntaxError`. To reach the element, query each part through the previous host's shadow root: `document.querySelector('my-widget').shadowRoot.querySelector('p')`. Attribute the finding to the owning surface.
 
