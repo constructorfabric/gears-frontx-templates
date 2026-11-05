@@ -8,6 +8,8 @@ description: Generate or substantially revise a FrontX React interface using the
 
 Create a usable product screen from the installed system. Do not treat the prompt as permission to invent a second design system.
 
+The hub `skills/frontx-design/SKILL.md` sets precedence and the surface, and routes to the application-screen and state-completeness references this skill applies.
+
 The companion checklist `workflows/generate-interface.md` is part of this skill's contract — when both exist, read both; the skill is authoritative on behavior, the workflow on step order.
 
 ## Establish the local contract

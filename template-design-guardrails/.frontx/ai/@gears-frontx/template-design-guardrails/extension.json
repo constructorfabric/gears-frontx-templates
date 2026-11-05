@@ -3,6 +3,11 @@
   "contractVersion": "1.0.0",
   "entries": [
     {
+      "id": "frontx-design",
+      "category": "skills",
+      "path": "skills/frontx-design"
+    },
+    {
       "id": "generate-interface",
       "category": "skills",
       "path": "skills/generate-interface"

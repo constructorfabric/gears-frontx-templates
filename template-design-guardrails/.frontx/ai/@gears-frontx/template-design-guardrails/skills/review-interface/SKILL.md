@@ -8,6 +8,8 @@ description: Review a generated or hand-built FrontX interface against the insta
 
 Review the actual implementation and rendered result when available. Prefer evidence over taste language.
 
+The hub `skills/frontx-design/SKILL.md` sets precedence and the surface; review an application screen against its application-screen and state-completeness references too.
+
 ## Establish the comparison basis
 
 1. Read the installed UI kit documentation, `design-contract.json`, `quality-gates.json`, `review-rubric.json`, `component-state-matrix.json`, `guideline-index.json`, and only the detailed guidelines the index routes to the surface (routing rules below). Installed UI kit documentation wins when it conflicts with the bundle's contract or guidelines.

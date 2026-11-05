@@ -8,6 +8,8 @@ description: Verify a generated or revised FrontX interface against observable e
 
 Turn "unverified" into "observed". `generate-interface` and `review-interface` reason from source; this skill reads what the browser actually rendered.
 
+The hub `skills/frontx-design/SKILL.md` routes here; for an application screen, sweep the widths its application-screen reference names (1440, 768, 390 and 320 CSS px).
+
 ## Preconditions
 
 If any of the following cannot be confirmed, stop and report environment unavailable instead of proceeding — see the failure handling below the list.

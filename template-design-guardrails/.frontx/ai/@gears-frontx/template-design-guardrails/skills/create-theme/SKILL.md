@@ -8,6 +8,8 @@ description: Author or revise a FrontX shell theme against the @gears-frontx/ui-
 
 A theme is a `ThemeConfig` object registered with the shell, not a stylesheet. The UI kit's `theme.css` is the palette every theme starts from: it declares every colour, radius and type token for both appearances, and the shell resolves it for the theme's declared appearance. A theme's variables are applied on top of it on the document root, and the kit consumes them as-is, which makes the value format a token-value contract, not a convention.
 
+The hub `skills/frontx-design/SKILL.md` routes here and sets precedence: the kit binds identity, so a theme repaints kit tokens and never brings a parallel token set.
+
 ## Establish the token contract
 
 1. Decide whether the theme is the kit's palette or a palette of its own. A theme on the kit's palette declares the shell's own tokens (left menu, spacing, shadows, transitions, `--error`, `--radius-none`) and at most a few kit tokens it overrides on purpose, such as a brand `--primary`; the shell's `light`, `dark` and `default` override none. A theme that repaints the page surface (`--background`) has a palette of its own, like the shell's Dracula themes (`src-app/app/themes/draculaPalette.ts`), and then overrides every colour token the kit declares for its appearance: a token left out resolves to the kit's value, and a kit component then paints in two palettes. Shape is one knob: override `--radius`, never the derived `--radius-*` steps. Start from the existing theme of the same kind in `src-app/app/themes/`; the shell's `themes.test.ts` checks every theme in `frontxThemes` (`src-app/app/themes/index.ts`) against the installed kit, so list a new theme there as well as registering it.
