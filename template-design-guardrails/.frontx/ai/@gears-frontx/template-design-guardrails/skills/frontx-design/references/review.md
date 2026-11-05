@@ -3,7 +3,8 @@
 Review the implementation and its rendered result with evidence, not taste
 language. The review is advisory: it never marks a build failed, changes CI or
 acts as a release gate. Asked to block a merge, decline, say why, and still
-return the findings for a person to act on.
+return the findings for a person to act on. The review changes no files
+unless the request asks for fixes.
 
 ## Fresh context
 

@@ -10,7 +10,9 @@ closing report are in `SKILL.md`; this file is the procedure.
    (`references/frontx-context.md` for where the screen lives).
 2. Read the installed `@gears-frontx/ui-kit/llms.txt` and the docs of the
    components in use; when they are large, read the headings first and pull
-   only the sections for those components.
+   only the sections for those components. The visual reference is the kit
+   and the UI Kit screen of the FrontX showcase
+   (https://frontx.constructor.rocks/); import no look from anywhere else.
 3. Name the primary user job, the dominant action, the data dependencies and
    the failure states.
 4. Reuse the nearest existing screen: the one serving the same job, or else
