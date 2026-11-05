@@ -10,20 +10,30 @@
  * The kit's theme.css is the source; DESIGN.md mirrors it, never the reverse.
  * generate rewrites only the YAML front matter and keeps the markdown body.
  *
- * Contract: the script reads only the shape of the kit's own theme.css and
- * does not emulate the CSS cascade (see parseTheme):
- *   - custom properties come from `:root`, `:root, [data-theme='light']` and
- *     `[data-theme='dark']` blocks, in that order: all :root blocks, then the
- *     light blocks, then the dark blocks, then the optional
- *     `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }`
- *     fallback; each may repeat, a block out of this order is exit 2;
+ * Contract: the whole file must have the shape of the kit's own theme.css,
+ * and the script does not emulate the CSS cascade (see parseTheme):
+ *   - after comments are removed the file holds only, in this order: one or
+ *     more `:root` blocks, one or more `:root, [data-theme='light']` blocks,
+ *     one or more `[data-theme='dark']` blocks, optionally one
+ *     `@media (prefers-color-scheme: dark)` holding only
+ *     `:root:not([data-theme='light'])` blocks, optionally one
+ *     `body, [data-theme]` block; anything else (another rule, any other
+ *     at-rule such as @property, @import, @font-face or @keyframes, text
+ *     outside a block, a block out of order) is exit 2 naming it;
+ *   - selector lists are compared item by item: whitespace only between items
+ *     and around commas, attribute values exactly light or dark, quoted with
+ *     ' or " or unquoted, no spaces inside brackets;
+ *   - a backslash anywhere in the file (CSS escapes), and a quoted string that
+ *     runs past its line, are exit 2;
  *   - light = :root + light blocks, dark = :root + light + dark blocks (the light
  *     block lists :root, so the browser applies it to the dark root too);
  *   - the fallback is not read for output, but each token it declares must
  *     equal its dark value;
- *   - blocks with no custom property (such as `body, [data-theme]`) are ignored;
- *   - only color-scheme may sit beside the tokens, and font-size or font
- *     anywhere in the file is exit 2, so rem values are converted at 16px;
+ *   - `body, [data-theme]` may set only background-color, color and
+ *     font-family, each to one var(--name), and is not read for output;
+ *   - beside the tokens only color-scheme may sit, with the value light in
+ *     the light block and dark in the dark and fallback blocks, so nothing
+ *     changes the rem base and rem values are converted at 16px;
  *   - every token value matches the kit's value grammar (see valueForm): hex,
  *     a number with px, rem, em, %, ms, s or deg, var(--x), calc(a + b) or
  *     calc(a - b) of those, color-mix(in oklab, <hex or var> <p>%, transparent),
@@ -32,14 +42,14 @@
  *   - a colour token resolves to hex, rgb(), hsl() or such a color-mix();
  *   - two tokens must not map to one output path (--radius, --radius-base),
  *     and no path segment may be __proto__, prototype or constructor.
- * Anything else that declares a custom property (another selector, html,
- * :root[data-theme=dark], a selector list that only partly matches, @media of
- * another kind, @supports, @layer, @container, nesting) is exit 2.
- * Known gaps, also exit 2 rather than converted: any value outside the
- * grammar (lab(), lch(), oklch(), light-dark(), named colours, an empty value,
- * var() with a fallback or spaces inside, calc() with * or /, named font
- * weights, percentage opacity, !important, a quoted font name holding var(),
- * an unquoted family name with a space); full list in references/design-md.md.
+ * Known gaps, also exit 2 rather than converted: any construct outside the
+ * file shape (html, :root[data-theme=dark], a selector list that only partly
+ * matches, @media of another kind, @supports, @layer, @container, @property,
+ * nesting, escapes), any value outside the grammar (lab(), lch(), oklch(),
+ * light-dark(), named colours, an empty value, var() with a fallback or spaces
+ * inside, calc() with * or /, named font weights, percentage opacity,
+ * !important, a quoted font name holding var(), an unquoted family name with
+ * a space); full list in references/design-md.md.
  * var() chains are resolved per theme before a token is classified or
  * converted, and the script fails closed: a value it cannot resolve, classify
  * or convert is a usage error, never a written guess.
@@ -61,7 +71,11 @@ class UsageError extends Error {}
 
 const isQuote = (c) => c === '"' || c === "'";
 
-/** The CSS with every comment outside a quoted string removed. */
+/**
+ * The CSS with every comment outside a quoted string removed. A quoted string
+ * that runs past the end of its line or of the file is a usage error: the
+ * browser ends it there and reads the rest differently.
+ */
 function stripComments(css) {
   const parts = [];
   let from = 0;
@@ -71,6 +85,9 @@ function stripComments(css) {
     if (quote) {
       if (c === '\\') i++;
       else if (c === quote) quote = null;
+      else if (c === '\n' || c === '\r' || c === '\f') {
+        throw new UsageError(`theme.css has a quoted string that runs past the end of line ${css.slice(0, i).split('\n').length}; fix: close the quote on the same line`);
+      }
     } else if (isQuote(c)) quote = c;
     else if (c === '/' && css[i + 1] === '*') {
       parts.push(css.slice(from, i));
@@ -79,6 +96,7 @@ function stripComments(css) {
       from = i + 1;
     }
   }
+  if (quote) throw new UsageError('theme.css has a quoted string that is never closed; fix: close the quote');
   parts.push(css.slice(from));
   return parts.join('');
 }
@@ -263,40 +281,21 @@ function parseDecl(text) {
   return { name, value: squeeze(text.slice(colon + 1)) };
 }
 
-/** The first custom property a block body declares, nested blocks included, in source order; null when it declares none. */
-function firstToken(inner) {
-  for (const item of splitBlock(inner)) {
-    const name = item.inner === undefined ? parseDecl(item.decl)?.name : firstToken(item.inner);
-    if (name?.startsWith('--')) return name;
-  }
-  return null;
-}
-
 const KIT_SHAPE =
-  ":root, \":root, [data-theme='light']\", \"[data-theme='dark']\" and \":root:not([data-theme='light'])\" inside \"@media (prefers-color-scheme: dark)\"";
-
-/** A usage error when a block outside the kit's shape declares a custom property; such a block without one is ignored. */
-function rejectTokens(form, inner) {
-  const token = firstToken(inner);
-  if (token) {
-    throw new UsageError(
-      `theme.css ${form} declares ${token}; design-md reads custom properties only from the kit's own blocks (${KIT_SHAPE}); fix: move the token into one of those blocks or report the need to the kit owner`,
-    );
-  }
-}
+  ":root blocks, \":root, [data-theme='light']\" blocks, \"[data-theme='dark']\" blocks, one \"@media (prefers-color-scheme: dark)\" holding only \":root:not([data-theme='light'])\" blocks, one \"body, [data-theme]\" block, in that order";
+const OUTSIDE_SHAPE = `is outside the accepted theme.css shape (${KIT_SHAPE}); fix: remove it or report the need to the kit owner`;
 
 /**
- * The custom properties of one allowed block, `[name, value]` in source order.
- * Only color-scheme may sit beside them: any other plain property (font-size
- * would change the rem base) and any nested block that declares a custom
- * property is a usage error.
+ * The custom properties of one token block, `[name, value]` in source order.
+ * The only plain property allowed beside them is color-scheme with the value
+ * `scheme` (none in a :root block); any other declaration, any nested block
+ * and any text that is not a declaration is a usage error.
  */
-function blockTokens(form, inner) {
+function blockTokens(form, inner, scheme) {
   const tokens = [];
   for (const item of splitBlock(inner)) {
     if (item.inner !== undefined) {
-      rejectTokens(`rule "${squeeze(item.prelude)}" nested in ${form}`, item.inner);
-      continue;
+      throw new UsageError(`theme.css ${form} nests rule "${squeeze(item.prelude)}", which ${OUTSIDE_SHAPE}`);
     }
     const decl = parseDecl(item.decl);
     if (!decl) throw new UsageError(`theme.css ${form} holds "${squeeze(item.decl)}", which is not a declaration; fix: correct the CSS`);
@@ -304,9 +303,9 @@ function blockTokens(form, inner) {
       throw new UsageError(`${decl.name.startsWith('--') ? 'token' : 'property'} ${decl.name} in ${form} carries !important; fix: remove !important; the kit does not use it`);
     }
     if (!decl.name.startsWith('--')) {
-      if (decl.name === 'color-scheme') continue;
+      if (scheme && decl.name === 'color-scheme' && decl.value === scheme) continue;
       throw new UsageError(
-        `theme.css ${form} sets ${decl.name}; design-md accepts only custom properties and color-scheme there (rem values are converted at 16px); fix: move ${decl.name} out of the token blocks or report it to the kit owner`,
+        `theme.css ${form} sets ${decl.name}: ${decl.value}; design-md accepts there only custom properties${scheme ? ` and color-scheme: ${scheme}` : ''} (a font-size would also change the rem base, and rem values are converted at 16px); fix: remove the declaration or report the need to the kit owner`,
       );
     }
     if (NAMED_COLOURS.has(decl.value.toLowerCase())) {
@@ -342,99 +341,118 @@ const NAMED_COLOURS = new Set(
 );
 
 const THEMES = ['light', 'dark'];
-/** The allowed token blocks by normalised selector list (whitespace and quotes removed). */
-const BLOCK_KINDS = new Map([
+/**
+ * One item of an accepted selector list: no whitespace inside it, and an
+ * attribute value of exactly light or dark, quoted with ' or " or unquoted.
+ */
+const SELECTOR_ITEM = /^(?::root|body|\[data-theme\]|\[data-theme=(?:'(?:light|dark)'|"(?:light|dark)"|light|dark)\]|:root:not\(\[data-theme=(?:'light'|"light"|light)\]\))$/;
+/**
+ * The selector list compared item by item, as `item,item` with the quotes
+ * removed; null when an item is not one of the accepted ones. Whitespace is
+ * allowed only around the items, never inside one.
+ */
+function selectorKey(prelude) {
+  const items = commaItems(prelude);
+  return items.every((item) => SELECTOR_ITEM.test(item)) ? items.map((item) => item.replace(/["']/g, '')).join(',') : null;
+}
+/** The accepted top-level rules by selector key. */
+const RULE_KINDS = new Map([
   [':root', 'root'],
   [':root,[data-theme=light]', 'light'],
   ['[data-theme=dark]', 'dark'],
+  ['body,[data-theme]', 'body'],
 ]);
+/** Kind: rank in the file order, name for messages, whether it may repeat. */
 const BLOCK_RANK = new Map([
-  ['root', [0, ':root']],
-  ['light', [1, ":root, [data-theme='light']"]],
-  ['dark', [2, "[data-theme='dark']"]],
-  ['fallback', [3, '@media (prefers-color-scheme: dark)']],
+  ['root', [0, ':root', true]],
+  ['light', [1, ":root, [data-theme='light']", true]],
+  ['dark', [2, "[data-theme='dark']", true]],
+  ['fallback', [3, '@media (prefers-color-scheme: dark)', false]],
+  ['body', [4, 'body, [data-theme]', false]],
 ]);
-const FALLBACK_AT = '@media(prefers-color-scheme:dark)';
+const FALLBACK_AT = /^@media ?\( ?prefers-color-scheme ?: ?dark ?\)$/;
 const FALLBACK_SELECTOR = ':root:not([data-theme=light])';
-const selectorKey = (s) => s.replace(/\s+|["']/g, '');
+const BODY_PROPERTIES = new Set(['background-color', 'color', 'font-family']);
+const BODY_VALUE = whole(G_REF);
 
-/**
- * font-size and the font shorthand change the rem base, so they are a usage
- * error in any rule or at-rule of the file, with or without tokens beside them.
- */
-function rejectFontSize(items, within) {
-  for (const item of items) {
-    if (item.inner !== undefined) {
-      const prelude = squeeze(item.prelude);
-      rejectFontSize(splitBlock(item.inner), within ? `rule "${prelude}" in ${within}` : `${prelude.startsWith('@') ? 'at-rule' : 'rule'} "${prelude}"`);
-      continue;
-    }
-    const name = parseDecl(item.decl)?.name.toLowerCase();
-    if (name === 'font-size' || name === 'font') {
+/** The kit's page-paint block may set only background-color, color and font-family, each to one var(--name). */
+function checkBody(form, inner) {
+  for (const item of splitBlock(inner)) {
+    const decl = item.inner === undefined ? parseDecl(item.decl) : null;
+    if (!decl || !BODY_PROPERTIES.has(decl.name) || !BODY_VALUE.test(decl.value)) {
+      const text = squeeze(item.inner === undefined ? item.decl : `${item.prelude} { ... }`);
       throw new UsageError(
-        `theme.css ${within ?? 'top level'} sets ${name}; it changes the rem base, and rem values are converted at 16px; fix: remove ${name} from theme.css or report the need to the kit owner`,
+        `theme.css ${form} holds "${text}"; design-md accepts there only background-color, color and font-family, each a single var(--name); fix: remove it or report the need to the kit owner`,
       );
     }
   }
 }
 
 /**
- * Read the custom properties of the kit's theme.css shape and nothing else,
- * with its blocks in this order:
+ * Read the kit's theme.css, which must have this shape as a whole, after
+ * comments are removed:
  *
  *   :root { ... }                                  invariant tokens, both themes
- *   :root, [data-theme='light'] { ... }            light tokens
- *   [data-theme='dark'] { ... }                    dark tokens
- *   @media (prefers-color-scheme: dark) {
- *     :root:not([data-theme='light']) { ... } }    fallback: must equal dark
+ *   :root, [data-theme='light'] { ... }            light tokens, color-scheme: light
+ *   [data-theme='dark'] { ... }                    dark tokens, color-scheme: dark
+ *   @media (prefers-color-scheme: dark) {          optional fallback, must equal dark
+ *     :root:not([data-theme='light']) { ... } }
+ *   body, [data-theme] { ... }                     optional page paint: background-color,
+ *                                                  color, font-family as var(--name)
  *
- * Each block may repeat; a block that comes before one of a kind listed above
- * it is a usage error. In this order the browser result is exact: light is
- * the :root and light blocks, dark the :root, light and dark blocks (the light
- * block lists :root, so it applies to the dark root too, and the dark blocks
- * come later and win). A token declared only in the light block is inherited
- * by dark. A block that declares no custom property (such as
- * `body, [data-theme]`) is ignored; any other selector, at-rule or nesting
- * that declares one is a usage error.
+ * The first three may repeat, in that order; the last two appear at most once.
+ * Anything else (another rule, another at-rule such as @property or @import,
+ * text outside a block, a block out of order, a backslash anywhere) is a usage
+ * error naming it, so no construct of the file goes unchecked. In this order
+ * the browser result is exact: light is the :root and light blocks, dark the
+ * :root, light and dark blocks (the light block lists :root, so it applies to
+ * the dark root too, and the dark blocks come later and win).
  *
  * Returns { light, dark, order }: a Map of name to value per theme, and every
  * name in output order (first declared by a themed block, then the rest, each
  * in source order; this keeps the kit's palette order stable).
  */
 export function parseTheme(css) {
+  const backslash = css.indexOf('\\');
+  if (backslash !== -1) {
+    throw new UsageError(
+      `theme.css has a backslash on line ${css.slice(0, backslash).split('\n').length}; CSS escapes are outside the accepted shape; fix: write the text without escapes`,
+    );
+  }
   const items = splitBlock(stripComments(css));
-  rejectFontSize(items, null);
   const blocks = []; // [kind, tokens] in source order
   const fallback = new Map();
-  let last = 'root';
+  let last = null;
   const enter = (kind, form) => {
-    const [rank] = BLOCK_RANK.get(kind);
-    const [lastRank, lastName] = BLOCK_RANK.get(last);
-    if (rank < lastRank) {
-      throw new UsageError(
-        `theme.css ${form} comes after a ${lastName} block; design-md reads the kit's block order: :root, then ":root, [data-theme='light']", then "[data-theme='dark']", then the "@media (prefers-color-scheme: dark)" fallback; fix: move the block to its place in that order`,
-      );
+    const [rank, , repeats] = BLOCK_RANK.get(kind);
+    if (last) {
+      const [lastRank, lastName] = BLOCK_RANK.get(last);
+      if (rank < lastRank || (rank === lastRank && !repeats)) {
+        throw new UsageError(
+          `theme.css ${form} comes after a ${lastName} block; design-md reads the kit's blocks in this order: ${KIT_SHAPE}; fix: move the block to its place in that order, or merge it into the block of its kind`,
+        );
+      }
     }
     last = kind;
   };
   for (const item of items) {
-    if (item.inner === undefined) continue; // a statement such as @import or @charset
+    if (item.inner === undefined) throw new UsageError(`theme.css has "${squeeze(item.decl)}" outside any block, which ${OUTSIDE_SHAPE}`);
     const prelude = squeeze(item.prelude);
-    if (!prelude.startsWith('@')) {
-      const kind = BLOCK_KINDS.get(selectorKey(prelude));
-      if (kind) {
-        blocks.push([kind, blockTokens(`rule "${prelude}"`, item.inner)]);
-        enter(kind, `rule "${prelude}"`);
-      } else rejectTokens(`rule "${prelude}"`, item.inner);
-    } else if (selectorKey(prelude) !== FALLBACK_AT) rejectTokens(`at-rule "${prelude}"`, item.inner);
+    const form = `${prelude.startsWith('@') ? 'at-rule' : 'rule'} "${prelude}"`;
+    const kind = prelude.startsWith('@') ? (FALLBACK_AT.test(prelude) ? 'fallback' : null) : RULE_KINDS.get(selectorKey(prelude));
+    if (!kind) throw new UsageError(`theme.css ${form} ${OUTSIDE_SHAPE}`);
+    if (kind === 'body') checkBody(form, item.inner);
+    else if (kind !== 'fallback') blocks.push([kind, blockTokens(form, item.inner, kind === 'root' ? null : kind)]);
     else {
       for (const child of splitBlock(item.inner)) {
-        if (child.inner === undefined) rejectTokens(`at-rule "${prelude}"`, child.decl);
-        else if (selectorKey(child.prelude) !== FALLBACK_SELECTOR) rejectTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner);
-        else for (const [n, v] of blockTokens(`rule "${squeeze(child.prelude)}" in "${prelude}"`, child.inner)) fallback.set(n, v);
+        const childForm = child.inner === undefined ? `"${squeeze(child.decl)}"` : `rule "${squeeze(child.prelude)}"`;
+        if (child.inner === undefined || selectorKey(child.prelude) !== FALLBACK_SELECTOR) {
+          throw new UsageError(`theme.css ${form} holds ${childForm}, which ${OUTSIDE_SHAPE}`);
+        }
+        for (const [n, v] of blockTokens(`${childForm} in ${form}`, child.inner, 'dark')) fallback.set(n, v);
       }
-      enter('fallback', `at-rule "${prelude}"`);
     }
+    enter(kind, form); // after the content, so a bad value is reported before the block's position
   }
 
   const themes = { light: new Map(), dark: new Map() };
@@ -448,7 +466,9 @@ export function parseTheme(css) {
       themes.dark.set(n, v); // blocks are in kit order, so dark blocks come last and win
     }
   }
-  for (const t of THEMES) if (!blocks.some(([kind]) => kind === t)) throw new UsageError(`theme.css has no [data-theme='${t}'] block`);
+  for (const [kind, name] of [['root', ':root'], ['light', "[data-theme='light']"], ['dark', "[data-theme='dark']"]]) {
+    if (!blocks.some(([k]) => k === kind)) throw new UsageError(`theme.css has no ${name} block`);
+  }
   checkFallback(fallback, themes);
 
   const rank = (n) => [themedAt.get(n) ?? Infinity, firstAt.get(n)];

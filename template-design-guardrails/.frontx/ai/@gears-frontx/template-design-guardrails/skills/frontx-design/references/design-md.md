@@ -89,25 +89,41 @@ Every finding is one line with a `fix:`. Exit codes: 0 clean, 1 findings,
 
 ## Accepted theme.css shape
 
-The script does not emulate the CSS cascade. It accepts the shape the kit
-ships and nothing else:
+The script does not emulate the CSS cascade. The whole file must have the
+shape the kit ships; after comments are removed it may hold only these
+top-level blocks, in this order:
 
-- custom properties only in `:root`, `:root, [data-theme='light']` and
-  `[data-theme='dark']` blocks (matched on the whole selector list, quote
-  style and whitespace ignored); each may repeat and merges in source order;
-- `@media (prefers-color-scheme: dark)` holding only
-  `:root:not([data-theme='light'])` blocks: not used for output, but every
-  token it declares must resolve to its dark value;
-- block order: all `:root` blocks, then the light blocks, then the dark
-  blocks, then the optional fallback; a block out of this order is exit 2
-  naming it. In this order the browser result is exact: dark is `:root` +
-  light + dark, so the later dark blocks win;
-- blocks that declare no custom property (such as `body, [data-theme]`) are
-  ignored, whatever their selector;
-- beside the tokens only `color-scheme`, and `font-size` or the `font`
-  shorthand nowhere in the file (any rule or at-rule), so nothing changes the
-  root font size and `rem` values are converted at 16 px;
-- each token maps to its own output path, and no path segment is
+```css
+:root { ... }                         /* one or more: tokens for both themes */
+:root, [data-theme='light'] { ... }   /* one or more: light tokens, color-scheme: light */
+[data-theme='dark'] { ... }           /* one or more: dark tokens, color-scheme: dark */
+@media (prefers-color-scheme: dark) { /* optional, once */
+  :root:not([data-theme='light']) { ... }
+}
+body, [data-theme] { ... }            /* optional, once */
+```
+
+- Anything else is exit 2 naming it: another rule (`html`, `.card`, even
+  empty), any other at-rule (`@property`, `@import`, `@font-face`,
+  `@keyframes`, `@layer`, `@supports`, `@container`, another `@media`), text
+  outside a block, a nested rule, a block out of this order.
+- Selector lists are compared item by item. Whitespace may sit only between
+  list items and around commas; an attribute value is exactly `light` or
+  `dark`, quoted with `'` or `"` or unquoted. `[data-theme='d ark']`,
+  `[data-theme='Dark']` and `[ data-theme = dark ]` are exit 2.
+- A backslash anywhere in the file is exit 2: CSS escapes (`f\6f nt-size`,
+  `--sp\61 ce-4`) are outside the shape. So is a quoted string that runs past
+  the end of its line.
+- Light is the `:root` and light blocks, dark the `:root`, light and dark
+  blocks; in this order the browser result is exact. The fallback is not
+  used for output, but every token it declares must resolve to its dark
+  value.
+- Beside the tokens only `color-scheme` may sit: `light` in the light block,
+  `dark` in the dark and fallback blocks, nothing in `:root`. So nothing
+  changes the root font size and `rem` values are converted at 16 px.
+- `body, [data-theme]` may set only `background-color`, `color` and
+  `font-family`, each to one `var(--name)`; it is not read for output.
+- Each token maps to its own output path, and no path segment is
   `__proto__`, `prototype` or `constructor`.
 
 Values follow the kit's value grammar. After comments are stripped and
@@ -130,8 +146,7 @@ whitespace outside quotes is collapsed, a token value is exactly one of:
 A colour token (by value, or by name when a component reads it as a colour)
 must resolve to hex, `rgb()`, `hsl()` or such a `color-mix()`; a shadow's
 colour must resolve to one too. Anything else is exit 2 naming the token and
-the value. Anything else that declares a custom property is exit 2 naming the
-selector or at-rule and the first token. Declarations split on `;` outside
+the value. Declarations split on `;` outside
 quotes and parentheses; quoted text is kept exactly, comments are removed
 only outside quotes, and `var()` is resolved and rewritten only outside
 quotes.
@@ -151,19 +166,23 @@ converted; extend the script when the kit starts using one:
 - percentage opacity (`50%`);
 - `!important` on any declaration in a token block (any case or spacing,
   outside quotes; the kit does not use it);
-- custom properties in any selector other than the three above (`html`,
-  `:root[data-theme='dark']`, a list such as `[data-theme='dark'], .dark`),
-  in `@media` of another kind, `@supports`, `@layer`, `@container` or a
-  nested rule;
-- token blocks out of the kit's order (a `:root` or light block after a dark
-  block, a dark block after the fallback);
-- a plain property other than `color-scheme` in a token block, and
-  `font-size` or `font` anywhere in the file;
+- any construct outside the file shape: another selector (`html`,
+  `:root[data-theme='dark']`, a list such as `[data-theme='dark'], .dark`,
+  spaces or another case inside an attribute selector), with or without
+  tokens; any other at-rule (`@property`, `@import`, `@font-face`,
+  `@keyframes`, `@layer`, `@supports`, `@container`, `@media` of another
+  kind); a nested rule; text outside a block;
+- blocks out of the kit's order (a `:root` or light block after a dark block,
+  a dark block after the fallback, any block after `body, [data-theme]`), and
+  a second fallback or `body, [data-theme]` block;
+- CSS escapes (a backslash anywhere, quoted text included);
+- a plain property in a token block other than the block's own
+  `color-scheme` (so `font-size` and `font` are out), and in
+  `body, [data-theme]` anything but `background-color`, `color` and
+  `font-family` as one `var(--name)`;
 - two tokens that map to one path (`--radius` and `--radius-base`), and a
   token name that maps to a `__proto__`, `prototype` or `constructor` path
   segment.
-
-Other plain properties outside the token blocks are not read.
 
 ## Change it with care
 

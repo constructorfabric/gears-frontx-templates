@@ -35,14 +35,17 @@ const frontMatter = () => parseYaml(splitDesign(readFileSync(design, 'utf8')).ya
 /**
  * The fixture with extra blocks at their place in the kit's block order:
  * `root` after the :root block, `light` after the light block, `dark` after the
- * dark block (before the fallback), `end` after everything. Returns the path.
+ * dark block (before the fallback), `end` after everything; `fallback`, when
+ * given, replaces the fixture's prefers-color-scheme block. Returns the path.
  */
-const placed = ({ root = '', light = '', dark = '', end = '' }) => {
+const placed = ({ root = '', light = '', dark = '', fallback, end = '' }) => {
   const theme = path.join(dir, 'theme.css');
-  const css = readFileSync(THEME, 'utf8')
+  let css = readFileSync(THEME, 'utf8');
+  if (fallback !== undefined) css = `${css.slice(0, css.indexOf('@media (prefers-color-scheme: dark)'))}${fallback}\n`;
+  css = css
     .replace(":root,\n[data-theme='light'] {", `${root}\n:root,\n[data-theme='light'] {`)
     .replace("\n[data-theme='dark'] {", `\n${light}\n[data-theme='dark'] {`)
-    .replace('@media (prefers-color-scheme: dark)', `${dark}\n@media (prefers-color-scheme: dark)`);
+    .replace(/\n(@media \(prefers-color-scheme: dark\)|$)/, `\n${dark}\n$1`);
   writeFileSync(theme, `${css}\n${end}\n`);
   return theme;
 };
@@ -107,15 +110,19 @@ describe('generate', () => {
     expect(readFileSync(design, 'utf8')).toBe(text);
   });
 
-  it('accepts the allowed selectors in any quote and whitespace style', () => {
+  it('accepts the allowed selectors in any quote style, with whitespace only between list items', () => {
     const fixture = readFileSync(THEME, 'utf8');
-    for (const [light, dark] of [
-      [':root, [data-theme="light"]', '[data-theme="dark"]'],
-      [':root,[data-theme=light]', '[data-theme=dark]'],
-      [":root ,\n  [ data-theme = 'light' ]", "[ data-theme='dark' ]"],
+    for (const [light, dark, notLight, body] of [
+      [':root, [data-theme="light"]', '[data-theme="dark"]', ':root:not([data-theme="light"])', 'body, [data-theme]'],
+      [':root,[data-theme=light]', '[data-theme=dark]', ':root:not([data-theme=light])', 'body,[data-theme]'],
+      [":root\n  ,\n\t[data-theme='light']  ", "  [data-theme='dark']\n", "\n  :root:not([data-theme='light'])", 'body\n ,  [data-theme]\n'],
     ]) {
       const theme = path.join(dir, 'theme.css');
-      writeFileSync(theme, fixture.replace(":root,\n[data-theme='light'] {", `${light} {`).replace("\n[data-theme='dark'] {", `\n${dark} {`));
+      const css = fixture
+        .replace(":root,\n[data-theme='light'] {", `${light} {`)
+        .replace("\n[data-theme='dark'] {", `\n${dark} {`)
+        .replace(":root:not([data-theme='light'])", notLight);
+      writeFileSync(theme, `${css}\n${body} { color: var(--foreground); }\n`);
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
       expect([frontMatter().colors.background, frontMatter()['colors-dark'].background]).toEqual(['#f1f5f9', '#0f172a']);
     }
@@ -155,7 +162,7 @@ describe('generate', () => {
     };
     it('accepts a fallback block that equals the dark theme', () => {
       const fallback = "@media (prefers-color-scheme: dark) {\n  :root:not([data-theme='light']) { --foreground: #ffffff; --primary: var(--primary-foreground); color-scheme: dark; }\n}";
-      const theme = placed({ dark: "[data-theme='dark'] { --primary: #ffffff; }", end: fallback });
+      const theme = placed({ dark: "[data-theme='dark'] { --primary: #ffffff; }", fallback });
       expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
       expect([frontMatter().colors.primary, frontMatter()['colors-dark'].primary]).toEqual(['#0065e3', '#ffffff']);
     });
@@ -194,10 +201,10 @@ describe('generate', () => {
       expect(fm.motion['ease-k']).toBe('cubic-bezier(0.2, 0, 0, 1)');
     });
 
-    it('ignores a block with no custom property, whatever its selector', () => {
+    it("accepts the kit's body, [data-theme] page-paint block and writes nothing for it", () => {
       cli('generate', '--design', design, '--theme', THEME);
       const plain = readFileSync(design, 'utf8');
-      const extra = 'body,\n[data-theme] { background-color: var(--background); color: var(--foreground); font-family: var(--font-sans); }\n@media (min-width: 1px) { .x { color: red; } }';
+      const extra = '/* Page paint. */\nbody,\n[data-theme] {\n  background-color: var(--background);\n  color: var(--foreground);\n  /* the kit font */\n  font-family: var(--font-sans);\n}';
       expect(cli('generate', '--design', design, '--theme', themeWith(extra))).toBe(0);
       expect(readFileSync(design, 'utf8')).toBe(plain);
     });
@@ -214,18 +221,44 @@ describe('generate', () => {
       expect(frontMatter().fonts.sans).toBe(`"Brand !important", 'X ! IMPORTANT', sans-serif`);
     });
 
+    const outside = (form) => new RegExp(`theme\\.css ${form} is outside the accepted theme\\.css shape \\(.*\\); fix: remove it`);
+    const escape = /theme\.css has a backslash on line \d+; CSS escapes are outside the accepted shape; fix:/;
     const rejected = {
-      'another selector': ['.card { --primary: #ff0000; }', /theme\.css rule "\.card" declares --primary; .*fix:/],
-      'an html block': ['html { --primary: #ff0000; }', /theme\.css rule "html" declares --primary; .*fix:/],
-      ':root[data-theme=dark]': [':root[data-theme=dark] { --primary: #ff0000; }', /theme\.css rule ":root\[data-theme=dark\]" declares --primary; .*fix:/],
-      'a selector list that only partly matches': ['[data-theme=dark], .dark { --primary: #ff0000; }', /theme\.css rule "\[data-theme=dark\], \.dark" declares --primary; .*fix:/],
-      'a light and dark selector list': ['[data-theme="light"], [data-theme="dark"] { --primary: #ff0000; }', /rule "\[data-theme="light"\], \[data-theme="dark"\]" declares --primary/],
-      '@media all': ['@media all { :root { --space-2: 1rem; } }', /theme\.css at-rule "@media all" declares --space-2; .*fix:/],
-      '@media of another feature': ['@media (min-width: 1px) { :root { --primary: #ff0000; } }', /at-rule "@media \(min-width: 1px\)" declares --primary/],
-      '@supports': ['@supports (color: red) { :root { --primary: #ff0000; } }', /theme\.css at-rule "@supports \(color: red\)" declares --primary; .*fix:/],
-      '@layer': ['@layer kit { :root { --primary: #ff0000; } }', /at-rule "@layer kit" declares --primary/],
-      'a nested rule': [':root { --space-2: 0.5rem; & .x { --primary: #ff0000; } }', /theme\.css rule "& \.x" nested in rule ":root" declares --primary; .*fix:/],
-      'font-size in :root': [':root { font-size: 20px; }', /theme\.css rule ":root" sets font-size; .*rem values are converted at 16px.*fix:/],
+      'another selector': ['.card { --primary: #ff0000; }', outside('rule "\\.card"')],
+      'an html block': ['html { --primary: #ff0000; }', outside('rule "html"')],
+      'a token-free html block': ['html {}', outside('rule "html"')],
+      ':root[data-theme=dark]': [':root[data-theme=dark] { --primary: #ff0000; }', outside('rule ":root\\[data-theme=dark\\]"')],
+      'a selector list that only partly matches': ['[data-theme=dark], .dark { --primary: #ff0000; }', outside('rule "\\[data-theme=dark\\], \\.dark"')],
+      'a light and dark selector list': ['[data-theme="light"], [data-theme="dark"] { --primary: #ff0000; }', outside('rule "\\[data-theme="light"\\], \\[data-theme="dark"\\]"')],
+      'a space inside a quoted attribute value': [{ dark: "[data-theme='d ark'] { --primary: #ff0000; }" }, outside('rule "\\[data-theme=\'d ark\'\\]"')],
+      'an attribute value in another case': [{ dark: "[data-theme='Dark'] { --primary: #ff0000; }" }, outside('rule "\\[data-theme=\'Dark\'\\]"')],
+      'spaces inside the attribute brackets': [{ dark: '[ data-theme = dark ] { --primary: #ff0000; }' }, outside('rule "\\[ data-theme = dark \\]"')],
+      '@media all': ['@media all { :root { --space-2: 1rem; } }', outside('at-rule "@media all"')],
+      '@media of another feature': ['@media (min-width: 1px) { :root { --primary: #ff0000; } }', outside('at-rule "@media \\(min-width: 1px\\)"')],
+      'a token-free @media': ['@media (min-width: 1px) { .x { color: red; } }', outside('at-rule "@media \\(min-width: 1px\\)"')],
+      '@supports': ['@supports (color: red) { :root { --primary: #ff0000; } }', outside('at-rule "@supports \\(color: red\\)"')],
+      '@layer': ['@layer kit { :root { --primary: #ff0000; } }', outside('at-rule "@layer kit"')],
+      '@property': ["@property --primary { syntax: '<color>'; inherits: true; initial-value: #ff0000; }", outside('at-rule "@property --primary"')],
+      '@font-face': ['@font-face { font-family: "Brand"; src: url("brand.woff2"); }', outside('at-rule "@font-face"')],
+      '@keyframes': ['@keyframes spin { to { transform: rotate(360deg); } }', outside('at-rule "@keyframes spin"')],
+      '@import': ['@import url("other.css");', /theme\.css has "@import url\("other\.css"\)" outside any block, which is outside the accepted theme\.css shape/],
+      'stray text': ['stray', /theme\.css has "stray" outside any block, which is outside the accepted theme\.css shape .*fix:/],
+      'an escaped property name in html': ['html { f\\6f nt-size: 20px; }', escape],
+      'an escaped token name': [{ root: ':root { --sp\\61 ce-4: 2rem; }' }, escape],
+      'a backslash inside a quoted font name': [{ root: ':root { --font-sans: "In\\74 er", sans-serif; }' }, escape],
+      'a quoted string that runs past its line': [{ root: ":root { --font-sans: 'Inter\n; --primary: #ff0000; }" }, /theme\.css has a quoted string that runs past the end of line \d+; fix:/],
+      'a body block with an extra property': ['body, [data-theme] { background-color: var(--background); margin: 0; }', /rule "body, \[data-theme\]" holds "margin: 0"; design-md accepts there only background-color, color and font-family, each a single var\(--name\); fix:/],
+      'a body block with a literal colour': ['body, [data-theme] { color: #000000; }', /rule "body, \[data-theme\]" holds "color: #000000"; design-md accepts there only/],
+      'a body block with a custom property': ['body, [data-theme] { --primary: #ff0000; }', /rule "body, \[data-theme\]" holds "--primary: #ff0000"; design-md accepts there only/],
+      'a second body block': ['body, [data-theme] { color: var(--foreground); }\nbody, [data-theme] { color: var(--foreground); }', /rule "body, \[data-theme\]" comes after a body, \[data-theme\] block; .*fix:/],
+      'a token block after the body block': ['body, [data-theme] { color: var(--foreground); }\n[data-theme="dark"] { --primary: #ffffff; }', /rule "\[data-theme="dark"\]" comes after a body, \[data-theme\] block; .*fix:/],
+      'color-scheme of the other theme': [{ light: ':root, [data-theme="light"] { color-scheme: dark; }' }, /rule ":root, \[data-theme="light"\]" sets color-scheme: dark; design-md accepts there only custom properties and color-scheme: light/],
+      'color-scheme in :root': [{ root: ':root { color-scheme: light; }' }, /rule ":root" sets color-scheme: light; design-md accepts there only custom properties \(/],
+      'a fallback holding another rule': [{ fallback: '@media (prefers-color-scheme: dark) { :root { --background: #0f172a; } }' }, /at-rule "@media \(prefers-color-scheme: dark\)" holds rule ":root", which is outside the accepted theme\.css shape/],
+      'a fallback with a space in the feature value': [{ fallback: "@media (prefers-color-scheme: d ark) { :root:not([data-theme='light']) { --background: #0f172a; } }" }, outside('at-rule "@media \\(prefers-color-scheme: d ark\\)"')],
+      'a second fallback': ["@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #0f172a; } }", /at-rule "@media \(prefers-color-scheme: dark\)" comes after a @media \(prefers-color-scheme: dark\) block; .*fix:/],
+      'a nested rule': [{ root: ':root { --space-2: 0.5rem; & .x { --primary: #ff0000; } }' }, /theme\.css rule ":root" nests rule "& \.x", which is outside the accepted theme\.css shape/],
+      'font-size in :root': [{ root: ':root { font-size: 20px; }' }, /theme\.css rule ":root" sets font-size: 20px; design-md accepts there only custom properties \(a font-size would also change the rem base, and rem values are converted at 16px\); fix:/],
       'a named colour': [':root { --primary: white; }', /token --primary in rule ":root" is the named colour white; fix: use hex, rgb\(\) or hsl\(\)/],
       'transparent': ["[data-theme='dark'] { --card: transparent; }", /token --card .* is the named colour transparent; fix: use hex, rgb\(\) or hsl\(\)/],
       '!important on a colour': [':root { --primary: #ff0000 !important; }', /token --primary in rule ":root" carries !important; fix: remove !important; the kit does not use it/],
@@ -238,9 +271,9 @@ describe('generate', () => {
       ],
       'a :root block after the dark block': [{ dark: ':root { --primary: #ff0000; }' }, /theme\.css rule ":root" comes after a \[data-theme='dark'\] block; .*fix:/],
       'a dark block after the fallback': ["[data-theme='dark'] { --primary: #ff0000; }", /rule "\[data-theme='dark'\]" comes after a @media \(prefers-color-scheme: dark\) block; .*fix:/],
-      'font-size in an html rule': ['html { font-size: 20px; }', /theme\.css rule "html" sets font-size; it changes the rem base.*fix:/],
-      'font-size inside @media': ['@media (min-width: 1px) { html { font-size: 20px; } }', /theme\.css rule "html" in at-rule "@media \(min-width: 1px\)" sets font-size; .*fix:/],
-      'the font shorthand': ['body { font: 16px/1.5 sans-serif; }', /theme\.css rule "body" sets font; it changes the rem base.*fix:/],
+      'font-size in an html rule': ['html { font-size: 20px; }', outside('rule "html"')],
+      'font-size inside @media': ['@media (min-width: 1px) { html { font-size: 20px; } }', outside('at-rule "@media \\(min-width: 1px\\)"')],
+      'the font shorthand': ['body { font: 16px/1.5 sans-serif; }', outside('rule "body"')],
       'a lab() colour': [{ root: ':root { --primary: lab(50% 40 59); }' }, /token --primary in rule ":root" has the value "lab\(50% 40 59\)"; fix: the value is outside the kit's value grammar/],
       'an lch() colour': [{ root: ':root { --info: lch(50% 40 200); }' }, /token --info in rule ":root" has the value "lch\(50% 40 200\)"; fix: the value is outside the kit's value grammar/],
       'a light-dark() colour': [{ light: ':root, [data-theme="light"] { --card: light-dark(#ffffff, #000000); }' }, /token --card .* has the value "light-dark\(#ffffff, #000000\)"; fix: the value is outside the kit's value grammar/],
@@ -261,7 +294,7 @@ describe('generate', () => {
       ],
       'a shadow whose colour is a length': [{ root: ':root { --raised-shadow: 0 1px 2px 0 var(--space-2); }' }, /token --raised-shadow is a shadow token but resolves to 0 1px 2px 0 0\.5rem in the light theme; fix:/],
       'a fallback block that differs from dark': [
-        "@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #000000; } }",
+        { fallback: "@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --background: #000000; } }" },
         /token --background is #000000 in the prefers-color-scheme fallback block and #0f172a in the dark theme; fix:/,
       ],
     };
@@ -371,7 +404,7 @@ describe('generate', () => {
   it('parses a long theme.css in linear time', () => {
     const theme = path.join(dir, 'theme.css');
     const fixture = readFileSync(THEME, 'utf8');
-    const filler = `${'a'.repeat(200_000)}\n.x { color:${' '.repeat(200_000)}red; }\n:root { --pad:${' '.repeat(200_000)}1px; --font-x: '${' '.repeat(200_000)}'; }\n`;
+    const filler = `/* ${'a'.repeat(200_000)} */${'\n'.repeat(200_000)}:root { --pad:${' '.repeat(200_000)}1px; --font-x: '${' '.repeat(200_000)}'; }\n`;
     writeFileSync(theme, filler + fixture);
     const started = performance.now();
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(0);
@@ -547,6 +580,13 @@ describe('usage errors exit 2', () => {
     writeFileSync(theme, ':root { --space-1: 0.25rem; }\n:root, [data-theme="light"] { --background: #fff; }\n');
     expect(cli('generate', '--design', design, '--theme', theme)).toBe(2);
     expect(out[0]).toMatch(/no \[data-theme='dark'\] block/);
+  });
+
+  it('rejects a theme.css without a :root block', () => {
+    const theme = path.join(dir, 'theme.css');
+    writeFileSync(theme, ':root, [data-theme="light"] { --background: #fff; }\n[data-theme="dark"] { --background: #000; }\n');
+    expect(cli('generate', '--design', design, '--theme', theme)).toBe(2);
+    expect(out[0]).toMatch(/no :root block/);
   });
 
   it('rejects lint on a DESIGN.md without front matter', () => {
