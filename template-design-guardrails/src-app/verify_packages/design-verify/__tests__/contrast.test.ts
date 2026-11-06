@@ -3,6 +3,7 @@
 // WCAG arithmetic, and how one theme's probe result becomes a runner state.
 // The probe itself runs in the browser (like the rest of the CLI, exercised
 // against a real app, not here).
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -168,6 +169,30 @@ describe('contrastState', () => {
     const gone = diffReports(baseline, buildReport({ baseUrl: 'u', themeKey: 'k' }, [fixed]));
     expect(gone.resolved).toHaveLength(1);
     expect(gone.unverified).toEqual([]);
+  });
+
+  // The badge ratios DESIGN.md Known Gaps records are the ones this mode
+  // prints for the colours the light theme of kit 0.4.1 computes (taken from
+  // a --design-md run on the composed shell).
+  it('gives the badge ratios DESIGN.md Known Gaps records for kit 0.4.1', async () => {
+    const measured: Record<string, [number[], number[]]> = {
+      'badge-success': [[5, 150, 105], [232, 248, 241]],
+      'badge-warning': [[245, 158, 11], [255, 247, 214]],
+      'badge-danger': [[225, 29, 72], [255, 241, 242]],
+    };
+    const badges = contrastPairs(await shippedFront(), spec).filter((p) => p.component in measured);
+    expect(badges.map((p) => p.component).sort()).toEqual(Object.keys(measured).sort());
+    const results = badges.map((p) =>
+      result({ textRgb: measured[p.component][0], backgroundRgb: measured[p.component][1], fontSizePx: 12 }),
+    );
+    const state = contrastState({ theme: 'light', pairs: badges, probe: { value: { results } }, spec, gateFor });
+    const designMd = fs.readFileSync(path.resolve(here, '../../../../DESIGN.md'), 'utf8');
+    const recorded = (state.contrast ?? []).map(
+      (c: { text: { ref: string }; background: { ref: string }; ratio: number }) =>
+        `\`${c.text.ref}\` on \`${c.background.ref}\` ${c.ratio.toFixed(2)}:1`,
+    );
+    expect(recorded).toHaveLength(3);
+    for (const line of recorded) expect(designMd).toContain(line);
   });
 
   it('turns a failed probe into an environment failure (exit 2)', () => {

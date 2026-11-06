@@ -113,7 +113,8 @@ colours and its ratio. Pair roles and thresholds are data in
 boundary with the colour next to it, so non-text contrast (3:1) stays with
 the sweep's axe rules and the review. A pair below its threshold on kit
 tokens goes to the kit owner: record it under Known Gaps with the kit version
-it was measured on.
+it was measured on and the ratio exactly as this run prints it (cut to two
+decimals, never rounded up), so the record and the next run agree.
 
 ## Review a change
 
