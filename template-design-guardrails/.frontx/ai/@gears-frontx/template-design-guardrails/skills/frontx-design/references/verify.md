@@ -92,7 +92,10 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   a state with any is not clean.
 - `--design-md DESIGN.md` also measures the text contrast of the `DESIGN.md`
   pairs in each theme, as a state named `DESIGN.md`
-  (`references/design-md.md`, "Measure its contrast").
+  (`references/design-md.md`, "Measure its contrast"). Token contrast does
+  not depend on the width, so that state is keyed by theme alone (the width
+  it was probed at is `probedWidth`), and a baseline from a run with other
+  `--widths` still matches it.
 - The runner does not switch data states. States behind user actions or
   mocks (`references/state-completeness.md`) need the manual protocol; name
   them unverified if neither path reached them.

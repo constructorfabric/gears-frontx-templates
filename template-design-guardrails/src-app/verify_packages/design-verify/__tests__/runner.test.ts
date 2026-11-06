@@ -3,7 +3,11 @@
 // and its CDP protocol handling via an injected fake WebSocket. The
 // browser-driving CLI itself is exercised end-to-end against a real app, not
 // here - these tests pin the logic every run depends on.
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { main } from '../runner/cli.mjs';
 import {
   DEFAULTS,
   expandMatrix,
@@ -32,6 +36,74 @@ import {
 } from '../runner/chrome.mjs';
 import { CdpSession } from '../runner/cdp.mjs';
 import { isUrlReachable } from '../runner/server.mjs';
+
+// The CLI's own wiring up to the first browser or server step: every input
+// it cannot honour exits 2 before the server wait and the Chrome lookup. A
+// run that got past the inputs would reach them, and an unreachable --url
+// with a 1 ms wait and a missing --chrome keep that failure quick and loud.
+describe('cli main: inputs checked before any browser work', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function runCli(files: Record<string, string>, args: string[]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-cli-'));
+    dirs.push(root);
+    for (const [file, text] of Object.entries(files)) fs.writeFileSync(path.join(root, file), text);
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((line: string) => errors.push(line));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const at = (file: string) => path.join(root, file);
+    const code = await main([...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)), '--chrome', at('no-chrome')]);
+    return { code, errors: errors.join('\n'), logged: log.mock.calls.flat().join('\n') };
+  }
+
+  const DESIGN = [
+    '---',
+    'name: "Fixture"',
+    'version: "0.0.0"',
+    'description: "x"',
+    'colors:',
+    '  fg: "var(--fg)"',
+    'components:',
+    '  card:',
+    '    textColor: "{colors.fg}"',
+    '    backgroundColor: "{colors.nope}"',
+    '---',
+    '',
+  ].join('\n');
+
+  it.each([
+    [
+      'a waiver file with an error',
+      { 'w.json': JSON.stringify({ waivers: [{ gate: 'COL-001', screen: { route: '/' }, reason: 'x' }] }) },
+      ['--waivers', '@w.json'],
+      /^design-verify: .*w\.json: waivers\[0\]: gate COL-001 has waiver "never"/,
+    ],
+    [
+      'an out-of-range waiver date',
+      { 'w.json': JSON.stringify({ waivers: [{ gate: 'LAY-005', screen: { route: '/' }, reason: 'x', until: '2026-13-01' }] }) },
+      ['--waivers', '@w.json'],
+      /waivers\[0\]: "until" must be a date/,
+    ],
+    ['a DESIGN.md the parser refuses', { 'DESIGN.md': '# no front matter\n' }, ['--design-md', '@DESIGN.md'], /^design-verify: DESIGN\.md has no front matter/],
+    [
+      'a DESIGN.md pair that names no token',
+      { 'DESIGN.md': DESIGN },
+      ['--design-md', '@DESIGN.md'],
+      /^design-verify: DESIGN\.md components\.card\.backgroundColor: "\{colors\.nope\}" resolves to no var/,
+    ],
+    ['an unknown flag', {}, ['--nope'], /unknown flag/],
+  ])('exits 2 on %s', async (_name, files, args, message) => {
+    const result = await runCli(files, [...args, '--url', 'http://127.0.0.1:9/', '--server-timeout-ms', '1']);
+    expect(result.errors).toMatch(message);
+    expect(result.errors).not.toMatch(/\n\s+at /);
+    expect(result.logged).not.toMatch(/launching headless Chrome|waiting for/);
+    expect(result.code).toBe(2);
+  });
+});
 
 describe('config', () => {
   it('parses the full flag surface', () => {
@@ -62,9 +134,14 @@ describe('config', () => {
     });
   });
 
-  // APP-005 checks 1440, 768 and 390; LAY-002 needs the 320 px floor.
-  it('sweeps the APP-005 widths and the LAY-002 floor by default', () => {
-    expect(DEFAULTS.widths).toEqual([1440, 768, 390, 320]);
+  // APP-005 checks 1440, 768 and 390; LAY-002 needs the 320 px floor. The
+  // matrix a flagless run sweeps, not the constants it is built from.
+  it('sweeps the root route in both themes at the APP-005 widths and the LAY-002 floor by default', () => {
+    const states = expandMatrix(parseArgs([]).config).map((s) => `${s.route} ${s.theme} ${s.width}`);
+    expect(states).toEqual([
+      '/ light 1440', '/ light 768', '/ light 390', '/ light 320',
+      '/ dark 1440', '/ dark 768', '/ dark 390', '/ dark 320',
+    ]);
   });
 
   // The shell's Vite listens on `localhost`, which can be ::1 only.
@@ -73,12 +150,7 @@ describe('config', () => {
   });
 
   it('applies defaults and rejects unknown flags and bad values', () => {
-    expect(parseArgs([]).config).toMatchObject({
-      routes: DEFAULTS.routes,
-      widths: DEFAULTS.widths,
-      themes: DEFAULTS.themes,
-      failOnFindings: false,
-    });
+    expect(parseArgs([]).config.failOnFindings).toBe(false);
     // Screenshots are opt-in: findings.json is the evidence channel.
     expect(parseArgs([]).config.screenshots).toBe(false);
     expect(parseArgs(['--screenshots']).config.screenshots).toBe(true);

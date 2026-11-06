@@ -45,8 +45,8 @@ import {
   summaryLines,
   waiveStates,
 } from './report.mjs';
-import { ContractError, designMdParser, projectRoot, readSkillJson } from './skill.mjs';
-import { contrastPairs, contrastState, ContrastInputError, probeExpression } from './contrast.mjs';
+import { ContractError, designMdParser, isEntryPoint, projectRoot, readSkillJson } from './skill.mjs';
+import { CONTRAST_CHECK, contrastPairs, contrastState, ContrastInputError, probeExpression } from './contrast.mjs';
 import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
 
 const SWEEP_LINE = /\[design-defects\]/;
@@ -95,8 +95,15 @@ async function activateMenu(session, label, timeoutMs) {
   }
 }
 
-async function main() {
-  const parsed = parseArgs(process.argv.slice(2));
+/**
+ * The runner. Inputs are checked before any server, browser or sweep work,
+ * so an input the run cannot honour returns 2 at once.
+ *
+ * @param {string[]} [argv]
+ * @returns {Promise<number>} exit code
+ */
+export async function main(argv = process.argv.slice(2)) {
+  const parsed = parseArgs(argv);
   if (parsed.config.help) {
     console.log(USAGE);
     return 0;
@@ -316,10 +323,9 @@ async function main() {
     for (const theme of pairs ? config.themes : []) {
       if (probedThemes.has(theme)) continue;
       states.push({
-        check: 'design-md-contrast',
+        check: CONTRAST_CHECK,
         route: 'DESIGN.md',
         theme,
-        width: config.widths[0],
         environmentError: 'contrast not measured: no page of this theme loaded',
       });
     }
@@ -348,10 +354,12 @@ async function main() {
  *   consoleLines?: string[]}} StateRecord
  */
 
-main().then(
-  (code) => process.exit(code),
-  (error) => {
-    console.error(`design-verify: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(2);
-  },
-);
+if (isEntryPoint(import.meta.url)) {
+  main().then(
+    (code) => process.exit(code),
+    (error) => {
+      console.error(`design-verify: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(2);
+    },
+  );
+}

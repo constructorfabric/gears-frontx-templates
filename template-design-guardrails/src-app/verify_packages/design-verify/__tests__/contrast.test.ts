@@ -5,6 +5,7 @@
 // against a real app, not here).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   contrastPairs,
@@ -59,6 +60,13 @@ describe('contrastPairs', () => {
     expect(() => pair({ textColor: '{colors.fg}', backgroundColor: 'var(--bg)', typography: '{typography.none}' })).toThrow(
       /names no type role/,
     );
+  });
+
+  it.each([null, 'var(--card)', 3, ['{colors.fg}']])('refuses a components entry that is not a mapping (%j), naming the key', (entry) => {
+    const front = { colors: { fg: 'var(--fg)' }, components: { card: entry } };
+    expect(() => contrastPairs(front, spec)).toThrow(ContrastInputError);
+    expect(() => contrastPairs(front, spec)).toThrow(/^DESIGN\.md components\.card is not a mapping/);
+    expect(() => contrastPairs({ components: 'x' }, spec)).toThrow(ContrastInputError);
   });
 });
 
@@ -135,6 +143,33 @@ describe('contrastState', () => {
     expect(diffReports(buildReport({ baseUrl: 'u', themeKey: 'k' }, [sweep]), report).new).toHaveLength(1);
   });
 
+  // Token contrast does not depend on the page width: a baseline taken with
+  // other --widths (its first width is where the probe ran) must match.
+  it('keys contrast findings by theme alone, whatever widths either run swept', () => {
+    const atWidth = (width: number) => contrastState({ theme: 'light', width, pairs, probe, spec, gateFor });
+    const baseline = buildReport({ baseUrl: 'u', themeKey: 'k' }, [atWidth(1440)]);
+    const current = buildReport({ baseUrl: 'u', themeKey: 'k' }, [atWidth(390)]);
+    expect(current.states[0]).toMatchObject({ probedWidth: 390 });
+    expect(current.states[0]).not.toHaveProperty('width');
+    const diff = diffReports(baseline, current);
+    expect(diff).toMatchObject({ new: [], resolved: [], unverified: [], carriedOver: 1 });
+    expect(exitCode(current, { failOnFindings: true }, diff)).toBe(0);
+    expect(summaryLines(current, diff).join('\n')).not.toMatch(/DESIGN\.md light \d+px/);
+
+    // A report written before this change put a width on the contrast state.
+    const older = { states: [{ ...baseline.states[0], probedWidth: undefined, width: 1440 }] };
+    expect(diffReports(older, current)).toMatchObject({ new: [], carriedOver: 1 });
+
+    // A fixed contrast is resolved, not unverified, under another width.
+    const fixed = contrastState({
+      theme: 'light', width: 768, pairs: pairs.slice(0, 1), spec, gateFor,
+      probe: { value: { appliedTheme: 'light', results: [result({})] } },
+    });
+    const gone = diffReports(baseline, buildReport({ baseUrl: 'u', themeKey: 'k' }, [fixed]));
+    expect(gone.resolved).toHaveLength(1);
+    expect(gone.unverified).toEqual([]);
+  });
+
   it('turns a failed probe into an environment failure (exit 2)', () => {
     const failed = contrastState({ theme: 'dark', width: 1440, pairs, probe: { error: 'TypeError: x' }, spec, gateFor });
     expect(failed.environmentError).toBe('contrast probe failed: TypeError: x');
@@ -144,13 +179,97 @@ describe('contrastState', () => {
   });
 });
 
+/**
+ * Just enough of a page for the probe: custom properties resolved from
+ * `vars`, computed colours as `rgb(r, g, b)`, and a 1x1 canvas that keeps
+ * the last colour filled. Only what the probe receives exists in the vm
+ * context, so a probe that reaches for a module-scope name throws there.
+ */
+function fakePage(vars: Record<string, string>) {
+  const resolve = (value = '') => value.replace(/^var\((--[\w-]+)\)$/, (_, name: string) => vars[name] ?? '');
+  const rgb = (color: string) => {
+    const fn = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(color);
+    if (fn) return [Number(fn[1]), Number(fn[2]), Number(fn[3])];
+    const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+    return hex ? [1, 2, 3].map((i) => Number.parseInt(hex[i], 16)) : null;
+  };
+  let pixel = [0, 0, 0];
+  let fill = '#000000';
+  const ctx = {
+    get fillStyle() {
+      return fill;
+    },
+    set fillStyle(color: string) {
+      if (rgb(color)) fill = color;
+    },
+    clearRect: () => {
+      pixel = [0, 0, 0];
+    },
+    fillRect: () => {
+      pixel = rgb(fill) ?? pixel;
+    },
+    getImageData: () => ({ data: [...pixel, 255] }),
+  };
+  const removed: unknown[] = [];
+  type Node = { style: Record<string, string>; attrs: Record<string, string>; [key: string]: unknown };
+  const element = (): Node => {
+    const node: Node = {
+      style: {},
+      attrs: {},
+      setAttribute: (key: string, value: string) => {
+        node.attrs[key] = value;
+      },
+      getAttribute: (key: string) => node.attrs[key] ?? null,
+      appendChild: () => undefined,
+      remove: () => removed.push(node),
+      getContext: () => ctx,
+    };
+    return node;
+  };
+  const documentElement = element();
+  documentElement.attrs['data-theme'] = 'light';
+  const body = element();
+  const getComputedStyle = (el: Node) => ({
+    backgroundColor: el === documentElement || el === body ? 'rgb(255, 255, 255)' : resolve(el.style.backgroundColor),
+    color: resolve(el.style.color),
+    fontSize: el.style.fontSize ? resolve(el.style.fontSize) : '16px',
+    fontWeight: el.style.fontWeight ? resolve(el.style.fontWeight) : '400',
+    getPropertyValue: (name: string) => vars[name] ?? '',
+  });
+  return { context: { document: { documentElement, body, createElement: element }, getComputedStyle }, removed };
+}
+
 describe('the probe and the flag', () => {
-  it('serialises a self-contained probe with the pair names', () => {
-    const expression = probeExpression([
+  it('runs the serialised probe on its own, with nothing from this module in scope', () => {
+    const probePairs = [
       { component: 'card', text: { ref: 'a', name: '--card-foreground' }, background: { ref: 'b', name: '--card' }, font: { ref: 'f', size: '--text-label-size', weight: '--text-label-weight' } },
-    ]);
-    expect(() => new Function(`return ${expression}`)).not.toThrow();
-    expect(expression).toContain('"text":"--card-foreground","background":"--card","font":{"size":"--text-label-size"');
+      { component: 'chip', text: { ref: 'c', name: '--x' }, background: { ref: 'b', name: '--card' } },
+    ];
+    const page = fakePage({
+      '--card-foreground': 'rgb(17, 24, 39)',
+      '--card': 'rgb(255, 255, 255)',
+      '--text-label-size': '14px',
+      '--text-label-weight': '600',
+    });
+    const value = JSON.parse(JSON.stringify(vm.runInNewContext(probeExpression(probePairs), page.context)));
+    expect(value).toEqual({
+      appliedTheme: 'light',
+      results: [
+        {
+          component: 'card', background: 'rgb(255, 255, 255)', text: 'rgb(17, 24, 39)',
+          backgroundRgb: [255, 255, 255], textRgb: [17, 24, 39], fontSizePx: 14, fontWeight: 600, empty: [],
+        },
+        {
+          component: 'chip', background: 'rgb(255, 255, 255)', text: '',
+          backgroundRgb: [255, 255, 255], textRgb: null, fontSizePx: 16, fontWeight: 400, empty: ['--x'],
+        },
+      ],
+    });
+    // The probe host leaves the page.
+    expect(page.removed).toHaveLength(1);
+    const state = contrastState({ theme: 'light', width: 1440, pairs: probePairs, probe: { value }, spec, gateFor });
+    expect(state.contrast?.[0]).toMatchObject({ component: 'card', ratio: 17.73, threshold: 4.5 });
+    expect(state.needsReview?.[0]).toMatchObject({ target: 'components.chip' });
   });
 
   it('parses --design-md and resolves it against the project root', () => {

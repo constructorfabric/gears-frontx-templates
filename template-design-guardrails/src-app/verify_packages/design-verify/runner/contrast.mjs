@@ -54,7 +54,13 @@ function resolveName(front, value, at) {
  */
 export function contrastPairs(front, spec) {
   const pairs = [];
-  for (const [component, entry] of Object.entries(front.components ?? {})) {
+  const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const components = front.components ?? {};
+  if (!isMap(components)) throw new ContrastInputError('DESIGN.md components is not a mapping');
+  for (const [component, entry] of Object.entries(components)) {
+    if (!isMap(entry)) {
+      throw new ContrastInputError(`DESIGN.md components.${component} is not a mapping of roles to tokens: ${JSON.stringify(entry)}`);
+    }
     for (const pair of spec.pairs) {
       const text = entry[pair.text];
       const background = entry[pair.background];
@@ -196,20 +202,27 @@ export function probeExpression(pairs) {
 // WCAG forbids rounding a ratio up to pass, so the shown value is cut, not rounded.
 const fixed = (n) => Math.floor(n * 100) / 100;
 
+/** The `check` of a DESIGN.md contrast state. */
+export const CONTRAST_CHECK = 'design-md-contrast';
+
 /**
  * Turns one theme's probe result into a runner state: every pair measured
  * under `contrast`, the pairs below their threshold as findings, and the
  * pairs the page could not paint as needs-review entries.
  *
- * @param {{theme: string, width: number, pairs: ContrastPair[],
+ * Token contrast does not depend on the page width, so the state has no
+ * `width` and its identity (report.mjs) is the theme alone, whatever
+ * `--widths` a run sweeps; `probedWidth` records where it was measured.
+ *
+ * @param {{theme: string, width?: number, pairs: ContrastPair[],
  *   probe: {value?: any, error?: string}, spec: {ruleId: string} & Parameters<typeof threshold>[0],
- *   gateFor: (id: string) => string}} input
- * @returns {{check: string, route: string, theme: string, width: number,
+ *   gateFor: (id: string) => string}} input `width`: the page width at the probe
+ * @returns {{check: string, route: string, theme: string, probedWidth?: number,
  *   environmentError?: string, appliedTheme?: string | null, contrast?: any[],
  *   findings?: any[], needsReview?: any[]}}
  */
 export function contrastState({ theme, width, pairs, probe, spec, gateFor }) {
-  const state = { check: 'design-md-contrast', route: 'DESIGN.md', theme, width };
+  const state = { check: CONTRAST_CHECK, route: 'DESIGN.md', theme, ...(width === undefined ? {} : { probedWidth: width }) };
   if (probe.error !== undefined || probe.value?.error) {
     return { ...state, environmentError: `contrast probe failed: ${probe.error ?? probe.value.error}` };
   }

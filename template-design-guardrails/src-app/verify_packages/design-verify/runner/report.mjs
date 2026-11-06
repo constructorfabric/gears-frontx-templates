@@ -18,10 +18,11 @@
  * counted and printed, never findings, so they neither gate nor enter the
  * baseline diff.
  */
+import { CONTRAST_CHECK } from './contrast.mjs';
 import { applyWaivers, waiverLines } from './waivers.mjs';
 
 /**
- * @typedef {{route: string, theme: string, width: number, check?: string,
+ * @typedef {{route: string, theme: string, width?: number, probedWidth?: number, check?: string,
  *   findings?: Array<{id?: string, detail?: string, target?: string}>,
  *   needsReview?: Array<{id?: string, detail?: string, target?: string}>,
  *   waived?: Array<{id?: string, gate?: string, target?: string, waiver: {index: number, reason: string}}>,
@@ -138,6 +139,24 @@ export function buildReport(meta, states) {
 }
 
 /**
+ * The width that is part of a state's identity: a sweep's width, none for
+ * the DESIGN.md contrast probe, whose token colours do not depend on the
+ * page width (a baseline from a run with other --widths still matches it;
+ * an older report that wrote a width there is read the same way).
+ *
+ * @param {{check?: string, width?: number}} state
+ */
+function keyWidth(state) {
+  return state.check === CONTRAST_CHECK ? null : (state.width ?? null);
+}
+
+/** `route theme widthpx`, or `route theme` for a state with no key width. @param {StateResult} state */
+function stateLabel(state) {
+  const width = keyWidth(state);
+  return `${state.route} ${state.theme}` + (width === null ? '' : ` ${width}px`);
+}
+
+/**
  * Identity of a finding across runs: the render state plus rule id plus
  * target locator. The detail string is deliberately excluded - it carries
  * measured pixels that jitter between runs and would make every finding
@@ -151,7 +170,7 @@ function findingKey(state, finding) {
     state.check ?? 'sweep',
     state.route,
     state.theme,
-    state.width,
+    keyWidth(state),
     finding.id ?? 'unknown-rule',
     finding.target ?? '',
   ]);
@@ -161,10 +180,10 @@ function findingKey(state, finding) {
  * A state's identity: the check (a route sweep, or the DESIGN.md contrast
  * probe) plus its render state.
  *
- * @param {{check?: string, route: string, theme: string, width: number}} state
+ * @param {{check?: string, route: string, theme: string, width?: number}} state
  */
 function stateKey(state) {
-  return JSON.stringify([state.check ?? 'sweep', state.route, state.theme, state.width]);
+  return JSON.stringify([state.check ?? 'sweep', state.route, state.theme, keyWidth(state)]);
 }
 
 /**
@@ -174,7 +193,7 @@ function stateKey(state) {
  * Map would let the second one arrive unreported.
  *
  * @param {{states?: StateResult[]}} report
- * @returns {Map<string, {route: string, theme: string, width: number, id: string,
+ * @returns {Map<string, {check?: string, route: string, theme: string, width?: number, id: string,
  *   target?: string, detail?: string, count: number}>}
  */
 function collectFindings(report) {
@@ -187,11 +206,12 @@ function collectFindings(report) {
         existing.count += 1;
         continue;
       }
+      const width = keyWidth(state);
       map.set(key, {
         ...(state.check ? { check: state.check } : {}),
         route: state.route,
         theme: state.theme,
-        width: state.width,
+        ...(width === null ? {} : { width }),
         id: finding.id ?? 'unknown-rule',
         target: finding.target,
         detail: finding.detail,
@@ -297,8 +317,8 @@ export function summaryLines(report, diff) {
       `  vs baseline: ${total(diff.new)} new, ${total(diff.resolved)} resolved, ` +
         `${total(diff.unverified)} unverified, ${diff.carriedOver} carried over`,
     );
-    const describe = (/** @type {{route: string, theme: string, width: number, id: string, target?: string, count: number}} */ f) =>
-      `${f.route} ${f.theme} ${f.width}px: ${f.id}${f.target ? ` @ ${f.target}` : ''}` +
+    const describe = (/** @type {{check?: string, route: string, theme: string, width?: number, id: string, target?: string, count: number}} */ f) =>
+      `${stateLabel(f)}: ${f.id}${f.target ? ` @ ${f.target}` : ''}` +
       (f.count > 1 ? ` (x${f.count})` : '');
     for (const f of diff.new) lines.push(`  NEW ${describe(f)}`);
     for (const f of diff.resolved) lines.push(`  RESOLVED ${describe(f)}`);
@@ -314,29 +334,25 @@ export function summaryLines(report, diff) {
   lines.push(...waiverLines(report.waivers));
   for (const state of report.states) {
     if (state.environmentError) {
-      lines.push(
-        `  ENVIRONMENT ${state.route} ${state.theme} ${state.width}px: ${state.environmentError}`,
-      );
+      lines.push(`  ENVIRONMENT ${stateLabel(state)}: ${state.environmentError}`);
     } else if (state.screenshotError) {
-      lines.push(
-        `  SCREENSHOT ${state.route} ${state.theme} ${state.width}px: ${state.screenshotError}`,
-      );
+      lines.push(`  SCREENSHOT ${stateLabel(state)}: ${state.screenshotError}`);
     }
-    if (state.check === 'design-md-contrast') {
+    if (state.check === CONTRAST_CHECK) {
       for (const entry of state.findings ?? []) {
         lines.push(`  CONTRAST ${state.theme}: ${entry.gate} ${entry.target} ${entry.detail}`);
       }
     }
     for (const entry of state.waived ?? []) {
       lines.push(
-        `  WAIVED ${state.route} ${state.theme} ${state.width}px: ${entry.gate} ${entry.id ?? 'unknown-rule'}` +
+        `  WAIVED ${stateLabel(state)}: ${entry.gate} ${entry.id ?? 'unknown-rule'}` +
           (entry.target ? ` @ ${entry.target}` : '') +
           ` - waiver #${entry.waiver.index}: ${entry.waiver.reason}`,
       );
     }
     for (const entry of state.needsReview ?? []) {
       lines.push(
-        `  NEEDS REVIEW ${state.route} ${state.theme} ${state.width}px: ${entry.id ?? 'unknown-rule'}` +
+        `  NEEDS REVIEW ${stateLabel(state)}: ${entry.id ?? 'unknown-rule'}` +
           (entry.target ? ` @ ${entry.target}` : ''),
       );
     }
