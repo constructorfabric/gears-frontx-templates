@@ -94,6 +94,17 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   Never pass the bare route value (`/orders`) or an address that names no
   registered screen: the shell leaves the content area empty and the sweep
   reads as clean.
+- Themes: the runner stores each theme id where the shell restores it at boot
+  (`localStorage` key `frontx:theme`, a raw id; `--theme-key` for an app
+  that reads another key) and in FrontX Studio's own key
+  (`frontx:studio:theme`), because a dev build with Studio applies Studio's
+  stored theme over the shell's after mount. Every state, the `DESIGN.md`
+  contrast states included, then checks that the page took the theme: a
+  `light` or `dark` request must show that `data-theme` on the document
+  element, and the id stored under the key must still be the requested one
+  (any other theme id is checked by the stored id alone). A page in another
+  theme is an environment failure for that state, naming the requested
+  theme, the `data-theme` it shows and the key, never a clean state.
 - Checks the sweep could not decide sit in each state's `needsReview` list;
   a state with any is not clean.
 - `--design-md DESIGN.md` also measures the text contrast of the `DESIGN.md`

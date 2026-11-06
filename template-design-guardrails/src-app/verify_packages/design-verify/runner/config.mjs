@@ -4,6 +4,7 @@
  * convention. No I/O — everything here is unit-testable without a browser.
  */
 import path from 'node:path';
+import { SHELL_THEME_KEY } from './theme.mjs';
 
 export const DEFAULTS = Object.freeze({
   // Vite's own default host: `localhost` may resolve to ::1 only, where a
@@ -14,7 +15,7 @@ export const DEFAULTS = Object.freeze({
   // APP-005's desktop, tablet and phone widths, then LAY-002's 320 px floor.
   widths: [1440, 768, 390, 320],
   themes: ['light', 'dark'],
-  themeKey: 'frontx:studio:theme',
+  themeKey: SHELL_THEME_KEY,
   outDir: 'design-verify-report',
   cdpUrl: '',
   chromePath: '',
@@ -171,8 +172,14 @@ Usage: node runner/cli.mjs [flags]
                             label
   --widths 1440,390         Viewport widths in CSS px (default ${DEFAULTS.widths.join(',')})
   --themes light,dark       Theme ids to exercise (default ${DEFAULTS.themes.join(',')})
-  --theme-key <key>         localStorage key the app restores its theme from
-                            (default ${DEFAULTS.themeKey})
+  --theme-key <key>         localStorage key the app restores its theme from,
+                            as a raw theme id (default ${DEFAULTS.themeKey},
+                            the shell's key); FrontX Studio's own key is
+                            written as well. Every state checks that the page
+                            took the theme (data-theme on the document element
+                            for light and dark, and the id stored under this
+                            key): a page in another theme is an environment
+                            failure for that state, never clean
   --out <dir>               Report directory (default ${DEFAULTS.outDir})
   --cdp-url <http>          Attach to an already-running Chrome DevTools
                             endpoint (e.g. http://127.0.0.1:9222) instead of

@@ -12,6 +12,7 @@
  * id are data in the skill's rules/render-check.json (`designMdContrast`).
  */
 /* global document, getComputedStyle */
+import { themeMismatch } from './theme.mjs';
 
 const VAR_ONLY = /^var\((--[\w-]+)\)$/;
 const REF_ONLY = /^\{([^{}.]+)\.([^{}]+)\}$/;
@@ -128,8 +129,7 @@ export function threshold(spec, fontSizePx, fontWeight) {
  * @param {Array<{component: string, text: string, background: string, font?: {size: string, weight: string}}>} specs
  */
 export function probeInPage(specs) {
-  const root = document.documentElement;
-  const rootStyle = getComputedStyle(root);
+  const rootStyle = getComputedStyle(document.documentElement);
   const canvas = document.createElement('canvas');
   canvas.width = 1;
   canvas.height = 1;
@@ -182,7 +182,7 @@ export function probeInPage(specs) {
         empty: names.filter((name) => rootStyle.getPropertyValue(name).trim() === ''),
       };
     });
-    return { appliedTheme: root.getAttribute('data-theme'), results };
+    return { results };
   } finally {
     host.remove();
   }
@@ -214,19 +214,32 @@ export const CONTRAST_CHECK = 'design-md-contrast';
  * `width` and its identity (report.mjs) is the theme alone, whatever
  * `--widths` a run sweeps; `probedWidth` records where it was measured.
  *
+ * A page that is not in the requested theme (runner/theme.mjs) measured
+ * another theme's tokens: an environment failure, never a clean theme.
+ *
  * @param {{theme: string, width?: number, pairs: ContrastPair[],
+ *   applied: Parameters<typeof themeMismatch>[1], themeKey: string,
  *   probe: {value?: any, error?: string}, spec: {ruleId: string} & Parameters<typeof threshold>[0],
- *   gateFor: (id: string) => string}} input `width`: the page width at the probe
+ *   gateFor: (id: string) => string}} input `width`: the page width at the probe;
+ *   `applied`: the page's appliedThemeExpression result, read with the probe
  * @returns {{check: string, route: string, theme: string, probedWidth?: number,
  *   environmentError?: string, appliedTheme?: string | null, contrast?: any[],
  *   findings?: any[], needsReview?: any[]}}
  */
-export function contrastState({ theme, width, pairs, probe, spec, gateFor }) {
-  const state = { check: CONTRAST_CHECK, route: 'DESIGN.md', theme, ...(width === undefined ? {} : { probedWidth: width }) };
+export function contrastState({ theme, width, pairs, applied, themeKey, probe, spec, gateFor }) {
+  const state = {
+    check: CONTRAST_CHECK,
+    route: 'DESIGN.md',
+    theme,
+    ...(width === undefined ? {} : { probedWidth: width }),
+    ...(applied.value ? { appliedTheme: applied.value.attribute ?? null } : {}),
+  };
+  const mismatch = themeMismatch(theme, applied, themeKey);
+  if (mismatch) return { ...state, environmentError: `contrast not measured: ${mismatch}` };
   if (probe.error !== undefined || probe.value?.error) {
     return { ...state, environmentError: `contrast probe failed: ${probe.error ?? probe.value.error}` };
   }
-  const { appliedTheme, results } = probe.value ?? {};
+  const { results } = probe.value ?? {};
   if (!Array.isArray(results) || results.length !== pairs.length) {
     return { ...state, environmentError: `contrast probe returned no result per pair: ${JSON.stringify(probe.value)}` };
   }
@@ -266,5 +279,5 @@ export function contrastState({ theme, width, pairs, probe, spec, gateFor }) {
       });
     }
   });
-  return { ...state, appliedTheme, contrast, findings, needsReview };
+  return { ...state, contrast, findings, needsReview };
 }

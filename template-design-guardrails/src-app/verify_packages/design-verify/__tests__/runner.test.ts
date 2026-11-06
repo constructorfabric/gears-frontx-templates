@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import vm from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../runner/cli.mjs';
 import {
@@ -25,9 +26,11 @@ import {
   measuredScreens,
   splitSweep,
   summaryLines,
+  sweepState,
   waiveStates,
 } from '../runner/report.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
+import { appliedThemeExpression, STUDIO_THEME_KEY, themeMismatch, themeSeedExpression } from '../runner/theme.mjs';
 import { coversRendered, parseWaivers, waiverLines, waiverReport } from '../runner/waivers.mjs';
 import {
   CHROME_CANDIDATES,
@@ -145,6 +148,13 @@ describe('config', () => {
     ]);
   });
 
+  // The shell restores its theme from `frontx:theme`
+  // (template-shell src-app/app/themes/themePersistence.ts); Studio is a dev
+  // tool and may be absent.
+  it('seeds the theme under the key the shell reads by default', () => {
+    expect(parseArgs([]).config.themeKey).toBe('frontx:theme');
+  });
+
   // The shell's Vite listens on `localhost`, which can be ::1 only.
   it('attaches to the dev server at Vite\'s default host', () => {
     expect(DEFAULTS.url).toBe('http://localhost:5173/');
@@ -207,6 +217,86 @@ describe('config', () => {
     expect(shotName('/tasks', 'dark', 320)).toBe('tasks-dark-320.png');
     expect(shotName('/a/b?c=1', 'light', 1440)).toBe('a-b-c-1-light-1440.png');
     expect(routeSlug('/')).toBe('root');
+  });
+});
+
+describe('theme', () => {
+  const pageWith = (storage: Map<string, string>, attribute: string | null) => ({
+    localStorage: {
+      setItem: (key: string, value: string) => void storage.set(key, String(value)),
+      getItem: (key: string) => storage.get(key) ?? null,
+    },
+    document: { documentElement: { getAttribute: (name: string) => (name === 'data-theme' ? attribute : null) } },
+  });
+
+  // The shell reads a raw id; Studio reads its own key as JSON and applies
+  // it over the shell's after mount, so a stale Studio value would win.
+  it('stores the raw theme id under the shell key and the JSON id under Studio\'s key', () => {
+    const storage = new Map([[STUDIO_THEME_KEY, '"light"']]);
+    vm.runInNewContext(themeSeedExpression('frontx:theme', 'dark'), pageWith(storage, null));
+    expect(Object.fromEntries(storage)).toEqual({ 'frontx:theme': 'dark', 'frontx:studio:theme': '"dark"' });
+  });
+
+  it('reads data-theme and the stored id from the page', () => {
+    const storage = new Map([['frontx:theme', 'dark']]);
+    const value = vm.runInNewContext(appliedThemeExpression('frontx:theme'), pageWith(storage, 'light'));
+    expect({ ...value }).toEqual({ attribute: 'light', stored: 'dark' });
+  });
+
+  it.each([
+    ['dark', 'dark', 'dark', undefined],
+    ['dracula', 'dark', 'dracula', undefined],
+    ['dark', 'light', 'dark', /requested "dark", the page shows data-theme="light" and localStorage "frontx:theme" holds "dark"/],
+    ['dark', null, 'dark', /data-theme=null/],
+    // Studio or the app applied another theme after boot; the shell stored it.
+    ['dracula', 'dark', 'dark', /requested "dracula", .* holds "dark"/],
+  ])('requested %s, data-theme %s, stored %s', (theme, attribute, stored, expected) => {
+    const result = themeMismatch(theme, { value: { attribute, stored } }, 'frontx:theme');
+    if (expected === undefined) expect(result).toBeUndefined();
+    else expect(result).toMatch(expected);
+  });
+});
+
+describe('sweepState', () => {
+  const gateFor = gateLookup(readSkillJson('rules/render-check.json'));
+  const input = (applied: object, sweep: object) => ({
+    applied, themeKey: 'frontx:theme', sweep, gateFor, waivers: [], coversState: () => false,
+  });
+  const defect = { id: 'page-horizontal-scroll', detail: '12px' };
+
+  it('fills a state from the sweep of a page in the requested theme', () => {
+    const state = sweepState(
+      { route: '/', theme: 'dark', width: 1440 },
+      input({ value: { attribute: 'dark', stored: 'dark' } }, { value: [defect] }),
+    );
+    expect(state).toEqual({
+      route: '/', theme: 'dark', width: 1440, appliedTheme: 'dark',
+      findings: [{ ...defect, gate: 'LAY-002' }], needsReview: [],
+    });
+  });
+
+  // The defect sweep ran, but on the light theme: never clean for dark.
+  it('fails a state whose page is in another theme, whatever the sweep found', () => {
+    const state = sweepState(
+      { route: '/', theme: 'dark', width: 1440 },
+      input({ value: { attribute: 'light', stored: 'light' } }, { value: [] }),
+    );
+    expect(state).not.toHaveProperty('findings');
+    expect(state.appliedTheme).toBe('light');
+    expect(state.environmentError).toMatch(/^theme not applied: requested "dark", the page shows data-theme="light"/);
+    const report = buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]);
+    expect(report.summary).toMatchObject({ statesClean: 0 });
+    expect(exitCode(report, { failOnFindings: false })).toBe(2);
+  });
+
+  it('keeps the sweep failures it reported before', () => {
+    const inDark = { value: { attribute: 'dark', stored: 'dark' } };
+    const record = () => ({ route: '/', theme: 'dark', width: 1440 });
+    expect(sweepState(record(), input(inDark, { error: 'TypeError: window.__frontxDesignDefects is not a function' })).environmentError).toMatch(
+      /^window\.__frontxDesignDefects is unavailable/,
+    );
+    expect(sweepState(record(), input(inDark, { error: 'boom' })).environmentError).toBe('sweep threw: boom');
+    expect(sweepState(record(), input(inDark, { value: 3 })).environmentError).toBe('sweep returned a non-array: 3');
   });
 });
 

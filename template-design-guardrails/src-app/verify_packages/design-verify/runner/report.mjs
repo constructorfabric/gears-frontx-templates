@@ -19,6 +19,7 @@
  * baseline diff.
  */
 import { CONTRAST_CHECK } from './contrast.mjs';
+import { themeMismatch } from './theme.mjs';
 import { applyWaivers, waiverLines } from './waivers.mjs';
 
 /**
@@ -26,7 +27,7 @@ import { applyWaivers, waiverLines } from './waivers.mjs';
  *   findings?: Array<{id?: string, detail?: string, target?: string}>,
  *   needsReview?: Array<{id?: string, detail?: string, target?: string}>,
  *   waived?: Array<{id?: string, gate?: string, target?: string, waiver: {index: number, reason: string}}>,
- *   environmentError?: string, screenshot?: string, screenshotError?: string,
+ *   environmentError?: string, appliedTheme?: string | null, screenshot?: string, screenshotError?: string,
  *   consoleLines?: string[]}} StateResult
  */
 
@@ -61,6 +62,38 @@ export function splitSweep(entries, gateFor) {
     (entry.kind === 'needs-review' ? needsReview : findings).push(entry);
   }
   return { findings, needsReview };
+}
+
+/**
+ * Fills one sweep state from what the page gave back. A page that is not in
+ * the requested theme (runner/theme.mjs) is an environment failure: its
+ * sweep measured another theme, so it is never clean. So is a sweep that
+ * threw or returned no list. Otherwise the findings are split, gated and
+ * waived. Changes `record` in place and returns it.
+ *
+ * @param {StateResult} record route, theme and width of the state
+ * @param {{applied: Parameters<typeof themeMismatch>[1], themeKey: string,
+ *   sweep: {value?: any, error?: string}, gateFor: (id: string | undefined) => string,
+ *   waivers: import('./waivers.mjs').Waiver[],
+ *   coversState: (waiver: import('./waivers.mjs').Waiver, state: StateResult) => boolean}} input
+ *   `applied`: the page's appliedThemeExpression result, read before the sweep
+ */
+export function sweepState(record, { applied, themeKey, sweep, gateFor, waivers, coversState }) {
+  if (applied.value) record.appliedTheme = applied.value.attribute ?? null;
+  const mismatch = themeMismatch(record.theme, applied, themeKey);
+  if (mismatch) {
+    record.environmentError = mismatch;
+  } else if (sweep.error !== undefined) {
+    record.environmentError = /is not a function|undefined/.test(sweep.error)
+      ? `window.__frontxDesignDefects is unavailable - is the design-verify package installed and the app in dev mode? (${sweep.error})`
+      : `sweep threw: ${sweep.error}`;
+  } else if (!Array.isArray(sweep.value)) {
+    record.environmentError = `sweep returned a non-array: ${JSON.stringify(sweep.value)}`;
+  } else {
+    Object.assign(record, splitSweep(sweep.value, gateFor));
+    waiveStates([record], waivers, coversState);
+  }
+  return record;
 }
 
 /**

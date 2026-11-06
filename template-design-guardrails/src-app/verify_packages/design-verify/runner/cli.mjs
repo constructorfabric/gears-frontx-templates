@@ -42,10 +42,10 @@ import {
   exitCode,
   gateLookup,
   measuredScreens,
-  splitSweep,
   summaryLines,
-  waiveStates,
+  sweepState,
 } from './report.mjs';
+import { appliedThemeExpression, themeSeedExpression } from './theme.mjs';
 import { ContractError, designMdParser, isEntryPoint, projectRoot, readSkillJson } from './skill.mjs';
 import { CONTRAST_CHECK, contrastPairs, contrastState, ContrastInputError, probeExpression } from './contrast.mjs';
 import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
@@ -212,12 +212,12 @@ export async function main(argv = process.argv.slice(2)) {
       if (pageKey !== currentKey) {
         const beforeNav = session.consoleLines.length;
         await session.navigate(menuMode ? config.url : joinUrl(config.url, route));
-        // Theme restore reads localStorage on mount, so set it on the app's
-        // origin and reload for it to take effect (the checker re-sweeps).
+        // The app restores its theme from localStorage at boot, so store it on
+        // the app's origin and reload for it to take effect (the checker
+        // re-sweeps). runner/theme.mjs says which keys and how each state
+        // checks that the theme took.
         await session.waitForConsoleLine(SWEEP_LINE, beforeNav, config.sweepTimeoutMs);
-        const set = await session.evaluate(
-          `localStorage.setItem(${JSON.stringify(config.themeKey)}, JSON.stringify(${JSON.stringify(theme)}))`,
-        );
+        const set = await session.evaluate(themeSeedExpression(config.themeKey, theme));
         if (set.error) {
           record.environmentError = `could not set theme: ${set.error}`;
           states.push(record);
@@ -250,8 +250,18 @@ export async function main(argv = process.argv.slice(2)) {
           probedThemes.add(theme);
           await session.setWidth(width);
           await new Promise((r) => setTimeout(r, config.settleMs));
+          const applied = await session.evaluate(appliedThemeExpression(config.themeKey));
           const probe = await session.evaluate(probeExpression(pairs));
-          const contrast = contrastState({ theme, width, pairs, probe, spec: contrastSpec, gateFor });
+          const contrast = contrastState({
+            theme,
+            width,
+            pairs,
+            applied,
+            themeKey: config.themeKey,
+            probe,
+            spec: contrastSpec,
+            gateFor,
+          });
           states.push(contrast);
           console.log(
             `design-verify: DESIGN.md contrast ${theme} - ` +
@@ -276,19 +286,18 @@ export async function main(argv = process.argv.slice(2)) {
       await session.setWidth(width);
       await new Promise((r) => setTimeout(r, config.settleMs));
       const before = session.consoleLines.length;
+      const applied = await session.evaluate(appliedThemeExpression(config.themeKey));
       const sweep = await session.evaluate('window.__frontxDesignDefects()', {
         awaitPromise: true,
       });
-      if (sweep.error !== undefined) {
-        record.environmentError = /is not a function|undefined/.test(sweep.error)
-          ? `window.__frontxDesignDefects is unavailable - is the design-verify package installed and the app in dev mode? (${sweep.error})`
-          : `sweep threw: ${sweep.error}`;
-      } else if (!Array.isArray(sweep.value)) {
-        record.environmentError = `sweep returned a non-array: ${JSON.stringify(sweep.value)}`;
-      } else {
-        Object.assign(record, splitSweep(sweep.value, gateFor));
-        waiveStates([record], waivers.waivers, coversState);
-      }
+      sweepState(record, {
+        applied,
+        themeKey: config.themeKey,
+        sweep,
+        gateFor,
+        waivers: waivers.waivers,
+        coversState,
+      });
       record.consoleLines = session.consoleLines.slice(before);
 
       if (config.screenshots) {
@@ -360,7 +369,7 @@ export async function main(argv = process.argv.slice(2)) {
  * @typedef {{route: string, theme: string, width: number,
  *   findings?: Array<{id?: string, detail?: string, target?: string}>,
  *   needsReview?: Array<{id?: string, detail?: string, target?: string}>,
- *   environmentError?: string, screenshot?: string, screenshotError?: string,
+ *   environmentError?: string, appliedTheme?: string | null, screenshot?: string, screenshotError?: string,
  *   consoleLines?: string[]}} StateRecord
  */
 

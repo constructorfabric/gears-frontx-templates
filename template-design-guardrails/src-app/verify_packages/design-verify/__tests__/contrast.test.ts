@@ -25,6 +25,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const renderCheck = readSkillJson('rules/render-check.json');
 const spec = renderCheck.designMdContrast;
 const gateFor = gateLookup(renderCheck);
+// A page that took the requested theme, as the runner reads it.
+const inTheme = (theme: string) => ({ applied: { value: { attribute: theme, stored: theme } }, themeKey: 'frontx:theme' });
 
 async function shippedFront() {
   const { readDesignMd } = await designMdParser();
@@ -103,7 +105,6 @@ describe('contrastState', () => {
   });
   const probe = {
     value: {
-      appliedTheme: 'light',
       results: [
         result({}),
         // 2.32:1.
@@ -116,7 +117,7 @@ describe('contrastState', () => {
   };
 
   it('lists every measured pair, reports the ones below threshold and the unpaintable ones for review', () => {
-    const state = contrastState({ theme: 'light', width: 1440, pairs, probe, spec, gateFor }) as Required<
+    const state = contrastState({ theme: 'light', width: 1440, pairs, probe, spec, gateFor, ...inTheme('light') }) as Required<
       ReturnType<typeof contrastState>
     >;
     expect(state).toMatchObject({ check: 'design-md-contrast', route: 'DESIGN.md', theme: 'light', appliedTheme: 'light' });
@@ -147,7 +148,7 @@ describe('contrastState', () => {
   // Token contrast does not depend on the page width: a baseline taken with
   // other --widths (its first width is where the probe ran) must match.
   it('keys contrast findings by theme alone, whatever widths either run swept', () => {
-    const atWidth = (width: number) => contrastState({ theme: 'light', width, pairs, probe, spec, gateFor });
+    const atWidth = (width: number) => contrastState({ theme: 'light', width, pairs, probe, spec, gateFor, ...inTheme('light') });
     const baseline = buildReport({ baseUrl: 'u', themeKey: 'k' }, [atWidth(1440)]);
     const current = buildReport({ baseUrl: 'u', themeKey: 'k' }, [atWidth(390)]);
     expect(current.states[0]).toMatchObject({ probedWidth: 390 });
@@ -163,8 +164,8 @@ describe('contrastState', () => {
 
     // A fixed contrast is resolved, not unverified, under another width.
     const fixed = contrastState({
-      theme: 'light', width: 768, pairs: pairs.slice(0, 1), spec, gateFor,
-      probe: { value: { appliedTheme: 'light', results: [result({})] } },
+      theme: 'light', width: 768, pairs: pairs.slice(0, 1), spec, gateFor, ...inTheme('light'),
+      probe: { value: { results: [result({})] } },
     });
     const gone = diffReports(baseline, buildReport({ baseUrl: 'u', themeKey: 'k' }, [fixed]));
     expect(gone.resolved).toHaveLength(1);
@@ -185,7 +186,7 @@ describe('contrastState', () => {
     const results = badges.map((p) =>
       result({ textRgb: measured[p.component][0], backgroundRgb: measured[p.component][1], fontSizePx: 12 }),
     );
-    const state = contrastState({ theme: 'light', pairs: badges, probe: { value: { results } }, spec, gateFor });
+    const state = contrastState({ theme: 'light', pairs: badges, probe: { value: { results } }, spec, gateFor, ...inTheme('light') });
     const designMd = fs.readFileSync(path.resolve(here, '../../../../DESIGN.md'), 'utf8');
     const recorded = (state.contrast ?? []).map(
       (c: { text: { ref: string }; background: { ref: string }; ratio: number }) =>
@@ -196,11 +197,38 @@ describe('contrastState', () => {
   });
 
   it('turns a failed probe into an environment failure (exit 2)', () => {
-    const failed = contrastState({ theme: 'dark', width: 1440, pairs, probe: { error: 'TypeError: x' }, spec, gateFor });
+    const failed = contrastState({ theme: 'dark', width: 1440, pairs, probe: { error: 'TypeError: x' }, spec, gateFor, ...inTheme('dark') });
     expect(failed.environmentError).toBe('contrast probe failed: TypeError: x');
-    const short = contrastState({ theme: 'dark', width: 1440, pairs, probe: { value: { results: [] } }, spec, gateFor });
+    const short = contrastState({ theme: 'dark', width: 1440, pairs, probe: { value: { results: [] } }, spec, gateFor, ...inTheme('dark') });
     expect(short.environmentError).toMatch(/no result per pair/);
     expect(exitCode(buildReport({ baseUrl: 'u', themeKey: 'k' }, [failed]), { failOnFindings: false })).toBe(2);
+  });
+
+  // Without Studio, a page that never read the seeded key renders its
+  // default theme: the dark pass measured light tokens.
+  it('measures nothing in a page that is not in the requested theme, and says which theme it is in', () => {
+    const lightPage = { value: { attribute: 'light', stored: 'light' } };
+    const state = contrastState({
+      theme: 'dark', width: 1440, pairs, probe, spec, gateFor, applied: lightPage, themeKey: 'frontx:theme',
+    });
+    expect(state).toMatchObject({ theme: 'dark', appliedTheme: 'light' });
+    expect(state.environmentError).toBe(
+      'contrast not measured: theme not applied: requested "dark", the page shows data-theme="light" and ' +
+        'localStorage "frontx:theme" holds "light"; is "frontx:theme" the key the app restores its theme from, ' +
+        'and "dark" a registered theme id?',
+    );
+    expect(state).not.toHaveProperty('contrast');
+    expect(state).not.toHaveProperty('findings');
+    const report = buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]);
+    expect(exitCode(report, { failOnFindings: false })).toBe(2);
+    expect(summaryLines(report).join('\n')).toContain('requested "dark", the page shows data-theme="light"');
+
+    const unread = contrastState({
+      theme: 'dark', pairs, probe, spec, gateFor, applied: { error: 'SecurityError: localStorage' }, themeKey: 'frontx:theme',
+    });
+    expect(unread.environmentError).toBe(
+      'contrast not measured: could not read the applied theme (requested "dark"): SecurityError: localStorage',
+    );
   });
 });
 
@@ -278,7 +306,6 @@ describe('the probe and the flag', () => {
     });
     const value = JSON.parse(JSON.stringify(vm.runInNewContext(probeExpression(probePairs), page.context)));
     expect(value).toEqual({
-      appliedTheme: 'light',
       results: [
         {
           component: 'card', background: 'rgb(255, 255, 255)', text: 'rgb(17, 24, 39)',
@@ -292,7 +319,7 @@ describe('the probe and the flag', () => {
     });
     // The probe host leaves the page.
     expect(page.removed).toHaveLength(1);
-    const state = contrastState({ theme: 'light', width: 1440, pairs: probePairs, probe: { value }, spec, gateFor });
+    const state = contrastState({ theme: 'light', width: 1440, pairs: probePairs, probe: { value }, spec, gateFor, ...inTheme('light') });
     expect(state.contrast?.[0]).toMatchObject({ component: 'card', ratio: 17.73, threshold: 4.5 });
     expect(state.needsReview?.[0]).toMatchObject({ target: 'components.chip' });
   });
