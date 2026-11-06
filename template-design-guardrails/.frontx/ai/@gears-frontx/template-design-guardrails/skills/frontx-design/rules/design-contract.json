@@ -1,6 +1,6 @@
 {
   "id": "design-contract",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "status": "pilot",
   "normativeLanguage": {
     "MUST": "Required; violation is a blocker or major finding according to quality-gates.json.",
@@ -25,6 +25,7 @@
   "sourcePrecedence": [
     "Approved product requirements and design references",
     "Installed FrontX manifests and UI-kit documentation",
+    "Project DESIGN.md (the installed kit's token names and the project's guardrails)",
     "Rule files of the frontx-design skill (rules/)",
     "References of the frontx-design skill (references/)",
     "Installed application behavior and existing screens",

@@ -63,6 +63,16 @@ describe('rules/quality-gates.json', () => {
   });
 });
 
+describe('rules/design-contract.json', () => {
+  it('ranks the project DESIGN.md right after the installed kit documentation in sourcePrecedence', () => {
+    const order = readJson('rules/design-contract.json').sourcePrecedence;
+    const design = order.findIndex((source) => source.includes('DESIGN.md'));
+    expect(design).toBeGreaterThan(-1);
+    expect(order[design - 1]).toMatch(/UI-kit documentation/);
+    expect(order[design + 1]).toMatch(/Rule files/);
+  });
+});
+
 describe('gate ids cited in prose', () => {
   const known = new Set(readJson('rules/quality-gates.json').gates.map((g) => g.id));
   const prose = [

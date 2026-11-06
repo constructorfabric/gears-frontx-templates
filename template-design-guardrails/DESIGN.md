@@ -276,7 +276,7 @@ Every visual task starts with the one design skill, `frontx-design`, at `.frontx
 - `rules/`: the machine-readable rules. `rules/quality-gates.json` is the one rule registry; when sources disagree, `sourcePrecedence` in `rules/design-contract.json` is the one order.
 - `templates/`: the state inventory and the handoff every task closes with.
 
-Before building a screen, inspect the installed FrontX templates and the existing application, and read the UI kit's installed `llms.txt` and component docs; they win over this file on component APIs. The screen request selects content and behavior; it does not authorize a new visual system.
+Before building a screen, inspect the installed FrontX templates and the existing application, and read the UI kit's installed `llms.txt` and component docs; where they and this file differ, `sourcePrecedence` in `rules/design-contract.json` is the order. The screen request selects content and behavior; it does not authorize a new visual system.
 
 Rules marked **MUST** are required. **SHOULD** rules may be changed only when the implementation records why (in the component's source comment or the change's PR description). **MAY** rules are optional. Each gate in `rules/quality-gates.json` also states whether it can be waived: `never`, `with-reason`, or `finish`.
 

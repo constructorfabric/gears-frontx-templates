@@ -34,10 +34,10 @@ The names change only when the kit adds, renames or drops a token.
 
 Read `DESIGN.md` before building, restyling or reviewing anything visual. It
 names the UI base, the required qualities, the token vocabulary and what not
-to do. When it and the installed kit documentation differ on a component
-API, the installed documentation wins; when it and this skill differ on a
-rule, the gate in `rules/quality-gates.json` wins. For the value a token has
-in this app, read the rendered app, not this file.
+to do. When it and another source differ (the installed kit documentation,
+this skill's rules), `sourcePrecedence` in `rules/design-contract.json` is
+the order, within the scope `sourcePrecedenceScope` sets. For the value a
+token has in this app, read the rendered app, not this file.
 
 ## Check it
 
