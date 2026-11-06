@@ -1,0 +1,33 @@
+# This micro-frontend's passport: everything a tool that assembles a product
+# from FrontX packages (Gearbox, Constructor Studio) needs to know about it, in
+# one file. It restates what package.json and mfe.json say, and those tools
+# check that they agree, so keep them in step when either changes. See
+# "Package passports: frontx.gdl" in the repository README.
+gdl_version = "1.5"
+
+mfe(
+    # Who it is: package.json's name, version and description.
+    name = "@gears-frontx/widgets-fixture-a",
+    version = "0.1.0-alpha.1",
+    description = "Leaf widget MFE. Targets the widgets domain (owned by demo-mfe's child FrontX app at runtime) via two Extension instances (alpha and beta) sharing the same entry path. Mounts concurrently alongside widgets-fixture-b under ConcurrentMountStrategy.",
+
+    # The backend gears its widgets call, by gear id. None: it calls no backend.
+    requires = [],
+
+    # What it brings, as mfe.json says: the labels of its screens, then the
+    # route of each extension, in mfe.json's order. Its extensions are
+    # widgets, not screens: they have no label.
+    screens = [],
+    mounts = ["/widget-alpha", "/widget-beta"],
+
+    # The FrontX it is written against: its @gears-frontx/react pin. A shell
+    # mounting it gives it the shell's own version, whatever this says.
+    frontx = "0.2.0-alpha.15",
+
+    # The permissions its widgets need: none, it calls no gear.
+    roles = [],
+
+    # No route of its own is worth a screenshot: it renders inside
+    # demo-mfe's Widgets Host screen.
+    preview = [],
+)

@@ -63,6 +63,10 @@ Then, inside `my-mfe/`:
    pinned in `package.json`, as the scaffold has it; an MFE that uses
    `<ExtensionRouter>` or `navigation()` adds `@gears-frontx/routing-tanstack`
    to both, under `dependencies`.
+4. **`frontx.gdl`** — name the backend gears your screens call in
+   `mfe(requires = [...])`, by gear id (the `<gear>` in a `/cf/<gear>/v1/...`
+   base URL); leave `[]` if they call none. Tools that assemble a product
+   (Gearbox, Constructor Studio) check the product has each one.
 
 Existing packages here for reference: `demo-mfe` (`:3001`, a full worked
 example — Hello World, Profile, Theme, UIKit, Widgets Host), `_blank-mfe`

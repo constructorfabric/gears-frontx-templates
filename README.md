@@ -24,6 +24,62 @@ frontx add mfe    --source github:constructorfabric/gears-frontx-templates//temp
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.
 
+## Package passports: `frontx.gdl`
+
+Every FrontX package here carries a passport: a `frontx.gdl` beside its `package.json`, the way a gear has its `gear.gdl`. It is the one file a tool that assembles a product from FrontX packages (Gearbox, Constructor Studio) reads the package from: who it is, how it is built and served, what it reads at start, what it calls and mounts. It is GDL 1.5: declarative, one call per file, literal values only.
+
+The passport deliberately restates what `package.json` and `mfe.json` already say, so one file holds everything. Those tools check each restated fact against the manifest it restates, so the two copies cannot drift unnoticed (see "Keeping it in step" below). Every field but a shell's `signs_in` is optional: one left out is read from the manifests, as without a passport.
+
+```python
+# template-shell/frontx.gdl (abridged; the real file comments every field)
+gdl_version = "1.5"
+shell(
+    name = "@gears-frontx/frontx-template-shell",   # = package.json
+    version = "0.1.0-alpha.7",                      # = package.json
+    description = "...",                            # = package.json
+    node = ">=24.14.0",                             # the Node.js it builds with (engines)
+    package_manager = "npm",                        # the one whose lock it keeps
+    build = "npm run build",                        # the build step, after the install
+    output = "dist",                                # where the build writes the site
+    base = "/",                                     # the path it is served under
+    api_prefix = "/cf/",                            # where its screens call the backend
+    runtime_env = None,                             # or "public/env.js": addresses read at start
+    env = {},                                       # keys read from it -> what fills them
+    build_env = [],                                 # variables needed at build
+    signs_in = False,                               # required
+    sign_in_redirect = None,                        # or the redirect path(s), with signs_in = True
+    carries = {"@gears-frontx/react": "0.2.0-alpha.15", ...},  # every FrontX package it gives what it mounts
+)
+
+# src-app/mfe_packages/<name>/frontx.gdl
+gdl_version = "1.5"
+mfe(
+    name = "@gears-frontx/demo-mfe", version = "0.2.0-alpha.0",  # = package.json
+    requires = [],                          # backend gears its screens call, by id; [] calls none
+    screens = ["Hello World", ...],         # = mfe.json extensions' presentation.label, in order
+    mounts = ["/hello-world", ...],         # = mfe.json extensions' route, in order
+    frontx = "0.2.0-alpha.15",              # = its @gears-frontx/react pin
+    roles = [],                             # permissions its screens need
+    preview = ["/hello-world"],             # routes worth a screenshot
+    fixtures = "src/api/mocks.ts",          # mock data for them
+)
+```
+
+- **`shell(...)`**: who the shell is; how it is built (`node`, `package_manager`, `build`, `output`) and served (`base`, and `api_prefix`, the path its screens call the backend under, which the server proxies to the product's API Gateway); what it reads at start (`runtime_env`, the file, and `env`, its keys) or at build (`build_env`); whether it signs users in (`signs_in`, and `sign_in_redirect`); and `carries`, the FrontX packages it gives every micro-frontend it mounts: its `packages/*`, its exact `@gears-frontx/*` dependencies, and itself. The stock `template-shell` signs nobody in and fixes its addresses at build, so it says `signs_in = False, runtime_env = None`. A fork that adds sign-in or a `public/env.js` updates its passport.
+- **`mfe(...)`**: who the micro-frontend is; `requires`, the backend gears its screens call by id (the `<gear>` in a `/cf/<gear>/v1/...` base URL); `screens` and `mounts`, as its `mfe.json` has them; `frontx`, the `@gears-frontx/react` it pins; `roles`; and `preview` and `fixtures` for screenshots. The reference packages call no gear, so they declare `requires = []`. A package copied from `_blank-mfe` carries the file along: rename it and name what it calls.
+- **`library(name = ..., version = ..., description = ...)`**: a package micro-frontends share that is not one itself; it says only who it is.
+
+### Keeping it in step
+
+When a release bumps a version, a pin, or a screen, update the passport in the same change. At generation Gearbox reports a passport that disagrees with its manifests:
+
+- **GBX0722, an error**: `name` or `version` other than `package.json`'s, `frontx` other than its `@gears-frontx/react` pin, `carries` other than what the shell's workspace carries, or `screens` / `mounts` other than `mfe.json`'s.
+- **GBX0723, a warning**: `description` other than `package.json`'s, `node` other than its `engines.node`, a `package_manager` without its lock file, a `build` running a script `package.json` lacks, a `preview` route it does not mount, or a `fixtures` file it lacks.
+
+Constructor Studio reports the same disagreements in its catalogue as a warning and still reads the passport. A fact the manifest does not state has nothing to disagree with.
+
+`template-shell`'s `frontx.gdl` is in its `ownershipBoundaries`, so `frontx seed` brings it; `template-mfe`'s are inside the package subtrees it already owns. The language reference is Gearbox's `docs/gdl.md`, section "A package's passport: `frontx.gdl`".
+
 ## Relationship to the FrontX ecosystem
 
 The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). `template-mfe`'s six overrides into `../template-shell` are the one exception: `template-shell` lives in this same repo, one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.

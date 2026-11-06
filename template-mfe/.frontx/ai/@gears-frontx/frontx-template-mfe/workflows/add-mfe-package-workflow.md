@@ -72,6 +72,9 @@ each step names the concrete command or file template-mfe ships.
    - Keep `src/lifecycle.tsx` extending `ThemeAwareReactLifecycle`; keep `init.ts`'s
      plugin chain (`effects()`, `queryCacheShared()`, `mock()`) unless the new MFE has
      a documented reason to diverge.
+   - Name in `frontx.gdl`'s `mfe(requires = [...])` every backend gear the screen
+     calls, by gear id (the `<gear>` of a `/cf/<gear>/v1/...` base URL); keep `[]`
+     if it calls none. The scaffold's copy came along with the rest.
 
 6. **Regenerate manifests**
    ```bash
