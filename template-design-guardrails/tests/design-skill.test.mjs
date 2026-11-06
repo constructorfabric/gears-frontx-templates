@@ -37,7 +37,7 @@ describe('rules/quality-gates.json', () => {
   const waivers = Object.keys(registry.waiver);
 
   it('declares exactly the never, with-reason and finish waiver levels', () => {
-    expect(waivers.sort()).toEqual(['finish', 'never', 'with-reason']);
+    expect([...waivers].sort()).toEqual(['finish', 'never', 'with-reason']);
   });
 
   it('gives every gate a unique id, a known severity and a known waiver level', () => {
