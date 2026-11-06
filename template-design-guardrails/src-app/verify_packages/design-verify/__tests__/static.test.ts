@@ -526,6 +526,9 @@ describe('exit codes and the baseline', () => {
       'src/Bar.tsx': 'export const B = () => null;',
       'src/pages/Baz.tsx': 'export const Z = () => null;',
       'src/dist/Out.tsx': 'export const O = () => null;',
+      // A directory whose own name matches the file-name glob `**/_*`: its
+      // files are still checked.
+      'src/_drafts/Page.tsx': 'export const P = () => null;',
     });
     fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/_gone.tsx'));
     fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/Moved.tsx'));
@@ -533,6 +536,7 @@ describe('exit codes and the baseline', () => {
     const { files, skipped } = collectFiles(root, [path.join(root, 'src')], globs);
     expect(files).toEqual([
       ['src/Bar.tsx', 'script'],
+      ['src/_drafts/Page.tsx', 'script'],
       ['src/pages/Baz.tsx', 'script'],
     ]);
     // A broken link is listed unless an exclude glob covers it.
