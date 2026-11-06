@@ -19,6 +19,7 @@
  * baseline diff.
  */
 import { CONTRAST_CHECK } from './contrast.mjs';
+import { diffFindings, findingsExitCode } from './gate.mjs';
 import { themeMismatch } from './theme.mjs';
 import { applyWaivers, waiverLines } from './waivers.mjs';
 
@@ -232,39 +233,32 @@ function stateKey(state) {
 }
 
 /**
- * Findings as a multiset: one entry per identity, carrying how many times it
- * occurred. Two instances of the same defect on the same generated target
- * (two identical cards, say) are two findings, and a diff that keyed a plain
- * Map would let the second one arrive unreported.
+ * Every finding of a report with the state it was found in. Two instances of
+ * the same defect on the same generated target (two identical cards, say)
+ * stay two findings in the diff.
  *
  * @param {{states?: StateResult[]}} report
- * @returns {Map<string, {check?: string, route: string, theme: string, width?: number, id: string,
- *   target?: string, detail?: string, count: number}>}
  */
-function collectFindings(report) {
-  const map = new Map();
-  for (const state of report.states ?? []) {
-    for (const finding of state.findings ?? []) {
-      const key = findingKey(state, finding);
-      const existing = map.get(key);
-      if (existing) {
-        existing.count += 1;
-        continue;
-      }
-      const width = keyWidth(state);
-      map.set(key, {
-        ...(state.check ? { check: state.check } : {}),
-        route: state.route,
-        theme: state.theme,
-        ...(width === null ? {} : { width }),
-        id: finding.id ?? 'unknown-rule',
-        target: finding.target,
-        detail: finding.detail,
-        count: 1,
-      });
-    }
-  }
-  return map;
+function stateFindings(report) {
+  return (report.states ?? []).flatMap((state) => (state.findings ?? []).map((finding) => ({ state, finding })));
+}
+
+/**
+ * What a diff entry reports about a finding.
+ *
+ * @param {{state: StateResult, finding: {id?: string, target?: string, detail?: string}}} item
+ */
+function diffEntry({ state, finding }) {
+  const width = keyWidth(state);
+  return {
+    ...(state.check ? { check: state.check } : {}),
+    route: state.route,
+    theme: state.theme,
+    ...(width === null ? {} : { width }),
+    id: finding.id ?? 'unknown-rule',
+    target: finding.target,
+    detail: finding.detail,
+  };
 }
 
 /**
@@ -303,26 +297,12 @@ function completedStates(report) {
  * @param {{states?: StateResult[]}} current
  */
 export function diffReports(baseline, current) {
-  const before = collectFindings(baseline);
-  const after = collectFindings(current);
   const completed = completedStates(current);
-  const added = [];
-  const resolved = [];
-  const unverified = [];
-  let carriedOver = 0;
-  for (const [key, entry] of after) {
-    const previous = before.get(key)?.count ?? 0;
-    carriedOver += Math.min(previous, entry.count);
-    if (entry.count > previous) added.push({ ...entry, count: entry.count - previous });
-  }
-  for (const [key, entry] of before) {
-    const now = after.get(key)?.count ?? 0;
-    if (now >= entry.count) continue;
-    const gone = { ...entry, count: entry.count - now };
-    if (completed.has(stateKey(entry))) resolved.push(gone);
-    else unverified.push(gone);
-  }
-  return { new: added, resolved, unverified, carriedOver };
+  return diffFindings(stateFindings(baseline), stateFindings(current), {
+    key: ({ state, finding }) => findingKey(state, finding),
+    entry: diffEntry,
+    rechecked: (entry) => completed.has(stateKey(entry)),
+  });
 }
 
 /**
@@ -337,9 +317,7 @@ export function diffReports(baseline, current) {
 export function exitCode(report, config, diff) {
   if (report.summary.environmentFailures > 0) return 2;
   if (report.summary.screenshotFailures > 0) return 2;
-  if (!config.failOnFindings) return 0;
-  if (diff) return diff.new.length > 0 ? 1 : 0;
-  return report.summary.totalFindings > 0 ? 1 : 0;
+  return findingsExitCode(report.summary.totalFindings, config, diff);
 }
 
 /**

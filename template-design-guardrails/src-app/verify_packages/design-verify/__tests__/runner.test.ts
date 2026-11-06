@@ -30,6 +30,7 @@ import {
   waiveStates,
 } from '../runner/report.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
+import { diffStatic, staticExitCode } from '../runner/static.mjs';
 import { appliedThemeExpression, STUDIO_THEME_KEY, themeMismatch, themeSeedExpression } from '../runner/theme.mjs';
 import { coversRendered, parseWaivers, waiverLines, waiverReport } from '../runner/waivers.mjs';
 import {
@@ -873,5 +874,54 @@ describe('CdpSession protocol handling', () => {
       session.waitForConsoleLine(/\[design-defects\]/, 0, 50),
     ).resolves.toContain('[design-defects] clean');
     await expect(session.waitForConsoleLine(/\[design-defects\]/, 1, 50)).resolves.toBeUndefined();
+  });
+});
+
+// Both runners gate through gate.mjs, so one baseline case reads the same in
+// each: a finding that came back twice, one that is gone where the run looked
+// again, one that is gone where it did not, and one that is new.
+describe('baseline diff shared by both runners', () => {
+  it('classifies the same new, carried, resolved and unverified findings the same way', () => {
+    type Found = Array<[string, string]>;
+    const render = (findings: Found, places: string[]) => ({
+      states: places.map((route) => ({
+        route,
+        theme: 'light',
+        width: 1440,
+        findings: findings.filter(([where]) => where === route).map(([, id]) => ({ id, target: 'main' })),
+      })),
+    });
+    const source = (findings: Found, files: string[]) => ({
+      files,
+      findings: findings.map(([file, found]) => ({ file, gate: 'SYS-002', kind: 'color', found })),
+    });
+    const before: Found = [['/a', 'x'], ['/b', 'y'], ['/c', 'z']];
+    const after: Found = [['/a', 'x'], ['/a', 'x'], ['/a', 'w']];
+    type Counted = Array<{ count: number }>;
+    const shape = (diff: { new: Counted; resolved: Counted; unverified: Counted; carriedOver: number }) => ({
+      new: diff.new.map((e) => e.count),
+      resolved: diff.resolved.map((e) => e.count),
+      unverified: diff.unverified.map((e) => e.count),
+      carriedOver: diff.carriedOver,
+    });
+
+    // /c is not looked at again: no state swept, no file checked.
+    const renderDiff = diffReports(render(before, ['/a', '/b', '/c']), render(after, ['/a', '/b']));
+    const staticDiff = diffStatic(source(before, ['/a', '/b', '/c']), source(after, ['/a', '/b']));
+    expect(shape(renderDiff)).toEqual({ new: [1, 1], resolved: [1], unverified: [1], carriedOver: 1 });
+    expect(shape(staticDiff)).toEqual(shape(renderDiff));
+    expect(renderDiff.resolved[0]).toMatchObject({ route: '/b', id: 'y' });
+    expect(staticDiff.resolved[0]).toMatchObject({ file: '/b', found: 'y' });
+
+    // A partial report: both exit codes read its summary only.
+    const renderReport = { summary: { environmentFailures: 0, screenshotFailures: 0, totalFindings: 3 } } as never;
+    const staticReport = { summary: { parseErrors: 0, totalFindings: 3 } } as never;
+    for (const config of [{ failOnFindings: true }, { failOnFindings: false }]) {
+      for (const diff of [undefined, renderDiff, { ...renderDiff, new: [] }] as never[]) {
+        expect(staticExitCode(staticReport, config, diff)).toBe(exitCode(renderReport, config, diff));
+      }
+    }
+    expect(exitCode(renderReport, { failOnFindings: true }, renderDiff)).toBe(1);
+    expect(exitCode(renderReport, { failOnFindings: true }, { ...renderDiff, new: [] })).toBe(0);
   });
 });

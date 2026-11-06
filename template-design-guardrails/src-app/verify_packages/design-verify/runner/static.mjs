@@ -60,6 +60,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import * as csstree from 'css-tree';
+import { diffFindings, findingsExitCode } from './gate.mjs';
 import { ContractError, designMdParser, isEntryPoint, projectRoot, readSkillJson } from './skill.mjs';
 import { applyWaivers, coversSource, loadWaivers, waiverLines, waiverReport, WaiverError } from './waivers.mjs';
 
@@ -712,45 +713,20 @@ function staticKey(finding) {
   return JSON.stringify([finding.file, finding.gate, finding.kind, finding.found]);
 }
 
-function countBy(findings) {
-  const map = new Map();
-  for (const finding of findings) {
-    const key = staticKey(finding);
-    const entry = map.get(key);
-    if (entry) entry.count += 1;
-    else map.set(key, { file: finding.file, gate: finding.gate, kind: finding.kind, found: finding.found, count: 1 });
-  }
-  return map;
-}
-
 /**
- * Multiset diff against a prior static report, as the render runner's
- * diff: new (absent, or more instances), resolved (fewer, in a file checked
- * now), unverified (fewer, in a file not checked now), carriedOver.
+ * Multiset diff against a prior static report, the render runner's diff
+ * (gate.mjs): a finding counts as resolved only in a file checked now.
  *
  * @param {{findings?: any[]}} baseline
  * @param {{findings: any[], files: string[]}} current
  */
 export function diffStatic(baseline, current) {
-  const before = countBy(baseline.findings ?? []);
-  const after = countBy(current.findings);
   const checked = new Set(current.files);
-  const added = [];
-  const resolved = [];
-  const unverified = [];
-  let carriedOver = 0;
-  for (const [key, entry] of after) {
-    const previous = before.get(key)?.count ?? 0;
-    carriedOver += Math.min(previous, entry.count);
-    if (entry.count > previous) added.push({ ...entry, count: entry.count - previous });
-  }
-  for (const [key, entry] of before) {
-    const now = after.get(key)?.count ?? 0;
-    if (now >= entry.count) continue;
-    const gone = { ...entry, count: entry.count - now };
-    (checked.has(entry.file) ? resolved : unverified).push(gone);
-  }
-  return { new: added, resolved, unverified, carriedOver };
+  return diffFindings(baseline.findings ?? [], current.findings, {
+    key: staticKey,
+    entry: ({ file, gate, kind, found }) => ({ file, gate, kind, found }),
+    rechecked: (entry) => checked.has(entry.file),
+  });
 }
 
 /**
@@ -795,9 +771,7 @@ export function buildStaticReport(run) {
  */
 export function staticExitCode(report, config, diff) {
   if (report.summary.parseErrors > 0) return 2;
-  if (!config.failOnFindings) return 0;
-  if (diff) return diff.new.length > 0 ? 1 : 0;
-  return report.summary.totalFindings > 0 ? 1 : 0;
+  return findingsExitCode(report.summary.totalFindings, config, diff);
 }
 
 /** @param {ReturnType<typeof buildStaticReport>} report @param {ReturnType<typeof diffStatic>} [diff] */
