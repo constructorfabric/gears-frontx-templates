@@ -3,6 +3,7 @@
  * parsing, verification-matrix expansion, and the screenshot naming
  * convention. No I/O — everything here is unit-testable without a browser.
  */
+import path from 'node:path';
 
 export const DEFAULTS = Object.freeze({
   url: 'http://127.0.0.1:5173/',
@@ -22,6 +23,7 @@ export const DEFAULTS = Object.freeze({
   screenshots: false,
   failOnFindings: false,
   baseline: '',
+  waivers: '',
 });
 
 const LIST_FLAGS = new Set(['--routes', '--menu', '--widths', '--themes']);
@@ -38,6 +40,7 @@ const VALUE_FLAGS = new Set([
   '--sweep-timeout-ms',
   '--settle-ms',
   '--baseline',
+  '--waivers',
 ]);
 const BOOL_FLAGS = new Set(['--fail-on-findings', '--screenshots', '--no-screenshots', '--help']);
 
@@ -122,6 +125,9 @@ export function parseArgs(argv) {
       case '--baseline':
         config.baseline = value;
         break;
+      case '--waivers':
+        config.waivers = value;
+        break;
       case '--server-timeout-ms':
       case '--sweep-timeout-ms':
       case '--settle-ms': {
@@ -186,13 +192,39 @@ Usage: node runner/cli.mjs [flags]
                             carried-over relative to it. With
                             --fail-on-findings, only NEW findings gate the
                             exit code - known findings stay advisory
+  --waivers <file>          Per-screen waiver file (default design-waivers.json
+                            at the project root, when present): a finding a
+                            waiver covers moves to the state's waived list
   --fail-on-findings        Exit 1 when any finding is reported (default:
                             advisory - findings never fail the run; exit 2 is
                             reserved for environment failures and for a
                             requested screenshot that could not be captured
                             or written, either way)
   --help                    Print this message
+
+Relative --out, --baseline, --waivers and --server-cwd paths resolve against
+the project root: $INIT_CWD (where npm was invoked), else the current
+directory.
 `;
+
+/**
+ * The report and input paths, resolved against the project root.
+ *
+ * @template {{outDir: string, baseline: string, waivers: string, serverCwd: string}} C
+ * @param {C} config
+ * @param {string} root
+ * @returns {C}
+ */
+export function resolvePaths(config, root) {
+  const at = (p) => (p ? path.resolve(root, p) : p);
+  return {
+    ...config,
+    outDir: at(config.outDir),
+    baseline: at(config.baseline),
+    waivers: at(config.waivers),
+    serverCwd: at(config.serverCwd),
+  };
+}
 
 /**
  * Resolve the directory --start-server runs in. npm executes workspace

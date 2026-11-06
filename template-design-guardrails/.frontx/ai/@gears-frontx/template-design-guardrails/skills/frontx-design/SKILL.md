@@ -64,10 +64,9 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 - `rules/review-rubric.json` - review categories, points, blocker gate ids, deductions, score bands.
 - `rules/source-registry.json` - the public standards the rules draw on; research only, never a visual theme.
 - `rules/static-check.json` - data of the static check: native elements and roles with a kit component, literal kinds with the DESIGN.md group of their tokens.
+- `rules/render-check.json` - data of the render runner: the gate of each runtime checker rule id.
 
-`templates/` (blanks to fill):
-- `templates/state-inventory.md` - one row per data region with each state's outcome, widths and themes seen.
-- `templates/handoff.md` - built, checked (gate id and outcome), not checked, known gaps.
+`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps).
 
 `scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
 

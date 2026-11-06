@@ -24,6 +24,9 @@
  * gate each finding names). A kind whose DESIGN.md group names no token
  * reports nothing: the kit has no token for it.
  *
+ * A finding the per-screen waiver file covers (`screen.source` glob,
+ * runner/waivers.mjs) moves to the report's waived list.
+ *
  * Paths resolve against the project root ($INIT_CWD, set by npm to where it
  * was invoked, else the current directory). Writes
  * `<out>/static-findings.json`. Exit codes, as the render runner: 0 ran
@@ -39,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import * as csstree from 'css-tree';
 import { ContractError, designMdParser, projectRoot, readSkillJson } from './skill.mjs';
+import { applyWaivers, coversSource, loadWaivers, waiverLines, waiverReport, WaiverError } from './waivers.mjs';
 
 export const USAGE = `design-verify static check - literal values and native elements where the
 kit has a token or a component, in CSS Modules and TSX/TS, no browser.
@@ -51,6 +55,9 @@ Usage: npm run verify:static --workspace=@gears-frontx/design-verify -- --src <d
                             each fix suggests (default DESIGN.md)
   --out <dir>               Report directory (default design-verify-report);
                             the report is static-findings.json
+  --waivers <file>          Per-screen waiver file (default design-waivers.json
+                            at the project root, when present): a finding a
+                            waiver's screen.source glob covers moves to waived
   --baseline <file>         Compare against a prior static-findings.json: with
                             --fail-on-findings only findings it lacks gate
   --fail-on-findings        Exit 1 when a finding is reported (default:
@@ -501,7 +508,8 @@ export function diffStatic(baseline, current) {
 }
 
 /**
- * @param {{root: string, sources: string[], files: string[], findings: any[], parseErrors: string[]}} run
+ * @param {{root: string, sources: string[], files: string[], findings: any[],
+ *   waived?: any[], waivers?: object, parseErrors: string[]}} run
  */
 export function buildStaticReport(run) {
   const byGate = {};
@@ -518,12 +526,15 @@ export function buildStaticReport(run) {
     summary: {
       filesChecked: run.files.length,
       totalFindings: run.findings.length,
+      waived: run.waived?.length ?? 0,
       parseErrors: run.parseErrors.length,
       byGate,
       byKind,
     },
     files: run.files,
     findings: run.findings,
+    waived: run.waived ?? [],
+    ...(run.waivers ? { waivers: run.waivers } : {}),
     parseErrors: run.parseErrors,
   };
 }
@@ -545,11 +556,15 @@ export function staticSummaryLines(report, diff) {
   const s = report.summary;
   const lines = [
     `design-verify static: ${s.filesChecked} file(s) checked - ${s.totalFindings} finding(s), ` +
-      `${s.parseErrors} parse error(s)`,
+      `${s.waived} waived, ${s.parseErrors} parse error(s)`,
   ];
   for (const f of report.findings) {
     lines.push(`  ${f.gate} ${f.file}:${f.line}:${f.column} ${f.kind} ${f.found}: ${f.fix}`);
   }
+  for (const f of report.waived) {
+    lines.push(`  WAIVED ${f.gate} ${f.file}:${f.line}:${f.column} ${f.kind} ${f.found} - waiver #${f.waiver.index}: ${f.waiver.reason}`);
+  }
+  lines.push(...waiverLines(report.waivers));
   for (const error of report.parseErrors) lines.push(`  PARSE ERROR ${error}`);
   if (diff) {
     const total = (entries) => entries.reduce((sum, e) => sum + e.count, 0);
@@ -599,7 +614,7 @@ export async function main(argv, io = {}) {
   try {
     return await run(argv, io);
   } catch (error) {
-    if (!(error instanceof InputError || error instanceof ContractError)) throw error;
+    if (!(error instanceof InputError || error instanceof ContractError || error instanceof WaiverError)) throw error;
     (io.error ?? ((line) => console.error(line)))(`design-verify static: ${error.message}`);
     return 2;
   }
@@ -618,6 +633,7 @@ async function run(argv, io) {
         design: { type: 'string' },
         out: { type: 'string' },
         baseline: { type: 'string' },
+        waivers: { type: 'string' },
         'fail-on-findings': { type: 'boolean' },
         help: { type: 'boolean' },
       },
@@ -638,6 +654,7 @@ async function run(argv, io) {
   const baseline = values.baseline ? readJsonFile(at(values.baseline), '--baseline') : undefined;
 
   const rules = readSkillJson('rules/static-check.json');
+  const waivers = loadWaivers(values.waivers ? at(values.waivers) : undefined, root, readSkillJson('rules/quality-gates.json'));
   const { readDesignMd, InputError: DesignMdError } = await designMdParser();
   let front;
   try {
@@ -659,11 +676,14 @@ async function run(argv, io) {
     parseErrors.push(...result.parseErrors);
   }
 
+  const split = applyWaivers(findings, waivers.waivers, coversSource);
   const report = buildStaticReport({
     root,
     sources: sources.map((s) => path.relative(root, s).split(path.sep).join('/') || '.'),
     files: files.map(([file]) => file),
-    findings,
+    findings: split.findings,
+    waived: split.waived,
+    waivers: waiverReport(waivers, 'source'),
     parseErrors,
   });
   const diff = baseline ? diffStatic(baseline, report) : undefined;

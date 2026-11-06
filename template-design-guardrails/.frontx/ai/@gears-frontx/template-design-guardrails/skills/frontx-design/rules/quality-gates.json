@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "mode": "advisory",
   "severity": {
     "blocker": "Primary task, safety, permissions, content access or material accessibility is broken.",
@@ -8,8 +8,8 @@
   },
   "waiver": {
     "never": "Cannot be waived. A finding stays open until the correction is observed; no product reason closes it.",
-    "with-reason": "May be waived only with a recorded reason (the component's source comment or the change's PR description). The report keeps the finding, marked waived, and quotes the reason.",
-    "finish": "Finish checks, run after every never and with-reason gate is clean or waived. An open finish finding never hides an open finding of the other two levels."
+    "with-reason": "May be waived only with a recorded reason: an entry for the screen in the project's design-waivers.json (format in references/verify.md, Waivers), which the static check and the render runner honour. The report keeps the finding, marked waived, and quotes the reason.",
+    "finish": "Finish checks, run after every never and with-reason gate is clean or waived. An open finish finding never hides an open finding of the other two levels. A finish finding is fixed or stays open; the waiver file does not take it."
   },
   "gates": [
     {"id": "SYS-001", "level": "major", "waiver": "with-reason", "rule": "Use installed UI-kit components when an equivalent exists.", "evidence": "component import and rendered control", "fix": "replace imitation with installed primitive"},

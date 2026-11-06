@@ -16,19 +16,34 @@
  *   npm run verify:ui --workspace=@gears-frontx/design-verify -- \
  *     --routes /login,/tasks --widths 1440,768,320 --themes light,dark
  *
+ * Every finding carries the gate the frontx-design skill's
+ * rules/render-check.json gives its rule id, and a finding the per-screen
+ * waiver file covers moves to its state's waived list (runner/waivers.mjs).
+ *
  * See --help (runner/config.mjs USAGE) for every flag. Exit codes: 0 ran
  * (findings are advisory), 1 findings + --fail-on-findings, 2 environment
- * failure or a requested screenshot that could not be produced - an
- * unverified state is never reported as a pass.
+ * failure, an input the run cannot honour (a bad flag, baseline or waiver
+ * file, a missing skill rule file) or a requested screenshot that could not
+ * be produced - an unverified state is never reported as a pass.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { parseArgs, expandMatrix, resolveServerCwd, shotName, USAGE } from './config.mjs';
+import { parseArgs, expandMatrix, resolvePaths, resolveServerCwd, shotName, USAGE } from './config.mjs';
 import { CdpSession, newTarget } from './cdp.mjs';
 import { findChrome, launchChrome } from './chrome.mjs';
 import { isUrlReachable, waitForUrl, startServer } from './server.mjs';
-import { buildReport, diffReports, exitCode, splitSweep, summaryLines } from './report.mjs';
+import {
+  buildReport,
+  diffReports,
+  exitCode,
+  gateLookup,
+  splitSweep,
+  summaryLines,
+  waiveStates,
+} from './report.mjs';
+import { ContractError, projectRoot, readSkillJson } from './skill.mjs';
+import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
 
 const SWEEP_LINE = /\[design-defects\]/;
 const VERIFY_PKG_FAILURE = /\[verify-packages\].*(none installed|failed to load)/;
@@ -77,16 +92,34 @@ async function activateMenu(session, label, timeoutMs) {
 }
 
 async function main() {
-  const { config, errors } = parseArgs(process.argv.slice(2));
-  if (config.help) {
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.config.help) {
     console.log(USAGE);
     return 0;
   }
-  if (errors.length > 0) {
-    for (const error of errors) console.error(`design-verify: ${error}`);
+  if (parsed.errors.length > 0) {
+    for (const error of parsed.errors) console.error(`design-verify: ${error}`);
     console.error('run with --help for usage');
     return 2;
   }
+  const root = projectRoot();
+  const config = resolvePaths(parsed.config, root);
+  const mode = config.menus.length > 0 ? 'menu' : 'route';
+
+  // The gate of every rule id and the waiver file, before any sweeping: a
+  // waiver the run cannot honour fails now, not after minutes of work.
+  let gateFor;
+  let waivers;
+  try {
+    const registry = readSkillJson('rules/quality-gates.json');
+    gateFor = gateLookup(readSkillJson('rules/render-check.json'));
+    waivers = loadWaivers(config.waivers || undefined, root, registry);
+  } catch (error) {
+    if (!(error instanceof ContractError || error instanceof WaiverError)) throw error;
+    console.error(`design-verify: ${error.message}`);
+    return 2;
+  }
+  const coversState = coversRendered(mode);
 
   // Read the baseline up front: a bad path should fail before minutes of
   // sweeping, not after.
@@ -205,7 +238,8 @@ async function main() {
       } else if (!Array.isArray(sweep.value)) {
         record.environmentError = `sweep returned a non-array: ${JSON.stringify(sweep.value)}`;
       } else {
-        Object.assign(record, splitSweep(sweep.value));
+        Object.assign(record, splitSweep(sweep.value, gateFor));
+        waiveStates([record], waivers.waivers, coversState);
       }
       record.consoleLines = session.consoleLines.slice(before);
 
@@ -224,6 +258,7 @@ async function main() {
       states.push(record);
       const count = record.findings?.length;
       const undecided = record.needsReview?.length ?? 0;
+      const waivedCount = record.waived?.length ?? 0;
       console.log(
         `design-verify: ${route} ${theme} ${width}px - ` +
           (record.environmentError
@@ -231,11 +266,15 @@ async function main() {
             : count === 0 && undecided === 0
               ? 'clean'
               : `${count} finding(s)` + (undecided > 0 ? `, ${undecided} needing review` : '')) +
+          (waivedCount > 0 ? `, ${waivedCount} waived` : '') +
           (record.screenshotError ? ` - SCREENSHOT FAILED: ${record.screenshotError}` : ''),
       );
     }
 
-    const report = buildReport({ baseUrl: config.url, themeKey: config.themeKey }, states);
+    const report = buildReport(
+      { baseUrl: config.url, themeKey: config.themeKey, waivers: waiverReport(waivers, mode) },
+      states,
+    );
     const diff = baselineReport ? diffReports(baselineReport, report) : undefined;
     if (diff) report.baselineComparison = { baseline: config.baseline, ...diff };
     const reportPath = path.join(config.outDir, 'findings.json');

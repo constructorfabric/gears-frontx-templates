@@ -8,11 +8,22 @@ import {
   DEFAULTS,
   expandMatrix,
   parseArgs,
+  resolvePaths,
   resolveServerCwd,
   routeSlug,
   shotName,
 } from '../runner/config.mjs';
-import { buildReport, diffReports, exitCode, splitSweep, summaryLines } from '../runner/report.mjs';
+import {
+  buildReport,
+  diffReports,
+  exitCode,
+  gateLookup,
+  splitSweep,
+  summaryLines,
+  waiveStates,
+} from '../runner/report.mjs';
+import { readSkillJson } from '../runner/skill.mjs';
+import { coversRendered, parseWaivers, waiverReport } from '../runner/waivers.mjs';
 import {
   CHROME_CANDIDATES,
   discoverCacheChromes,
@@ -97,6 +108,18 @@ describe('config', () => {
     expect(resolveServerCwd({ serverCwd: '' }, {}, '/pkg')).toBe('/pkg');
   });
 
+  it('resolves --out, --baseline, --waivers and --server-cwd against the project root', () => {
+    const { config } = parseArgs(['--waivers', 'w.json', '--baseline', '/abs/b.json', '--server-cwd', 'app']);
+    expect(config.waivers).toBe('w.json');
+    expect(resolvePaths(config, '/repo')).toMatchObject({
+      outDir: '/repo/design-verify-report',
+      baseline: '/abs/b.json',
+      waivers: '/repo/w.json',
+      serverCwd: '/repo/app',
+    });
+    expect(resolvePaths(parseArgs([]).config, '/repo')).toMatchObject({ baseline: '', waivers: '', serverCwd: '' });
+  });
+
   it('names screenshots stably, with a root fallback slug', () => {
     expect(shotName('/tasks', 'dark', 320)).toBe('tasks-dark-320.png');
     expect(shotName('/a/b?c=1', 'light', 1440)).toBe('a-b-c-1-light-1440.png');
@@ -123,7 +146,9 @@ describe('report', () => {
       screenshotFailures: 0,
       totalFindings: 2,
       needsReview: 0,
+      waived: 0,
       byRule: { 'page-horizontal-scroll': 1, 'tiny-text': 1 },
+      byGate: {},
     });
     expect(summaryLines(report).join('\n')).toContain('ENVIRONMENT /x light 1440px');
   });
@@ -145,6 +170,70 @@ describe('report', () => {
     const summary = summaryLines(report).join('\n');
     expect(summary).toContain('0 finding(s), 1 needing review');
     expect(summary).toContain('NEEDS REVIEW / light 320px: axe-incomplete/color-contrast @ p.synced');
+  });
+
+  // The gate comes from the skill's rules/render-check.json, the one table.
+  it('tags every entry with its gate, unmapped ids included', () => {
+    const gateFor = gateLookup(readSkillJson('rules/render-check.json'));
+    expect(gateFor('page-horizontal-scroll')).toBe('LAY-002');
+    expect(gateFor('axe/color-contrast')).toBe('COL-001');
+    expect(gateFor('axe/heading-order')).toBe('unmapped');
+    const { findings, needsReview } = splitSweep(
+      [{ id: 'tiny-text' }, { id: 'axe-incomplete/color-contrast', kind: 'needs-review' }],
+      gateFor,
+    );
+    expect(findings).toEqual([{ id: 'tiny-text', gate: 'TYP-001' }]);
+    expect(needsReview[0].gate).toBe('COL-001');
+    const report = buildReport({ baseUrl: 'u', themeKey: 'k' }, [{ route: '/', theme: 'light', width: 320, findings }]);
+    expect(report.summary.byGate).toEqual({ 'TYP-001': 1 });
+    expect(summaryLines(report).join('\n')).toContain('gate TYP-001: 1');
+  });
+
+  // A waived finding leaves the findings, so it neither gates nor enters the
+  // baseline diff, but the report keeps it with the reason.
+  it('moves waived findings out of the findings and keeps them in the report', () => {
+    const registry = readSkillJson('rules/quality-gates.json');
+    const waivers = parseWaivers(
+      {
+        waivers: [
+          { gate: 'LAY-005', screen: { route: '/orders-screen' }, reason: 'Two kit sizes on purpose.' },
+          { gate: 'LAY-005', screen: { route: '/never-swept' }, reason: 'Unused.' },
+          { gate: 'LAY-005', screen: { source: 'src/**' }, reason: 'For the static check.' },
+        ],
+      },
+      registry,
+      { file: 'design-waivers.json', today: '2026-11-06' },
+    );
+    const mismatch = { id: 'control-height-mismatch', gate: 'LAY-005', target: 'div.row' };
+    const tiny = { id: 'tiny-text', gate: 'TYP-001', target: 'p' };
+    const states = [
+      { route: '/orders-screen', theme: 'light', width: 1440, findings: [mismatch, tiny] },
+      { route: '/other', theme: 'light', width: 1440, findings: [mismatch] },
+    ];
+    waiveStates(states, waivers, coversRendered('route'));
+    expect(states[0].findings).toEqual([tiny]);
+    expect(states[0]).toMatchObject({ waived: [{ ...mismatch, waiver: { index: 0, reason: 'Two kit sizes on purpose.' } }] });
+    expect(states[1].findings).toEqual([mismatch]);
+
+    const report = buildReport(
+      { baseUrl: 'u', themeKey: 'k', waivers: waiverReport({ file: 'design-waivers.json', waivers }, 'route') },
+      states,
+    );
+    expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
+    expect(report.waivers).toMatchObject({ applied: 1, otherCheck: 1 });
+    expect((report.waivers as { unused: Array<{ index: number }> }).unused.map((w) => w.index)).toEqual([1]);
+    const lines = summaryLines(report).join('\n');
+    expect(lines).toContain('2 finding(s), 0 needing review, 1 waived');
+    expect(lines).toContain('WAIVED /orders-screen light 1440px: LAY-005 control-height-mismatch @ div.row - waiver #0: Two kit sizes on purpose.');
+    expect(lines).toContain('UNUSED WAIVER #1 LAY-005 (route /never-swept)');
+    // Against a baseline that has all three, the waived one reads as resolved, never new.
+    const before = buildReport({ baseUrl: 'u', themeKey: 'k' }, [
+      { route: '/orders-screen', theme: 'light', width: 1440, findings: [mismatch, tiny] },
+      { route: '/other', theme: 'light', width: 1440, findings: [mismatch] },
+    ]);
+    const diff = diffReports(before, report);
+    expect(diff.new).toEqual([]);
+    expect(exitCode(report, { failOnFindings: true }, diff)).toBe(0);
   });
 
   it('parses --baseline as a value flag', () => {

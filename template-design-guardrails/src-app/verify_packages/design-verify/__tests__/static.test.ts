@@ -236,6 +236,41 @@ describe('exit codes and the baseline', () => {
     expect(await main(['--nope'], io)).toBe(2);
   });
 
+  it('honours the root waiver file by source glob, and exits 2 on one it cannot honour', async () => {
+    const root = project({
+      'src/tree/Tree.tsx': 'export const T = () => <table />;',
+      'src/Other.tsx': 'export const O = () => <table />;',
+      'src/tree/Tree.module.css': '.a { color: #fff; }',
+      'design-waivers.json': JSON.stringify({
+        waivers: [
+          { gate: 'SYS-001', screen: { source: 'src/tree/**' }, reason: 'Tree grid: kit gap.' },
+          { gate: 'SYS-001', screen: { source: 'src/none/**' }, reason: 'Unused.' },
+          { gate: 'SYS-001', screen: { route: '/?screen=tree' }, reason: 'For the render runner.' },
+        ],
+      }),
+    });
+    const { code, findings, report, out } = await check(root, ['--fail-on-findings']);
+    expect(found(findings)).toEqual(['element <table>', 'color #fff in color']);
+    expect(findings.map((f) => f.file)).toEqual(['src/Other.tsx', 'src/tree/Tree.module.css']);
+    expect(report.waived).toEqual([
+      expect.objectContaining({ file: 'src/tree/Tree.tsx', gate: 'SYS-001', waiver: { index: 0, reason: 'Tree grid: kit gap.' } }),
+    ]);
+    expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
+    expect(report.waivers).toMatchObject({ applied: 1, otherCheck: 1 });
+    expect(out).toContain('WAIVED SYS-001 src/tree/Tree.tsx:1:24 element <table> - waiver #0: Tree grid: kit gap.');
+    expect(out).toContain('UNUSED WAIVER #1 SYS-001 (source src/none/**)');
+    expect(code).toBe(1);
+
+    // SYS-002 never yields: a waiver for it is an input error, not a pass.
+    fs.writeFileSync(
+      path.join(root, 'design-waivers.json'),
+      JSON.stringify({ waivers: [{ gate: 'SYS-002', screen: { source: 'src/**' }, reason: 'x' }] }),
+    );
+    const rejected = await check(root);
+    expect(rejected.code).toBe(2);
+    expect(rejected.err).toMatch(/SYS-002 has waiver "never" and cannot be waived/);
+  });
+
   it('resolves paths against $INIT_CWD, where npm was invoked', async () => {
     const root = project(dirty);
     const code = await main(['--src', 'src', '--design', DESIGN_MD], {

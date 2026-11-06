@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0-alpha.0",
+  "description": "Data of the design-verify render runner (references/verify.md): the gate each runtime checker rule id reports under, with the level and waiver rules/quality-gates.json gives that gate. The runner writes the gate on every finding and needs-review entry; a rule id with no row reports under unmappedGate and cannot be waived.",
+  "unmappedGate": "unmapped",
+  "ruleGates": [
+    {"gate": "COL-001", "rules": ["axe/color-contrast"], "note": "The one axe rule the jsdom suite cannot run: new evidence."},
+    {"gate": "COL-001", "rules": ["axe-incomplete/color-contrast"], "note": "A needs-review entry, never a finding: axe could not decide (gradient, image, overlap; the detail says why). List it as COL-001 unverified, never count its state clean, check the painted colours by hand."},
+    {"gate": "A11Y-001", "rules": ["axe/label", "axe/form-field-multiple-labels", "axe/label-title-only", "axe/select-name", "axe/aria-input-field-name", "axe/aria-toggle-field-name"], "note": "Field labels."},
+    {"gate": "A11Y-001", "rules": ["axe/button-name", "axe/input-button-name", "axe/link-name", "axe/image-alt", "axe/input-image-alt", "axe/svg-img-alt", "axe/role-img-alt", "axe/area-alt", "axe/object-alt", "axe/frame-title", "axe/summary-name", "axe/aria-command-name", "axe/aria-dialog-name", "axe/aria-meter-name", "axe/aria-progressbar-name", "axe/aria-tooltip-name", "axe/aria-treeitem-name"], "note": "Accessible names."},
+    {"gate": "A11Y-001", "rules": ["axe/landmark-banner-is-top-level", "axe/landmark-contentinfo-is-top-level", "axe/landmark-main-is-top-level", "axe/landmark-no-duplicate-banner", "axe/landmark-no-duplicate-contentinfo", "axe/landmark-no-duplicate-main", "axe/landmark-one-main", "axe/landmark-unique", "axe/region"], "note": "Landmarks."},
+    {"gate": "A11Y-001", "rules": ["axe/list", "axe/listitem", "axe/definition-list", "axe/dlitem"], "note": "Lists."},
+    {"gate": "A11Y-001", "rules": ["axe/page-has-heading-one", "skipped-heading"], "note": "Headings."},
+    {"gate": "A11Y-001", "rules": ["axe/aria-roles", "axe/aria-allowed-role", "axe/aria-required-children", "axe/aria-required-parent", "axe/aria-allowed-attr", "axe/aria-required-attr", "axe/aria-valid-attr", "axe/aria-valid-attr-value", "axe/aria-prohibited-attr", "axe/aria-conditional-attr", "axe/aria-hidden-focus", "axe/presentation-role-conflict", "axe/nested-interactive"], "note": "ARIA roles and attributes."},
+    {"gate": "A11Y-002", "rules": ["axe/target-size"], "note": "Major, not a blocker. Off in axe-core 4.13's default rule set, which the checker runs; the row holds if a later axe enables it."},
+    {"gate": "LAY-002", "rules": ["page-horizontal-scroll"], "note": "Blocker at 320 CSS px."},
+    {"gate": "LAY-002", "rules": ["card-content-overflow"], "note": "Wide content scrolls or wraps inside its own box (overflow-x: auto, truncation, overflow-wrap: anywhere). Content inside an auto or scroll box is measured at that box."},
+    {"gate": "TYP-001", "rules": ["tiny-text", "small-control-text", "clipped-text"], "note": "Floors are the kit's --text-mono-size and --text-label-size; the fix is the kit role, never a literal size."},
+    {"gate": "LAY-005", "rules": ["control-height-mismatch"], "note": "Fix with matching kit size variants, never spacers or margins."},
+    {"gate": "LAY-005", "rules": ["card-missing-padding"], "note": "Padding floor and range in references/layout.md; the full-bleed media card is already exempt."},
+    {"gate": "SYS-004", "rules": ["dead-spacing-class"], "note": "A class no CSS rule defines: replace it with a CSS Module rule on a --space-* token, never with inline styles."}
+  ]
+}

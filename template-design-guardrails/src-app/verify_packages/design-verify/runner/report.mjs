@@ -13,39 +13,84 @@
  *       masked by 0/1 - an unverified state is not a pass, and the closing
  *       visual review the design skill requires cannot happen over
  *       a PNG that was never produced.
+ *
+ * Waived findings (runner/waivers.mjs) sit in each state's `waived` list:
+ * counted and printed, never findings, so they neither gate nor enter the
+ * baseline diff.
  */
+import { applyWaivers, waiverLines } from './waivers.mjs';
 
 /**
  * @typedef {{route: string, theme: string, width: number,
  *   findings?: Array<{id?: string, detail?: string, target?: string}>,
  *   needsReview?: Array<{id?: string, detail?: string, target?: string}>,
+ *   waived?: Array<{id?: string, gate?: string, target?: string, waiver: {index: number, reason: string}}>,
  *   environmentError?: string, screenshot?: string, screenshotError?: string,
  *   consoleLines?: string[]}} StateResult
  */
 
 /**
+ * The gate a checker rule id reports under, from the skill's
+ * rules/render-check.json; an id with no row gets its `unmappedGate`.
+ *
+ * @param {{unmappedGate: string, ruleGates: Array<{gate: string, rules: string[]}>}} renderCheck
+ * @returns {(id: string | undefined) => string}
+ */
+export function gateLookup(renderCheck) {
+  const gates = new Map();
+  for (const row of renderCheck.ruleGates) for (const id of row.rules) gates.set(id, row.gate);
+  return (id) => gates.get(id ?? '') ?? renderCheck.unmappedGate;
+}
+
+/**
  * Splits a sweep's resolved entries into findings and the checks the checker
  * could not decide (kind 'needs-review', such as contrast axe left
  * incomplete). Only findings feed --fail-on-findings and the baseline diff;
- * the others keep their state from counting as clean.
+ * the others keep their state from counting as clean. With a gate lookup,
+ * every entry carries its gate.
  *
  * @param {Array<{id?: string, detail?: string, target?: string, kind?: string}>} entries
+ * @param {(id: string | undefined) => string} [gateFor]
  */
-export function splitSweep(entries) {
+export function splitSweep(entries, gateFor) {
   const findings = [];
   const needsReview = [];
-  for (const entry of entries) (entry.kind === 'needs-review' ? needsReview : findings).push(entry);
+  for (const raw of entries) {
+    const entry = gateFor ? { ...raw, gate: gateFor(raw.id) } : raw;
+    (entry.kind === 'needs-review' ? needsReview : findings).push(entry);
+  }
   return { findings, needsReview };
 }
 
 /**
- * @param {{baseUrl: string, themeKey: string}} meta
+ * Moves the findings a live waiver covers into each state's `waived` list.
+ * States are changed in place.
+ *
+ * @param {StateResult[]} states
+ * @param {import('./waivers.mjs').Waiver[]} waivers
+ * @param {(waiver: import('./waivers.mjs').Waiver, state: StateResult) => boolean} coversState
+ */
+export function waiveStates(states, waivers, coversState) {
+  if (waivers.length === 0) return;
+  for (const state of states) {
+    if (!state.findings?.length) continue;
+    const { findings, waived } = applyWaivers(state.findings, waivers, (waiver) => coversState(waiver, state));
+    state.findings = findings;
+    if (waived.length > 0) state.waived = waived;
+  }
+}
+
+/**
+ * @param {{baseUrl: string, themeKey: string, waivers?: object}} meta
+ *   `waivers`: the waiver file section (runner/waivers.mjs waiverReport)
  * @param {StateResult[]} states
  */
 export function buildReport(meta, states) {
   const byRule = {};
+  const byGate = {};
   let totalFindings = 0;
   let needsReview = 0;
+  let waived = 0;
   let statesClean = 0;
   let environmentFailures = 0;
   let screenshotFailures = 0;
@@ -64,9 +109,11 @@ export function buildReport(meta, states) {
     const undecided = state.needsReview ?? [];
     needsReview += undecided.length;
     if (findings.length === 0 && undecided.length === 0 && !screenshotMissing) statesClean += 1;
+    waived += state.waived?.length ?? 0;
     for (const finding of findings) {
       const rule = finding.id ?? 'unknown-rule';
       byRule[rule] = (byRule[rule] ?? 0) + 1;
+      if (finding.gate) byGate[finding.gate] = (byGate[finding.gate] ?? 0) + 1;
     }
   }
   return {
@@ -81,8 +128,11 @@ export function buildReport(meta, states) {
       screenshotFailures,
       totalFindings,
       needsReview,
+      waived,
       byRule,
+      byGate,
     },
+    ...(meta.waivers ? { waivers: meta.waivers } : {}),
     states,
   };
 }
@@ -229,7 +279,7 @@ export function summaryLines(report, diff) {
   const s = report.summary;
   const lines = [
     `design-verify: ${s.statesRun} state(s) swept - ${s.statesClean} clean, ` +
-      `${s.totalFindings} finding(s), ${s.needsReview} needing review, ` +
+      `${s.totalFindings} finding(s), ${s.needsReview} needing review, ${s.waived ?? 0} waived, ` +
       `${s.environmentFailures} environment failure(s), ` +
       `${s.screenshotFailures} screenshot failure(s)`,
   ];
@@ -251,6 +301,10 @@ export function summaryLines(report, diff) {
   for (const [rule, count] of Object.entries(s.byRule)) {
     lines.push(`  ${rule}: ${count}`);
   }
+  for (const [gate, count] of Object.entries(s.byGate ?? {})) {
+    lines.push(`  gate ${gate}: ${count}`);
+  }
+  lines.push(...waiverLines(report.waivers));
   for (const state of report.states) {
     if (state.environmentError) {
       lines.push(
@@ -259,6 +313,13 @@ export function summaryLines(report, diff) {
     } else if (state.screenshotError) {
       lines.push(
         `  SCREENSHOT ${state.route} ${state.theme} ${state.width}px: ${state.screenshotError}`,
+      );
+    }
+    for (const entry of state.waived ?? []) {
+      lines.push(
+        `  WAIVED ${state.route} ${state.theme} ${state.width}px: ${entry.gate} ${entry.id ?? 'unknown-rule'}` +
+          (entry.target ? ` @ ${entry.target}` : '') +
+          ` - waiver #${entry.waiver.index}: ${entry.waiver.reason}`,
       );
     }
     for (const entry of state.needsReview ?? []) {

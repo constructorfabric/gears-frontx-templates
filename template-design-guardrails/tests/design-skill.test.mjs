@@ -97,6 +97,23 @@ describe('rules/static-check.json', () => {
   });
 });
 
+describe('rules/render-check.json', () => {
+  const data = readJson('rules/render-check.json');
+  const gates = new Set(readJson('rules/quality-gates.json').gates.map((g) => g.id));
+
+  it('maps each checker rule id once, to a gate the registry holds', () => {
+    const ids = data.ruleGates.flatMap((row) => row.rules);
+    expect(ids.length).toBeGreaterThan(40);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(data.ruleGates.filter((row) => !gates.has(row.gate))).toEqual([]);
+    expect(data.ruleGates.filter((row) => !row.note)).toEqual([]);
+  });
+
+  it('reports unmapped ids under a gate name no registry gate has', () => {
+    expect(gates.has(data.unmappedGate)).toBe(false);
+  });
+});
+
 describe('rules/design-contract.json', () => {
   it('ranks the project DESIGN.md right after the installed kit documentation in sourcePrecedence', () => {
     const order = readJson('rules/design-contract.json').sourcePrecedence;
