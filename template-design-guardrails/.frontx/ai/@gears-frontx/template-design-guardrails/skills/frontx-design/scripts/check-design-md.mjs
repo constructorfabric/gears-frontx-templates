@@ -149,7 +149,9 @@ function declaredNames(css) {
  * Parses the front matter subset DESIGN.md uses: the three meta scalars, token
  * maps of scalars, `typography` and `components` as maps of scalar maps,
  * two-space indent, keys plain or double-quoted, values
- * double-quoted strings or plain words and numbers. Anything else is an input
+ * double-quoted strings or plain words and numbers, full-line `#` comments,
+ * and trailing spaces or a ` # comment` after a value or a key with no
+ * value (a `#` inside a quoted value is text). Anything else is an input
  * error rather than a guess. Returns the maps and the index of the closing
  * `---` line.
  */
@@ -163,10 +165,15 @@ function parseFrontMatter(lines) {
   for (let i = 1; i < end; i += 1) {
     const line = lines[i];
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
-    const bad = (why) => new InputError(`DESIGN.md front matter line ${i + 1}: ${why}: ${line.trim()}`);
-    const m = /^( *)("[^"\\]*"|[\w-]+):(?: ("[^"\\]*"|[\w.-]+))?$/.exec(line);
+    // JSON keeps leading and trailing spaces visible in the message.
+    const bad = (why) => new InputError(`DESIGN.md front matter line ${i + 1}: ${why}: ${JSON.stringify(line)}`);
+    const m = /^( *)("[^"\\]*"|[\w-]+):(?: +("[^"\\]*"|[\w.-]+))?(.*)$/.exec(line);
     const depth = m ? m[1].length / 2 : -1;
     if (!m || !Number.isInteger(depth)) throw bad('unsupported YAML');
+    // After the value (or a key with no value) only spaces and a ` # comment` may follow.
+    if (!/^[ \t]*(?:[ \t]#.*)?$/.test(m[4])) {
+      throw bad(`unexpected text after the ${m[3] === undefined ? 'key' : 'value'}`);
+    }
     if (open) {
       if (depth !== open.depth + 1) throw bad(`"${open.at}" has no entries`);
       stack[depth] = open.map[open.key] = Object.create(null);
