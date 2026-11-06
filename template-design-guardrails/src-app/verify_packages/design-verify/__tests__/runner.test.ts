@@ -67,6 +67,11 @@ describe('config', () => {
     expect(DEFAULTS.widths).toEqual([1440, 768, 390, 320]);
   });
 
+  // The shell's Vite listens on `localhost`, which can be ::1 only.
+  it('attaches to the dev server at Vite\'s default host', () => {
+    expect(DEFAULTS.url).toBe('http://localhost:5173/');
+  });
+
   it('applies defaults and rejects unknown flags and bad values', () => {
     expect(parseArgs([]).config).toMatchObject({
       routes: DEFAULTS.routes,

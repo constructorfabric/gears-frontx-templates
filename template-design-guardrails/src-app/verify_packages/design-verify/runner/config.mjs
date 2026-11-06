@@ -6,7 +6,9 @@
 import path from 'node:path';
 
 export const DEFAULTS = Object.freeze({
-  url: 'http://127.0.0.1:5173/',
+  // Vite's own default host: `localhost` may resolve to ::1 only, where a
+  // 127.0.0.1 address never answers.
+  url: 'http://localhost:5173/',
   routes: ['/'],
   menus: [],
   // APP-005's desktop, tablet and phone widths, then LAY-002's 320 px floor.
