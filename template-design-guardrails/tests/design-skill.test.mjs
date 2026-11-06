@@ -63,6 +63,40 @@ describe('rules/quality-gates.json', () => {
   });
 });
 
+describe('rules/static-check.json', () => {
+  const rules = readJson('rules/static-check.json');
+  const gates = new Map(readJson('rules/quality-gates.json').gates.map((g) => [g.id, g]));
+
+  it('names gates the registry holds', () => {
+    expect(gates.get(rules.elements.gate)?.rule).toMatch(/UI-kit components/);
+    expect(gates.get(rules.literals.gate)?.rule).toMatch(/semantic tokens/);
+  });
+
+  it('keys native tags and roles in lowercase and names components in PascalCase', () => {
+    const { tags, inputTypes, roles, anchorAsButton } = rules.elements;
+    for (const key of [...Object.keys(tags), ...Object.keys(inputTypes), ...Object.keys(roles)]) {
+      expect(key).toMatch(/^[a-z]+$/);
+    }
+    const names = [...Object.values(tags), ...Object.values(inputTypes), ...Object.values(roles), anchorAsButton].flat();
+    expect(names.filter((name) => !/^[A-Z][A-Za-z]+$/.test(name))).toEqual([]);
+  });
+
+  // The installed kit's export names are checked by design-verify's own suite,
+  // which runs with the kit installed.
+  it('gives every literal kind a DESIGN.md group that names at least one token for it', async () => {
+    const { readDesignMd } = await import(path.join(skill, 'scripts/check-design-md.mjs'));
+    const { front } = readDesignMd(path.join(template, 'DESIGN.md'));
+    for (const [kind, spec] of Object.entries(rules.literals.kinds)) {
+      const pattern = new RegExp(spec.keyPattern ?? '');
+      const tokens = Object.entries(front[spec.group] ?? {})
+        .filter(([key]) => pattern.test(key))
+        .map(([, value]) => (spec.field ? value[spec.field] : value));
+      expect(tokens.length, kind).toBeGreaterThan(0);
+      expect(tokens.filter((t) => !/^var\(--[\w-]+\)$/.test(t)), kind).toEqual([]);
+    }
+  });
+});
+
 describe('rules/design-contract.json', () => {
   it('ranks the project DESIGN.md right after the installed kit documentation in sourcePrecedence', () => {
     const order = readJson('rules/design-contract.json').sourcePrecedence;

@@ -1,0 +1,90 @@
+{
+  "version": "0.1.0-alpha.0",
+  "description": "Data of the design-verify static check (references/verify.md, Static check): which source files it reads, which native elements and roles have a kit component, and which literal values have a kit token. Component names are value exports of the installed @gears-frontx/ui-kit; each literal kind names the DESIGN.md front matter group (and key pattern) that holds its tokens, so a kind whose group names no token reports nothing.",
+  "sources": {
+    "css": ["**/*.module.css"],
+    "script": ["**/*.tsx", "**/*.ts"],
+    "exclude": ["**/node_modules/**", "**/dist/**", "**/*.d.ts", "**/__tests__/**", "**/*.test.*", "**/*.spec.*", "**/*.stories.*"]
+  },
+  "elements": {
+    "gate": "SYS-001",
+    "tags": {
+      "button": ["Button"],
+      "input": ["Input"],
+      "select": ["Select", "NativeSelect"],
+      "textarea": ["Textarea"],
+      "dialog": ["Dialog", "AlertDialog", "Sheet", "Drawer"],
+      "table": ["Table", "DataTable", "DataGrid"],
+      "progress": ["Progress"],
+      "hr": ["Separator"],
+      "label": ["Label", "FieldLabel"],
+      "fieldset": ["FieldSet"],
+      "legend": ["FieldLegend"],
+      "kbd": ["Kbd"],
+      "details": ["Collapsible", "Accordion"]
+    },
+    "inputTypes": {
+      "checkbox": ["Checkbox"],
+      "radio": ["RadioGroup", "RadioGroupItem"],
+      "range": ["Slider"],
+      "date": ["DatePicker"],
+      "hidden": [],
+      "file": [],
+      "color": [],
+      "image": [],
+      "submit": ["Button"],
+      "button": ["Button"],
+      "reset": ["Button"]
+    },
+    "roles": {
+      "button": ["Button"],
+      "checkbox": ["Checkbox"],
+      "radio": ["RadioGroupItem"],
+      "radiogroup": ["RadioGroup"],
+      "switch": ["Switch"],
+      "slider": ["Slider"],
+      "progressbar": ["Progress"],
+      "dialog": ["Dialog", "Sheet", "Drawer"],
+      "alertdialog": ["AlertDialog"],
+      "tablist": ["Tabs"],
+      "tab": ["TabsTrigger"],
+      "tabpanel": ["TabsContent"],
+      "menu": ["DropdownMenu", "ContextMenu", "Menubar"],
+      "menuitem": ["DropdownMenuItem"],
+      "tooltip": ["Tooltip"],
+      "combobox": ["Combobox", "Select"],
+      "listbox": ["Select", "Combobox"],
+      "separator": ["Separator"],
+      "table": ["Table"],
+      "grid": ["DataGrid"]
+    },
+    "anchorAsButton": ["Button"]
+  },
+  "literals": {
+    "gate": "SYS-002",
+    "allowedKeywords": ["transparent", "currentcolor", "inherit", "initial", "unset", "revert", "revert-layer"],
+    "colorIgnoreProperties": ["font-family", "font", "animation-name", "animation", "transition-property", "will-change", "grid-area", "grid-row", "grid-column", "grid-template-areas", "content", "counter-reset", "counter-increment", "list-style-type"],
+    "colorFunctions": ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"],
+    "lengthUnits": ["px", "rem", "em", "pt", "pc", "in", "cm", "mm", "q", "ch", "ex"],
+    "timeUnits": ["ms", "s"],
+    "easings": {
+      "keywords": ["ease", "ease-in", "ease-out", "ease-in-out", "linear", "step-start", "step-end"],
+      "functions": ["cubic-bezier", "steps", "linear"]
+    },
+    "kinds": {
+      "color": {"properties": "*", "group": "colors"},
+      "spacing": {
+        "properties": ["margin", "margin-top", "margin-right", "margin-bottom", "margin-left", "margin-block", "margin-block-start", "margin-block-end", "margin-inline", "margin-inline-start", "margin-inline-end", "padding", "padding-top", "padding-right", "padding-bottom", "padding-left", "padding-block", "padding-block-start", "padding-block-end", "padding-inline", "padding-inline-start", "padding-inline-end", "gap", "row-gap", "column-gap", "grid-gap"],
+        "group": "spacing"
+      },
+      "radius": {
+        "properties": ["border-radius", "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius", "border-start-start-radius", "border-start-end-radius", "border-end-start-radius", "border-end-end-radius"],
+        "group": "rounded"
+      },
+      "font-size": {"properties": ["font-size", "font"], "group": "typography", "field": "fontSize"},
+      "shadow": {"properties": ["box-shadow", "text-shadow"], "group": "elevation", "keyPattern": "shadow"},
+      "duration": {"properties": ["transition", "transition-duration", "transition-delay", "animation", "animation-duration", "animation-delay"], "group": "motion", "keyPattern": "^duration-"},
+      "easing": {"properties": ["transition", "transition-timing-function", "animation", "animation-timing-function"], "group": "motion", "keyPattern": "^ease-"}
+    }
+  }
+}

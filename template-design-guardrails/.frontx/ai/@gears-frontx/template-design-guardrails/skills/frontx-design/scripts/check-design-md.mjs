@@ -40,10 +40,15 @@
  * (`__proto__`, `constructor`, `prototype`) at any level, a kit theme it
  * cannot resolve, or a kit version it cannot find (no kit `package.json`, or
  * one with no `version`, and no `--kit-version`).
+ *
+ * The design-verify runners import `readDesignMd` and `InputError` from this
+ * file, so the front matter has one parser; the CLI runs only when this file
+ * is the entry point.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const USAGE = 'usage: node check-design-md.mjs [--design <path>] [--theme <path>] [--kit-version <v>]';
@@ -66,7 +71,7 @@ const REF_ONLY = /^\{([^{}.]+)\.([^{}]+)\}$/;
 // In the body only this shape is a reference, so CSS such as `.card { padding: 0.5rem }` is not one.
 const BODY_REF = /\{([a-z][a-z0-9-]*)\.([\w.-]+)\}/g;
 
-class InputError extends Error {}
+export class InputError extends Error {}
 
 function readInput(file, what) {
   let stat;
@@ -210,6 +215,16 @@ function parseFrontMatter(lines) {
   return { front: stack[0], end };
 }
 
+/**
+ * Reads and parses a DESIGN.md: its lines, the front matter maps and the
+ * index of the closing `---`. Throws InputError on any input error.
+ */
+export function readDesignMd(designPath) {
+  // A leading BOM would hide the opening ---.
+  const lines = readInput(designPath, 'DESIGN.md').replace(/^\u{FEFF}/u, '').split(/\r?\n/);
+  return { lines, ...parseFrontMatter(lines) };
+}
+
 /** One line per finding; empty when the names and the kit version match. */
 function check(lines, front, end, themeNames, kit) {
   const findings = [];
@@ -274,9 +289,7 @@ function main(argv, cwd) {
     throw new InputError(`${error.message}\n${USAGE}`);
   }
   const designPath = path.resolve(cwd, values.design ?? 'DESIGN.md');
-  // A leading BOM would hide the opening ---.
-  const lines = readInput(designPath, 'DESIGN.md').replace(/^\u{FEFF}/u, '').split(/\r?\n/);
-  const { front, end } = parseFrontMatter(lines);
+  const { lines, front, end } = readDesignMd(designPath);
   const themePath = values.theme ? path.resolve(cwd, values.theme) : resolveTheme(cwd);
   const themeNames = declaredNames(readInput(themePath, 'theme'));
   const kit = kitVersion(values['kit-version'], cwd, themePath, values.theme === undefined);
@@ -287,10 +300,13 @@ function main(argv, cwd) {
   return 0;
 }
 
-try {
-  process.exitCode = main(process.argv.slice(2), process.cwd());
-} catch (error) {
-  if (!(error instanceof InputError)) throw error;
-  console.error(error.message);
-  process.exitCode = 2;
+const entry = process.argv[1] && realpathSync(process.argv[1]);
+if (entry === realpathSync(fileURLToPath(import.meta.url))) {
+  try {
+    process.exitCode = main(process.argv.slice(2), process.cwd());
+  } catch (error) {
+    if (!(error instanceof InputError)) throw error;
+    console.error(error.message);
+    process.exitCode = 2;
+  }
 }
