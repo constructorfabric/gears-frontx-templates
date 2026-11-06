@@ -25,8 +25,10 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
     or easing where `DESIGN.md` names a kit token of that kind, in a CSS
     Module or an inline `style`; values inside `var()` and `0` pass, a colour
     in a local custom property does not; a colour derived from a token
-    passes: a relative colour (`rgb(from var(--x) r g b / 50%)`) is checked
-    by its origin, and `color-mix()` by each colour it mixes;
+    passes: a relative colour (`rgb(from var(--x) r g b / 50%)`) passes
+    when its origin is not a literal and at least one channel reads an
+    origin channel (`rgb(from var(--x) 255 0 0)` is a fixed red and a
+    finding), and `color-mix()` is checked by each colour it mixes;
   - SYS-001: a native element or role the kit ships a component for, and an
     `<a>` with `onClick` and no link target.
 - What counts and what to use instead is data: `rules/static-check.json`.

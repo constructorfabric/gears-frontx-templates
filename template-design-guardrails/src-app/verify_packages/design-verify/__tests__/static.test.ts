@@ -185,6 +185,35 @@ describe('CSS Modules', () => {
     expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
   });
 
+  // A relative colour whose channels are all literals keeps nothing of its
+  // token origin: it is a fixed colour.
+  it('reports a relative colour that reads no channel of its origin', async () => {
+    const root = project({
+      'src/Channels.module.css': [
+        '.a { color: rgb(from var(--primary) 255 0 0); }',
+        '.b { color: hsl(from var(--primary) 0 100% 50% / 0.5); }',
+        '.c { color: oklch(from var(--primary) 0.7 0.1 calc(120 + 10)); }',
+        '.d { color: rgb(from var(--primary) r 0 0); }',
+        '.e { color: oklch(from var(--primary) 0.7 0.1 calc(h + 10)); }',
+        '.f { color: hwb(from var(--primary) 0 0% 0% / alpha); }',
+        '.g { color: lab(from var(--primary) l 0 0); }',
+        '.h { color: color(from var(--primary) srgb r 0 0); }',
+        '.i { color: lch(from var(--primary) 50 c 0); }',
+      ].join('\n'),
+      'src/Channels.tsx': [
+        "export const A = () => <p style={{ color: 'rgb(from var(--primary) 255 0 0)' }} />;",
+        "export const B = () => <p style={{ color: 'rgb(from var(--primary) r g 0)' }} />;",
+      ].join('\n'),
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
+      'src/Channels.module.css:1 color rgb(from var(--primary)255 0 0) in color',
+      'src/Channels.module.css:2 color hsl(from var(--primary)0 100% 50%/0.5) in color',
+      'src/Channels.module.css:3 color oklch(from var(--primary)0.7 0.1 calc(120 + 10)) in color',
+      'src/Channels.tsx:1 color rgb(from var(--primary)255 0 0) in color',
+    ]);
+  });
+
   it('accepts tokens, var() fallbacks, 0, the allowed keywords and plain .css files', async () => {
     const root = project({
       'src/Clean.module.css': [

@@ -10,7 +10,8 @@
  * CSS Modules (`*.module.css`) are parsed with css-tree. Every declaration
  * value is walked outside `var()`: a colour literal anywhere (custom property
  * definitions included, or a literal would hide behind a local variable; a
- * relative colour by its origin, a `color-mix()` by each colour it mixes),
+ * relative colour by its origin and channels, a `color-mix()` by each colour
+ * it mixes),
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
  * `0` is never a finding. TSX and TS are parsed with the project's own
@@ -164,19 +165,55 @@ function isZero(node) {
 }
 
 /**
+ * The channel keywords relative colour syntax gives each colour function: the
+ * origin's channels, by the CSS Color 5 grammar. `color()` names `r g b` or
+ * `x y z` by its colour space.
+ */
+const ORIGIN_CHANNELS = {
+  rgb: ['r', 'g', 'b'],
+  rgba: ['r', 'g', 'b'],
+  hsl: ['h', 's', 'l'],
+  hsla: ['h', 's', 'l'],
+  hwb: ['h', 'w', 'b'],
+  lab: ['l', 'a', 'b'],
+  oklab: ['l', 'a', 'b'],
+  lch: ['l', 'c', 'h'],
+  oklch: ['l', 'c', 'h'],
+  color: ['r', 'g', 'b', 'x', 'y', 'z'],
+};
+
+/** Whether a channel value reads a channel of the origin, also inside `calc()`. */
+function readsOriginChannel(fnName, channels) {
+  const keywords = new Set([...(ORIGIN_CHANNELS[fnName] ?? []), 'alpha']);
+  return channels.some((channel) => {
+    let reads = false;
+    csstree.walk(channel, function enter(node) {
+      if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+      if (node.type === 'Identifier' && keywords.has(node.name.toLowerCase())) reads = true;
+      return undefined;
+    });
+    return reads;
+  });
+}
+
+/**
  * A colour written as a value rather than taken from a token. Relative
  * colour syntax (`rgb(from <origin> r g b / 50%)`) derives a colour from its
- * origin, so it is a literal only when the origin is one: a `var()` origin
- * is a value derived from a token. `color-mix()` is not a colour function
- * here, so the walk checks each of its colour arguments on its own.
+ * origin, so it is a value derived from a token only when the origin is not
+ * a literal (a `var()` origin) and at least one channel reads an origin
+ * channel (`r`, `calc(l - 0.1)`, `alpha`); `rgb(from var(--primary) 255 0 0)`
+ * keeps nothing of its origin and is a literal. `color-mix()` is not a colour
+ * function here, so the walk checks each of its colour arguments on its own.
  */
 function isColorLiteral(ctx, node) {
   if (node.type === 'Hash') return true;
   if (node.type === 'Function') {
-    if (!ctx.colorFunctions.has(node.name.toLowerCase())) return false;
-    const [first, origin] = node.children.toArray().filter((n) => n.type !== 'WhiteSpace');
+    const name = node.name.toLowerCase();
+    if (!ctx.colorFunctions.has(name)) return false;
+    const [first, origin, ...channels] = node.children.toArray().filter((n) => n.type !== 'WhiteSpace');
     const relative = first?.type === 'Identifier' && first.name.toLowerCase() === 'from';
-    return !relative || origin === undefined || isColorLiteral(ctx, origin);
+    if (!relative || origin === undefined) return true;
+    return isColorLiteral(ctx, origin) || !readsOriginChannel(name, channels);
   }
   if (node.type === 'Identifier') {
     const name = node.name.toLowerCase();
