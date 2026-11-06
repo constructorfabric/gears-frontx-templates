@@ -66,8 +66,11 @@ Usage: npm run verify:static --workspace=@gears-frontx/design-verify -- --src <d
   --help                    Print this message
 
 Relative paths resolve against the project root ($INIT_CWD, else the current
-directory). Symbolic links are followed; every entry passed over is listed
-as skipped. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
+directory). Symbolic links are followed. Listed as skipped: only the entries
+the globs would select but the walk cannot check (a broken link, a link
+cycle, a directory it cannot list, a file that is not a regular file) and a
+second path to a file already read; directories named node_modules or .git
+are never entered and never listed. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
 error (a source file that does not parse, or a --src that selects no file,
 included).
 `;
@@ -76,6 +79,8 @@ included).
 export class InputError extends Error {}
 
 const VAR_ONLY = /^var\((--[\w-]+)\)$/;
+/** Directory names the source walk never enters, whatever the globs say. */
+const ALWAYS_EXCLUDED = new Set(['node_modules', '.git']);
 const SHOWN_TOKENS = 6;
 
 /**
@@ -479,9 +484,12 @@ export function checkScript(ctx, ts, text, file) {
  * Files under the given sources that the data's globs select, as
  * root-relative posix paths. Symbolic links are followed; a link back to a
  * directory above it (a cycle) is not walked again, and a file reached
- * through two paths is read once. Every entry passed over for any reason other than the globs
- * is listed in `skipped` with the reason, and `empty` names each source that
- * selected no file.
+ * through two paths is read once. `skipped` lists, with the reason, only
+ * the entries the globs would select but the walk cannot check (a broken
+ * link, a link cycle, a directory it cannot list, a file that is not a
+ * regular file) and a second path to a file already read. Directories named
+ * node_modules or .git are never entered and never listed. `empty` names
+ * each source that selected no file.
  *
  * @param {string} root
  * @param {string[]} sources absolute paths
@@ -496,37 +504,61 @@ export function collectFiles(root, sources, globs) {
   let selected = 0;
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/') || '.';
   const matches = (file, patterns) => patterns.some((p) => path.posix.matchesGlob(file, p));
+  /** @returns {'css' | 'script' | undefined} the check a file at this path gets, if any */
+  const typeOf = (file) =>
+    matches(file, globs.exclude) ? undefined : matches(file, globs.css) ? 'css' : matches(file, globs.script) ? 'script' : undefined;
+  // A directory the exclude globs cover whole: a child of any name is excluded.
+  const excludedDir = (dir) => matches(`${dir}/_`, globs.exclude);
+  const errorCode = (error) => error.code ?? error.message;
   /** @param {string} abs @param {Map<string, string>} ancestors real path -> path of each directory above */
   const visit = (abs, ancestors) => {
+    const at = rel(abs);
     let stat;
     try {
       stat = fs.statSync(abs);
     } catch (error) {
-      skipped.push({ path: rel(abs), reason: `cannot be read (${error.code ?? error.message}), a broken link or no access` });
+      // File or directory is unknown here: list it unless the globs leave it out as either.
+      if (typeOf(at) || !excludedDir(at)) {
+        skipped.push({ path: at, reason: `cannot be read (${errorCode(error)}), a broken link or no access` });
+      }
       return;
     }
     if (stat.isDirectory()) {
-      const real = fs.realpathSync(abs);
-      if (ancestors.has(real)) {
-        skipped.push({ path: rel(abs), reason: `a link cycle back to ${ancestors.get(real)}, read once` });
+      if (excludedDir(at)) return;
+      let real;
+      let entries;
+      try {
+        real = fs.realpathSync(abs);
+        entries = fs.readdirSync(abs);
+      } catch (error) {
+        skipped.push({ path: at, reason: `a directory that cannot be listed (${errorCode(error)})` });
         return;
       }
-      const below = new Map(ancestors).set(real, rel(abs));
-      for (const entry of fs.readdirSync(abs)) {
-        if (entry !== 'node_modules' && entry !== '.git') visit(path.join(abs, entry), below);
+      if (ancestors.has(real)) {
+        skipped.push({ path: at, reason: `a link cycle back to ${ancestors.get(real)}, read once` });
+        return;
+      }
+      const below = new Map(ancestors).set(real, at);
+      for (const entry of entries) {
+        if (!ALWAYS_EXCLUDED.has(entry)) visit(path.join(abs, entry), below);
       }
       return;
     }
-    const file = rel(abs);
+    const file = at;
+    const type = typeOf(file);
+    if (!type) return;
     if (!stat.isFile()) {
       skipped.push({ path: file, reason: 'not a regular file or directory' });
       return;
     }
-    if (matches(file, globs.exclude)) return;
-    const type = matches(file, globs.css) ? 'css' : matches(file, globs.script) ? 'script' : undefined;
-    if (!type) return;
+    let real;
+    try {
+      real = fs.realpathSync(abs);
+    } catch (error) {
+      skipped.push({ path: file, reason: `cannot be read (${errorCode(error)})` });
+      return;
+    }
     selected += 1;
-    const real = fs.realpathSync(abs);
     const first = reached.get(real);
     if (first === undefined) {
       reached.set(real, file);
@@ -789,7 +821,11 @@ async function run(argv, io) {
     skipped,
     findings: split.findings,
     waived: split.waived,
-    waivers: waiverReport(waivers, { mode: 'source', gates: [rules.literals.gate, rules.elements.gate] }),
+    waivers: waiverReport(waivers, {
+      mode: 'source',
+      gates: [rules.literals.gate, rules.elements.gate],
+      exercised: files.map(([file]) => file),
+    }),
     parseErrors,
   });
   const diff = baseline ? diffStatic(baseline, report) : undefined;

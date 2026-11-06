@@ -96,6 +96,8 @@ describe('applyWaivers and the report section', () => {
       entry({ screen: { route: '/?screen=orders' } }),
       entry({ gate: 'LAY-001', screen: { source: 'src/orders/**' } }),
       entry({ gate: 'STA-002', until: '2026-01-01', screen: { route: '/?screen=orders' } }),
+      entry({ screen: { source: 'src/settings/**' } }),
+      entry({ until: '2026-01-01', screen: { source: 'src/settings/**' } }),
     ]);
     const findings = [
       { gate: 'SYS-001', file: 'src/orders/Tree.tsx', found: '<table>' },
@@ -107,18 +109,32 @@ describe('applyWaivers and the report section', () => {
     expect(split.waived).toEqual([
       { ...findings[0], waiver: { index: 0, reason: entry().reason } },
     ]);
-    const runner = { mode: 'source' as const, gates: ['SYS-001', 'SYS-002'] };
+    // The files the run read: src/billing has one, src/settings none.
+    const read = [...findings.map((f) => f.file), 'src/billing/Invoice.tsx'];
+    const runner = { mode: 'source' as const, gates: ['SYS-001', 'SYS-002'], exercised: read };
     const section = waiverReport({ file: 'design-waivers.json', waivers }, runner);
     expect(section?.applied).toBe(1);
-    // Each entry lands in exactly one list; a gate this runner never reports is never unused.
+    // Each entry lands in exactly one list; a gate this runner never reports is never unused,
+    // and neither is a screen no file read matches.
     expect(section?.unused.map((w) => w.index)).toEqual([1]);
     expect(section?.expired.map((w) => w.index)).toEqual([2]);
-    expect(section?.notApplicable.map((w) => [w.index, w.needs])).toEqual([[3, 'needs screen.source']]);
+    const unread = 'needs a file matching src/settings/** under --src; none of the files read matches';
+    expect(section?.notApplicable.map((w) => [w.index, w.needs])).toEqual([
+      [3, 'needs screen.source'],
+      [6, unread],
+      [7, unread],
+    ]);
     expect(section?.recorded.map((w) => w.index)).toEqual([4, 5]);
     const lines = waiverLines(section).join('\n');
     expect(lines).toContain('UNUSED WAIVER #1 SYS-001 (source src/billing/**): matched no finding in this run');
     expect(lines).toContain('EXPIRED WAIVER #2 SYS-001 (source src/orders/**) until 2026-01-01');
-    expect(lines).toContain('WAIVER #3 SYS-001 (route /?screen=orders): not applicable to this run (needs screen.source)');
+    expect(lines).toContain('WAIVER #3 SYS-001 (route /?screen=orders): not applicable to this run (needs screen.source)\n');
+    expect(lines).toContain(`WAIVER #6 SYS-001 (source src/settings/**): not applicable to this run (${unread})\n`);
+    // A lapsed entry says so on whichever line it lands.
+    expect(lines).toContain(
+      `WAIVER #7 SYS-001 (source src/settings/**): not applicable to this run (${unread}), expired after 2026-01-01`,
+    );
+    expect(lines).not.toMatch(/UNUSED WAIVER #[67]/);
     expect(lines).toContain('RECORDED WAIVER #4 LAY-001 (source src/orders/**): recorded, not checked by this runner\n');
     expect(lines).toContain(
       'RECORDED WAIVER #5 STA-002 (route /?screen=orders): recorded, not checked by this runner, expired after 2026-01-01',
@@ -149,7 +165,10 @@ describe('applyWaivers and the report section', () => {
       entry({ gate: 'LAY-005', screen: { source: 'src/**' } }),
     ]);
     const report = (mode: 'route' | 'menu') =>
-      waiverReport({ file: 'design-waivers.json', waivers }, { mode, gates: ['LAY-005'] });
+      waiverReport(
+        { file: 'design-waivers.json', waivers },
+        { mode, gates: ['LAY-005'], exercised: [mode === 'route' ? '/?screen=orders' : 'Orders'] },
+      );
     const routeMode = report('route');
     expect(routeMode?.unused.map((w) => w.index)).toEqual([0, 2]);
     expect(routeMode?.notApplicable.map((w) => [w.index, w.needs])).toEqual([

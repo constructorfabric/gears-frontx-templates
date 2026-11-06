@@ -319,12 +319,14 @@ describe('exit codes and the baseline', () => {
       'src/tree/Tree.tsx': 'export const T = () => <table />;',
       'src/Other.tsx': 'export const O = () => <table />;',
       'src/tree/Tree.module.css': '.a { color: #fff; }',
+      'src/clean/Ok.tsx': 'export const K = () => null;',
       'design-waivers.json': JSON.stringify({
         waivers: [
           { gate: 'SYS-001', screen: { source: 'src/tree/**' }, reason: 'Tree grid: kit gap.' },
-          { gate: 'SYS-001', screen: { source: 'src/none/**' }, reason: 'Unused.' },
+          { gate: 'SYS-001', screen: { source: 'src/clean/**' }, reason: 'Unused.' },
           { gate: 'SYS-001', screen: { route: '/?screen=tree' }, reason: 'For the render runner.' },
           { gate: 'LAY-001', screen: { source: 'src/tree/**' }, reason: 'Review only: no checker reports LAY-001.' },
+          { gate: 'SYS-001', screen: { source: 'src/billing/**' }, reason: 'Outside this --src.' },
         ],
       }),
     });
@@ -335,10 +337,19 @@ describe('exit codes and the baseline', () => {
       expect.objectContaining({ file: 'src/tree/Tree.tsx', gate: 'SYS-001', waiver: { index: 0, reason: 'Tree grid: kit gap.' } }),
     ]);
     expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
-    expect(report.waivers).toMatchObject({ applied: 1, notApplicable: [{ index: 2, needs: 'needs screen.source' }] });
+    const unread = 'needs a file matching src/billing/** under --src; none of the files read matches';
+    expect(report.waivers).toMatchObject({
+      applied: 1,
+      notApplicable: [
+        { index: 2, needs: 'needs screen.source' },
+        { index: 4, needs: unread },
+      ],
+    });
     expect(out).toContain('WAIVED SYS-001 src/tree/Tree.tsx:1:24 element <table> - waiver #0: Tree grid: kit gap.');
-    expect(out).toContain('UNUSED WAIVER #1 SYS-001 (source src/none/**): matched no finding in this run');
+    expect(out).toContain('UNUSED WAIVER #1 SYS-001 (source src/clean/**): matched no finding in this run');
     expect(out).toContain('WAIVER #2 SYS-001 (route /?screen=tree): not applicable to this run (needs screen.source)');
+    // A glob no file of this run matches was never exercised, so it is not unused.
+    expect(out).toContain(`WAIVER #4 SYS-001 (source src/billing/**): not applicable to this run (${unread})`);
     expect(out).toContain('RECORDED WAIVER #3 LAY-001 (source src/tree/**): recorded, not checked by this runner');
     expect(report.waivers.unused.map((w: { index: number }) => w.index)).toEqual([1]);
     expect(code).toBe(1);
@@ -390,7 +401,7 @@ describe('exit codes and the baseline', () => {
     expect(overlap.report.skipped).toEqual([]);
   });
 
-  it('follows symbolic links, reads a cycle once and names every entry it passes over', async () => {
+  it('follows symbolic links, reads a cycle once and names every selectable entry it cannot check', async () => {
     const root = project({
       'lib/Shared.tsx': 'export const S = () => <button />;',
       'other/B.module.css': '.a { color: #fff; }',
@@ -412,6 +423,36 @@ describe('exit codes and the baseline', () => {
     expect(out).toContain('SKIPPED src/linked/loop: a link cycle back to src/linked, read once');
     expect(code).toBe(0);
   });
+
+  // chmod does not stop root, so the unlistable directory needs a normal user.
+  it.skipIf(process.getuid?.() === 0)(
+    'lists a directory it cannot list as skipped, and nothing the globs leave out',
+    async () => {
+      const root = project({
+        'src/A.module.css': '.a { color: #fff; }',
+        'src/locked/B.tsx': 'export const B = () => <button />;',
+        'src/__tests__/locked/C.test.tsx': 'export const C = () => <button />;',
+      });
+      fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/__tests__/Gone.tsx'));
+      fs.symlinkSync('../nowhere', path.join(root, 'src/dist'));
+      fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/Moved.tsx'));
+      const locked = [path.join(root, 'src/locked'), path.join(root, 'src/__tests__/locked')];
+      for (const dir of locked) fs.chmodSync(dir, 0o000);
+      try {
+        const { code, report, out } = await check(root);
+        expect(report.files).toEqual(['src/A.module.css']);
+        const skipped = [...report.skipped].sort((a, b) => (a.path < b.path ? -1 : 1));
+        expect(skipped).toEqual([
+          { path: 'src/Moved.tsx', reason: expect.stringMatching(/^cannot be read \(ENOENT\)/) },
+          { path: 'src/locked', reason: 'a directory that cannot be listed (EACCES)' },
+        ]);
+        expect(out).toContain('SKIPPED src/locked: a directory that cannot be listed (EACCES)');
+        expect(code).toBe(0);
+      } finally {
+        for (const dir of locked) fs.chmodSync(dir, 0o755);
+      }
+    },
+  );
 
   it('resolves paths against $INIT_CWD, where npm was invoked', async () => {
     const root = project(dirty);

@@ -162,18 +162,32 @@ export function coversRendered(mode) {
 }
 
 /**
- * What an entry lacks to be matched in a run that matches screens by
- * `mode`; undefined when it has that key.
+ * What a run would need to exercise the entry's screen; undefined when this
+ * run exercised it. A run that matches screens by `mode` exercised a screen
+ * when it read a file the `source` glob matches (static check) or measured a
+ * state of the exact route or menu label (render runner).
  *
  * @param {Waiver} waiver
- * @param {'source' | 'route' | 'menu'} mode
+ * @param {{mode: 'source' | 'route' | 'menu', exercised: Set<string>, requested?: Set<string>}} run
+ *   `exercised`: the files read, or the routes or menu labels with a measured
+ *   state; `requested`: the routes or menu labels the run was asked to sweep
  */
-export function missingScreenKey(waiver, mode) {
-  if (waiver.screen[mode] !== undefined) return undefined;
-  if (mode === 'source') return 'needs screen.source';
-  if (mode === 'route' && waiver.screen.menu !== undefined) return 'needs --menu';
-  if (mode === 'menu' && waiver.screen.route !== undefined) return 'needs route mode (--routes, no --menu)';
-  return 'needs screen.route or screen.menu';
+export function unexercised(waiver, { mode, exercised, requested }) {
+  const value = waiver.screen[mode];
+  if (value === undefined) {
+    if (mode === 'source') return 'needs screen.source';
+    if (mode === 'route' && waiver.screen.menu !== undefined) return 'needs --menu';
+    if (mode === 'menu' && waiver.screen.route !== undefined) return 'needs route mode (--routes, no --menu)';
+    return 'needs screen.route or screen.menu';
+  }
+  if (mode === 'source') {
+    return [...exercised].some((file) => path.posix.matchesGlob(file, value))
+      ? undefined
+      : `needs a file matching ${value} under --src; none of the files read matches`;
+  }
+  if (exercised.has(value)) return undefined;
+  if (requested?.has(value)) return `needs a measured state of ${value}; each one had an environment failure`;
+  return `needs ${mode === 'menu' ? '--menu' : '--routes'} ${value}`;
 }
 
 /**
@@ -183,19 +197,24 @@ export function missingScreenKey(waiver, mode) {
  *
  *   recorded       its gate is one this runner never reports (another check
  *                  or the review reads it): never unused, never to remove;
- *   notApplicable  this runner reports the gate, but the entry's screen has
- *                  no key this run matches (`needs`);
+ *   notApplicable  this runner reports the gate, but the run never exercised
+ *                  the entry's screen (no key this run matches, or no file,
+ *                  route or menu label of the run matches it); `needs` says
+ *                  what would exercise it;
  *   expired        past `until`, so it waived nothing;
- *   unused         live and applicable, and matched no finding.
+ *   unused         live, its screen exercised, and it matched no finding.
  *
  * @param {{file?: string, waivers: Waiver[]}} loaded
- * @param {{mode: 'source' | 'route' | 'menu', gates: Iterable<string>}} runner
- *   the screen key this run matches, and every gate the runner can report
- *   (from its rules data)
+ * @param {{mode: 'source' | 'route' | 'menu', gates: Iterable<string>,
+ *   exercised: Iterable<string>, requested?: Iterable<string>}} runner
+ *   the screen key this run matches, every gate the runner can report (from
+ *   its rules data), and the screens the run exercised and was asked for
+ *   (see unexercised)
  */
-export function waiverReport(loaded, { mode, gates }) {
+export function waiverReport(loaded, { mode, gates, exercised, requested }) {
   if (!loaded.file) return undefined;
   const reported = new Set(gates);
+  const run = { mode, exercised: new Set(exercised), ...(requested ? { requested: new Set(requested) } : {}) };
   const describe = (w) => ({
     index: w.index,
     gate: w.gate,
@@ -212,7 +231,7 @@ export function waiverReport(loaded, { mode, gates }) {
   const section = { file: loaded.file, applied: 0, unused: [], expired: [], notApplicable: [], recorded: [] };
   for (const w of loaded.waivers) {
     section.applied += w.used;
-    const needs = missingScreenKey(w, mode);
+    const needs = unexercised(w, run);
     if (!reported.has(w.gate)) section.recorded.push(describe(w));
     else if (needs) section.notApplicable.push({ ...describe(w), needs });
     else if (w.expired) section.expired.push(describe(w));
@@ -230,14 +249,13 @@ export function waiverLines(section) {
     lines.push(`  UNUSED WAIVER #${w.index} ${w.gate} (${screen(w)}): matched no finding in this run`);
   }
   for (const w of section.expired) lines.push(`  EXPIRED WAIVER #${w.index} ${w.gate} (${screen(w)}) until ${w.until}`);
+  // A lapsed entry says so wherever it lands, so it is never lost from view.
+  const lapsed = (w) => (w.expired ? `, expired after ${w.until}` : '');
   for (const w of section.notApplicable) {
-    lines.push(`  WAIVER #${w.index} ${w.gate} (${screen(w)}): not applicable to this run (${w.needs})`);
+    lines.push(`  WAIVER #${w.index} ${w.gate} (${screen(w)}): not applicable to this run (${w.needs})${lapsed(w)}`);
   }
   for (const w of section.recorded) {
-    lines.push(
-      `  RECORDED WAIVER #${w.index} ${w.gate} (${screen(w)}): recorded, not checked by this runner` +
-        (w.expired ? `, expired after ${w.until}` : ''),
-    );
+    lines.push(`  RECORDED WAIVER #${w.index} ${w.gate} (${screen(w)}): recorded, not checked by this runner${lapsed(w)}`);
   }
   return lines;
 }

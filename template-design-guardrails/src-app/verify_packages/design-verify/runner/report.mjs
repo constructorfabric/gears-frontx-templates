@@ -82,6 +82,18 @@ export function waiveStates(states, waivers, coversState) {
 }
 
 /**
+ * The routes or menu labels with at least one measured sweep: the screens a
+ * waiver can be judged against. A state with an environment failure and the
+ * DESIGN.md contrast states measure no screen.
+ *
+ * @param {StateResult[]} states
+ * @returns {string[]}
+ */
+export function measuredScreens(states) {
+  return [...new Set(states.filter((s) => !s.check && Array.isArray(s.findings)).map((s) => s.route))];
+}
+
+/**
  * @param {{baseUrl: string, themeKey: string, waivers?: object}} meta
  *   `waivers`: the waiver file section (runner/waivers.mjs waiverReport)
  * @param {StateResult[]} states

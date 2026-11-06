@@ -22,12 +22,13 @@ import {
   diffReports,
   exitCode,
   gateLookup,
+  measuredScreens,
   splitSweep,
   summaryLines,
   waiveStates,
 } from '../runner/report.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
-import { coversRendered, parseWaivers, waiverReport } from '../runner/waivers.mjs';
+import { coversRendered, parseWaivers, waiverLines, waiverReport } from '../runner/waivers.mjs';
 import {
   CHROME_CANDIDATES,
   discoverCacheChromes,
@@ -279,8 +280,9 @@ describe('report', () => {
       {
         waivers: [
           { gate: 'LAY-005', screen: { route: '/orders-screen' }, reason: 'Two kit sizes on purpose.' },
-          { gate: 'LAY-005', screen: { route: '/never-swept' }, reason: 'Unused.' },
+          { gate: 'LAY-005', screen: { route: '/quiet' }, reason: 'Unused.' },
           { gate: 'LAY-005', screen: { source: 'src/**' }, reason: 'For the static check.' },
+          { gate: 'LAY-005', screen: { route: '/never-swept' }, reason: 'Not exercised.' },
         ],
       },
       registry,
@@ -291,6 +293,7 @@ describe('report', () => {
     const states = [
       { route: '/orders-screen', theme: 'light', width: 1440, findings: [mismatch, tiny] },
       { route: '/other', theme: 'light', width: 1440, findings: [mismatch] },
+      { route: '/quiet', theme: 'light', width: 1440, findings: [] },
     ];
     waiveStates(states, waivers, coversRendered('route'));
     expect(states[0].findings).toEqual([tiny]);
@@ -301,17 +304,29 @@ describe('report', () => {
       {
         baseUrl: 'u',
         themeKey: 'k',
-        waivers: waiverReport({ file: 'design-waivers.json', waivers }, { mode: 'route', gates: ['LAY-005', 'TYP-001'] }),
+        waivers: waiverReport(
+          { file: 'design-waivers.json', waivers },
+          { mode: 'route', gates: ['LAY-005', 'TYP-001'], exercised: measuredScreens(states) },
+        ),
       },
       states,
     );
     expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
-    expect(report.waivers).toMatchObject({ applied: 1, notApplicable: [{ index: 2, needs: 'needs screen.route or screen.menu' }] });
+    expect(report.waivers).toMatchObject({
+      applied: 1,
+      notApplicable: [
+        { index: 2, needs: 'needs screen.route or screen.menu' },
+        { index: 3, needs: 'needs --routes /never-swept' },
+      ],
+    });
     expect((report.waivers as { unused: Array<{ index: number }> }).unused.map((w) => w.index)).toEqual([1]);
     const lines = summaryLines(report).join('\n');
     expect(lines).toContain('2 finding(s), 0 needing review, 1 waived');
     expect(lines).toContain('WAIVED /orders-screen light 1440px: LAY-005 control-height-mismatch @ div.row - waiver #0: Two kit sizes on purpose.');
-    expect(lines).toContain('UNUSED WAIVER #1 LAY-005 (route /never-swept)');
+    expect(lines).toContain('UNUSED WAIVER #1 LAY-005 (route /quiet): matched no finding in this run');
+    // A route the run never swept is no evidence the deviation is gone.
+    expect(lines).toContain('WAIVER #3 LAY-005 (route /never-swept): not applicable to this run (needs --routes /never-swept)');
+    expect(lines).not.toContain('UNUSED WAIVER #3');
     // Against a baseline that has all three, the waived one reads as resolved, never new.
     const before = buildReport({ baseUrl: 'u', themeKey: 'k' }, [
       { route: '/orders-screen', theme: 'light', width: 1440, findings: [mismatch, tiny] },
@@ -320,6 +335,51 @@ describe('report', () => {
     const diff = diffReports(before, report);
     expect(diff.new).toEqual([]);
     expect(exitCode(report, { failOnFindings: true }, diff)).toBe(0);
+  });
+
+  it('judges render waivers only against screens with a measured sweep', () => {
+    const registry = readSkillJson('rules/quality-gates.json');
+    const waivers = parseWaivers(
+      {
+        waivers: [
+          { gate: 'LAY-005', screen: { route: '/login' }, reason: 'Measured, nothing matched.' },
+          { gate: 'LAY-005', screen: { route: '/orders' }, reason: 'Never asked for.' },
+          { gate: 'LAY-005', screen: { route: '/broken' }, reason: 'Asked for, never measured.', until: '2026-01-01' },
+        ],
+      },
+      registry,
+      { file: 'design-waivers.json', today: '2026-11-06' },
+    );
+    const states = [
+      { route: '/login', theme: 'light', width: 1440, findings: [] },
+      { route: '/broken', theme: 'light', width: 1440, environmentError: 'page did not load' },
+      { check: 'design-md-contrast', route: 'DESIGN.md', theme: 'light', findings: [] },
+    ];
+    expect(measuredScreens(states)).toEqual(['/login']);
+    const section = waiverReport(
+      { file: 'design-waivers.json', waivers },
+      { mode: 'route', gates: ['LAY-005'], exercised: measuredScreens(states), requested: ['/login', '/broken'] },
+    );
+    expect(section?.unused.map((w) => w.index)).toEqual([0]);
+    expect(section?.notApplicable.map((w) => [w.index, w.needs])).toEqual([
+      [1, 'needs --routes /orders'],
+      [2, 'needs a measured state of /broken; each one had an environment failure'],
+    ]);
+    expect(waiverLines(section).join('\n')).toContain(
+      'WAIVER #2 LAY-005 (route /broken): not applicable to this run ' +
+        '(needs a measured state of /broken; each one had an environment failure), expired after 2026-01-01',
+    );
+    const menu = parseWaivers(
+      { waivers: [{ gate: 'LAY-005', screen: { menu: 'Billing' }, reason: 'Not swept.' }] },
+      registry,
+      { file: 'design-waivers.json', today: '2026-11-06' },
+    );
+    const menuSection = waiverReport(
+      { file: 'design-waivers.json', waivers: menu },
+      { mode: 'menu', gates: ['LAY-005'], exercised: ['Orders'], requested: ['Orders'] },
+    );
+    expect(menuSection?.notApplicable.map((w) => w.needs)).toEqual(['needs --menu Billing']);
+    expect(menuSection?.unused).toEqual([]);
   });
 
   it('parses --baseline as a value flag', () => {

@@ -41,6 +41,7 @@ import {
   diffReports,
   exitCode,
   gateLookup,
+  measuredScreens,
   splitSweep,
   summaryLines,
   waiveStates,
@@ -331,7 +332,16 @@ export async function main(argv = process.argv.slice(2)) {
     }
 
     const report = buildReport(
-      { baseUrl: config.url, themeKey: config.themeKey, waivers: waiverReport(waivers, { mode, gates: reportedGates }) },
+      {
+        baseUrl: config.url,
+        themeKey: config.themeKey,
+        waivers: waiverReport(waivers, {
+          mode,
+          gates: reportedGates,
+          exercised: measuredScreens(states),
+          requested: menuMode ? config.menus : config.routes,
+        }),
+      },
       states,
     );
     const diff = baselineReport ? diffReports(baselineReport, report) : undefined;

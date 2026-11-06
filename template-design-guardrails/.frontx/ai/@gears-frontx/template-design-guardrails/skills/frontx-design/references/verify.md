@@ -31,8 +31,12 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
 - It writes `design-verify-report/static-findings.json`. `--baseline`,
   `--fail-on-findings` and the exit codes work as in the browser runner
   ("Gate a build"); a source file that does not parse is exit 2, and so is
-  a `--src` that selects no file. It follows symbolic links and lists every
-  entry it passes over (a link cycle, a broken link) as `SKIPPED`.
+  a `--src` that selects no file. It follows symbolic links. It lists as
+  `SKIPPED` only the entries the globs would select but the walk cannot
+  check (a broken link, a link cycle, a directory it cannot list, a file
+  that is not a regular file) and a second path to a file already read;
+  directories named `node_modules` or `.git` are never entered and never
+  listed.
 - It sees source, not composition: a clean static check is not a rendered
   pass. Run it first, fix what it reports, then run the browser check.
 
@@ -199,11 +203,16 @@ names), and so does the review (`references/review.md`):
   `rules/render-check.json`) and lists every other entry once:
   - `RECORDED`: a gate this check never reports. The entry stays: another
     check or the review uses it.
-  - `not applicable to this run`: a gate this check reports, but the screen
-    has no key this run matches; the line says what it needs (`--menu`,
-    route mode, `screen.source`).
-  - `EXPIRED`: past `until`.
-  - `UNUSED`: a gate this check reports, a key this run matches, and no
+  - `not applicable to this run`: a gate this check reports, but the run
+    never exercised the screen: the screen has no key this run matches, or
+    no file the static check read matches `source`, or no measured state of
+    the render run has that `route` or `menu`. The line says what would
+    exercise it, for example `needs --menu`, `needs --routes /orders` or
+    `needs a file matching src/billing/** under --src`. Not a reason to
+    remove the entry.
+  - `EXPIRED`: past `until`. A `RECORDED` or `not applicable` line of an
+    entry past `until` ends with `expired after <until>`.
+  - `UNUSED`: a gate this check reports, a screen the run exercised, and no
     finding matched. Remove it or correct its screen, since the deviation it
     names is gone or the screen is wrong.
 - Add an entry only when the person accepts the deviation and gives the
