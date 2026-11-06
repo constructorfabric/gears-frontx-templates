@@ -109,6 +109,40 @@ describe('the SKILL.md map', () => {
   });
 });
 
+describe('paths other templates cite into the skill', () => {
+  // Other templates name a skill file in full (`skills/frontx-design/references/generate.md`) or, in a
+  // paragraph that names the `frontx-design` skill, relative to it ("that skill's `references/generate.md`").
+  const repo = path.join(template, '..');
+  const FULL_PATH = /skills\/frontx-design\/((?:[\w.-]+\/)*[\w.-]+\.\w+)/g;
+  const cited = (text) =>
+    text.split(/\n[ \t]*\n/).flatMap((paragraph) => [
+      ...[...paragraph.matchAll(FULL_PATH)].map((m) => m[1]),
+      ...(paragraph.includes('frontx-design') ? (paragraph.match(SKILL_PATH) ?? []) : []),
+      ...(paragraph.includes('frontx-design') ? (paragraph.match(/\bSKILL\.md\b/g) ?? []) : []),
+    ]);
+  const citations = readdirSync(repo)
+    .filter((name) => name.startsWith('template-') && name !== path.basename(template))
+    .map((name) => path.join(repo, name, '.frontx/ai'))
+    .filter((dir) => existsSync(dir))
+    .flatMap((dir) =>
+      readdirSync(dir, { recursive: true })
+        .filter((rel) => rel.endsWith('.md'))
+        .map((rel) => path.join(dir, rel)),
+    )
+    .flatMap((file) => [...new Set(cited(readText(file)))].map((rel) => [path.relative(repo, file), rel]));
+
+  it('finds the citations other templates make today', () => {
+    expect(citations).toContainEqual([
+      'template-mfe/.frontx/ai/@gears-frontx/frontx-template-mfe/skills/add-mfe-package/SKILL.md',
+      'references/generate.md',
+    ]);
+  });
+
+  it.each(citations)('%s cites %s, which the skill holds', (_file, rel) => {
+    expect(existsSync(path.join(skill, rel))).toBe(true);
+  });
+});
+
 describe('the bundle declares one compact skill', () => {
   const extension = JSON.parse(readText(path.join(bundle, 'extension.json')));
 
