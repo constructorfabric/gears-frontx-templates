@@ -66,10 +66,9 @@ floor (LAY-002):
 - Declare the transformation of each region before building it (LAY-001).
   Shrinking everything uniformly is not a transformation.
 - Controls keep their kit size at every width; touch targets meet A11Y-002.
-- Check: run the browser check (`references/verify.md`) with
-  `--widths 1440,768,390,320` in both
-  themes and look at the closing screenshots. Report each width as observed
-  or unverified.
+- Check: run the browser check (`references/verify.md`); its default widths
+  are these three and 320 CSS px, in both themes. Look at the closing
+  screenshots and report each width as observed or unverified.
 
 ## Related gates
 

@@ -62,6 +62,11 @@ describe('config', () => {
     });
   });
 
+  // APP-005 checks 1440, 768 and 390; LAY-002 needs the 320 px floor.
+  it('sweeps the APP-005 widths and the LAY-002 floor by default', () => {
+    expect(DEFAULTS.widths).toEqual([1440, 768, 390, 320]);
+  });
+
   it('applies defaults and rejects unknown flags and bad values', () => {
     expect(parseArgs([]).config).toMatchObject({
       routes: DEFAULTS.routes,

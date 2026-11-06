@@ -3,8 +3,8 @@
 Review the implementation and its rendered result with evidence, not taste
 language. The review is advisory: its verdict never marks a build failed or
 acts as a release gate. Asked to block a merge, point to the gate in
-`references/verify.md` ("Gate a build"), which fails a build on rendered
-findings, and still return the findings for a person to act on. The review
+`references/verify.md` ("Gate a build"), which fails a build on static or
+rendered findings, and still return the findings for a person to act on. The review
 changes no files, CI included, unless the request asks for it.
 
 ## Fresh context
@@ -31,7 +31,9 @@ best (a source finding still makes it `revise` or `blocked`).
    nor the code settles them, ask, or mark the assumption unconfirmed in the
    report. When the target or scope is ambiguous in a way that changes what
    is evaluated, ask; otherwise state the assumption.
-3. Check real component reuse in the source; looking alike is not reuse.
+3. Check real component reuse in the source; looking alike is not reuse. The
+   static check (`references/verify.md`, "Static check") lists native
+   elements and literal values; run it, then judge what it cannot see.
 4. Inspect every available width and state; an absent one is unverified.
 
 For spacing, alignment and size, measure the render (element rects, computed

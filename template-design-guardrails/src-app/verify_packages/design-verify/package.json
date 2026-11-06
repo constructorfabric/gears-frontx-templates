@@ -1,9 +1,9 @@
 {
   "name": "@gears-frontx/design-verify",
   "private": true,
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "type": "module",
-  "description": "Design-verification workspace package delivered by @gears-frontx/template-design-guardrails: the dev-only runtime design-defect checker (axe-core + objective layout rules), the composed-markup axe test suite, and the jsx-a11y lint fragment. The shell wires each of these in optionally, so an app without the guardrails template carries no verification machinery.",
+  "description": "Design-verification workspace package delivered by @gears-frontx/template-design-guardrails: the dev-only runtime design-defect checker (axe-core + objective layout rules) with its headless render runner (verify:ui), the static source check for literal values and native elements (verify:static), the composed-markup axe test suite, and the jsx-a11y lint fragment. The shell wires each of these in optionally, so an app without the guardrails template carries no verification machinery.",
   "exports": {
     "./runtime": "./src/designDefects.ts",
     "./eslint": "./eslint.config.mjs"

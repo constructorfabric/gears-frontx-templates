@@ -114,7 +114,9 @@ a recorded product reason.
 
 ## Self-review
 
-1. Component reuse, token use, component-state coverage (APP-004).
+1. Component reuse and token use: run the static check
+   (`references/verify.md`, "Static check") on the screen's package and fix
+   what it reports; then component-state coverage (APP-004).
 2. Hierarchy, alignment lines, spacing rhythm, density, redundant copy.
 3. Each width in `references/app-screens.md`; without inventing a mobile
    information architecture.
@@ -150,7 +152,7 @@ run the closing full pass and report what is still open.
 Changed files; a pass or gap line for each Implement rule (each of the eight
 accessibility items on its own line); the result of each self-review check;
 states; responsive behavior; and every open or unverified gate with the
-surface or state it concerns and why. The review and the browser check are
+surface or state it concerns and why. The review and both checks are
 advisory by default. Asked to gate a build or block a merge, set up the gate
 in `references/verify.md` ("Gate a build") where the person names it, and
 still return the findings.

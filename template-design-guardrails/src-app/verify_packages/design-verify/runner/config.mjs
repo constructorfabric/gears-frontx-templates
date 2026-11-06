@@ -9,7 +9,8 @@ export const DEFAULTS = Object.freeze({
   url: 'http://127.0.0.1:5173/',
   routes: ['/'],
   menus: [],
-  widths: [1440, 768, 320],
+  // APP-005's desktop, tablet and phone widths, then LAY-002's 320 px floor.
+  widths: [1440, 768, 390, 320],
   themes: ['light', 'dark'],
   themeKey: 'frontx:studio:theme',
   outDir: 'design-verify-report',
@@ -166,7 +167,7 @@ Usage: node runner/cli.mjs [flags]
                             route sweep would measure nothing. Replaces
                             --routes when given; screenshots are named by the
                             label
-  --widths 1440,768,320     Viewport widths in CSS px (default ${DEFAULTS.widths.join(',')})
+  --widths 1440,390         Viewport widths in CSS px (default ${DEFAULTS.widths.join(',')})
   --themes light,dark       Theme ids to exercise (default ${DEFAULTS.themes.join(',')})
   --theme-key <key>         localStorage key the app restores its theme from
                             (default ${DEFAULTS.themeKey})

@@ -1,6 +1,6 @@
 ---
 name: frontx-design
-version: 0.2.0
+version: 0.3.0
 description: Use for any visual task in a FrontX app - build, restyle, review or verify a screen or page, author or fix a theme, read or update DESIGN.md. Kit-first rules, the gate registry, references and templates for application, marketing and documentation surfaces.
 ---
 
@@ -27,7 +27,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Build or revise a screen | `references/generate.md`, `references/app-screens.md`, `references/state-completeness.md`, then the topic references below that match the screen |
 | Place a screen in FrontX | `references/frontx-context.md` |
 | Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
-| Verify in the browser | `references/verify.md` |
+| Verify: static check of the source, browser check of the render, waivers | `references/verify.md` |
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
@@ -38,12 +38,12 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 `references/`, task files:
 - `references/generate.md` - plan, implement, self-review and fix loop for a screen; delegation; the build report.
 - `references/review.md` - the fresh-context review: verdict, review order, rubric scoring, finding shape.
-- `references/verify.md` - the runtime checker in a browser: runner, manual protocol, checker rule to gate map, a build gate on request, report.
+- `references/verify.md` - the static check, the runtime checker in a browser (runner, manual protocol, gate per checker rule), the waiver file, a build gate on request, report.
 - `references/theme.md` - a shell theme on the kit token contract: value format, register, verify.
 - `references/frontx-context.md` - where a screen lives: MFE package, menu entry, sub-routes, shell chrome, shadow-root styles.
 - `references/app-screens.md` - APP-001 to APP-005 on a FrontX screen and how to check each.
 - `references/state-completeness.md` - loading, empty, error and full per data region; the other states; how to force and check them.
-- `references/design-md.md` - the DESIGN.md format, when to read it, how to review a change to it.
+- `references/design-md.md` - the DESIGN.md format, when to read it, its name check and contrast run, how to review a change to it.
 
 `references/`, topic files (foundations, layout and accessibility for every screen; the others when the screen has that content; all of them when unsure):
 - `references/foundations.md` - token policy, hierarchy, density, radius, borders and elevation, definition of done.
@@ -72,7 +72,8 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 
 Outside this directory:
 - `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.
-- `src-app/verify_packages/design-verify/` - the runtime design-defect checker the shell loads in dev, and its headless runner `npm run verify:ui --workspace=@gears-frontx/design-verify`.
+- `src-app/verify_packages/design-verify/` - the runtime design-defect checker the shell loads in dev, its headless runner `npm run verify:ui` and the static check `npm run verify:static` (both `--workspace=@gears-frontx/design-verify`).
+- `design-waivers.json` at the project root, when the project has one - the per-screen waivers both checks honour.
 
 ## Every task ends with
 

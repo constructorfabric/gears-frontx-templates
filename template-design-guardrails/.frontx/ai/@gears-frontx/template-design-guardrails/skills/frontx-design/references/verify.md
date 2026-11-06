@@ -1,13 +1,40 @@
-# Verify in the browser
+# Verify
 
-Turn "unverified" into "observed". Building and review reason from source;
-this step reads what the browser rendered, through the runtime design-defect
-checker in `src-app/verify_packages/design-verify/` (`@gears-frontx/design-verify`).
-It observes and does not fix: hand findings back to the build
-(`references/generate.md`). Advisory by default: findings never fail the run.
-When a person asks for a gate, set one up as "Gate a build" below describes.
+Turn "unverified" into "observed". Two checks, both in
+`src-app/verify_packages/design-verify/` (`@gears-frontx/design-verify`): the
+static check reads the screen's source with no browser; the browser check
+reads what the runtime design-defect checker sees in the rendered app. Both
+observe and do not fix: hand findings back to the build
+(`references/generate.md`). Both are advisory by default (findings never
+fail the run) and both honour the waiver file ("Waivers"). When a person
+asks for a gate, set one up as "Gate a build" below describes.
 
-## Preconditions
+## Static check
+
+From the project root, on the screen's own source:
+
+```
+npm run verify:static --workspace=@gears-frontx/design-verify -- \
+  --src src-app/mfe_packages/<package> [--src <dir or file>...]
+```
+
+- It reads `*.module.css`, `*.tsx` and `*.ts` under `--src` (tests and
+  stories excluded) and reports each finding with its gate,
+  `file:line:column`, what it found and the fix:
+  - SYS-002: a literal colour, spacing, radius, font size, shadow, duration
+    or easing where `DESIGN.md` names a kit token of that kind, in a CSS
+    Module or an inline `style`; values inside `var()` and `0` pass, a colour
+    in a local custom property does not;
+  - SYS-001: a native element or role the kit ships a component for, and an
+    `<a>` with `onClick` and no link target.
+- What counts and what to use instead is data: `rules/static-check.json`.
+- It writes `design-verify-report/static-findings.json`. `--baseline`,
+  `--fail-on-findings` and the exit codes work as in the browser runner
+  ("Gate a build"); a source file that does not parse is exit 2.
+- It sees source, not composition: a clean static check is not a rendered
+  pass. Run it first, fix what it reports, then run the browser check.
+
+## Browser preconditions
 
 1. The assembled project runs in dev mode (`import.meta.env.DEV`); the shell
    loads the checker only there, and production builds drop it.
@@ -42,15 +69,16 @@ The shell logs the checker's status in dev; trust the lines:
 - `[design-defects] clean: no objective design defects detected`, or
   `[design-defects]` finding or `needs review` lines: the checker runs.
 
-## Run
+## Run the browser check
 
 One runner call sweeps every screen, theme and width and writes
-`design-verify-report/findings.json`:
+`design-verify-report/findings.json`. The default widths are 1440, 768 and
+390 CSS px (APP-005) and the 320 CSS px floor (LAY-002); the default themes
+are light and dark:
 
 ```
 npm run verify:ui --workspace=@gears-frontx/design-verify -- \
-  --menu "Login,Tasks" --widths 1440,768,390,320 --themes light,dark \
-  [--start-server "npm run dev:all"]
+  --menu "Login,Tasks" [--design-md DESIGN.md] [--start-server "npm run dev:all"]
 ```
 
 - Navigation flag: reach each screen by its menu label (`--menu "A,B"`, the
@@ -60,6 +88,9 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   reads as clean.
 - Checks the sweep could not decide sit in each state's `needsReview` list;
   a state with any is not clean.
+- `--design-md DESIGN.md` also measures the text contrast of the `DESIGN.md`
+  pairs in each theme, as a state named `DESIGN.md`
+  (`references/design-md.md`, "Measure its contrast").
 - The runner does not switch data states. States behind user actions or
   mocks (`references/state-completeness.md`) need the manual protocol; name
   them unverified if neither path reached them.
@@ -161,37 +192,46 @@ named screens. Both checks read it (or the file `--waivers <path>` names):
 ## Gate a build
 
 Only when a person asks for a gate, and only in the place they name (a CI
-step or a script): add the sweep from "Run" with `--fail-on-findings`.
-Nothing else in this skill fails a build, and no gate is added unasked.
+step or a script): add the static check, the browser sweep from "Run the
+browser check", or both, with `--fail-on-findings`. Nothing else in this
+skill fails a build, and no gate is added unasked.
 
 ```
+npm run verify:static --workspace=@gears-frontx/design-verify -- \
+  --src src-app/mfe_packages/<package> \
+  --fail-on-findings [--baseline design-verify-static-baseline.json]
 npm run verify:ui --workspace=@gears-frontx/design-verify -- \
-  --menu "Login,Tasks" --widths 1440,768,390,320 --themes light,dark \
-  --start-server "npm run dev:all" \
+  --menu "Login,Tasks" --start-server "npm run dev:all" \
   --fail-on-findings [--baseline design-verify-baseline.json]
 ```
 
 - Exit 0: nothing gates. Exit 1: a finding gates; with `--baseline` only a
   finding the baseline lacks (a new one, or more of one) gates, and the
-  findings it already had stay advisory. Exit 2: environment unavailable, a
-  bad flag or unreadable baseline, or a screenshot asked for and not written;
-  the gate fails on it too, since an unswept state is not a pass.
+  findings it already had stay advisory. Exit 2: environment unavailable, an
+  input the run cannot honour (a bad flag, an unreadable baseline, a waiver
+  file with an error, a source file that does not parse), or a screenshot
+  asked for and not written; the gate fails on it too, since an unchecked
+  state is not a pass.
 - `needsReview` entries never gate; they stay unverified in the report.
   Waived findings never gate either ("Waivers").
 - Run it from the project root: relative `--out`, `--baseline`,
   `--waivers` and `--server-cwd` paths resolve there (`$INIT_CWD`, which npm
   sets to the directory it was invoked in).
-- The baseline is a `findings.json` from an earlier run, kept where the person
-  says; it changes only when they accept its findings.
-- The gate needs what a manual run needs: the dev server and a Chrome or
-  Chromium executable on the CI machine.
+- The baseline is the report of an earlier run of the same check
+  (`findings.json` or `static-findings.json`), kept where the person says;
+  it changes only when they accept its findings.
+- The browser gate needs what a manual run needs: the dev server and a
+  Chrome or Chromium executable on the CI machine. The static gate needs only
+  the installed project.
 
 ## Report
 
 In the finding shape of `rules/quality-gates.json`:
 
-- confirmed findings first; evidence is the verbatim `[design-defects]` line
-  or the raw `window.__frontxDesignDefects()` entry, never a paraphrase;
+- confirmed findings first; evidence is the verbatim `[design-defects]` line,
+  the raw `window.__frontxDesignDefects()` entry or the static check's
+  finding with its `file:line:column`, never a paraphrase;
+- waived findings with the quoted reason, and unused or expired waivers;
 - the states and widths that came back clean; a clean claim quotes the
   `[design-defects] clean:` line;
 - the closing visual review: its findings, or that it found none, naming the

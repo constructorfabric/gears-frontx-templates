@@ -14,7 +14,10 @@
  *
  * Invocation (from the shell project root):
  *   npm run verify:ui --workspace=@gears-frontx/design-verify -- \
- *     --routes /login,/tasks --widths 1440,768,320 --themes light,dark
+ *     --routes /login,/tasks [--design-md DESIGN.md]
+ *
+ * The default widths are 1440, 768, 390 and 320 CSS px and the default
+ * themes light and dark.
  *
  * Every finding carries the gate the frontx-design skill's
  * rules/render-check.json gives its rule id, and a finding the per-screen
