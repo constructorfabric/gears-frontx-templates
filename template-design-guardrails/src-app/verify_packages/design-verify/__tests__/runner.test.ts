@@ -155,6 +155,14 @@ describe('config', () => {
     expect(parseArgs([]).config.themeKey).toBe('frontx:theme');
   });
 
+  // The runner writes Studio's key as JSON, which would overwrite the raw id
+  // the check then reads back: every state would report a mismatch.
+  it('rejects Studio\'s key as --theme-key and names the shell key', () => {
+    const { config, errors } = parseArgs(['--theme-key', 'frontx:studio:theme']);
+    expect(errors).toEqual([expect.stringMatching(/frontx:studio:theme is FrontX Studio's own key.*frontx:theme/)]);
+    expect(config.themeKey).toBe('frontx:theme');
+  });
+
   // The shell's Vite listens on `localhost`, which can be ::1 only.
   it('attaches to the dev server at Vite\'s default host', () => {
     expect(DEFAULTS.url).toBe('http://localhost:5173/');

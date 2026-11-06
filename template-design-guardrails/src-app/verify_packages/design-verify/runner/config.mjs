@@ -4,7 +4,7 @@
  * convention. No I/O — everything here is unit-testable without a browser.
  */
 import path from 'node:path';
-import { SHELL_THEME_KEY } from './theme.mjs';
+import { SHELL_THEME_KEY, STUDIO_THEME_KEY } from './theme.mjs';
 
 export const DEFAULTS = Object.freeze({
   // Vite's own default host: `localhost` may resolve to ::1 only, where a
@@ -111,7 +111,16 @@ export function parseArgs(argv) {
         config.url = value;
         break;
       case '--theme-key':
-        config.themeKey = value;
+        // Studio's key holds a JSON string and the runner writes it as one, so
+        // it cannot also be the raw key the shell restores from.
+        if (value === STUDIO_THEME_KEY) {
+          errors.push(
+            `--theme-key ${value} is FrontX Studio's own key (a JSON string the runner writes as well); ` +
+              `pass the key the shell restores its theme from, ${SHELL_THEME_KEY} in the template shell`,
+          );
+        } else {
+          config.themeKey = value;
+        }
         break;
       case '--out':
         config.outDir = value;
