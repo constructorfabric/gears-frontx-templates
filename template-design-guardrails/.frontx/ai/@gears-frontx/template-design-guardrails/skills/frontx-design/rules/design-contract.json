@@ -1,6 +1,6 @@
 {
   "id": "design-contract",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "status": "pilot",
   "normativeLanguage": {
     "MUST": "Required; violation is a blocker or major finding according to quality-gates.json.",
@@ -23,14 +23,14 @@
     "empty, error, restricted, loading, and partial states"
   ],
   "sourcePrecedence": [
-    "Approved product requirements and design references",
-    "Installed FrontX manifests and UI-kit documentation",
-    "Project DESIGN.md (the installed kit's token names and the project's guardrails)",
-    "Rule files of the frontx-design skill (rules/)",
-    "References of the frontx-design skill (references/)",
-    "Installed application behavior and existing screens",
-    "Local screen request",
-    "Model defaults"
+    {"id": "approved-requirements", "source": "Approved product requirements and design references"},
+    {"id": "kit-docs", "source": "Installed FrontX manifests and UI-kit documentation"},
+    {"id": "design-md", "source": "Project DESIGN.md (the installed kit's token names and the project's guardrails)"},
+    {"id": "skill-rules", "source": "Rule files of the frontx-design skill (rules/)"},
+    {"id": "skill-references", "source": "References of the frontx-design skill (references/)"},
+    {"id": "existing-app", "source": "Installed application behavior and existing screens"},
+    {"id": "screen-request", "source": "Local screen request"},
+    {"id": "model-defaults", "source": "Model defaults"}
   ],
   "sourcePrecedenceScope": "The order applies only to what the gates leave open. A gate in quality-gates.json whose waiver is never stays binding whatever any source says, approved product requirements included; record such a conflict in the handoff and raise it with the owner.",
   "contractFiles": {

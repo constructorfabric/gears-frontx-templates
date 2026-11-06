@@ -115,12 +115,18 @@ describe('rules/render-check.json', () => {
 });
 
 describe('rules/design-contract.json', () => {
-  it('ranks the project DESIGN.md right after the installed kit documentation in sourcePrecedence', () => {
+  // Entries are found by their stable ids, so rewording a source changes nothing here.
+  it('ranks the project DESIGN.md below the installed kit documentation and above the rule files in sourcePrecedence', () => {
     const order = readJson('rules/design-contract.json').sourcePrecedence;
-    const design = order.findIndex((source) => source.includes('DESIGN.md'));
-    expect(design).toBeGreaterThan(-1);
-    expect(order[design - 1]).toMatch(/UI-kit documentation/);
-    expect(order[design + 1]).toMatch(/Rule files/);
+    const ids = order.map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(order.filter((entry) => typeof entry.source !== 'string' || entry.source.trim() === '')).toEqual([]);
+    const at = (id) => ids.indexOf(id);
+    expect(at('design-md')).toBeGreaterThan(-1);
+    expect(at('kit-docs')).toBeGreaterThan(-1);
+    expect(at('skill-rules')).toBeGreaterThan(-1);
+    expect(at('kit-docs')).toBeLessThan(at('design-md'));
+    expect(at('design-md')).toBeLessThan(at('skill-rules'));
   });
 });
 
