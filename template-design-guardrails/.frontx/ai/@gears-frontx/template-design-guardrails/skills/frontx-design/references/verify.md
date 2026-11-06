@@ -24,7 +24,9 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
   - SYS-002: a literal colour, spacing, radius, font size, shadow, duration
     or easing where `DESIGN.md` names a kit token of that kind, in a CSS
     Module or an inline `style`; values inside `var()` and `0` pass, a colour
-    in a local custom property does not; `color-mix()` is checked by each
+    in a local custom property or a CSS Modules `@value name: value` does
+    not (the import form `@value a from '...'` is skipped); `color-mix()` is
+    checked by each
     colour it mixes. A relative colour is derived from a token when its
     origin is a `var()`, a relative colour that is itself derived, or an
     allowed keyword such as `currentColor`, AND every colour channel except

@@ -147,6 +147,28 @@ describe('CSS Modules', () => {
     ]);
   });
 
+  // Vite compiles `color: danger` to the @value's literal, so the definition
+  // is where the literal is.
+  it('reads a CSS Modules @value definition as a local custom property, and skips the import form', async () => {
+    const root = project({
+      'src/Values.module.css': [
+        '@value danger: #e11d48;',
+        '@value brand: var(--primary);',
+        "@value muted, gap from './tokens.module.css';",
+        '@value  warn  oklch(0.8 0.1 80);',
+        '@value pad: 12px;',
+        '.a { color: danger; }',
+      ].join('\n'),
+    });
+    const { code, findings } = await check(root);
+    expect(code).toBe(0);
+    expect(findings.map((f) => `${f.line}:${f.column} ${f.gate} ${f.kind} ${f.found}`)).toEqual([
+      '1:1 SYS-002 color #e11d48 in @value danger',
+      '4:1 SYS-002 color oklch(0.8 0.1 80) in @value warn',
+    ]);
+    expect(findings[0].fix).toMatch(/^use a color token from DESIGN.md colors: /);
+  });
+
   // references/foundations.md allows values derived from tokens: a relative
   // colour or a color-mix() is checked by the colours it starts from.
   it('checks a relative colour by its origin and color-mix() by each colour argument', async () => {

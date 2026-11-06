@@ -13,6 +13,9 @@
  * `color-mix()` by each colour it mixes; a relative colour by the rule below),
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
+ * A CSS Modules `@value name: value` definition is read as a local custom
+ * property definition (colour only); the import form `@value a from '...'`
+ * defines nothing.
  *
  * A relative colour is derived from a token when its origin is a `var()`, a
  * relative colour that is itself derived, or an allowed keyword such as
@@ -341,6 +344,8 @@ export function checkCss(ctx, text, file) {
     positions: true,
     filename: file,
     parseCustomProperty: true,
+    // Preludes stay raw: css-tree has no grammar for `@value name: value`.
+    parseAtrulePrelude: false,
     onParseError: (error) => parseErrors.push(`${file}:${error.line}:${error.column}: ${error.message}`),
   });
   csstree.walk(ast, {
@@ -358,7 +363,39 @@ export function checkCss(ctx, text, file) {
       }
     },
   });
+  csstree.walk(ast, {
+    visit: 'Atrule',
+    enter(rule) {
+      if (rule.name.toLowerCase() !== 'value' || !rule.prelude) return;
+      const def = valueDefinition(rule.prelude.value);
+      if (!def) return;
+      // Read as a local custom property definition: colour only.
+      const value = csstree.parse(def.value, { context: 'value', positions: true });
+      for (const hit of literalsInValue(ctx, `--${def.name}`, value)) {
+        findings.push({
+          ...literalFinding(ctx, hit.kind, hit.found, `@value ${def.name}`),
+          file,
+          line: rule.loc.start.line,
+          column: rule.loc.start.column,
+        });
+      }
+    },
+  });
   return { findings, parseErrors };
+}
+
+/**
+ * A CSS Modules `@value` definition, split as postcss-modules-values (the
+ * plugin Vite runs) splits it: `name: value` or `name value`. The import
+ * form `@value a, b from './x.module.css'` defines nothing here: null.
+ *
+ * @param {string} prelude
+ * @returns {{name: string, value: string} | null}
+ */
+function valueDefinition(prelude) {
+  if (/^(.+?|\([\s\S]+?\))\s+from\s+("[^"]*"|'[^']*'|[\w-]+)$/.test(prelude.trim())) return null;
+  const match = /^\s*([\w-]+)\s*:?([\s\S]*)$/.exec(prelude);
+  return match && match[2].trim() ? { name: match[1], value: match[2] } : null;
 }
 
 /** `marginTop` -> `margin-top`, `WebkitTransition` -> `-webkit-transition`, `--x` stays. */
