@@ -13,8 +13,9 @@
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
  * `0` is never a finding. TSX and TS are parsed with the project's own
- * TypeScript compiler API: lowercase JSX tags (and `createElement('tag')`)
- * that the kit ships a component for, a native element given a role the kit
+ * TypeScript compiler API: lowercase JSX tags (and React's
+ * `createElement('tag')`, never `document.createElement`) that the kit ships
+ * a component for, a native element given a role the kit
  * covers, an `<a>` with `onClick` and no link target, and `style={{...}}`
  * literals of the same kinds as in CSS.
  *
@@ -41,7 +42,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import * as csstree from 'css-tree';
-import { ContractError, designMdParser, projectRoot, readSkillJson } from './skill.mjs';
+import { ContractError, designMdParser, isEntryPoint, projectRoot, readSkillJson } from './skill.mjs';
 import { applyWaivers, coversSource, loadWaivers, waiverLines, waiverReport, WaiverError } from './waivers.mjs';
 
 export const USAGE = `design-verify static check - literal values and native elements where the
@@ -65,8 +66,10 @@ Usage: npm run verify:static --workspace=@gears-frontx/design-verify -- --src <d
   --help                    Print this message
 
 Relative paths resolve against the project root ($INIT_CWD, else the current
-directory). Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
-error (a source file that does not parse included).
+directory). Symbolic links are followed; every entry passed over is listed
+as skipped. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
+error (a source file that does not parse, or a --src that selects no file,
+included).
 `;
 
 /** A usage or input error: exit 2. */
@@ -177,6 +180,27 @@ export function literalsInValue(ctx, rawProperty, value) {
   if (kinds.size === 0) return [];
   const out = [];
   const lengthKind = ['spacing', 'radius', 'font-size'].find((k) => kinds.has(k));
+
+  if (property === 'font') {
+    // The shorthand holds one font size: the length (or calc) before its
+    // `/line-height`, else its only length. The line height is not one.
+    const nodes = value.children.toArray();
+    const slash = nodes.findIndex((n) => n.type === 'Operator' && n.value === '/');
+    const size = (slash === -1 ? nodes : nodes.slice(0, slash)).findLast(
+      (n) =>
+        (n.type === 'Dimension' && ctx.lengthUnits.has(n.unit.toLowerCase())) ||
+        (n.type === 'Function' && n.name.toLowerCase() !== 'var'),
+    );
+    if (!size) return out;
+    csstree.walk(size, function enter(node) {
+      if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
+      if (node.type === 'Dimension' && !isZero(node) && ctx.lengthUnits.has(node.unit.toLowerCase())) {
+        out.push({ kind: 'font-size', found: csstree.generate(node), loc: node.loc?.start });
+      }
+      return undefined;
+    });
+    return out;
+  }
 
   if (kinds.has('shadow')) {
     // A shadow is one value: report it once, whatever literal it holds.
@@ -407,6 +431,31 @@ export function checkScript(ctx, ts, text, file) {
     return { attrs, spread };
   };
 
+  // React's createElement only: `React.createElement` (or the name `react`'s
+  // default or namespace import binds), and a bare name imported from
+  // `react`. `document.createElement('input')` builds DOM, not React.
+  const reactNamespaces = new Set(['React']);
+  const reactCreateElement = new Set();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || literalText(statement.moduleSpecifier) !== 'react') continue;
+    const clause = statement.importClause;
+    if (clause?.name) reactNamespaces.add(clause.name.text);
+    const bindings = clause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) reactNamespaces.add(bindings.name.text);
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const spec of bindings.elements) {
+        if ((spec.propertyName ?? spec.name).text === 'createElement') reactCreateElement.add(spec.name.text);
+      }
+    }
+  }
+  const isReactCreateElement = (callee) =>
+    ts.isIdentifier(callee)
+      ? reactCreateElement.has(callee.text)
+      : ts.isPropertyAccessExpression(callee) &&
+        callee.name.text === 'createElement' &&
+        ts.isIdentifier(callee.expression) &&
+        reactNamespaces.has(callee.expression.text);
+
   const visit = (node) => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const { attrs, spread } = jsxAttrs(node.attributes);
@@ -414,9 +463,8 @@ export function checkScript(ctx, ts, text, file) {
         checkElement(node.tagName.text, attrs, spread, node);
       }
     } else if (ts.isCallExpression(node)) {
-      const callee = node.expression.getText(source);
       const tag = literalText(node.arguments[0]);
-      if (/(^|\.)createElement$/.test(callee) && tag && /^[a-z][a-z0-9]*$/.test(tag)) {
+      if (isReactCreateElement(node.expression) && tag && /^[a-z][a-z0-9]*$/.test(tag)) {
         const { attrs, spread } = objectAttrs(node.arguments[1]);
         checkElement(tag, attrs, spread, node);
       }
@@ -429,36 +477,72 @@ export function checkScript(ctx, ts, text, file) {
 
 /**
  * Files under the given sources that the data's globs select, as
- * root-relative posix paths.
+ * root-relative posix paths. Symbolic links are followed; a link back to a
+ * directory above it (a cycle) is not walked again, and a file reached
+ * through two paths is read once. Every entry passed over for any reason other than the globs
+ * is listed in `skipped` with the reason, and `empty` names each source that
+ * selected no file.
  *
  * @param {string} root
  * @param {string[]} sources absolute paths
  * @param {{css: string[], script: string[], exclude: string[]}} globs
+ * @returns {{files: Array<[string, 'css' | 'script']>, skipped: Array<{path: string, reason: string}>, empty: string[]}}
  */
 export function collectFiles(root, sources, globs) {
   const files = new Map();
-  const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
+  const skipped = [];
+  const empty = [];
+  const reached = new Map(); // a selected file's real path -> the root-relative path it was first read by
+  let selected = 0;
+  const rel = (abs) => path.relative(root, abs).split(path.sep).join('/') || '.';
   const matches = (file, patterns) => patterns.some((p) => path.posix.matchesGlob(file, p));
-  const consider = (abs) => {
+  /** @param {string} abs @param {Map<string, string>} ancestors real path -> path of each directory above */
+  const visit = (abs, ancestors) => {
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch (error) {
+      skipped.push({ path: rel(abs), reason: `cannot be read (${error.code ?? error.message}), a broken link or no access` });
+      return;
+    }
+    if (stat.isDirectory()) {
+      const real = fs.realpathSync(abs);
+      if (ancestors.has(real)) {
+        skipped.push({ path: rel(abs), reason: `a link cycle back to ${ancestors.get(real)}, read once` });
+        return;
+      }
+      const below = new Map(ancestors).set(real, rel(abs));
+      for (const entry of fs.readdirSync(abs)) {
+        if (entry !== 'node_modules' && entry !== '.git') visit(path.join(abs, entry), below);
+      }
+      return;
+    }
     const file = rel(abs);
+    if (!stat.isFile()) {
+      skipped.push({ path: file, reason: 'not a regular file or directory' });
+      return;
+    }
     if (matches(file, globs.exclude)) return;
-    if (matches(file, globs.css)) files.set(file, 'css');
-    else if (matches(file, globs.script)) files.set(file, 'script');
-  };
-  const walk = (dir) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
-      const abs = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(abs);
-      else if (entry.isFile()) consider(abs);
+    const type = matches(file, globs.css) ? 'css' : matches(file, globs.script) ? 'script' : undefined;
+    if (!type) return;
+    selected += 1;
+    const real = fs.realpathSync(abs);
+    const first = reached.get(real);
+    if (first === undefined) {
+      reached.set(real, file);
+      files.set(file, type);
+    } else if (first !== file) {
+      // The same path twice (two --src that overlap) is one file, not a skip.
+      skipped.push({ path: file, reason: `the same file as ${first}, read once` });
     }
   };
   for (const source of sources) {
-    if (fs.statSync(source).isDirectory()) walk(source);
-    else consider(source);
+    const before = selected;
+    visit(source, new Map());
+    if (selected === before) empty.push(rel(source));
   }
   // Code point order: the same on every machine, whatever its locale.
-  return [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return { files: [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)), skipped, empty };
 }
 
 /** Identity across runs: line and column move with unrelated edits, so they are left out. */
@@ -509,6 +593,7 @@ export function diffStatic(baseline, current) {
 
 /**
  * @param {{root: string, sources: string[], files: string[], findings: any[],
+ *   skipped?: Array<{path: string, reason: string}>,
  *   waived?: any[], waivers?: object, parseErrors: string[]}} run
  */
 export function buildStaticReport(run) {
@@ -525,6 +610,7 @@ export function buildStaticReport(run) {
     sources: run.sources,
     summary: {
       filesChecked: run.files.length,
+      skipped: run.skipped?.length ?? 0,
       totalFindings: run.findings.length,
       waived: run.waived?.length ?? 0,
       parseErrors: run.parseErrors.length,
@@ -532,6 +618,7 @@ export function buildStaticReport(run) {
       byKind,
     },
     files: run.files,
+    skipped: run.skipped ?? [],
     findings: run.findings,
     waived: run.waived ?? [],
     ...(run.waivers ? { waivers: run.waivers } : {}),
@@ -555,9 +642,11 @@ export function staticExitCode(report, config, diff) {
 export function staticSummaryLines(report, diff) {
   const s = report.summary;
   const lines = [
-    `design-verify static: ${s.filesChecked} file(s) checked - ${s.totalFindings} finding(s), ` +
-      `${s.waived} waived, ${s.parseErrors} parse error(s)`,
+    `design-verify static: ${s.filesChecked} file(s) checked` +
+      (s.skipped > 0 ? `, ${s.skipped} skipped` : '') +
+      ` - ${s.totalFindings} finding(s), ${s.waived} waived, ${s.parseErrors} parse error(s)`,
   ];
+  for (const entry of report.skipped) lines.push(`  SKIPPED ${entry.path}: ${entry.reason}`);
   for (const f of report.findings) {
     lines.push(`  ${f.gate} ${f.file}:${f.line}:${f.column} ${f.kind} ${f.found}: ${f.fix}`);
   }
@@ -665,12 +754,28 @@ async function run(argv, io) {
   }
   const ctx = checkContext(rules, front);
 
-  const files = collectFiles(root, sources, rules.sources);
+  const { files, skipped, empty } = collectFiles(root, sources, rules.sources);
+  // A source that selects nothing would pass a gate while checking nothing.
+  if (empty.length > 0) {
+    const why = (source) => skipped.find((s) => s.path === source)?.reason;
+    throw new InputError(
+      empty
+        .map((source) => `--src ${source} selects no file to check` + (why(source) ? ` (${why(source)})` : ''))
+        .join('\n') +
+        `\nthe check reads ${[...rules.sources.css, ...rules.sources.script].join(', ')}, ` +
+        `except ${rules.sources.exclude.join(', ')} (rules/static-check.json)`,
+    );
+  }
   const ts = files.some(([, type]) => type === 'script') ? loadTypeScript(root) : undefined;
   const findings = [];
   const parseErrors = [];
   for (const [file, type] of files) {
-    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    let text;
+    try {
+      text = fs.readFileSync(path.join(root, file), 'utf8');
+    } catch (error) {
+      throw new InputError(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const result = type === 'css' ? checkCss(ctx, text, file) : checkScript(ctx, ts, text, file);
     findings.push(...result.findings);
     parseErrors.push(...result.parseErrors);
@@ -681,6 +786,7 @@ async function run(argv, io) {
     root,
     sources: sources.map((s) => path.relative(root, s).split(path.sep).join('/') || '.'),
     files: files.map(([file]) => file),
+    skipped,
     findings: split.findings,
     waived: split.waived,
     waivers: waiverReport(waivers, 'source'),
@@ -697,8 +803,7 @@ async function run(argv, io) {
   return staticExitCode(report, { failOnFindings: Boolean(values['fail-on-findings']) }, diff);
 }
 
-const entry = process.argv[1] && fs.realpathSync(process.argv[1]);
-if (entry === fs.realpathSync(fileURLToPath(import.meta.url))) {
+if (isEntryPoint(import.meta.url)) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (error) => {

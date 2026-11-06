@@ -30,7 +30,9 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
 - What counts and what to use instead is data: `rules/static-check.json`.
 - It writes `design-verify-report/static-findings.json`. `--baseline`,
   `--fail-on-findings` and the exit codes work as in the browser runner
-  ("Gate a build"); a source file that does not parse is exit 2.
+  ("Gate a build"); a source file that does not parse is exit 2, and so is
+  a `--src` that selects no file. It follows symbolic links and lists every
+  entry it passes over (a link cycle, a broken link) as `SKIPPED`.
 - It sees source, not composition: a clean static check is not a rendered
   pass. Run it first, fix what it reports, then run the browser check.
 

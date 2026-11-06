@@ -39,6 +39,21 @@ export async function designMdParser() {
 }
 
 /**
+ * Whether the module at `moduleUrl` is the process entry point, so a runner
+ * imported by a test or another module runs no CLI. An argv[1] that names no
+ * file (`node -e ... arg`) is not the entry point.
+ *
+ * @param {string} moduleUrl the module's import.meta.url
+ */
+export function isEntryPoint(moduleUrl) {
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The project root: npm runs workspace scripts inside the package and sets
  * $INIT_CWD to the directory it was invoked from, the project root in the
  * documented `npm run ... --workspace=@gears-frontx/design-verify` calls.

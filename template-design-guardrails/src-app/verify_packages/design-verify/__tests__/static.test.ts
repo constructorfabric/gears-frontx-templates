@@ -5,15 +5,45 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
-import * as kit from '@gears-frontx/ui-kit';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { main } from '../runner/static.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-// The project DESIGN.md: the package sits at <root>/src-app/verify_packages/design-verify.
-const DESIGN_MD = path.resolve(here, '../../../../DESIGN.md');
+// A small DESIGN.md of its own, so a token edit in the project DESIGN.md
+// does not change the fix texts asserted here.
+const FIXTURE_DESIGN_MD = `---
+name: "Fixture"
+version: "0.0.0"
+description: "Tokens for the static check tests."
+colors:
+  background: "var(--background)"
+  foreground: "var(--foreground)"
+  primary: "var(--primary)"
+  muted: "var(--muted)"
+  border: "var(--border)"
+  ring: "var(--ring)"
+  danger: "var(--danger)"
+spacing:
+  space-2: "var(--space-2)"
+  space-4: "var(--space-4)"
+rounded:
+  base: "var(--radius)"
+typography:
+  body:
+    fontSize: "var(--text-body-size)"
+elevation:
+  popover-shadow: "var(--popover-shadow)"
+motion:
+  duration-micro: "var(--duration-micro)"
+  ease-standard: "var(--ease-standard)"
+---
+
+# Fixture
+`;
+const designDir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-static-design-'));
+const DESIGN_MD = path.join(designDir, 'DESIGN.md');
+fs.writeFileSync(DESIGN_MD, FIXTURE_DESIGN_MD);
+afterAll(() => fs.rmSync(designDir, { recursive: true, force: true }));
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -85,11 +115,36 @@ describe('CSS Modules', () => {
     ]);
     expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
     expect(findings[0]).toMatchObject({ file: 'src/Orders.module.css', line: 2, column: 10 });
-    expect(findings[0].fix).toMatch(/^use a color token from DESIGN\.md colors: var\(--background\), .* and \d+ more there$/);
-    expect(findings.find((f) => f.kind === 'spacing')?.fix).toContain('var(--space-4)');
+    expect(findings[0].fix).toBe(
+      'use a color token from DESIGN.md colors: var(--background), var(--foreground), var(--primary), ' +
+        'var(--muted), var(--border), var(--ring) and 1 more there',
+    );
+    expect(findings.find((f) => f.kind === 'spacing')?.fix).toBe('use a spacing token from DESIGN.md spacing: var(--space-2), var(--space-4)');
+    expect(findings.find((f) => f.kind === 'radius')?.fix).toBe('use a radius token from DESIGN.md rounded: var(--radius)');
+    expect(findings.find((f) => f.kind === 'font-size')?.fix).toBe('use a font-size token from DESIGN.md typography: var(--text-body-size)');
     expect(findings.find((f) => f.kind === 'shadow')?.fix).toBe('use a shadow token from DESIGN.md elevation: var(--popover-shadow)');
-    expect(findings.find((f) => f.kind === 'duration')?.fix).toContain('var(--duration-micro)');
+    expect(findings.find((f) => f.kind === 'duration')?.fix).toBe('use a duration token from DESIGN.md motion: var(--duration-micro)');
     expect(findings.find((f) => f.kind === 'easing')?.fix).toBe('use an easing token from DESIGN.md motion: var(--ease-standard)');
+  });
+
+  it('reads only the font size of the font shorthand, not its line height', async () => {
+    const root = project({
+      'src/Type.module.css': [
+        '.a { font: 600 14px/20px var(--font-sans); }',
+        '.b { font: 12px system-ui; }',
+        '.c { font: italic 600 var(--text-body-size)/24px var(--font-sans); }',
+        '.d { font: 600 calc(1rem + 2px)/1.5 var(--font-sans); }',
+      ].join('\n'),
+      'src/Type.tsx': "export const T = () => <p style={{ font: '600 14px/20px var(--font-sans)' }} />;",
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
+      'src/Type.module.css:1 font-size 14px in font',
+      'src/Type.module.css:2 font-size 12px in font',
+      'src/Type.module.css:4 font-size 1rem in font',
+      'src/Type.module.css:4 font-size 2px in font',
+      'src/Type.tsx:1 font-size 14px in font',
+    ]);
   });
 
   it('accepts tokens, var() fallbacks, 0, the allowed keywords and plain .css files', async () => {
@@ -171,6 +226,29 @@ describe('TSX and TS', () => {
     expect(findings[3].fix).toBe('use the kit Select or NativeSelect from @gears-frontx/ui-kit');
     expect(findings.at(-1)).toMatchObject({ file: 'src/legacy.ts', line: 2 });
     expect(findings.filter((f) => f.kind !== 'element').every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
+  it("reports React's createElement and leaves document.createElement alone", async () => {
+    const root = project({
+      'src/react-default.ts': "import React from 'react';\nexport const a = React.createElement('button');\n",
+      'src/react-namespace.ts': "import * as R from 'react';\nexport const b = R.createElement('select');\n",
+      'src/react-named.ts': "import { createElement as h } from 'react';\nexport const c = h('textarea');\n",
+      'src/react-global.ts': "export const d = React.createElement('table');\n",
+      'src/dom.ts': [
+        "const field = document.createElement('input');",
+        "const host = window.document.createElement('button');",
+        "function createElement(tag: string) { return tag; }",
+        "export const e = [field, host, createElement('dialog')];",
+      ].join('\n'),
+      'src/other-lib.ts': "import { createElement } from 'preact';\nexport const f = createElement('button', null);\n",
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file} ${f.found}`)).toEqual([
+      'src/react-default.ts <button>',
+      'src/react-global.ts <table>',
+      'src/react-named.ts <textarea>',
+      'src/react-namespace.ts <select>',
+    ]);
   });
 
   it('is clean on a screen built from kit components and tokens, and skips tests', async () => {
@@ -271,6 +349,66 @@ describe('exit codes and the baseline', () => {
     expect(rejected.err).toMatch(/SYS-002 has waiver "never" and cannot be waived/);
   });
 
+  it('exits 0 with --fail-on-findings when a waiver covers every finding, and 1 without it', async () => {
+    const root = project({
+      'src/tree/Tree.tsx': 'export const T = () => <table />;',
+      'design-waivers.json': JSON.stringify({
+        waivers: [{ gate: 'SYS-001', screen: { source: 'src/tree/**' }, reason: 'Tree grid: kit gap.' }],
+      }),
+    });
+    const waived = await check(root, ['--fail-on-findings']);
+    expect(waived.findings).toEqual([]);
+    expect(waived.report.waived).toHaveLength(1);
+    expect(waived.code).toBe(0);
+
+    fs.rmSync(path.join(root, 'design-waivers.json'));
+    const open = await check(root, ['--fail-on-findings']);
+    expect(open.findings).toHaveLength(1);
+    expect(open.code).toBe(1);
+  });
+
+  it('exits 2 naming each --src that selects no file, so a gate never passes on nothing', async () => {
+    const root = project({
+      'src/A.module.css': '.a { color: #fff; }',
+      'src/typo/.keep': '',
+      'tests-only/__tests__/A.test.tsx': 'export const t = <button />;',
+    });
+    const result = await check(root, ['--src', 'src/typo', '--src', 'tests-only']);
+    expect(result.code).toBe(2);
+    expect(result.err).toContain('--src src/typo selects no file to check\n--src tests-only selects no file to check\n');
+    expect(result.err).not.toContain('--src src ');
+    expect(result.report).toBeUndefined();
+
+    // A --src inside another selects its files too: overlap is not empty.
+    const overlap = await check(root, ['--src', 'src/A.module.css']);
+    expect(overlap.code).toBe(0);
+    expect(overlap.report.files).toEqual(['src/A.module.css']);
+    expect(overlap.report.skipped).toEqual([]);
+  });
+
+  it('follows symbolic links, reads a cycle once and names every entry it passes over', async () => {
+    const root = project({
+      'lib/Shared.tsx': 'export const S = () => <button />;',
+      'other/B.module.css': '.a { color: #fff; }',
+    });
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.symlinkSync('../lib', path.join(root, 'src/linked'));
+    fs.symlinkSync('.', path.join(root, 'lib/loop'));
+    fs.symlinkSync('../other/B.module.css', path.join(root, 'src/B.module.css'));
+    fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/Broken.tsx'));
+    const { code, report, findings, out } = await check(root);
+    expect(report.files).toEqual(['src/B.module.css', 'src/linked/Shared.tsx']);
+    expect(found(findings)).toEqual(['color #fff in color', 'element <button>']);
+    const skipped = [...report.skipped].sort((a, b) => (a.path < b.path ? -1 : 1));
+    expect(skipped).toEqual([
+      { path: 'src/Broken.tsx', reason: expect.stringMatching(/^cannot be read \(ENOENT\)/) },
+      { path: 'src/linked/loop', reason: 'a link cycle back to src/linked, read once' },
+    ]);
+    expect(out).toContain('2 file(s) checked, 2 skipped');
+    expect(out).toContain('SKIPPED src/linked/loop: a link cycle back to src/linked, read once');
+    expect(code).toBe(0);
+  });
+
   it('resolves paths against $INIT_CWD, where npm was invoked', async () => {
     const root = project(dirty);
     const code = await main(['--src', 'src', '--design', DESIGN_MD], {
@@ -293,7 +431,8 @@ describe('rules/static-check.json', () => {
   ].flat() as string[];
 
   // Real names only: a kit upgrade that drops or renames one fails here.
-  it('names only components the installed kit exports', () => {
+  it('names only components the installed kit exports', async () => {
+    const kit = await import('@gears-frontx/ui-kit');
     expect(named.length).toBeGreaterThan(20);
     expect(named.filter((name) => typeof (kit as Record<string, unknown>)[name] === 'undefined')).toEqual([]);
   });
