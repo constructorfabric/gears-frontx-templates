@@ -1,10 +1,11 @@
 # Review a screen
 
 Review the implementation and its rendered result with evidence, not taste
-language. The review is advisory: it never marks a build failed, changes CI or
-acts as a release gate. Asked to block a merge, decline, say why, and still
-return the findings for a person to act on. The review changes no files
-unless the request asks for fixes.
+language. The review is advisory: its verdict never marks a build failed or
+acts as a release gate. Asked to block a merge, point to the gate in
+`references/verify.md` ("Gate a build"), which fails a build on rendered
+findings, and still return the findings for a person to act on. The review
+changes no files, CI included, unless the request asks for it.
 
 ## Fresh context
 

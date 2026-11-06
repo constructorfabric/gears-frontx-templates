@@ -4,8 +4,8 @@ Turn "unverified" into "observed". Building and review reason from source;
 this step reads what the browser rendered, through the runtime design-defect
 checker in `src-app/verify_packages/design-verify/` (`@gears-frontx/design-verify`).
 It observes and does not fix: hand findings back to the build
-(`references/generate.md`). Advisory; asked to gate a build, decline and still
-return the findings.
+(`references/generate.md`). Advisory by default: findings never fail the run.
+When a person asks for a gate, set one up as "Gate a build" below describes.
 
 ## Preconditions
 
@@ -145,6 +145,32 @@ shadow host and then the element, joined by `>>>` (`my-widget >>> p`). That
 is for reading, not CSS: query each part through the previous host's
 `shadowRoot` (`document.querySelector('my-widget').shadowRoot.querySelector('p')`).
 Attribute the finding to the owning surface.
+
+## Gate a build
+
+Only when a person asks for a gate, and only in the place they name (a CI
+step or a script): add the sweep from "Run" with `--fail-on-findings`.
+Nothing else in this skill fails a build, and no gate is added unasked.
+
+```
+npm run verify:ui --workspace=@gears-frontx/design-verify -- \
+  --menu "Login,Tasks" --widths 1440,768,390,320 --themes light,dark \
+  --start-server "npm run dev:all" --server-cwd "$PWD" \
+  --fail-on-findings [--baseline "$PWD/design-verify-baseline.json"]
+```
+
+- Exit 0: nothing gates. Exit 1: a finding gates; with `--baseline` only a
+  finding the baseline lacks (a new one, or more of one) gates, and the
+  findings it already had stay advisory. Exit 2: environment unavailable, a
+  bad flag or unreadable baseline, or a screenshot asked for and not written;
+  the gate fails on it too, since an unswept state is not a pass.
+- `needsReview` entries never gate; they stay unverified in the report.
+- npm runs the runner in the package directory, so a relative `--out`,
+  `--baseline` or `--server-cwd` resolves there: pass absolute paths.
+- The baseline is a `findings.json` from an earlier run, kept where the person
+  says; it changes only when they accept its findings.
+- The gate needs what a manual run needs: the dev server and a Chrome or
+  Chromium executable on the CI machine.
 
 ## Report
 

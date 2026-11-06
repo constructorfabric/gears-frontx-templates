@@ -150,5 +150,7 @@ run the closing full pass and report what is still open.
 Changed files; a pass or gap line for each Implement rule (each of the eight
 accessibility items on its own line); the result of each self-review check;
 states; responsive behavior; and every open or unverified gate with the
-surface or state it concerns and why. The review is advisory: asked to gate
-a build or block a merge, decline, say so, and still return the findings.
+surface or state it concerns and why. The review and the browser check are
+advisory by default. Asked to gate a build or block a merge, set up the gate
+in `references/verify.md` ("Gate a build") where the person names it, and
+still return the findings.

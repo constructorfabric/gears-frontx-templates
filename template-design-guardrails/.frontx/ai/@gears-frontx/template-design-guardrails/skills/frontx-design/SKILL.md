@@ -38,7 +38,7 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 `references/`, task files:
 - `references/generate.md` - plan, implement, self-review and fix loop for a screen; delegation; the build report.
 - `references/review.md` - the fresh-context review: verdict, review order, rubric scoring, finding shape.
-- `references/verify.md` - the runtime checker in a browser: runner, manual protocol, checker rule to gate map, report.
+- `references/verify.md` - the runtime checker in a browser: runner, manual protocol, checker rule to gate map, a build gate on request, report.
 - `references/theme.md` - a shell theme on the kit token contract: value format, register, verify.
 - `references/frontx-context.md` - where a screen lives: MFE package, menu entry, sub-routes, shell chrome, shadow-root styles.
 - `references/app-screens.md` - APP-001 to APP-005 on a FrontX screen and how to check each.
