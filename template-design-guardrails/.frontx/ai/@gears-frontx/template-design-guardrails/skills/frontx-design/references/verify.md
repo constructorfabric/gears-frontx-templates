@@ -115,8 +115,8 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   seeds the theme and never confirms it: a key the app does not read still
   holds what the runner wrote. The confirmation comes from the app: the shell
   stamps the registry id of the applied theme as `data-theme-id` on `<html>`
-  at boot and on every later apply (`src-app/app/themes/themeIdAttribute.ts`),
-  next to the `data-theme` appearance. Every state, the `DESIGN.md` contrast
+  at boot and on every later apply, next to the `data-theme` appearance (see
+  "Theme id stamp" below when the app lacks it). Every state, the `DESIGN.md` contrast
   states included, is measured only when `data-theme-id` equals the requested
   id. Another id (an id the app has not registered: `--themes drakula` boots
   `default`; a `--theme-key` the app never reads) is an environment failure
@@ -154,6 +154,32 @@ Manual protocol (no Chrome, or states reached by hand):
    content scrolls in; the FrontX shell scrolls the screen in its own
    container, so the finding names that container. A box holding only a
    table or grid is that grid's own scroll and is not measured.
+
+### Theme id stamp
+
+The render check requires the app to stamp the applied theme's registry id
+as `data-theme-id` on `<html>`. A project seeded from an earlier shell may
+not do it, and then every state fails as an environment failure. Add it
+once, next to the code that applies the boot theme, and call it right after
+that apply:
+
+```ts
+import type { ThemeRegistry } from '@gears-frontx/react';
+
+export function stampAppliedThemeId(registry: ThemeRegistry): void {
+  const stamp = () => {
+    const current = registry.getCurrent();
+    if (current) document.documentElement.setAttribute('data-theme-id', current.id);
+    else document.documentElement.removeAttribute('data-theme-id');
+  };
+  stamp();
+  registry.subscribe(stamp);
+}
+```
+
+Every later apply (Studio, a screen action, `app.actions.changeTheme`) goes
+through the registry, so the subscription keeps the attribute current. It
+does not depend on a UI framework.
 
 ## Phases
 

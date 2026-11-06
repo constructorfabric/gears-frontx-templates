@@ -271,7 +271,7 @@ describe('theme', () => {
     const result = themeMismatch('dark', { value: { id: null, attribute: 'dark', stored: 'dark' } }, 'frontx:theme');
     expect(result).toMatch(/^theme not confirmed: requested "dark", the page has no data-theme-id on <html>/);
     expect(result).toMatch(/the app must stamp the applied theme's registry id there/);
-    expect(result).toMatch(/src-app\/app\/themes\/themeIdAttribute\.ts/);
+    expect(result).toMatch(/references\/verify\.md, "Theme id stamp"/);
   });
 
   // The whole round trip with the shell's own boot code: the runner seeds the
@@ -281,13 +281,21 @@ describe('theme', () => {
   // the theme that took on <html>, and the runner reads back what the page
   // shows. An id the registry does not hold boots the fallback, so the run is
   // an environment failure, never a clean pass in the fallback theme.
-  describe('round trip through the shell boot', () => {
+  // A project seeded from an older shell has no themeIdAttribute.ts, so these
+  // tests skip there, saying why, instead of failing to load the module.
+  const shellThemes = new URL('../../../app/themes/', import.meta.url);
+  const shellModules = ['themePersistence.ts', 'themeIdAttribute.ts'];
+  const shellMissing = shellModules.filter((file) => !fs.existsSync(new URL(file, shellThemes)));
+  const shellPresent = shellMissing.length === 0;
+  const skipReason = shellPresent ? '' : ` (skipped: an older shell, no src-app/app/themes/${shellMissing.join(' or ')})`;
+
+  describe.skipIf(!shellPresent)(`round trip through the shell boot${skipReason}`, () => {
     afterEach(() => vi.unstubAllGlobals());
 
     async function boot(requested: string, themeKey = 'frontx:theme') {
-      const themes = new URL('../../../app/themes/', import.meta.url).href;
-      const { applyPersistedTheme } = await import(/* @vite-ignore */ `${themes}themePersistence.ts`);
-      const { stampAppliedThemeId } = await import(/* @vite-ignore */ `${themes}themeIdAttribute.ts`);
+      const [{ applyPersistedTheme }, { stampAppliedThemeId }] = await Promise.all(
+        shellModules.map((file) => import(/* @vite-ignore */ new URL(file, shellThemes).href)),
+      );
       const storage = new Map<string, string>();
       const attributes: Record<string, string> = {};
       const appearance: Record<string, string> = { default: 'light', light: 'light', dark: 'dark', dracula: 'dark' };

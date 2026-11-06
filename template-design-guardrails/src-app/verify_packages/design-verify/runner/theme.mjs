@@ -90,7 +90,7 @@ export function themeMismatch(theme, read, themeKey) {
     return (
       `theme not confirmed: requested "${theme}", the page has no ${THEME_ID_ATTRIBUTE} on <html> (${context}); ` +
       `the app must stamp the applied theme's registry id there on every apply ` +
-      `(the template shell does it in src-app/app/themes/themeIdAttribute.ts)`
+      `(the frontx-design skill's references/verify.md, "Theme id stamp", gives the code to add)`
     );
   }
   return (
