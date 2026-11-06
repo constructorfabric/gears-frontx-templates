@@ -11,9 +11,10 @@
  * Only a gate whose `waiver` in rules/quality-gates.json is `with-reason` can
  * be waived, and only with a reason; anything else in the file is an input
  * error (exit 2), so a typo never waives silently. A waived finding moves to
- * a `waived` list with the entry's reason; it is never dropped. Entries this
- * runner could have used and did not are reported as unused, entries past
- * `until` as expired (they waive nothing).
+ * a `waived` list with the entry's reason; it is never dropped. The file is
+ * the one record of every waiver, so an entry for a gate this runner never
+ * reports is listed as recorded, never as unused; see waiverReport for the
+ * rest (not applicable to this run, expired, unused).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,7 +30,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @param {string} value */
 function isDate(value) {
-  return DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (!DATE.test(value)) return false;
+  // `2026-13-01` is no date at all; `2026-02-30` rolls over to March.
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 /**
@@ -148,7 +152,8 @@ export function coversSource(waiver, finding) {
 
 /**
  * The render runner's screen selector: the exact `--routes` entry, or the
- * exact `--menu` label in menu mode.
+ * exact `--menu` label in menu mode. An entry with both keys matches in
+ * either mode.
  *
  * @param {'route' | 'menu'} mode
  */
@@ -157,23 +162,63 @@ export function coversRendered(mode) {
 }
 
 /**
- * The report section on the waiver file.
+ * What an entry lacks to be matched in a run that matches screens by
+ * `mode`; undefined when it has that key.
+ *
+ * @param {Waiver} waiver
+ * @param {'source' | 'route' | 'menu'} mode
+ */
+export function missingScreenKey(waiver, mode) {
+  if (waiver.screen[mode] !== undefined) return undefined;
+  if (mode === 'source') return 'needs screen.source';
+  if (mode === 'route' && waiver.screen.menu !== undefined) return 'needs --menu';
+  if (mode === 'menu' && waiver.screen.route !== undefined) return 'needs route mode (--routes, no --menu)';
+  return 'needs screen.route or screen.menu';
+}
+
+/**
+ * The report section on the waiver file. The file is the one record of every
+ * waiver, review-only gates included, so each entry lands in exactly one
+ * place:
+ *
+ *   recorded       its gate is one this runner never reports (another check
+ *                  or the review reads it): never unused, never to remove;
+ *   notApplicable  this runner reports the gate, but the entry's screen has
+ *                  no key this run matches (`needs`);
+ *   expired        past `until`, so it waived nothing;
+ *   unused         live and applicable, and matched no finding.
  *
  * @param {{file?: string, waivers: Waiver[]}} loaded
- * @param {'route' | 'menu' | 'source'} selector the screen key this runner matches on
+ * @param {{mode: 'source' | 'route' | 'menu', gates: Iterable<string>}} runner
+ *   the screen key this run matches, and every gate the runner can report
+ *   (from its rules data)
  */
-export function waiverReport(loaded, selector) {
+export function waiverReport(loaded, { mode, gates }) {
   if (!loaded.file) return undefined;
-  const describe = (w) => ({ index: w.index, gate: w.gate, screen: w.screen, reason: w.reason, ...(w.until ? { until: w.until } : {}) });
-  const usable = loaded.waivers.filter((w) => w.screen[selector] !== undefined);
-  return {
-    file: loaded.file,
-    applied: loaded.waivers.reduce((sum, w) => sum + w.used, 0),
-    unused: usable.filter((w) => !w.expired && w.used === 0).map(describe),
-    expired: usable.filter((w) => w.expired).map(describe),
-    // Entries for the other runner's selector only: not this runner's to use.
-    otherCheck: loaded.waivers.length - usable.length,
-  };
+  const reported = new Set(gates);
+  const describe = (w) => ({
+    index: w.index,
+    gate: w.gate,
+    screen: w.screen,
+    reason: w.reason,
+    ...(w.until ? { until: w.until, expired: w.expired } : {}),
+  });
+  /**
+   * @typedef {{index: number, gate: string, screen: Waiver['screen'], reason: string,
+   *   until?: string, expired?: boolean}} Entry
+   * @type {{file: string, applied: number, unused: Entry[], expired: Entry[],
+   *   notApplicable: Array<Entry & {needs: string}>, recorded: Entry[]}}
+   */
+  const section = { file: loaded.file, applied: 0, unused: [], expired: [], notApplicable: [], recorded: [] };
+  for (const w of loaded.waivers) {
+    section.applied += w.used;
+    const needs = missingScreenKey(w, mode);
+    if (!reported.has(w.gate)) section.recorded.push(describe(w));
+    else if (needs) section.notApplicable.push({ ...describe(w), needs });
+    else if (w.expired) section.expired.push(describe(w));
+    else if (w.used === 0) section.unused.push(describe(w));
+  }
+  return section;
 }
 
 /** Summary lines for the waiver section. @param {ReturnType<typeof waiverReport>} section */
@@ -181,7 +226,18 @@ export function waiverLines(section) {
   if (!section) return [];
   const screen = (w) => Object.entries(w.screen).map(([k, v]) => `${k} ${v}`).join(', ');
   const lines = [`  waivers: ${section.file} - ${section.applied} finding(s) waived`];
-  for (const w of section.unused) lines.push(`  UNUSED WAIVER #${w.index} ${w.gate} (${screen(w)})`);
+  for (const w of section.unused) {
+    lines.push(`  UNUSED WAIVER #${w.index} ${w.gate} (${screen(w)}): matched no finding in this run`);
+  }
   for (const w of section.expired) lines.push(`  EXPIRED WAIVER #${w.index} ${w.gate} (${screen(w)}) until ${w.until}`);
+  for (const w of section.notApplicable) {
+    lines.push(`  WAIVER #${w.index} ${w.gate} (${screen(w)}): not applicable to this run (${w.needs})`);
+  }
+  for (const w of section.recorded) {
+    lines.push(
+      `  RECORDED WAIVER #${w.index} ${w.gate} (${screen(w)}): recorded, not checked by this runner` +
+        (w.expired ? `, expired after ${w.until}` : ''),
+    );
+  }
   return lines;
 }

@@ -164,8 +164,11 @@ Attribute the finding to the owning surface.
 
 ## Waivers
 
-One file at the project root, `design-waivers.json`, waives findings for
-named screens. Both checks read it (or the file `--waivers <path>` names):
+One file at the project root, `design-waivers.json`, is the one record of
+every accepted deviation from a `with-reason` gate, for named screens: the
+gates the checks report and the gates only the review judges (such as
+LAY-001 or STA-002). Both checks read it (or the file `--waivers <path>`
+names), and so does the review (`references/review.md`):
 
 ```json
 {"waivers": [
@@ -181,13 +184,25 @@ named screens. Both checks read it (or the file `--waivers <path>` names):
   `until` that is not `YYYY-MM-DD` stops the run with exit 2.
 - `screen`: at least one of `route` (an exact `--routes` entry), `menu` (an
   exact `--menu` label) and `source` (a glob on the path from the project
-  root). The render runner matches `route` or `menu`, the static check
-  `source`; give both to waive one screen in both checks.
+  root). The static check matches `source`. The render runner matches
+  `route` in a `--routes` run and `menu` in a `--menu` run, so an entry with
+  both matches in either; give `source` too to waive one screen in both
+  checks.
 - `until` (optional): the last day the entry holds. After it the entry waives
   nothing and the report lists it as expired.
 - A covered finding moves to `waived` with the entry's index and reason; it
-  never gates and never enters the baseline comparison. The report lists the
-  entries that matched nothing as unused: remove them.
+  never gates and never enters the baseline comparison.
+- Each check knows the gates it can report (`rules/static-check.json`,
+  `rules/render-check.json`) and lists every other entry once:
+  - `RECORDED`: a gate this check never reports. The entry stays: another
+    check or the review uses it.
+  - `not applicable to this run`: a gate this check reports, but the screen
+    has no key this run matches; the line says what it needs (`--menu`,
+    route mode, `screen.source`).
+  - `EXPIRED`: past `until`.
+  - `UNUSED`: a gate this check reports, a key this run matches, and no
+    finding matched. Remove it or correct its screen, since the deviation it
+    names is gone or the screen is wrong.
 - Add an entry only when the person accepts the deviation and gives the
   reason, never to make a check pass.
 

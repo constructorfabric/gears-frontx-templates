@@ -324,6 +324,7 @@ describe('exit codes and the baseline', () => {
           { gate: 'SYS-001', screen: { source: 'src/tree/**' }, reason: 'Tree grid: kit gap.' },
           { gate: 'SYS-001', screen: { source: 'src/none/**' }, reason: 'Unused.' },
           { gate: 'SYS-001', screen: { route: '/?screen=tree' }, reason: 'For the render runner.' },
+          { gate: 'LAY-001', screen: { source: 'src/tree/**' }, reason: 'Review only: no checker reports LAY-001.' },
         ],
       }),
     });
@@ -334,9 +335,12 @@ describe('exit codes and the baseline', () => {
       expect.objectContaining({ file: 'src/tree/Tree.tsx', gate: 'SYS-001', waiver: { index: 0, reason: 'Tree grid: kit gap.' } }),
     ]);
     expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
-    expect(report.waivers).toMatchObject({ applied: 1, otherCheck: 1 });
+    expect(report.waivers).toMatchObject({ applied: 1, notApplicable: [{ index: 2, needs: 'needs screen.source' }] });
     expect(out).toContain('WAIVED SYS-001 src/tree/Tree.tsx:1:24 element <table> - waiver #0: Tree grid: kit gap.');
-    expect(out).toContain('UNUSED WAIVER #1 SYS-001 (source src/none/**)');
+    expect(out).toContain('UNUSED WAIVER #1 SYS-001 (source src/none/**): matched no finding in this run');
+    expect(out).toContain('WAIVER #2 SYS-001 (route /?screen=tree): not applicable to this run (needs screen.source)');
+    expect(out).toContain('RECORDED WAIVER #3 LAY-001 (source src/tree/**): recorded, not checked by this runner');
+    expect(report.waivers.unused.map((w: { index: number }) => w.index)).toEqual([1]);
     expect(code).toBe(1);
 
     // SYS-002 never yields: a waiver for it is an input error, not a pass.

@@ -14,6 +14,7 @@ import {
   parseWaivers,
   waiverLines,
   waiverReport,
+  WaiverError,
 } from '../runner/waivers.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
 
@@ -50,9 +51,17 @@ describe('parseWaivers', () => {
     expect(() => parse([entry({ screen: {} })])).toThrow(/screen needs "route", "menu" or "source"/);
     expect(() => parse([entry({ screen: { path: 'x' } })])).toThrow(/screen: unknown key "path"/);
     expect(() => parse([entry({ screen: { route: '' } })])).toThrow(/screen\.route must be a non-empty string/);
-    expect(() => parse([entry({ until: '2026-02-30' })])).toThrow(/YYYY-MM-DD/);
     expect(() => parse([entry({ until: 'next week' })])).toThrow(/YYYY-MM-DD/);
   });
+
+  it.each(['2026-13-01', '2026-02-30', '2026-00-10', '2026-04-31'])(
+    'rejects the out-of-range until %s as a waiver error naming the entry',
+    (until) => {
+      const run = () => parse([entry(), entry({ until })]);
+      expect(run).toThrow(WaiverError);
+      expect(run).toThrow(`design-waivers.json: waivers[1]: "until" must be a date as YYYY-MM-DD, got "${until}"`);
+    },
+  );
 
   it('keeps the last day of until in force and expires the day after', () => {
     expect(parse([entry({ until: '2026-11-06' })])[0].expired).toBe(false);
@@ -79,12 +88,14 @@ describe('loadWaivers', () => {
 });
 
 describe('applyWaivers and the report section', () => {
-  it('moves covered findings to waived with the reason, and reports unused, expired and other-check entries', () => {
+  it('moves covered findings to waived with the reason, and reports unused, expired, not applicable and recorded entries', () => {
     const waivers = parse([
       entry(),
       entry({ screen: { source: 'src/billing/**' } }),
       entry({ until: '2026-01-01', screen: { source: 'src/orders/**' } }),
       entry({ screen: { route: '/?screen=orders' } }),
+      entry({ gate: 'LAY-001', screen: { source: 'src/orders/**' } }),
+      entry({ gate: 'STA-002', until: '2026-01-01', screen: { route: '/?screen=orders' } }),
     ]);
     const findings = [
       { gate: 'SYS-001', file: 'src/orders/Tree.tsx', found: '<table>' },
@@ -96,24 +107,63 @@ describe('applyWaivers and the report section', () => {
     expect(split.waived).toEqual([
       { ...findings[0], waiver: { index: 0, reason: entry().reason } },
     ]);
-    const section = waiverReport({ file: 'design-waivers.json', waivers }, 'source');
-    expect(section).toMatchObject({ applied: 1, otherCheck: 1 });
+    const runner = { mode: 'source' as const, gates: ['SYS-001', 'SYS-002'] };
+    const section = waiverReport({ file: 'design-waivers.json', waivers }, runner);
+    expect(section?.applied).toBe(1);
+    // Each entry lands in exactly one list; a gate this runner never reports is never unused.
     expect(section?.unused.map((w) => w.index)).toEqual([1]);
     expect(section?.expired.map((w) => w.index)).toEqual([2]);
+    expect(section?.notApplicable.map((w) => [w.index, w.needs])).toEqual([[3, 'needs screen.source']]);
+    expect(section?.recorded.map((w) => w.index)).toEqual([4, 5]);
     const lines = waiverLines(section).join('\n');
-    expect(lines).toContain('UNUSED WAIVER #1 SYS-001 (source src/billing/**)');
+    expect(lines).toContain('UNUSED WAIVER #1 SYS-001 (source src/billing/**): matched no finding in this run');
     expect(lines).toContain('EXPIRED WAIVER #2 SYS-001 (source src/orders/**) until 2026-01-01');
-    expect(waiverReport({ waivers: [] }, 'source')).toBeUndefined();
+    expect(lines).toContain('WAIVER #3 SYS-001 (route /?screen=orders): not applicable to this run (needs screen.source)');
+    expect(lines).toContain('RECORDED WAIVER #4 LAY-001 (source src/orders/**): recorded, not checked by this runner\n');
+    expect(lines).toContain(
+      'RECORDED WAIVER #5 STA-002 (route /?screen=orders): recorded, not checked by this runner, expired after 2026-01-01',
+    );
+    expect(lines).not.toMatch(/UNUSED WAIVER #[45]/);
+    expect(waiverReport({ waivers: [] }, runner)).toBeUndefined();
   });
 
-  it('matches rendered screens by the exact route or, in menu mode, the exact menu label', () => {
-    const [byRoute, byMenu] = parse([
+  it('matches rendered screens by the exact route or, in menu mode, the exact menu label; an entry with both in either mode', () => {
+    const [byRoute, byMenu, byBoth] = parse([
       entry({ screen: { route: '/?screen=orders' } }),
       entry({ screen: { menu: 'Orders' } }),
+      entry({ screen: { route: '/?screen=orders', menu: 'Orders' } }),
     ]);
     expect(coversRendered('route')(byRoute, { route: '/?screen=orders' })).toBe(true);
     expect(coversRendered('route')(byRoute, { route: '/?screen=order' })).toBe(false);
     expect(coversRendered('route')(byMenu, { route: 'Orders' })).toBe(false);
     expect(coversRendered('menu')(byMenu, { route: 'Orders' })).toBe(true);
+    expect(coversRendered('route')(byBoth, { route: '/?screen=orders' })).toBe(true);
+    expect(coversRendered('menu')(byBoth, { route: 'Orders' })).toBe(true);
+  });
+
+  it('reports a render entry whose screen key cannot apply to the run mode, never as unused', () => {
+    const waivers = parse([
+      entry({ gate: 'LAY-005', screen: { route: '/?screen=orders' } }),
+      entry({ gate: 'LAY-005', screen: { menu: 'Orders' } }),
+      entry({ gate: 'LAY-005', screen: { route: '/?screen=orders', menu: 'Orders' } }),
+      entry({ gate: 'LAY-005', screen: { source: 'src/**' } }),
+    ]);
+    const report = (mode: 'route' | 'menu') =>
+      waiverReport({ file: 'design-waivers.json', waivers }, { mode, gates: ['LAY-005'] });
+    const routeMode = report('route');
+    expect(routeMode?.unused.map((w) => w.index)).toEqual([0, 2]);
+    expect(routeMode?.notApplicable.map((w) => [w.index, w.needs])).toEqual([
+      [1, 'needs --menu'],
+      [3, 'needs screen.route or screen.menu'],
+    ]);
+    expect(waiverLines(routeMode).join('\n')).toContain(
+      'WAIVER #1 LAY-005 (menu Orders): not applicable to this run (needs --menu)',
+    );
+    const menuMode = report('menu');
+    expect(menuMode?.unused.map((w) => w.index)).toEqual([1, 2]);
+    expect(menuMode?.notApplicable.map((w) => [w.index, w.needs])).toEqual([
+      [0, 'needs route mode (--routes, no --menu)'],
+      [3, 'needs screen.route or screen.menu'],
+    ]);
   });
 });

@@ -14,7 +14,7 @@ Each line names the gate id, the outcome and the evidence.
 
 - <GATE-ID> pass: <what was observed, where, at which width and theme>
 - <GATE-ID> open: <finding and proposed correction>
-- <GATE-ID> waived: <the reason quoted from the screen's `design-waivers.json` entry; only for gates whose waiver is with-reason>
+- <GATE-ID> waived: <the reason quoted from the screen's `design-waivers.json` entry (the one record of every waiver, checked or review-only); only for gates whose waiver is with-reason>
 
 ## Not checked
 

@@ -226,11 +226,15 @@ describe('report', () => {
     expect(states[1].findings).toEqual([mismatch]);
 
     const report = buildReport(
-      { baseUrl: 'u', themeKey: 'k', waivers: waiverReport({ file: 'design-waivers.json', waivers }, 'route') },
+      {
+        baseUrl: 'u',
+        themeKey: 'k',
+        waivers: waiverReport({ file: 'design-waivers.json', waivers }, { mode: 'route', gates: ['LAY-005', 'TYP-001'] }),
+      },
       states,
     );
     expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
-    expect(report.waivers).toMatchObject({ applied: 1, otherCheck: 1 });
+    expect(report.waivers).toMatchObject({ applied: 1, notApplicable: [{ index: 2, needs: 'needs screen.route or screen.menu' }] });
     expect((report.waivers as { unused: Array<{ index: number }> }).unused.map((w) => w.index)).toEqual([1]);
     const lines = summaryLines(report).join('\n');
     expect(lines).toContain('2 finding(s), 0 needing review, 1 waived');

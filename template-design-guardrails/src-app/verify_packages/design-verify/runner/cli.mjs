@@ -114,6 +114,7 @@ async function main() {
   // waiver the run cannot honour fails now, not after minutes of work.
   // The DESIGN.md pairs too, so a broken DESIGN.md fails before any browser work.
   let gateFor;
+  let reportedGates;
   let waivers;
   let contrastSpec;
   /** @type {import('./contrast.mjs').ContrastPair[] | undefined} */
@@ -123,6 +124,7 @@ async function main() {
     const registry = readSkillJson('rules/quality-gates.json');
     const renderCheck = readSkillJson('rules/render-check.json');
     gateFor = gateLookup(renderCheck);
+    reportedGates = renderCheck.ruleGates.map((row) => row.gate);
     waivers = loadWaivers(config.waivers || undefined, root, registry);
     if (config.designMd) {
       contrastSpec = renderCheck.designMdContrast;
@@ -323,7 +325,7 @@ async function main() {
     }
 
     const report = buildReport(
-      { baseUrl: config.url, themeKey: config.themeKey, waivers: waiverReport(waivers, mode) },
+      { baseUrl: config.url, themeKey: config.themeKey, waivers: waiverReport(waivers, { mode, gates: reportedGates }) },
       states,
     );
     const diff = baselineReport ? diffReports(baselineReport, report) : undefined;

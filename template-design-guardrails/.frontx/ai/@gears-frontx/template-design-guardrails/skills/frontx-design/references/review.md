@@ -78,8 +78,10 @@ Then one or two sentences on why, and:
   finding shape of `rules/quality-gates.json` (`ruleId`, severity, location,
   evidence, impact, correction, verification) with its gate's `waiver`: a
   `never` finding stays open until fixed; a `with-reason` finding is waived
-  only by its screen's entry in `design-waivers.json` (`references/verify.md`,
-  "Waivers"), the reason quoted; `finish` findings come last;
+  only by its screen's live entry in `design-waivers.json`, the one record of
+  waivers for every gate, review-only gates included (`references/verify.md`,
+  "Waivers"), the reason quoted; a deviation the person accepts in review
+  goes into that file; `finish` findings come last;
 - the score per rubric category;
 - the widths and states exercised that came back clean;
 - the items still unverified, for `references/verify.md` to observe.

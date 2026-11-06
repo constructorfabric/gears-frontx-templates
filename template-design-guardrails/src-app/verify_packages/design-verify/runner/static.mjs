@@ -789,7 +789,7 @@ async function run(argv, io) {
     skipped,
     findings: split.findings,
     waived: split.waived,
-    waivers: waiverReport(waivers, 'source'),
+    waivers: waiverReport(waivers, { mode: 'source', gates: [rules.literals.gate, rules.elements.gate] }),
     parseErrors,
   });
   const diff = baseline ? diffStatic(baseline, report) : undefined;
