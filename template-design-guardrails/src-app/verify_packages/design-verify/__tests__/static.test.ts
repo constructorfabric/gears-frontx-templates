@@ -315,6 +315,28 @@ describe('TSX and TS', () => {
     expect(findings.filter((f) => f.kind !== 'element').every((f) => f.gate === 'SYS-002')).toBe(true);
   });
 
+  // React appends px only to a bare number on a length property, so a bare
+  // number elsewhere (opacity, z-index, flex, line-height, font-weight) is no
+  // literal length.
+  it('reports a bare number in an inline style only on a length property', async () => {
+    const root = project({
+      'src/Inline.tsx': [
+        'export const Clean = () => <p style={{ opacity: 0.5, zIndex: 10, flex: 1, lineHeight: 1.5, fontWeight: 600 }} />;',
+        'export const Negative = () => <p style={{ marginTop: -8 }} />;',
+        "export const Vendor = () => <p style={{ WebkitTransition: 'opacity 200ms' }} />;",
+      ].join('\n'),
+      // A vendor prefix takes the kinds of the property it prefixes.
+      'src/Vendor.module.css': '.a { -webkit-transition: opacity 200ms; }',
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
+      'src/Inline.tsx:2 spacing -8 in margin-top',
+      'src/Inline.tsx:3 duration 200ms in -webkit-transition',
+      'src/Vendor.module.css:1 duration 200ms in -webkit-transition',
+    ]);
+    expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
   it("reports React's createElement and leaves document.createElement alone", async () => {
     const root = project({
       'src/react-default.ts': "import React from 'react';\nexport const a = React.createElement('button');\n",

@@ -161,8 +161,12 @@ export function checkContext(rules, front) {
   };
 }
 
-/** Kinds that apply to a property and have a kit token. */
+/**
+ * Kinds that apply to a property and have a kit token. A vendor prefix
+ * (`-webkit-transition`) takes the kinds of the property it prefixes.
+ */
 function applicableKinds(ctx, property, isCustom) {
+  if (!isCustom) property = property.replace(/^-(webkit|moz|ms|o)-/, '');
   const kinds = new Set();
   for (const [kind, spec] of Object.entries(ctx.rules.literals.kinds)) {
     if (ctx.tokens.get(kind).tokens.length === 0) continue;
