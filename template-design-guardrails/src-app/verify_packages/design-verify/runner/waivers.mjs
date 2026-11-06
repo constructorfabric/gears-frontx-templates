@@ -79,6 +79,10 @@ export function parseWaivers(json, registry, { file, today }) {
     if (keys.length === 0) throw at('screen needs "route", "menu" or "source"');
     for (const key of keys) {
       if (typeof screen[key] !== 'string' || screen[key].trim() === '') throw at(`screen.${key} must be a non-empty string`);
+      // --routes and --menu values are trimmed, so a padded one could never match.
+      if (key !== 'source' && screen[key] !== screen[key].trim()) {
+        throw at(`screen.${key} ${JSON.stringify(screen[key])} has leading or trailing whitespace`);
+      }
     }
     if (entry.until !== undefined && (typeof entry.until !== 'string' || !isDate(entry.until))) {
       throw at(`"until" must be a date as YYYY-MM-DD, got ${JSON.stringify(entry.until)}`);

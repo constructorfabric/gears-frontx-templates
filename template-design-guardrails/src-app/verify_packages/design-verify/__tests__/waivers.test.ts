@@ -51,6 +51,13 @@ describe('parseWaivers', () => {
     expect(() => parse([entry({ screen: {} })])).toThrow(/screen needs "route", "menu" or "source"/);
     expect(() => parse([entry({ screen: { path: 'x' } })])).toThrow(/screen: unknown key "path"/);
     expect(() => parse([entry({ screen: { route: '' } })])).toThrow(/screen\.route must be a non-empty string/);
+    // --routes and --menu values are trimmed, so a padded one never matches: an input error.
+    expect(() => parse([entry({ screen: { route: '/orders ' } })])).toThrow(
+      'design-waivers.json: waivers[0]: screen.route "/orders " has leading or trailing whitespace',
+    );
+    expect(() => parse([entry({ screen: { menu: ' Billing' } })])).toThrow(
+      /waivers\[0\]: screen\.menu " Billing" has leading or trailing whitespace/,
+    );
     expect(() => parse([entry({ until: 'next week' })])).toThrow(/YYYY-MM-DD/);
   });
 

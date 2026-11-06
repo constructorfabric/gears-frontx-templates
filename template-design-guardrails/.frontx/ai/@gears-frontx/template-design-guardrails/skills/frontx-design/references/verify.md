@@ -32,11 +32,13 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
   `--fail-on-findings` and the exit codes work as in the browser runner
   ("Gate a build"); a source file that does not parse is exit 2, and so is
   a `--src` that selects no file. It follows symbolic links. It lists as
-  `SKIPPED` only the entries the globs would select but the walk cannot
-  check (a broken link, a link cycle, a directory it cannot list, a file
-  that is not a regular file) and a second path to a file already read;
-  directories named `node_modules` or `.git` are never entered and never
-  listed.
+  `SKIPPED`: an entry that cannot be read (a broken link, no access) unless
+  an exclude glob covers it, since what it points to is unknown; a link
+  cycle or a directory it cannot list, unless excluded; a file the globs
+  select that is not a regular file; and a second path to a file already
+  read. Only an exclude glob ending in `/**` (`**/dist/**`) excludes a
+  directory. Directories named `node_modules` or `.git` are never entered
+  and never listed.
 - It sees source, not composition: a clean static check is not a rendered
   pass. Run it first, fix what it reports, then run the browser check.
 

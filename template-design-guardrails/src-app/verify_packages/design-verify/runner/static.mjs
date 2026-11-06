@@ -66,11 +66,13 @@ Usage: npm run verify:static --workspace=@gears-frontx/design-verify -- --src <d
   --help                    Print this message
 
 Relative paths resolve against the project root ($INIT_CWD, else the current
-directory). Symbolic links are followed. Listed as skipped: only the entries
-the globs would select but the walk cannot check (a broken link, a link
-cycle, a directory it cannot list, a file that is not a regular file) and a
-second path to a file already read; directories named node_modules or .git
-are never entered and never listed. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
+directory). Symbolic links are followed. Listed as skipped: an entry that
+cannot be read (a broken link, no access) unless an exclude glob covers it,
+since what it points to is unknown; a link cycle or a directory it cannot
+list, unless excluded; a file the globs select that is not a regular file;
+and a second path to a file already read. Only an exclude glob ending in /**
+excludes a directory. Directories named node_modules or .git are never
+entered and never listed. Exit 0 ran, 1 findings with --fail-on-findings, 2 usage or input
 error (a source file that does not parse, or a --src that selects no file,
 included).
 `;
@@ -484,12 +486,14 @@ export function checkScript(ctx, ts, text, file) {
  * Files under the given sources that the data's globs select, as
  * root-relative posix paths. Symbolic links are followed; a link back to a
  * directory above it (a cycle) is not walked again, and a file reached
- * through two paths is read once. `skipped` lists, with the reason, only
- * the entries the globs would select but the walk cannot check (a broken
- * link, a link cycle, a directory it cannot list, a file that is not a
- * regular file) and a second path to a file already read. Directories named
- * node_modules or .git are never entered and never listed. `empty` names
- * each source that selected no file.
+ * through two paths is read once. `skipped` lists, with the reason: an
+ * entry that cannot be read (a broken link, no access) unless an exclude
+ * glob covers it, since the walk cannot know what it points to; a link
+ * cycle and a directory it cannot list, unless excluded; a non-regular file
+ * the globs select; and a second path to a file already read. A directory is
+ * excluded whole only by an exclude glob ending in `/**` whose part before
+ * it matches the directory. Directories named node_modules or .git are never
+ * entered and never listed. `empty` names each source that selected no file.
  *
  * @param {string} root
  * @param {string[]} sources absolute paths
@@ -507,8 +511,11 @@ export function collectFiles(root, sources, globs) {
   /** @returns {'css' | 'script' | undefined} the check a file at this path gets, if any */
   const typeOf = (file) =>
     matches(file, globs.exclude) ? undefined : matches(file, globs.css) ? 'css' : matches(file, globs.script) ? 'script' : undefined;
-  // A directory the exclude globs cover whole: a child of any name is excluded.
-  const excludedDir = (dir) => matches(`${dir}/_`, globs.exclude);
+  // A directory an exclude glob covers whole: one that ends in `/**` and
+  // whose part before it matches the directory (`**/dist/**`). Read from the
+  // glob's shape, so a file-name glob such as `**/_*` excludes no directory.
+  const dirExcludes = globs.exclude.filter((p) => p.endsWith('/**')).map((p) => p.slice(0, -3));
+  const excludedDir = (dir) => matches(dir, dirExcludes);
   const errorCode = (error) => error.code ?? error.message;
   /** @param {string} abs @param {Map<string, string>} ancestors real path -> path of each directory above */
   const visit = (abs, ancestors) => {
@@ -517,8 +524,8 @@ export function collectFiles(root, sources, globs) {
     try {
       stat = fs.statSync(abs);
     } catch (error) {
-      // File or directory is unknown here: list it unless the globs leave it out as either.
-      if (typeOf(at) || !excludedDir(at)) {
+      // What a broken link points to is unknown: list it unless an exclude glob covers it.
+      if (!matches(at, globs.exclude) && !excludedDir(at)) {
         skipped.push({ path: at, reason: `cannot be read (${errorCode(error)}), a broken link or no access` });
       }
       return;

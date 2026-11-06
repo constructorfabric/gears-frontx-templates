@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { main } from '../runner/static.mjs';
+import { collectFiles, main } from '../runner/static.mjs';
 import { readSkillJson } from '../runner/skill.mjs';
 
 // A small DESIGN.md of its own, so a token edit in the project DESIGN.md
@@ -453,6 +453,25 @@ describe('exit codes and the baseline', () => {
       }
     },
   );
+
+  it('excludes a directory only by a glob ending in /**, never by a file-name glob', () => {
+    const root = project({
+      'src/_foo.tsx': 'export const F = () => null;',
+      'src/Bar.tsx': 'export const B = () => null;',
+      'src/pages/Baz.tsx': 'export const Z = () => null;',
+      'src/dist/Out.tsx': 'export const O = () => null;',
+    });
+    fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/_gone.tsx'));
+    fs.symlinkSync('../nowhere.tsx', path.join(root, 'src/Moved.tsx'));
+    const globs = { css: ['**/*.css'], script: ['**/*.tsx'], exclude: ['**/_*', '**/dist/**'] };
+    const { files, skipped } = collectFiles(root, [path.join(root, 'src')], globs);
+    expect(files).toEqual([
+      ['src/Bar.tsx', 'script'],
+      ['src/pages/Baz.tsx', 'script'],
+    ]);
+    // A broken link is listed unless an exclude glob covers it.
+    expect(skipped).toEqual([{ path: 'src/Moved.tsx', reason: expect.stringMatching(/^cannot be read \(ENOENT\)/) }]);
+  });
 
   it('resolves paths against $INIT_CWD, where npm was invoked', async () => {
     const root = project(dirty);
