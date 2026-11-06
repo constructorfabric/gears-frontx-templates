@@ -354,6 +354,17 @@ jobs:
         # would fail as out of sync.
         npm install
 
+        # The design-guardrails overlay's DESIGN.md names the kit's token
+        # names and the kit version they come from. Check both against the kit
+        # this shell pins, now installed: a kit bump in the shell fails here
+        # until DESIGN.md names its tokens and its version. Exit 1 (findings)
+        # and 2 (input error) both fail the step under `set -e`.
+        case " $OVERLAY_TEMPLATES " in
+          *" template-design-guardrails "*)
+            node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs
+            ;;
+        esac
+
         # FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 on both commands below, because
         # every MFE package this job composes is one the template ships as an
         # example and declares "templateExample": true. Without the opt-in the
