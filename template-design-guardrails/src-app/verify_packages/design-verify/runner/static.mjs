@@ -16,8 +16,9 @@
  * TypeScript compiler API: lowercase JSX tags (and React's
  * `createElement('tag')`, never `document.createElement`) that the kit ships
  * a component for, a native element given a role the kit
- * covers, an `<a>` with `onClick` and no link target, and `style={{...}}`
- * literals of the same kinds as in CSS.
+ * covers, an `<a>` with `onClick` and no link target, and inline style
+ * literals of the same kinds as in CSS (`style={{...}}`, or a `style` prop
+ * object passed to React's `createElement`, on any element or component).
  *
  * What counts and what to use instead is data in the frontx-design skill:
  * `rules/static-check.json` (elements, roles, literal kinds and the DESIGN.md
@@ -469,12 +470,12 @@ export function checkScript(ctx, ts, text, file) {
       if (ts.isIdentifier(node.tagName) && /^[a-z][a-z0-9]*$/.test(node.tagName.text)) {
         checkElement(node.tagName.text, attrs, spread, node);
       }
-    } else if (ts.isCallExpression(node)) {
+    } else if (ts.isCallExpression(node) && isReactCreateElement(node.expression)) {
+      // Props are read for every type, as JSX attributes are, so an inline
+      // style on a component counts; only a native tag is an element finding.
+      const { attrs, spread } = objectAttrs(node.arguments[1]);
       const tag = literalText(node.arguments[0]);
-      if (isReactCreateElement(node.expression) && tag && /^[a-z][a-z0-9]*$/.test(tag)) {
-        const { attrs, spread } = objectAttrs(node.arguments[1]);
-        checkElement(tag, attrs, spread, node);
-      }
+      if (tag && /^[a-z][a-z0-9]*$/.test(tag)) checkElement(tag, attrs, spread, node);
     }
     ts.forEachChild(node, visit);
   };

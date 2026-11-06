@@ -251,6 +251,34 @@ describe('TSX and TS', () => {
     ]);
   });
 
+  // The JSX form `<Button style={{ padding: 8 }} />` reports the literal; the
+  // createElement form of the same call must too.
+  it('reads the style of a createElement call whatever its type, and reports only a native tag as an element', async () => {
+    const root = project({
+      'src/Create.ts': [
+        "import React from 'react';",
+        "import { Button } from '@gears-frontx/ui-kit';",
+        "const Local = () => null;",
+        'export const a = React.createElement(Button, { style: { padding: 8 } });',
+        "export const b = React.createElement(Local, { style: { color: '#fff' } });",
+        "export const c = React.createElement('span', { style: { gap: 'var(--space-2)', margin: '4px' } });",
+        "export const d = document.createElement('div');",
+      ].join('\n'),
+      'src/Jsx.tsx': [
+        "import { Button } from '@gears-frontx/ui-kit';",
+        'export const J = () => <Button style={{ padding: 8 }} />;',
+      ].join('\n'),
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
+      'src/Create.ts:4 spacing 8 in padding',
+      'src/Create.ts:5 color #fff in color',
+      'src/Create.ts:6 spacing 4px in margin',
+      'src/Jsx.tsx:2 spacing 8 in padding',
+    ]);
+    expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
   it('is clean on a screen built from kit components and tokens, and skips tests', async () => {
     const root = project({
       'src/Clean.tsx': [
