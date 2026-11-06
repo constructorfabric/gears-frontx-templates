@@ -7,7 +7,10 @@ states, its family's states, keyboard behavior, token mapping, and density
 and responsive behavior. The minimum per family, what the kit guarantees and
 the combinations to check are in `rules/component-state-matrix.json`
 (APP-004, INT-003). Do not restate or rebuild the kit's keyboard and focus
-mechanics; the browser check observes the result.
+mechanics; check the result with a manual keyboard trace (INT-002,
+`references/accessibility.md`, "Keyboard and focus"). For dialogs and other
+overlays, check focus trapping, Escape and focus return. Report behavior you
+did not observe as unverified.
 
 ## Buttons and links
 
