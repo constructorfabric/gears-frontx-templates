@@ -79,12 +79,12 @@ describe('applyPersistedTheme', () => {
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
   });
 
-  it('stores the fallback on a first visit', () => {
+  it('stores nothing on a first visit, so a later change of the default still applies', () => {
     const registry = registryWith();
 
     applyPersistedTheme(registry, 'dark');
 
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
   });
 
   it('keeps a stored theme that is still registered', () => {

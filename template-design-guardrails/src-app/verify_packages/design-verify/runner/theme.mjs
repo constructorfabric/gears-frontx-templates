@@ -4,8 +4,8 @@
  * Seeding. The shell owns theme persistence
  * (template-shell src-app/app/themes/themePersistence.ts): at boot it applies
  * the registry id stored as a raw string under `frontx:theme` (the `default`
- * theme when nothing or an unregistered id is stored), stores the id that
- * took, and stores every theme applied after that. FrontX Studio, in dev
+ * theme when nothing or an unregistered id is stored) and stores every theme
+ * applied after that. The runner never relies on a store at boot. FrontX Studio, in dev
  * builds that include it, restores
  * its own `frontx:studio:theme` (a JSON string, utils/persistence.ts) after
  * mount and applies it over the shell's choice, and it stores every theme

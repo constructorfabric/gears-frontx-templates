@@ -62,8 +62,8 @@ app.themeRegistry.register(darkTheme);
 app.themeRegistry.register(draculaTheme);
 app.themeRegistry.register(draculaLargeTheme);
 
-// Apply the theme the user chose in an earlier session (the default on a first
-// visit), and remember every later choice
+// Apply the theme the user chose in an earlier session (the default, not
+// stored, on a first visit), and remember every later choice
 applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
 // Name the applied theme on <html> (data-theme-id), now and on every switch
 stampAppliedThemeId(app.themeRegistry);
