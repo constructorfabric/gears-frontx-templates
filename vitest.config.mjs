@@ -4,7 +4,10 @@
  * lockfile self-links, token format, version-bump-on-change) - plus the
  * design-guardrails template's own tests in `template-design-guardrails/tests/`
  * (the design skill map and the skill's `check-design-md.mjs` script). That
- * template has no Vitest config of its own, so the root project runs them.
+ * template's root has no Vitest config, so the root project runs
+ * `template-design-guardrails/tests/`. The template's design-verify package
+ * (`src-app/verify_packages/design-verify/`) keeps its own Vitest config and
+ * suite, which the root project does not collect.
  *
  * Anchored at those two folders rather than an unanchored `**` glob: the other
  * template directories (`template-shell/`, `template-mfe/`) own their own
