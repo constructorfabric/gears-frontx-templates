@@ -1,6 +1,6 @@
 /**
  * Runs the design skill's `scripts/check-design-md.mjs` as a user would, in a
- * child process, on the fixtures under `scripts/fixtures/check-design-md/`:
+ * child process, on the fixtures under `tests/fixtures/check-design-md/`:
  * a small theme and DESIGN.md that match, and variants of them written to a
  * temp dir. Asserts exit codes and the finding lines that name the key.
  */
@@ -15,7 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(here, 'fixtures/check-design-md');
 const script = path.join(
   here,
-  '../template-design-guardrails/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs',
+  '../.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs',
 );
 const DESIGN = readFileSync(path.join(fixtures, 'DESIGN.md'), 'utf8');
 const THEME = readFileSync(path.join(fixtures, 'theme.css'), 'utf8');
@@ -185,7 +185,7 @@ describe('check-design-md', () => {
   it('passes on the shipped DESIGN.md against the kit 0.4.1 theme', () => {
     const result = run([
       '--design',
-      path.join(here, '../template-design-guardrails/DESIGN.md'),
+      path.join(here, '../DESIGN.md'),
       '--theme',
       path.join(fixtures, 'ui-kit-0.4.1-theme.css'),
     ]);

@@ -262,7 +262,7 @@ components:
 
 # FrontX design guardrails
 
-Template version: `0.1.0-alpha.5`  
+Template version: `0.1.0-alpha.5`\
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 

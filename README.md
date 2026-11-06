@@ -40,7 +40,7 @@ npm run policy:token-format
 npm run policy:template-mfes-import-boundary  # ADR-0003 consumer half - no template may import a concrete @gears-frontx/mfes name
 ```
 
-The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `scripts/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
+The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `template-design-guardrails/tests/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
 
 `policy:template-pin-drift` runs in one of two modes, for TEMPLATE pin sites:
 

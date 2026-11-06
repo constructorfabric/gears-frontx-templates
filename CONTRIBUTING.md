@@ -79,7 +79,7 @@ npm run policy:token-format
 npm run policy:template-mfes-import-boundary
 ```
 
-The former `policy:guideline-index` check is gone with the generated index: `scripts/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
+The former `policy:guideline-index` check is gone with the generated index: `template-design-guardrails/tests/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
 
 Each template is also independently validatable:
 

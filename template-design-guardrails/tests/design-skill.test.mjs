@@ -12,13 +12,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const template = path.join(here, '..', 'template-design-guardrails');
+const template = path.join(here, '..');
 const bundle = path.join(template, '.frontx/ai/@gears-frontx/template-design-guardrails');
 const skill = path.join(bundle, 'skills/frontx-design');
 const SKILL_DIRS = ['references', 'rules', 'templates', 'scripts'];
 
 const readText = (file) => readFileSync(file, 'utf8');
 const readJson = (rel) => JSON.parse(readText(path.join(skill, rel)));
+// Deliberate guard: subfolders are not collected, so the skill stays flat and the SKILL.md map lists every file.
 const filesIn = (dir) =>
   readdirSync(path.join(skill, dir))
     .filter((name) => statSync(path.join(skill, dir, name)).isFile())
