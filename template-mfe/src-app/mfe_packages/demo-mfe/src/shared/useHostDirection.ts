@@ -11,10 +11,14 @@
  *    rather than the render body.
  * 3. Outside a Shadow DOM the hook is a no-op.
  *
+ * `_blank-mfe` carries a copy of this module at the same path, for the same
+ * reason as its copy of `kitThemeScope`: an MFE package never imports from a
+ * sibling MFE package.
+ *
  * Usage in screen component:
  * ```tsx
  * const containerRef = useRef<HTMLDivElement>(null);
- * const language = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en');
+ * const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
  * useHostDirection(containerRef, language);
  * ```
  */

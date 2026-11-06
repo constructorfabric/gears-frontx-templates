@@ -297,21 +297,18 @@ getProperty(propertyTypeId: string): SharedProperty | undefined;   // SharedProp
 subscribeToProperty(propertyTypeId: string, callback: (value: SharedProperty) => void): () => void;
 ```
 
-`value` is `unknown`, so narrow it with `typeof` rather than a cast. Read the current
-value in a lazy `useState` initializer and use the effect only to SUBSCRIBE - a setState
-in an effect body is what `react-hooks/set-state-in-effect` rejects. `bridge.domainId`
-and `bridge.instanceId` are plain string properties.
+A screen does not call these itself: it reads each property with `useSharedProperty`,
+passing its bridge and a fallback. The first render already shows the host's current
+value, every publish re-renders the screen, and the subscription ends on unmount. The
+host validates each published value against the property's schema before any MFE sees
+it, so the fallback's type is all the narrowing needed. `bridge.extDomainId` and
+`bridge.extensionId` are plain string properties.
 
 ```ts
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE, useSharedProperty } from '@gears-frontx/react';
 
-const [theme, setTheme] = useState<string>(() => {
-  const initial = bridge.getProperty(FRONTX_SHARED_PROPERTY_THEME);
-  return initial && typeof initial.value === 'string' ? initial.value : 'default';
-});
-useEffect(() => bridge.subscribeToProperty(FRONTX_SHARED_PROPERTY_THEME, (p) => {
-  if (typeof p.value === 'string') setTheme(p.value);
-}), [bridge]);
+const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
 ```
 
 ## Screen skeleton (edit, do not re-derive)

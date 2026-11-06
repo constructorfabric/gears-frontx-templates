@@ -1,8 +1,7 @@
 import React, { useRef } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE, useSharedProperty } from '@gears-frontx/react';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
-import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
 
 /*
@@ -51,8 +50,8 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
  */
 export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const theme = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default');
-  const language = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en');
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
   useHostDirection(containerRef, language);
 
   // Load translations using the shared hook

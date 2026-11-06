@@ -13,10 +13,9 @@
 
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME, useSharedProperty } from '@gears-frontx/react';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Toaster } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
-import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { CategoryMenu } from './components/CategoryMenu';
@@ -94,8 +93,8 @@ export const UIKitElementsScreen: React.FC<UIKitElementsScreenProps> = ({ bridge
    */
   const portalContainerRef = useRef<HTMLDivElement>(null);
   const [activeElement, setActiveElement] = useState<string | undefined>();
-  const theme = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default');
-  const language = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en');
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
   useHostDirection(containerRef, language);
 
   // Load translations

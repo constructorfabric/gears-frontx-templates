@@ -5,11 +5,11 @@
  * `import.meta.glob('./i18n/*.json')` (Vite-compatible glob).
  *
  * The hook:
- * 1. Gets current language from bridge.getProperty(FRONTX_SHARED_PROPERTY_LANGUAGE)
+ * 1. Reads the current language through useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge })
  * 2. Builds module key from language (e.g., './i18n/en.json')
  * 3. Dynamically imports the module
  * 4. Returns t(key) function that looks up key in loaded translations
- * 5. Subscribes to language property changes to reload translations
+ * 5. Reloads translations when the language changes
  *
  * Usage in screen component:
  * ```tsx
@@ -18,9 +18,9 @@
  * ```
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, useSharedProperty } from '@gears-frontx/react';
 
 interface TranslationJsonModule {
   default: Record<string, string>;
@@ -31,6 +31,50 @@ type LanguageModuleMap = Record<string, LanguageModuleImporter>;
 interface UseScreenTranslationsReturn {
   t: (key: string) => string;
   loading: boolean;
+}
+
+/** Loaded translations, with the language and module map they belong to. */
+interface LoadedTranslations {
+  language: string;
+  languageModules: LanguageModuleMap;
+  translations: Record<string, string>;
+}
+
+const NO_TRANSLATIONS: Record<string, string> = {};
+
+/**
+ * Loads the translations for a language, falling back to English when the
+ * language has no module. Resolves to an empty map when nothing loads.
+ */
+async function loadTranslations(
+  languageModules: LanguageModuleMap,
+  language: string
+): Promise<Record<string, string>> {
+  try {
+    // Build module key from language (e.g., './i18n/en.json')
+    const moduleKey = `./i18n/${language}.json`;
+    const importer = languageModules[moduleKey];
+
+    if (!importer) {
+      console.warn(`[useScreenTranslations] No translation module found for language: ${language}, falling back to en`);
+      // Fall back to English
+      const fallbackKey = './i18n/en.json';
+      const fallbackImporter = languageModules[fallbackKey];
+      if (!fallbackImporter) {
+        console.error('[useScreenTranslations] English fallback not found');
+        return {};
+      }
+      const module = await fallbackImporter();
+      return module.default;
+    }
+
+    // Dynamically import the module
+    const module = await importer();
+    return module.default;
+  } catch (error) {
+    console.error(`[useScreenTranslations] Failed to load translations for ${language}:`, error);
+    return {};
+  }
 }
 
 /**
@@ -44,78 +88,28 @@ export function useScreenTranslations(
   languageModules: LanguageModuleMap,
   bridge: ChildMfeBridge
 ): UseScreenTranslationsReturn {
-  const [translations, setTranslations] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  // Use ref to track current language for comparison without triggering effect re-runs
-  const currentLanguageRef = useRef<string>('en');
-  const lastLoadedLanguageRef = useRef<string | null>(null);
-  const lastLoadedModulesRef = useRef<LanguageModuleMap | null>(null);
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
+  const [loaded, setLoaded] = useState<LoadedTranslations | null>(null);
+  // Loading lasts until the current language's translations arrive; the
+  // previous language's strings stay on screen meanwhile. Deriving it here
+  // keeps the effect below from setting state synchronously.
+  const loading =
+    loaded === null || loaded.language !== language || loaded.languageModules !== languageModules;
+  const translations = loaded?.translations ?? NO_TRANSLATIONS;
 
-  // Load translations for the given language
-  const loadTranslations = useCallback(
-    async (language: string) => {
-      // Keep ref in sync
-      currentLanguageRef.current = language;
-      lastLoadedLanguageRef.current = language;
-      lastLoadedModulesRef.current = languageModules;
-      setLoading(true);
-      try {
-        // Build module key from language (e.g., './i18n/en.json')
-        const moduleKey = `./i18n/${language}.json`;
-        const importer = languageModules[moduleKey];
-
-        if (!importer) {
-          console.warn(`[useScreenTranslations] No translation module found for language: ${language}, falling back to en`);
-          // Fall back to English
-          const fallbackKey = './i18n/en.json';
-          const fallbackImporter = languageModules[fallbackKey];
-          if (fallbackImporter) {
-            const module = await fallbackImporter();
-            setTranslations(module.default);
-          } else {
-            console.error('[useScreenTranslations] English fallback not found');
-            setTranslations({});
-          }
-        } else {
-          // Dynamically import the module
-          const module = await importer();
-          setTranslations(module.default);
-        }
-      } catch (error) {
-        console.error(`[useScreenTranslations] Failed to load translations for ${language}:`, error);
-        setTranslations({});
-      } finally {
-        setLoading(false);
-      }
-    },
-    [languageModules]
-  );
-
-  // Subscribe to language property changes
+  // Load translations for the current language, and again whenever it changes.
+  // A load that a newer one has replaced, or that outlives the screen, sets
+  // nothing: otherwise a slow `fr.json` that resolves after `de.json` would put
+  // French strings back on screen.
   useEffect(() => {
-    // Get initial language
-    const initialProperty = bridge.getProperty(FRONTX_SHARED_PROPERTY_LANGUAGE);
-    const lang = initialProperty && typeof initialProperty.value === 'string' ? initialProperty.value : 'en';
-    const shouldLoadInitialTranslations =
-      lastLoadedLanguageRef.current !== lang || lastLoadedModulesRef.current !== languageModules;
-
-    if (shouldLoadInitialTranslations) {
-      loadTranslations(lang);
-    }
-
-    // Subscribe to language changes
-    const unsubscribe = bridge.subscribeToProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, (property) => {
-      if (
-        typeof property.value === 'string' &&
-        (property.value !== currentLanguageRef.current ||
-          lastLoadedModulesRef.current !== languageModules)
-      ) {
-        loadTranslations(property.value);
-      }
+    let current = true;
+    loadTranslations(languageModules, language).then((loadedTranslations) => {
+      if (current) setLoaded({ language, languageModules, translations: loadedTranslations });
     });
-
-    return unsubscribe;
-  }, [bridge, languageModules, loadTranslations]);
+    return () => {
+      current = false;
+    };
+  }, [language, languageModules]);
 
   // Translation function
   const t = useCallback(
