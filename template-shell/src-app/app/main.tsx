@@ -20,6 +20,7 @@ import { lightTheme } from '@/app/themes/light';
 import { draculaTheme } from '@/app/themes/dracula';
 import { draculaLargeTheme } from '@/app/themes/dracula-large';
 import { applyPersistedTheme } from '@/app/themes/themePersistence';
+import { stampAppliedThemeId } from '@/app/themes/themeIdAttribute';
 
 // Register application-specific GTS schemas before constructing the FrontX app.
 // These derived schemas encode application-level constraints (valid theme names,
@@ -64,6 +65,8 @@ app.themeRegistry.register(draculaLargeTheme);
 // Apply the theme the user chose in an earlier session (the default on a first
 // visit), and remember every later choice
 applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
+// Name the applied theme on <html> (data-theme-id), now and on every switch
+stampAppliedThemeId(app.themeRegistry);
 
 /**
  * Render application

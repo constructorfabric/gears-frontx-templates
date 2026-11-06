@@ -79,7 +79,7 @@ export function splitSweep(entries, gateFor) {
  *   `applied`: the page's appliedThemeExpression result, read before the sweep
  */
 export function sweepState(record, { applied, themeKey, sweep, gateFor, waivers, coversState }) {
-  if (applied.value) record.appliedTheme = applied.value.attribute ?? null;
+  if (applied.value) record.appliedTheme = applied.value.id ?? null;
   const mismatch = themeMismatch(record.theme, applied, themeKey);
   if (mismatch) {
     record.environmentError = mismatch;

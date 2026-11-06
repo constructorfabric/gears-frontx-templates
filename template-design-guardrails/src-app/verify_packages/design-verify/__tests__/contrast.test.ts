@@ -26,7 +26,7 @@ const renderCheck = readSkillJson('rules/render-check.json');
 const spec = renderCheck.designMdContrast;
 const gateFor = gateLookup(renderCheck);
 // A page that took the requested theme, as the runner reads it.
-const inTheme = (theme: string) => ({ applied: { value: { attribute: theme, stored: theme } }, themeKey: 'frontx:theme' });
+const inTheme = (theme: string) => ({ applied: { value: { id: theme, attribute: theme, stored: theme } }, themeKey: 'frontx:theme' });
 
 async function shippedFront() {
   const { readDesignMd } = await designMdParser();
@@ -207,21 +207,21 @@ describe('contrastState', () => {
   // Without Studio, a page that never read the seeded key renders its
   // default theme: the dark pass measured light tokens.
   it('measures nothing in a page that is not in the requested theme, and says which theme it is in', () => {
-    const lightPage = { value: { attribute: 'light', stored: 'light' } };
+    const lightPage = { value: { id: 'light', attribute: 'light', stored: 'light' } };
     const state = contrastState({
       theme: 'dark', width: 1440, pairs, probe, spec, gateFor, applied: lightPage, themeKey: 'frontx:theme',
     });
     expect(state).toMatchObject({ theme: 'dark', appliedTheme: 'light' });
     expect(state.environmentError).toBe(
-      'contrast not measured: theme not applied: requested "dark", the page shows data-theme="light" and ' +
-        'localStorage "frontx:theme" holds "light"; is "frontx:theme" the key the app restores its theme from, ' +
-        'and "dark" a registered theme id?',
+      'contrast not measured: theme not applied: requested "dark", the page shows data-theme-id="light" ' +
+        '(data-theme="light"; localStorage "frontx:theme" holds "light"); is "frontx:theme" the key the app ' +
+        'restores its theme from, and "dark" a registered theme id?',
     );
     expect(state).not.toHaveProperty('contrast');
     expect(state).not.toHaveProperty('findings');
     const report = buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]);
     expect(exitCode(report, { failOnFindings: false })).toBe(2);
-    expect(summaryLines(report).join('\n')).toContain('requested "dark", the page shows data-theme="light"');
+    expect(summaryLines(report).join('\n')).toContain('requested "dark", the page shows data-theme-id="light"');
 
     const unread = contrastState({
       theme: 'dark', pairs, probe, spec, gateFor, applied: { error: 'SecurityError: localStorage' }, themeKey: 'frontx:theme',

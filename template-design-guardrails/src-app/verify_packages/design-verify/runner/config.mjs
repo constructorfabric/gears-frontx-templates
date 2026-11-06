@@ -184,11 +184,13 @@ Usage: node runner/cli.mjs [flags]
   --theme-key <key>         localStorage key the app restores its theme from,
                             as a raw theme id (default ${DEFAULTS.themeKey},
                             the shell's key); FrontX Studio's own key is
-                            written as well and refused here. Every state
-                            checks that the page took the theme (the id stored
-                            under this key, and data-theme on the document
-                            element for light and dark): a page in another
-                            theme, or an id the app has not registered, is an
+                            written as well and refused here. This key only
+                            seeds the theme; it never confirms it. Every state
+                            is measured only when the page's data-theme-id on
+                            <html> (stamped by the app, in the template shell
+                            by src-app/app/themes/themeIdAttribute.ts) equals
+                            the requested id: another id, an id the app has
+                            not registered, or no data-theme-id is an
                             environment failure for that state, never clean
   --out <dir>               Report directory (default ${DEFAULTS.outDir})
   --cdp-url <http>          Attach to an already-running Chrome DevTools

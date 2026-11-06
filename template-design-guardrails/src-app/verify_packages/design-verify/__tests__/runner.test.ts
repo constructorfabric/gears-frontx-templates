@@ -229,58 +229,77 @@ describe('config', () => {
 });
 
 describe('theme', () => {
-  const pageWith = (storage: Map<string, string>, attribute: string | null) => ({
+  const pageWith = (storage: Map<string, string>, attributes: Record<string, string> = {}) => ({
     localStorage: {
       setItem: (key: string, value: string) => void storage.set(key, String(value)),
       getItem: (key: string) => storage.get(key) ?? null,
     },
-    document: { documentElement: { getAttribute: (name: string) => (name === 'data-theme' ? attribute : null) } },
+    document: { documentElement: { getAttribute: (name: string) => attributes[name] ?? null } },
   });
 
   // The shell reads a raw id; Studio reads its own key as JSON and applies
   // it over the shell's after mount, so a stale Studio value would win.
   it('stores the raw theme id under the shell key and the JSON id under Studio\'s key', () => {
     const storage = new Map([[STUDIO_THEME_KEY, '"light"']]);
-    vm.runInNewContext(themeSeedExpression('frontx:theme', 'dark'), pageWith(storage, null));
+    vm.runInNewContext(themeSeedExpression('frontx:theme', 'dark'), pageWith(storage));
     expect(Object.fromEntries(storage)).toEqual({ 'frontx:theme': 'dark', 'frontx:studio:theme': '"dark"' });
   });
 
-  it('reads data-theme and the stored id from the page', () => {
+  it('reads data-theme-id, data-theme and the stored id from the page', () => {
     const storage = new Map([['frontx:theme', 'dark']]);
-    const value = vm.runInNewContext(appliedThemeExpression('frontx:theme'), pageWith(storage, 'light'));
-    expect({ ...value }).toEqual({ attribute: 'light', stored: 'dark' });
+    const page = pageWith(storage, { 'data-theme-id': 'dracula', 'data-theme': 'dark' });
+    const value = vm.runInNewContext(appliedThemeExpression('frontx:theme'), page);
+    expect({ ...value }).toEqual({ id: 'dracula', attribute: 'dark', stored: 'dark' });
   });
 
-  it.each([
-    ['dark', 'dark', 'dark', undefined],
-    ['dracula', 'dark', 'dracula', undefined],
-    ['dark', 'light', 'dark', /requested "dark", the page shows data-theme="light" and localStorage "frontx:theme" holds "dark"/],
-    ['dark', null, 'dark', /data-theme=null/],
-    // Studio or the app applied another theme after boot; the shell stored it.
-    ['dracula', 'dark', 'dark', /requested "dracula", .* holds "dark"/],
-  ])('requested %s, data-theme %s, stored %s', (theme, attribute, stored, expected) => {
-    const result = themeMismatch(theme, { value: { attribute, stored } }, 'frontx:theme');
-    if (expected === undefined) expect(result).toBeUndefined();
-    else expect(result).toMatch(expected);
+  // Only the id the app stamps decides; storage is the runner's own input.
+  it('measures a state whose page stamps the requested id', () => {
+    const read = { value: { id: 'dracula', attribute: 'dark', stored: 'dark' } };
+    expect(themeMismatch('dracula', read, 'frontx:theme')).toBeUndefined();
+  });
+
+  it('fails a state whose page stamps another id, whatever storage holds', () => {
+    const read = { value: { id: 'default', attribute: 'light', stored: 'drakula' } };
+    expect(themeMismatch('drakula', read, 'frontx:theme')).toBe(
+      'theme not applied: requested "drakula", the page shows data-theme-id="default" (data-theme="light"; ' +
+        'localStorage "frontx:theme" holds "drakula"); is "frontx:theme" the key the app restores its theme from, ' +
+        'and "drakula" a registered theme id?',
+    );
+  });
+
+  it('fails a state whose page does not stamp data-theme-id, and says the app must', () => {
+    const result = themeMismatch('dark', { value: { id: null, attribute: 'dark', stored: 'dark' } }, 'frontx:theme');
+    expect(result).toMatch(/^theme not confirmed: requested "dark", the page has no data-theme-id on <html>/);
+    expect(result).toMatch(/the app must stamp the applied theme's registry id there/);
+    expect(result).toMatch(/src-app\/app\/themes\/themeIdAttribute\.ts/);
   });
 
   // The whole round trip with the shell's own boot code: the runner seeds the
   // id, the shell's applyPersistedTheme (src-app/app/themes/themePersistence.ts,
   // three directories up in the composed app) restores it into a registry
-  // holding the shell's ids, and the runner reads back what the page shows.
-  // An id the registry does not hold boots the fallback, so the run is an
-  // environment failure, never a clean pass in the fallback theme.
-  describe('round trip through the shell persistence', () => {
+  // holding the shell's ids, stampAppliedThemeId (themeIdAttribute.ts) names
+  // the theme that took on <html>, and the runner reads back what the page
+  // shows. An id the registry does not hold boots the fallback, so the run is
+  // an environment failure, never a clean pass in the fallback theme.
+  describe('round trip through the shell boot', () => {
     afterEach(() => vi.unstubAllGlobals());
 
-    async function boot(requested: string) {
-      const shellModule = new URL('../../../app/themes/themePersistence.ts', import.meta.url).href;
-      const { applyPersistedTheme } = await import(/* @vite-ignore */ shellModule);
+    async function boot(requested: string, themeKey = 'frontx:theme') {
+      const themes = new URL('../../../app/themes/', import.meta.url).href;
+      const { applyPersistedTheme } = await import(/* @vite-ignore */ `${themes}themePersistence.ts`);
+      const { stampAppliedThemeId } = await import(/* @vite-ignore */ `${themes}themeIdAttribute.ts`);
       const storage = new Map<string, string>();
+      const attributes: Record<string, string> = {};
       const appearance: Record<string, string> = { default: 'light', light: 'light', dark: 'dark', dracula: 'dark' };
-      vm.runInNewContext(themeSeedExpression('frontx:theme', requested), pageWith(storage, null));
-      const page = pageWith(storage, null);
+      vm.runInNewContext(themeSeedExpression(themeKey, requested), pageWith(storage));
+      const page = pageWith(storage, attributes);
       vi.stubGlobal('window', { localStorage: page.localStorage });
+      vi.stubGlobal('document', {
+        documentElement: {
+          setAttribute: (name: string, value: string) => void (attributes[name] = value),
+          removeAttribute: (name: string) => void delete attributes[name],
+        },
+      });
 
       // The registry surface applyPersistedTheme uses, keyed by the shell's ids.
       let current: { id: string } | undefined;
@@ -290,27 +309,39 @@ describe('theme', () => {
         getCurrent: () => current,
         apply: (id: string) => {
           current = { id };
+          attributes['data-theme'] = appearance[id];
           for (const listener of listeners) listener();
         },
         subscribe: (listener: () => void) => void listeners.push(listener),
       };
       applyPersistedTheme(registry, 'default');
+      stampAppliedThemeId(registry);
 
-      const applied = { value: vm.runInNewContext(appliedThemeExpression('frontx:theme'), pageWith(storage, appearance[current!.id])) };
+      const applied = { value: vm.runInNewContext(appliedThemeExpression(themeKey), page) };
       const state = sweepState({ route: '/', theme: requested, width: 1440 }, {
-        applied, themeKey: 'frontx:theme', sweep: { value: [] }, gateFor: () => 'APP-005', waivers: [], coversState: () => false,
+        applied, themeKey, sweep: { value: [] }, gateFor: () => 'APP-005', waivers: [], coversState: () => false,
       });
-      return { state, code: exitCode(buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]), { failOnFindings: true }) };
+      return { state, code: exitCode(buildReport({ baseUrl: 'u', themeKey }, [state]), { failOnFindings: true }) };
     }
 
     it('fails the run as an environment failure for an id the shell has not registered', async () => {
       const { state, code } = await boot('drakula');
-      expect(state.environmentError).toMatch(/requested "drakula", the page shows data-theme="light" and localStorage "frontx:theme" holds "default"/);
+      expect(state.environmentError).toMatch(/requested "drakula", the page shows data-theme-id="default" \(data-theme="light"/);
+      expect(code).toBe(2);
+    });
+
+    // The shell never reads the seeded key, but the runner's own seed sits
+    // there: only the stamped id can tell the page booted the fallback.
+    it('fails the run for an unused --theme-key, whatever the runner seeded there', async () => {
+      const { state, code } = await boot('drakula', 'unused:key');
+      expect(state.environmentError).toMatch(/requested "drakula", the page shows data-theme-id="default"/);
+      expect(state.environmentError).toMatch(/localStorage "unused:key" holds "drakula"/);
       expect(code).toBe(2);
     });
 
     it('passes a registered custom id', async () => {
       const { state, code } = await boot('dracula');
+      expect(state).toMatchObject({ appliedTheme: 'dracula' });
       expect(state.environmentError).toBeUndefined();
       expect(code).toBe(0);
     });
@@ -327,7 +358,7 @@ describe('sweepState', () => {
   it('fills a state from the sweep of a page in the requested theme', () => {
     const state = sweepState(
       { route: '/', theme: 'dark', width: 1440 },
-      input({ value: { attribute: 'dark', stored: 'dark' } }, { value: [defect] }),
+      input({ value: { id: 'dark', attribute: 'dark', stored: 'dark' } }, { value: [defect] }),
     );
     expect(state).toEqual({
       route: '/', theme: 'dark', width: 1440, appliedTheme: 'dark',
@@ -339,18 +370,18 @@ describe('sweepState', () => {
   it('fails a state whose page is in another theme, whatever the sweep found', () => {
     const state = sweepState(
       { route: '/', theme: 'dark', width: 1440 },
-      input({ value: { attribute: 'light', stored: 'light' } }, { value: [] }),
+      input({ value: { id: 'light', attribute: 'light', stored: 'light' } }, { value: [] }),
     );
     expect(state).not.toHaveProperty('findings');
     expect(state.appliedTheme).toBe('light');
-    expect(state.environmentError).toMatch(/^theme not applied: requested "dark", the page shows data-theme="light"/);
+    expect(state.environmentError).toMatch(/^theme not applied: requested "dark", the page shows data-theme-id="light"/);
     const report = buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]);
     expect(report.summary).toMatchObject({ statesClean: 0 });
     expect(exitCode(report, { failOnFindings: false })).toBe(2);
   });
 
   it('keeps the sweep failures it reported before', () => {
-    const inDark = { value: { attribute: 'dark', stored: 'dark' } };
+    const inDark = { value: { id: 'dark', attribute: 'dark', stored: 'dark' } };
     const record = () => ({ route: '/', theme: 'dark', width: 1440 });
     expect(sweepState(record(), input(inDark, { error: 'TypeError: window.__frontxDesignDefects is not a function' })).environmentError).toMatch(
       /^window\.__frontxDesignDefects is unavailable/,

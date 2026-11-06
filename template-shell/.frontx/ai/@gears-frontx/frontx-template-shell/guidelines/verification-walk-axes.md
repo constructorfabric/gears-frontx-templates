@@ -96,6 +96,7 @@ app.themeRegistry.register(darkTheme);
 app.themeRegistry.register(draculaTheme);
 app.themeRegistry.register(draculaLargeTheme);
 applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
+stampAppliedThemeId(app.themeRegistry);
 ```
 
 `applyPersistedTheme` (`src-app/app/themes/themePersistence.ts`) applies the
@@ -108,6 +109,13 @@ starting theme (and is written back to `frontx:theme`). Otherwise a walk starts
 on whatever theme the browser profile applied last, not necessarily `default`. Select every variant through the
 switcher, as the driver does, rather than assuming the first capture shows the
 default theme.
+
+Storage is what the next boot reads, not proof of what is applied.
+`stampAppliedThemeId` (`src-app/app/themes/themeIdAttribute.ts`) stamps the
+applied theme's registry id as `data-theme-id` on `<html>` at boot and on every
+switch, next to the `data-theme` appearance. Read the theme a capture shows
+from `data-theme-id`; the design-verify render runner measures a state only
+when it equals the requested id.
 
 Those five calls are the set: ids `default`, `light`, `dark`, `dracula` and
 `dracula-large`, each declared beside its `name` in its own module under

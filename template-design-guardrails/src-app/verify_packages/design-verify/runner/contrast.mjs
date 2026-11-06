@@ -232,7 +232,7 @@ export function contrastState({ theme, width, pairs, applied, themeKey, probe, s
     route: 'DESIGN.md',
     theme,
     ...(width === undefined ? {} : { probedWidth: width }),
-    ...(applied.value ? { appliedTheme: applied.value.attribute ?? null } : {}),
+    ...(applied.value ? { appliedTheme: applied.value.id ?? null } : {}),
   };
   const mismatch = themeMismatch(theme, applied, themeKey);
   if (mismatch) return { ...state, environmentError: `contrast not measured: ${mismatch}` };

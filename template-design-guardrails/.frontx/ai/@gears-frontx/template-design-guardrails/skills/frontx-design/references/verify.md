@@ -102,16 +102,19 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   (`localStorage` key `frontx:theme`, a raw id; `--theme-key` for an app
   that reads another key; Studio's key is refused there) and in FrontX
   Studio's own key (`frontx:studio:theme`), because a dev build with Studio
-  applies Studio's stored theme over the shell's after mount. Every state,
-  the `DESIGN.md` contrast states included, then checks that the page took
-  the theme. After boot the shell's key always holds the id of the applied
-  theme (the shell writes back its `default` fallback in place of an
-  unregistered id), so for every theme id the id stored under the key must
-  be the requested one, and a `light` or `dark` request must also show that
-  `data-theme` on the document element. A page in another theme, an id the
-  app has not registered (`--themes drakula` boots `default`) included, is an
-  environment failure for that state (the run exits 2), naming the requested
-  theme, the `data-theme` it shows and the stored id, never a clean state.
+  applies Studio's stored theme over the shell's after mount. Storage only
+  seeds the theme and never confirms it: a key the app does not read still
+  holds what the runner wrote. The confirmation comes from the app: the shell
+  stamps the registry id of the applied theme as `data-theme-id` on `<html>`
+  at boot and on every later apply (`src-app/app/themes/themeIdAttribute.ts`),
+  next to the `data-theme` appearance. Every state, the `DESIGN.md` contrast
+  states included, is measured only when `data-theme-id` equals the requested
+  id. Another id (an id the app has not registered: `--themes drakula` boots
+  `default`; a `--theme-key` the app never reads) is an environment failure
+  for that state (the run exits 2), naming the requested theme, the
+  `data-theme-id` and `data-theme` the page shows and the stored id, never a
+  clean state. A page with no `data-theme-id` cannot confirm its theme and
+  fails the same way, with a message that the app must stamp it.
 - Checks the sweep could not decide sit in each state's `needsReview` list;
   a state with any is not clean.
 - `--design-md DESIGN.md` also measures the text contrast of the `DESIGN.md`
