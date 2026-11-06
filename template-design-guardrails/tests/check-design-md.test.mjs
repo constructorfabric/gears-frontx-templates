@@ -2,10 +2,11 @@
  * Runs the design skill's `scripts/check-design-md.mjs` as a user would, in a
  * child process, on the fixtures under `tests/fixtures/check-design-md/`:
  * a small theme and DESIGN.md that match, and variants of them written to a
- * temp dir. Asserts exit codes and the finding lines that name the key.
+ * temp dir, some with a fake kit under `node_modules`. Asserts exit codes and
+ * the finding lines that name the key.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,11 +44,33 @@ function run(args, cwd = here) {
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-/** Runs the script on a DESIGN.md and theme given as text. */
+// The kit version the fixture DESIGN.md names.
+const KIT_VERSION = '0.0.0';
+
+/** Runs the script on a DESIGN.md and theme given as text; no kit package.json sits above the theme. */
 function runOn(design, theme = THEME) {
   const cwd = project({ 'DESIGN.md': design, 'theme.css': theme });
-  return run(['--theme', 'theme.css'], cwd);
+  return run(['--theme', 'theme.css', '--kit-version', KIT_VERSION], cwd);
 }
+
+/** A project with the kit under node_modules: its package.json (`manifest` merged in) and theme. */
+function kitProject(manifest = {}) {
+  return project({
+    'DESIGN.md': DESIGN,
+    'node_modules/@gears-frontx/ui-kit/package.json': JSON.stringify({
+      name: '@gears-frontx/ui-kit',
+      version: KIT_VERSION,
+      exports: { './package.json': './package.json', './theme.css': './dist/theme.css' },
+      ...manifest,
+    }),
+    'node_modules/@gears-frontx/ui-kit/dist/theme.css': THEME,
+  });
+}
+
+const KIT_THEME = 'node_modules/@gears-frontx/ui-kit/dist/theme.css';
+const mismatch = (installed, source) =>
+  `version: DESIGN.md names kit ${KIT_VERSION}, the installed kit is ${installed} (${source}); ` +
+  `update the token names to that kit and set version to ${installed}`;
 
 const lines = (text) => text.trim().split('\n');
 // The line number of the first line appended to DESIGN.
@@ -55,7 +78,14 @@ const NEXT_LINE = DESIGN.split('\n').length;
 
 describe('check-design-md', () => {
   it('passes when every name matches and every kit property is named', () => {
-    const result = run(['--design', path.join(fixtures, 'DESIGN.md'), '--theme', path.join(fixtures, 'theme.css')]);
+    const result = run([
+      '--design',
+      path.join(fixtures, 'DESIGN.md'),
+      '--theme',
+      path.join(fixtures, 'theme.css'),
+      '--kit-version',
+      KIT_VERSION,
+    ]);
     expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
   });
@@ -182,26 +212,57 @@ describe('check-design-md', () => {
     expect(result.code).toBe(0);
   });
 
-  it('passes on the shipped DESIGN.md against the kit 0.4.1 theme', () => {
-    const result = run([
-      '--design',
-      path.join(here, '../DESIGN.md'),
-      '--theme',
-      path.join(fixtures, 'ui-kit-0.4.1-theme.css'),
-    ]);
-    expect(result.code, result.stdout + result.stderr).toBe(0);
+  describe('the kit version', () => {
+    it('passes when DESIGN.md names the installed kit version', () => {
+      const result = run([], kitProject());
+      expect(result.stderr).toBe('');
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`kit ${KIT_VERSION}`);
+    });
+
+    it('reads the version above the resolved theme when the kit does not export package.json', () => {
+      const result = run([], kitProject({ exports: { './theme.css': './dist/theme.css' } }));
+      expect(result.stderr).toBe('');
+      expect(result.code).toBe(0);
+    });
+
+    it('reports a mismatch naming both versions and exits 1', () => {
+      const cwd = kitProject({ version: '0.5.0' });
+      const result = run([], cwd);
+      expect(result.code).toBe(1);
+      expect(lines(result.stdout)).toEqual([
+        mismatch('0.5.0', path.join(realpathSync(cwd), 'node_modules/@gears-frontx/ui-kit/package.json')),
+      ]);
+    });
+
+    it('reads the version above an explicit --theme inside the kit', () => {
+      const cwd = kitProject({ version: '0.5.0' });
+      const result = run(['--theme', KIT_THEME], cwd);
+      expect(result.code).toBe(1);
+      expect(lines(result.stdout)).toEqual([
+        mismatch('0.5.0', path.join(realpathSync(cwd), 'node_modules/@gears-frontx/ui-kit/package.json')),
+      ]);
+    });
+
+    it('takes --kit-version over the installed package.json', () => {
+      const result = run(['--kit-version', '0.5.0'], kitProject());
+      expect(result.code).toBe(1);
+      expect(lines(result.stdout)).toEqual([mismatch('0.5.0', '--kit-version')]);
+    });
+
+    it.each([
+      [KIT_VERSION, 0, []],
+      ['9.9.9', 1, [mismatch('9.9.9', '--kit-version')]],
+    ])('compares an explicit theme with no kit package.json to --kit-version %s', (version, code, expected) => {
+      const cwd = project({ 'DESIGN.md': DESIGN, 'theme.css': THEME });
+      const result = run(['--theme', 'theme.css', '--kit-version', version], cwd);
+      expect(result.code, result.stdout + result.stderr).toBe(code);
+      if (code === 1) expect(lines(result.stdout)).toEqual(expected);
+    });
   });
 
   it('resolves the kit theme through the package exports when --theme is not given', () => {
-    const cwd = project({
-      'DESIGN.md': DESIGN,
-      'node_modules/@gears-frontx/ui-kit/package.json': JSON.stringify({
-        name: '@gears-frontx/ui-kit',
-        exports: { './theme.css': './dist/theme.css' },
-      }),
-      'node_modules/@gears-frontx/ui-kit/dist/theme.css': THEME,
-    });
-    const result = run([], cwd);
+    const result = run([], kitProject({ exports: { './theme.css': './dist/theme.css' } }));
     expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
   });
@@ -212,6 +273,9 @@ describe('check-design-md', () => {
       ['a missing DESIGN.md', () => run(['--design', 'missing.md', '--theme', path.join(fixtures, 'theme.css')], project({}))],
       ['a DESIGN.md that is a directory', () => run(['--design', fixtures, '--theme', path.join(fixtures, 'theme.css')]), /is not a file/],
       ['a missing theme', () => run(['--design', path.join(fixtures, 'DESIGN.md'), '--theme', 'missing.css'], project({}))],
+      ['an explicit theme with no kit package.json and no --kit-version', () => run(['--theme', 'theme.css'], project({ 'DESIGN.md': DESIGN, 'theme.css': THEME })), /no @gears-frontx\/ui-kit package\.json found above .*; pass --kit-version/],
+      ['an empty --kit-version', () => run(['--theme', 'theme.css', '--kit-version', ''], project({ 'DESIGN.md': DESIGN, 'theme.css': THEME })), /--kit-version is empty/],
+      ['a kit package.json with no version', () => run([], kitProject({ version: undefined })), /has no version; pass --kit-version/],
       ['no front matter', () => runOn('# DESIGN\n')],
       ['an unclosed front matter', () => runOn(DESIGN.replace('\n---\n\n# Fixture', '\n\n# Fixture'))],
       ['a YAML list', () => runOn(DESIGN.replace('  primary: "var(--primary)"', '  - "var(--primary)"'))],

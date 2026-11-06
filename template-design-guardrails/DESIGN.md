@@ -1,7 +1,7 @@
 ---
 name: "FrontX"
 version: "0.4.1"
-description: "Names the @gears-frontx/ui-kit 0.4.1 design tokens; their values live in the installed kit theme (@gears-frontx/ui-kit/theme.css) and the product theme, never here. Check the names against the installed kit with node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs from the project root."
+description: "Names the @gears-frontx/ui-kit 0.4.1 design tokens; their values live in the installed kit theme (@gears-frontx/ui-kit/theme.css) and the product theme, never here. Check the names and the version against the installed kit with node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs from the project root."
 colors:
   background: "var(--background)"
   foreground: "var(--foreground)"
@@ -266,7 +266,7 @@ Template version: `0.1.0-alpha.5`\
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 
-The YAML front matter above names the kit's design tokens (`colors`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`), each as the `var(--name)` of a custom property the kit theme declares, and the kit components that use them, written as references such as `{colors.primary}`. It holds names only: the values live in the installed kit theme and in the product theme, and one `var()` covers both light and dark. Its `version` is the kit version the names were taken from. After a kit upgrade, run `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs` from the project root and add or drop the names it reports. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
+The YAML front matter above names the kit's design tokens (`colors`, `typography`, `rounded`, `spacing`, `motion`, `controls`, `elevation`), each as the `var(--name)` of a custom property the kit theme declares, and the kit components that use them, written as references such as `{colors.primary}`. It holds names only: the values live in the installed kit theme and in the product theme, and one `var()` covers both light and dark. Its `version` is the kit version the names were taken from; the check fails when the installed kit is another version. After a kit upgrade, run `node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs` from the project root, add or drop the names it reports and set `version` to the new kit version. How to read and review it: `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/references/design-md.md`.
 
 ## The design skill
 
@@ -332,7 +332,7 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 
 ## Iteration Guide
 
-- Change the look through the kit or a theme (`references/theme.md`), never through this file's front matter. The front matter names tokens, so a product theme that sets new values for them needs no edit here. After a kit upgrade, run the frontx-design skill's `scripts/check-design-md.mjs`, add or drop the names it reports, review the change as its `references/design-md.md` describes, and commit it.
+- Change the look through the kit or a theme (`references/theme.md`), never through this file's front matter. The front matter names tokens, so a product theme that sets new values for them needs no edit here. After a kit upgrade, run the frontx-design skill's `scripts/check-design-md.mjs`, add or drop the names it reports, set `version` to the new kit version, review the change as its `references/design-md.md` describes, and commit it.
 - Change one screen or component at a time and verify it rendered before the next.
 - Product-specific design decisions go into the product's own documents, linked from here, not into this template-owned file.
 
@@ -343,4 +343,4 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 - Only the kit's `Table` has a density axis; other components have one density.
 - Kit `0.4.1` has no KPI type role; a KPI value takes the display or heading roles (APP-002).
 - The `components` map covers the kit components whose colours and sizes a screen most often pairs, not every kit component or state; the installed kit documentation stays the reference for the rest.
-- `scripts/check-design-md.mjs` checks names only. Whether a product theme keeps text readable is seen only in the rendered app: real values and contrast come from the verify runner (`references/verify.md`).
+- `scripts/check-design-md.mjs` checks names and the kit version only. Whether a product theme keeps text readable is seen only in the rendered app: real values and contrast come from the verify runner (`references/verify.md`).

@@ -50,8 +50,15 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 It reads `DESIGN.md` in the current directory (or the file `--design <path>`
 names) and the custom property names the installed kit theme declares (or the
 file `--theme <path>` names), as `--name:` declarations or `@property --name`
-registrations, and reports, one line each:
+registrations. It reads the installed kit's version from
+`@gears-frontx/ui-kit/package.json` resolved from the current directory, or,
+when that export is missing or `--theme` is given, from the nearest
+`package.json` named `@gears-frontx/ui-kit` above the theme file;
+`--kit-version <v>` gives it instead, and with `--theme` and no such
+`package.json` it is required. It reports, one line each:
 
+- a front matter `version` that is not the installed kit's version, naming
+  both: update the names to that kit and set `version` to it;
 - a token map value that is not exactly one `var(--name)`;
 - a `components` value that is not exactly one `{group.key}` or one
   `var(--name)`;
@@ -74,11 +81,14 @@ other top-level key that is not a map or not a lowercase group name
 (`[a-z][a-z0-9-]*`, the shape body references use), a key off the shape of its
 group (a `typography` or `components` key that is not a map of scalars, a key
 in any other token map that is not a scalar), a reserved key (`__proto__`,
-`constructor`, `prototype`) at any level, or a kit theme it cannot resolve.
-It never reads values.
+`constructor`, `prototype`) at any level, a kit theme it cannot resolve, or a
+kit version it cannot find (no kit `package.json`, or one with no `version`,
+and no `--kit-version`). It never reads token values.
 
-After a kit upgrade, run it, add or drop the names it reports, and bump
-`version` to the new kit version.
+After a kit upgrade it reports the version first: add or drop the names it
+reports and set `version` to the new kit version. CI runs it on the shipped
+`DESIGN.md` in a shell composed with the kit version the shell pins, so a kit
+bump fails until both are updated.
 
 ## Review a change
 

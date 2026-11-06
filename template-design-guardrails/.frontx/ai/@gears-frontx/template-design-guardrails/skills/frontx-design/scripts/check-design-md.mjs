@@ -4,12 +4,21 @@
  * properties the installed `@gears-frontx/ui-kit` theme declares. Values are
  * never read: they live in the kit theme and the product theme.
  *
- *   node check-design-md.mjs [--design <path>] [--theme <path>]
+ *   node check-design-md.mjs [--design <path>] [--theme <path>] [--kit-version <v>]
  *
  * Defaults: `DESIGN.md` in the current directory, and the kit's exported
  * `@gears-frontx/ui-kit/theme.css` resolved from the current directory.
  *
- * Findings, one line each: a token map value that is not exactly one
+ * The front matter `version` names the kit release the token names come
+ * from; it must equal the installed kit's version. That version is read from
+ * `@gears-frontx/ui-kit/package.json` resolved from the current directory,
+ * or, when that export is missing or `--theme` is given, from the nearest
+ * `package.json` named `@gears-frontx/ui-kit` above the theme file.
+ * `--kit-version <v>` gives it instead; with `--theme` and no such
+ * `package.json`, it is required.
+ *
+ * Findings, one line each: a front matter `version` that is not the kit's
+ * version; a token map value that is not exactly one
  * `var(--name)`; a `components` value that is not exactly one `{group.key}` or
  * one `var(--name)`; a `var(--name)` in a token map or a `components` value
  * that the theme does not declare (as `--name:` or `@property --name`); a
@@ -28,16 +37,18 @@
  * (`[a-z][a-z0-9-]*`, the shape body references use), a key off the shape of
  * its group (a `typography` or `components` key that is not a map of scalars,
  * a key in any other token map that is not a scalar), a reserved key
- * (`__proto__`, `constructor`, `prototype`) at any level, or a kit theme it
- * cannot resolve.
+ * (`__proto__`, `constructor`, `prototype`) at any level, a kit theme it
+ * cannot resolve, or a kit version it cannot find (no kit `package.json`, or
+ * one with no `version`, and no `--kit-version`).
  */
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-const USAGE = 'usage: node check-design-md.mjs [--design <path>] [--theme <path>]';
-const KIT_THEME = '@gears-frontx/ui-kit/theme.css';
+const USAGE = 'usage: node check-design-md.mjs [--design <path>] [--theme <path>] [--kit-version <v>]';
+const KIT = '@gears-frontx/ui-kit';
+const KIT_THEME = `${KIT}/theme.css`;
 const META_KEYS = new Set(['name', 'version', 'description']);
 // Groups whose keys hold maps of scalars: typography roles and components.
 const NESTED = new Set(['typography', 'components']);
@@ -78,6 +89,51 @@ function resolveTheme(cwd) {
   } catch {
     throw new InputError(`cannot resolve ${KIT_THEME} from ${cwd}; pass --theme <path to the kit theme.css>`);
   }
+}
+
+/** The kit `package.json` path: resolved through the exports, else the nearest one named for the kit above `from`. */
+function findKitManifest(cwd, from, viaExports) {
+  if (viaExports) {
+    try {
+      return createRequire(path.join(cwd, 'package.json')).resolve(`${KIT}/package.json`);
+    } catch {
+      // The kit may not export package.json: fall back to the walk up.
+    }
+  }
+  for (let dir = path.dirname(from); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, 'package.json');
+    try {
+      if (JSON.parse(readFileSync(file, 'utf8')).name === KIT) return file;
+    } catch {
+      // No package.json here, or one that is not JSON: not the kit's.
+    }
+    if (path.dirname(dir) === dir) return undefined;
+  }
+}
+
+/** The installed kit version, from `--kit-version` or the kit's own `package.json`. */
+function kitVersion(given, cwd, themePath, viaExports) {
+  if (given !== undefined) {
+    if (given.trim() === '') throw new InputError(`--kit-version is empty\n${USAGE}`);
+    return { version: given, source: '--kit-version' };
+  }
+  const manifest = findKitManifest(cwd, themePath, viaExports);
+  if (!manifest) {
+    throw new InputError(
+      `no ${KIT} package.json found above ${themePath}; pass --kit-version <the installed kit version>`,
+    );
+  }
+  let version;
+  try {
+    ({ version } = JSON.parse(readInput(manifest, 'kit package.json')));
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    throw new InputError(`cannot parse ${manifest}: ${error.message}`);
+  }
+  if (typeof version !== 'string' || version === '') {
+    throw new InputError(`${manifest} has no version; pass --kit-version <the installed kit version>`);
+  }
+  return { version, source: manifest };
 }
 
 /** Custom property names a stylesheet declares; values are skipped unread. */
@@ -147,9 +203,15 @@ function parseFrontMatter(lines) {
   return { front: stack[0], end };
 }
 
-/** One line per finding; empty when the names match. */
-function check(lines, front, end, themeNames) {
+/** One line per finding; empty when the names and the kit version match. */
+function check(lines, front, end, themeNames, kit) {
   const findings = [];
+  if (front.version !== kit.version) {
+    findings.push(
+      `version: DESIGN.md names kit ${front.version}, the installed kit is ${kit.version} (${kit.source}); ` +
+        `update the token names to that kit and set version to ${kit.version}`,
+    );
+  }
   const leaves = (value, at) =>
     typeof value === 'object'
       ? Object.entries(value).flatMap(([key, child]) => leaves(child, `${at}.${key}`))
@@ -197,7 +259,10 @@ function check(lines, front, end, themeNames) {
 function main(argv, cwd) {
   let values;
   try {
-    ({ values } = parseArgs({ args: argv, options: { design: { type: 'string' }, theme: { type: 'string' } } }));
+    ({ values } = parseArgs({
+      args: argv,
+      options: { design: { type: 'string' }, theme: { type: 'string' }, 'kit-version': { type: 'string' } },
+    }));
   } catch (error) {
     throw new InputError(`${error.message}\n${USAGE}`);
   }
@@ -206,10 +271,12 @@ function main(argv, cwd) {
   const lines = readInput(designPath, 'DESIGN.md').replace(/^\u{FEFF}/u, '').split(/\r?\n/);
   const { front, end } = parseFrontMatter(lines);
   const themePath = values.theme ? path.resolve(cwd, values.theme) : resolveTheme(cwd);
-  const findings = check(lines, front, end, declaredNames(readInput(themePath, 'theme')));
+  const themeNames = declaredNames(readInput(themePath, 'theme'));
+  const kit = kitVersion(values['kit-version'], cwd, themePath, values.theme === undefined);
+  const findings = check(lines, front, end, themeNames, kit);
   for (const line of findings) console.log(line);
   if (findings.length > 0) return 1;
-  console.log(`${designPath}: every token name matches ${themePath}`);
+  console.log(`${designPath}: kit ${kit.version}, every token name matches ${themePath}`);
   return 0;
 }
 

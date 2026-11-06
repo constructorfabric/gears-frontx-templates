@@ -69,7 +69,7 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 - `templates/handoff.md` - built, checked (gate id and outcome), not checked, known gaps.
 
 `scripts/` (run from the project root):
-- `scripts/check-design-md.mjs` - checks the `DESIGN.md` front matter token names against the installed kit theme; exit 0 clean, 1 findings, 2 input error.
+- `scripts/check-design-md.mjs` - checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
 
 Outside this directory:
 - `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.
