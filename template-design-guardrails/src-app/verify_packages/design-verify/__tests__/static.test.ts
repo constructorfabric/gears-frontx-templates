@@ -185,32 +185,30 @@ describe('CSS Modules', () => {
     expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
   });
 
-  // A relative colour whose channels are all literals keeps nothing of its
-  // token origin: it is a fixed colour.
-  it('reports a relative colour that reads no channel of its origin', async () => {
+  // Every colour channel (alpha aside) must read an origin channel keyword or
+  // a var(), alone or inside calc(); a channel of only literal numbers is a
+  // fixed value, so the colour is a literal. Alpha may be anything, and
+  // `alpha` is not a colour channel keyword.
+  it('derives a relative colour only when every colour channel reads its origin or a var()', async () => {
     const root = project({
       'src/Channels.module.css': [
-        '.a { color: rgb(from var(--primary) 255 0 0); }',
-        '.b { color: hsl(from var(--primary) 0 100% 50% / 0.5); }',
-        '.c { color: oklch(from var(--primary) 0.7 0.1 calc(120 + 10)); }',
-        '.d { color: rgb(from var(--primary) r 0 0); }',
-        '.e { color: oklch(from var(--primary) 0.7 0.1 calc(h + 10)); }',
-        '.f { color: hwb(from var(--primary) 0 0% 0% / alpha); }',
-        '.g { color: lab(from var(--primary) l 0 0); }',
-        '.h { color: color(from var(--primary) srgb r 0 0); }',
-        '.i { color: lch(from var(--primary) 50 c 0); }',
-      ].join('\n'),
-      'src/Channels.tsx': [
-        "export const A = () => <p style={{ color: 'rgb(from var(--primary) 255 0 0)' }} />;",
-        "export const B = () => <p style={{ color: 'rgb(from var(--primary) r g 0)' }} />;",
+        '.a { color: oklch(from var(--p) l c var(--h)); }',
+        '.b { color: rgb(from var(--p) var(--r) var(--g) var(--b)); }',
+        '.c { color: oklch(from var(--p) l c calc(h + 30)); }',
+        '.d { color: rgb(from var(--p) r g b / 50%); }',
+        '.e { color: color(from var(--p) srgb r g b); }',
+        '.f { color: rgb(from var(--x) 255 0 0); }',
+        '.g { color: rgb(from var(--x) 255 0 0 / alpha); }',
+        '.h { color: hwb(from var(--p) 0 0% 0% / alpha); }',
+        '.i { color: rgb(from var(--p) r 0 0); }',
       ].join('\n'),
     });
     const { findings } = await check(root);
-    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
-      'src/Channels.module.css:1 color rgb(from var(--primary)255 0 0) in color',
-      'src/Channels.module.css:2 color hsl(from var(--primary)0 100% 50%/0.5) in color',
-      'src/Channels.module.css:3 color oklch(from var(--primary)0.7 0.1 calc(120 + 10)) in color',
-      'src/Channels.tsx:1 color rgb(from var(--primary)255 0 0) in color',
+    expect(findings.map((f) => `${f.line} ${f.found}`)).toEqual([
+      '6 rgb(from var(--x)255 0 0) in color',
+      '7 rgb(from var(--x)255 0 0/alpha) in color',
+      '8 hwb(from var(--p)0 0% 0%/alpha) in color',
+      '9 rgb(from var(--p) r 0 0) in color',
     ]);
   });
 

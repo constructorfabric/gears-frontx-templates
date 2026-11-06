@@ -24,11 +24,18 @@ npm run verify:static --workspace=@gears-frontx/design-verify -- \
   - SYS-002: a literal colour, spacing, radius, font size, shadow, duration
     or easing where `DESIGN.md` names a kit token of that kind, in a CSS
     Module or an inline `style`; values inside `var()` and `0` pass, a colour
-    in a local custom property does not; a colour derived from a token
-    passes: a relative colour (`rgb(from var(--x) r g b / 50%)`) passes
-    when its origin is not a literal and at least one channel reads an
-    origin channel (`rgb(from var(--x) 255 0 0)` is a fixed red and a
-    finding), and `color-mix()` is checked by each colour it mixes;
+    in a local custom property does not; `color-mix()` is checked by each
+    colour it mixes. A relative colour is derived from a token when its
+    origin is a `var()`, a relative colour that is itself derived, or an
+    allowed keyword such as `currentColor`, AND every colour channel except
+    alpha reads an origin channel keyword or a `var()`, alone or inside
+    `calc()`. A colour channel of only literal numbers makes it a literal
+    finding. Alpha may be a literal or `alpha`; `alpha` is not a colour
+    channel keyword. These pass: `oklch(from var(--p) l c var(--h))`,
+    `rgb(from var(--p) var(--r) var(--g) var(--b))`,
+    `oklch(from var(--p) l c calc(h + 30))`, `rgb(from var(--p) r g b / 50%)`.
+    These are findings: `rgb(from var(--x) 255 0 0)`,
+    `rgb(from var(--x) 255 0 0 / alpha)`, `hwb(from var(--p) 0 0% 0% / alpha)`;
   - SYS-001: a native element or role the kit ships a component for, and an
     `<a>` with `onClick` and no link target.
 - What counts and what to use instead is data: `rules/static-check.json`.

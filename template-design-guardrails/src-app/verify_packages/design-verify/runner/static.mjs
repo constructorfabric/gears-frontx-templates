@@ -10,10 +10,22 @@
  * CSS Modules (`*.module.css`) are parsed with css-tree. Every declaration
  * value is walked outside `var()`: a colour literal anywhere (custom property
  * definitions included, or a literal would hide behind a local variable; a
- * relative colour by its origin and channels, a `color-mix()` by each colour
- * it mixes),
+ * `color-mix()` by each colour it mixes; a relative colour by the rule below),
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
+ *
+ * A relative colour is derived from a token when its origin is a `var()`, a
+ * relative colour that is itself derived, or an allowed keyword such as
+ * `currentColor`, AND every colour channel except alpha reads an origin
+ * channel keyword or a `var()`, alone or inside `calc()`. A colour channel of
+ * only literal numbers makes it a literal finding. Alpha may be a literal or
+ * `alpha`; `alpha` is not a colour channel keyword. These pass:
+ * `oklch(from var(--p) l c var(--h))`,
+ * `rgb(from var(--p) var(--r) var(--g) var(--b))`,
+ * `oklch(from var(--p) l c calc(h + 30))`, `rgb(from var(--p) r g b / 50%)`.
+ * These are findings: `rgb(from var(--x) 255 0 0)`,
+ * `rgb(from var(--x) 255 0 0 / alpha)`, `hwb(from var(--p) 0 0% 0% / alpha)`.
+ *
  * `0` is never a finding. TSX and TS are parsed with the project's own
  * TypeScript compiler API: lowercase JSX tags (and React's
  * `createElement('tag')`, never `document.createElement`) that the kit ships
@@ -165,9 +177,9 @@ function isZero(node) {
 }
 
 /**
- * The channel keywords relative colour syntax gives each colour function: the
- * origin's channels, by the CSS Color 5 grammar. `color()` names `r g b` or
- * `x y z` by its colour space.
+ * The colour channel keywords relative colour syntax gives each colour
+ * function: the origin's channels, by the CSS Color 5 grammar. `color()` names
+ * `r g b` or `x y z` by its colour space. `alpha` is not a colour channel.
  */
 const ORIGIN_CHANNELS = {
   rgb: ['r', 'g', 'b'],
@@ -182,28 +194,38 @@ const ORIGIN_CHANNELS = {
   color: ['r', 'g', 'b', 'x', 'y', 'z'],
 };
 
-/** Whether a channel value reads a channel of the origin, also inside `calc()`. */
-function readsOriginChannel(fnName, channels) {
-  const keywords = new Set([...(ORIGIN_CHANNELS[fnName] ?? []), 'alpha']);
-  return channels.some((channel) => {
-    let reads = false;
-    csstree.walk(channel, function enter(node) {
-      if (node.type === 'Function' && node.name.toLowerCase() === 'var') return csstree.walk.skip;
-      if (node.type === 'Identifier' && keywords.has(node.name.toLowerCase())) reads = true;
-      return undefined;
-    });
-    return reads;
-  });
+/**
+ * Whether every colour channel (the values before the `/` that starts alpha)
+ * reads an origin channel keyword or a `var()`, alone or inside `calc()`.
+ * Alpha is not checked.
+ */
+function readsOriginChannels(fnName, channels) {
+  const keywords = new Set(ORIGIN_CHANNELS[fnName] ?? []);
+  const slash = channels.findIndex((n) => n.type === 'Operator' && n.value === '/');
+  let colour = slash === -1 ? channels : channels.slice(0, slash);
+  // color() names its colour space first (`srgb`); the channels follow.
+  if (fnName === 'color') colour = colour.slice(1);
+  return (
+    colour.length > 0 &&
+    colour.every((channel) => {
+      let reads = false;
+      csstree.walk(channel, function enter(node) {
+        if (node.type === 'Function' && node.name.toLowerCase() === 'var') {
+          reads = true;
+          return csstree.walk.skip;
+        }
+        if (node.type === 'Identifier' && keywords.has(node.name.toLowerCase())) reads = true;
+        return undefined;
+      });
+      return reads;
+    })
+  );
 }
 
 /**
- * A colour written as a value rather than taken from a token. Relative
- * colour syntax (`rgb(from <origin> r g b / 50%)`) derives a colour from its
- * origin, so it is a value derived from a token only when the origin is not
- * a literal (a `var()` origin) and at least one channel reads an origin
- * channel (`r`, `calc(l - 0.1)`, `alpha`); `rgb(from var(--primary) 255 0 0)`
- * keeps nothing of its origin and is a literal. `color-mix()` is not a colour
- * function here, so the walk checks each of its colour arguments on its own.
+ * A colour written as a value rather than taken from a token; a relative
+ * colour by the rule in the header. `color-mix()` is not a colour function
+ * here, so the walk checks each of its colour arguments on its own.
  */
 function isColorLiteral(ctx, node) {
   if (node.type === 'Hash') return true;
@@ -213,7 +235,7 @@ function isColorLiteral(ctx, node) {
     const [first, origin, ...channels] = node.children.toArray().filter((n) => n.type !== 'WhiteSpace');
     const relative = first?.type === 'Identifier' && first.name.toLowerCase() === 'from';
     if (!relative || origin === undefined) return true;
-    return isColorLiteral(ctx, origin) || !readsOriginChannel(name, channels);
+    return isColorLiteral(ctx, origin) || !readsOriginChannels(name, channels);
   }
   if (node.type === 'Identifier') {
     const name = node.name.toLowerCase();
