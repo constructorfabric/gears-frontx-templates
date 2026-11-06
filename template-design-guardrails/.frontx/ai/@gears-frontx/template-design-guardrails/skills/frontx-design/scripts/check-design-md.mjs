@@ -119,8 +119,9 @@ function findKitManifest(cwd, from, viaExports) {
 /** The installed kit version, from `--kit-version` or the kit's own `package.json`. */
 function kitVersion(given, cwd, themePath, viaExports) {
   if (given !== undefined) {
-    if (given.trim() === '') throw new InputError(`--kit-version is empty\n${USAGE}`);
-    return { version: given, source: '--kit-version' };
+    const version = given.trim();
+    if (version === '') throw new InputError(`--kit-version is empty\n${USAGE}`);
+    return { version, source: '--kit-version' };
   }
   const manifest = findKitManifest(cwd, themePath, viaExports);
   if (!manifest) {
@@ -154,7 +155,9 @@ function declaredNames(css) {
  * Parses the front matter subset DESIGN.md uses: the three meta scalars, token
  * maps of scalars, `typography` and `components` as maps of scalar maps,
  * two-space indent, keys plain or double-quoted, values
- * double-quoted strings or plain words and numbers, full-line `#` comments,
+ * double-quoted strings or plain scalars of word characters, `.`, `+` and `-`
+ * (words, numbers, a version with build metadata such as `0.4.1+build.2`),
+ * full-line `#` comments,
  * and trailing spaces or a ` # comment` after a value or a key with no
  * value (a `#` inside a quoted value is text). Anything else is an input
  * error rather than a guess. Returns the maps and the index of the closing
@@ -172,7 +175,7 @@ function parseFrontMatter(lines) {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
     // JSON keeps leading and trailing spaces visible in the message.
     const bad = (why) => new InputError(`DESIGN.md front matter line ${i + 1}: ${why}: ${JSON.stringify(line)}`);
-    const m = /^( *)("[^"\\]*"|[\w-]+):(?: +("[^"\\]*"|[\w.-]+))?(.*)$/.exec(line);
+    const m = /^( *)("[^"\\]*"|[\w-]+):(?: +("[^"\\]*"|[\w.+-]+))?(.*)$/.exec(line);
     const depth = m ? m[1].length / 2 : -1;
     if (!m || !Number.isInteger(depth)) throw bad('unsupported YAML');
     // After the value (or a key with no value) only spaces and a ` # comment` may follow.
@@ -300,8 +303,16 @@ function main(argv, cwd) {
   return 0;
 }
 
-const entry = process.argv[1] && realpathSync(process.argv[1]);
-if (entry === realpathSync(fileURLToPath(import.meta.url))) {
+/** Whether this file is the process entry point; an argv[1] that names no file (`node -e ... arg`) is not. */
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   try {
     process.exitCode = main(process.argv.slice(2), process.cwd());
   } catch (error) {

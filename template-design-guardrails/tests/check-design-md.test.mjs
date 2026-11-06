@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -256,6 +256,20 @@ describe('check-design-md', () => {
       expect(lines(result.stdout)).toEqual([mismatch('0.5.0', '--kit-version')]);
     });
 
+    it('compares the trimmed --kit-version', () => {
+      const result = run(['--theme', 'theme.css', '--kit-version', ` ${KIT_VERSION} `], project({ 'DESIGN.md': DESIGN, 'theme.css': THEME }));
+      expect(result.stdout + result.stderr).not.toContain('version:');
+      expect(result.code).toBe(0);
+    });
+
+    it('accepts an unquoted version with semver build metadata', () => {
+      const design = DESIGN.replace(`version: "${KIT_VERSION}"`, 'version: 0.4.1+build.2');
+      const cwd = project({ 'DESIGN.md': design, 'theme.css': THEME });
+      const result = run(['--theme', 'theme.css', '--kit-version', '0.4.1+build.2'], cwd);
+      expect(result.stdout + result.stderr).not.toContain('unsupported YAML');
+      expect(result.code).toBe(0);
+    });
+
     it.each([
       [KIT_VERSION, 0, []],
       ['9.9.9', 1, [mismatch('9.9.9', '--kit-version')]],
@@ -265,6 +279,21 @@ describe('check-design-md', () => {
       expect(result.code, result.stdout + result.stderr).toBe(code);
       if (code === 1) expect(lines(result.stdout)).toEqual(expected);
     });
+  });
+
+  it('keeps a # inside a quoted value as text in the parsed front matter', async () => {
+    const { readDesignMd } = await import(pathToFileURL(script).href);
+    const cwd = project({ 'DESIGN.md': DESIGN.replace('name: "Fixture"', 'name: "Fixture # one"') });
+    expect(readDesignMd(path.join(cwd, 'DESIGN.md')).front.name).toBe('Fixture # one');
+  });
+
+  it('runs no CLI and does not throw when imported by a process whose argv[1] is not a file', () => {
+    // `node -e <code> <arg>` puts <arg> in argv[1].
+    const code = `import(${JSON.stringify(pathToFileURL(script).href)}).then((m) => console.log(typeof m.readDesignMd))`;
+    const result = spawnSync(process.execPath, ['-e', code, 'not-a-file'], { cwd: project({}), encoding: 'utf8' });
+    expect(result.stderr).toBe('');
+    expect(result.stdout.trim()).toBe('function');
+    expect(result.status).toBe(0);
   });
 
   it('resolves the kit theme through the package exports when --theme is not given', () => {
