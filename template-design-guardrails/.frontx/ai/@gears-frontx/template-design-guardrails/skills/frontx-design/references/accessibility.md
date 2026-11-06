@@ -32,6 +32,10 @@ Kit components bring their own keyboard mechanics while used unmodified
 - the focus indicator **SHOULD** meet the WCAG 2.2 Focus Appearance size and
   3:1 contrast, although that criterion is AAA.
 
+Check the screen's result with a manual keyboard trace, including focus
+trapping, Escape and focus return for dialogs and other overlays. Report
+behavior you did not observe as unverified.
+
 ## Contrast and non-colour cues
 
 - Normal text 4.5:1; large text 3:1; component boundaries, states and focus
