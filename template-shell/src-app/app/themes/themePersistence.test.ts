@@ -70,6 +70,32 @@ describe('applyPersistedTheme', () => {
     expect(registry.getCurrent()?.id).toBe('dark');
   });
 
+  it('stores the fallback in place of a stored theme that is no longer registered', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'removed-theme');
+    const registry = registryWith();
+
+    applyPersistedTheme(registry, 'dark');
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+  });
+
+  it('stores the fallback on a first visit', () => {
+    const registry = registryWith();
+
+    applyPersistedTheme(registry, 'dark');
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+  });
+
+  it('keeps a stored theme that is still registered', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    const registry = registryWith();
+
+    applyPersistedTheme(registry, 'default');
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+  });
+
   it('boots on the fallback when storage cannot be read', () => {
     const getItem = vi.spyOn(storageMethods(), 'getItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');

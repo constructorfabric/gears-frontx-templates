@@ -100,8 +100,9 @@ applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
 
 `applyPersistedTheme` (`src-app/app/themes/themePersistence.ts`) applies the
 theme id stored under the `localStorage` key `frontx:theme`, and `default` when
-nothing is stored or the stored id is not registered; it then stores every theme
-applied after it. In dev, Studio then restores its own stored theme from
+nothing is stored or the stored id is not registered; it stores the id that took
+(so `frontx:theme` never keeps an unregistered id) and then every theme applied
+after it. In dev, Studio then restores its own stored theme from
 `frontx:studio:theme` after mount; when that id is registered, it decides the
 starting theme (and is written back to `frontx:theme`). Otherwise a walk starts
 on whatever theme the browser profile applied last, not necessarily `default`. Select every variant through the

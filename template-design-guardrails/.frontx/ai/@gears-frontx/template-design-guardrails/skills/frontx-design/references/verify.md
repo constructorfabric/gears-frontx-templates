@@ -98,15 +98,18 @@ npm run verify:ui --workspace=@gears-frontx/design-verify -- \
   reads as clean.
 - Themes: the runner stores each theme id where the shell restores it at boot
   (`localStorage` key `frontx:theme`, a raw id; `--theme-key` for an app
-  that reads another key) and in FrontX Studio's own key
-  (`frontx:studio:theme`), because a dev build with Studio applies Studio's
-  stored theme over the shell's after mount. Every state, the `DESIGN.md`
-  contrast states included, then checks that the page took the theme: a
-  `light` or `dark` request must show that `data-theme` on the document
-  element, and the id stored under the key must still be the requested one
-  (any other theme id is checked by the stored id alone). A page in another
-  theme is an environment failure for that state, naming the requested
-  theme, the `data-theme` it shows and the key, never a clean state.
+  that reads another key; Studio's key is refused there) and in FrontX
+  Studio's own key (`frontx:studio:theme`), because a dev build with Studio
+  applies Studio's stored theme over the shell's after mount. Every state,
+  the `DESIGN.md` contrast states included, then checks that the page took
+  the theme. After boot the shell's key always holds the id of the applied
+  theme (the shell writes back its `default` fallback in place of an
+  unregistered id), so for every theme id the id stored under the key must
+  be the requested one, and a `light` or `dark` request must also show that
+  `data-theme` on the document element. A page in another theme, an id the
+  app has not registered (`--themes drakula` boots `default`) included, is an
+  environment failure for that state (the run exits 2), naming the requested
+  theme, the `data-theme` it shows and the stored id, never a clean state.
 - Checks the sweep could not decide sit in each state's `needsReview` list;
   a state with any is not clean.
 - `--design-md DESIGN.md` also measures the text contrast of the `DESIGN.md`

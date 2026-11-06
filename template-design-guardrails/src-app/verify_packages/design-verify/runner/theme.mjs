@@ -4,8 +4,9 @@
  * Seeding. The shell owns theme persistence
  * (template-shell src-app/app/themes/themePersistence.ts): at boot it applies
  * the registry id stored as a raw string under `frontx:theme` (the `default`
- * theme when nothing or an unregistered id is stored) and stores every theme
- * applied after that. FrontX Studio, in dev builds that include it, restores
+ * theme when nothing or an unregistered id is stored), stores the id that
+ * took, and stores every theme applied after that. FrontX Studio, in dev
+ * builds that include it, restores
  * its own `frontx:studio:theme` (a JSON string, utils/persistence.ts) after
  * mount and applies it over the shell's choice, and it stores every theme
  * change there; a value left by an earlier session or in an attached browser
@@ -17,10 +18,13 @@
  * `data-theme` on the document element on every apply
  * (packages/framework/src/registries/themeRegistry.ts), and the kit's token
  * blocks key on that attribute, so it is what the page renders by. The
- * applied id is not in the DOM, but the shell stores the id of every theme
- * applied after boot, so a stored id that no longer equals the requested one
- * names the theme that won. A requested `light` or `dark` must show that
- * `data-theme`; any other id (`dracula`) is checked by the stored id alone.
+ * applied id is not in the DOM, but after boot the shell's key always holds
+ * the id of the applied theme: the boot theme (the fallback in place of an
+ * unregistered id) and every theme applied later. So every requested id must
+ * be the stored one: a different stored id names the theme that won, and an
+ * id the app has not registered (`--themes drakula`) reads back as the
+ * fallback. A requested `light` or `dark` must also show that `data-theme`.
+ * Either mismatch is an environment failure for the state.
  */
 
 /** The key the shell restores its theme from: a raw registry id. */

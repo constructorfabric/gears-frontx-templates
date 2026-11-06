@@ -263,6 +263,58 @@ describe('theme', () => {
     if (expected === undefined) expect(result).toBeUndefined();
     else expect(result).toMatch(expected);
   });
+
+  // The whole round trip with the shell's own boot code: the runner seeds the
+  // id, the shell's applyPersistedTheme (src-app/app/themes/themePersistence.ts,
+  // three directories up in the composed app) restores it into a registry
+  // holding the shell's ids, and the runner reads back what the page shows.
+  // An id the registry does not hold boots the fallback, so the run is an
+  // environment failure, never a clean pass in the fallback theme.
+  describe('round trip through the shell persistence', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    async function boot(requested: string) {
+      const shellModule = new URL('../../../app/themes/themePersistence.ts', import.meta.url).href;
+      const { applyPersistedTheme } = await import(/* @vite-ignore */ shellModule);
+      const storage = new Map<string, string>();
+      const appearance: Record<string, string> = { default: 'light', light: 'light', dark: 'dark', dracula: 'dark' };
+      vm.runInNewContext(themeSeedExpression('frontx:theme', requested), pageWith(storage, null));
+      const page = pageWith(storage, null);
+      vi.stubGlobal('window', { localStorage: page.localStorage });
+
+      // The registry surface applyPersistedTheme uses, keyed by the shell's ids.
+      let current: { id: string } | undefined;
+      const listeners: Array<() => void> = [];
+      const registry = {
+        get: (id: string) => (id in appearance ? { id } : undefined),
+        getCurrent: () => current,
+        apply: (id: string) => {
+          current = { id };
+          for (const listener of listeners) listener();
+        },
+        subscribe: (listener: () => void) => void listeners.push(listener),
+      };
+      applyPersistedTheme(registry, 'default');
+
+      const applied = { value: vm.runInNewContext(appliedThemeExpression('frontx:theme'), pageWith(storage, appearance[current!.id])) };
+      const state = sweepState({ route: '/', theme: requested, width: 1440 }, {
+        applied, themeKey: 'frontx:theme', sweep: { value: [] }, gateFor: () => 'APP-005', waivers: [], coversState: () => false,
+      });
+      return { state, code: exitCode(buildReport({ baseUrl: 'u', themeKey: 'frontx:theme' }, [state]), { failOnFindings: true }) };
+    }
+
+    it('fails the run as an environment failure for an id the shell has not registered', async () => {
+      const { state, code } = await boot('drakula');
+      expect(state.environmentError).toMatch(/requested "drakula", the page shows data-theme="light" and localStorage "frontx:theme" holds "default"/);
+      expect(code).toBe(2);
+    });
+
+    it('passes a registered custom id', async () => {
+      const { state, code } = await boot('dracula');
+      expect(state.environmentError).toBeUndefined();
+      expect(code).toBe(0);
+    });
+  });
 });
 
 describe('sweepState', () => {

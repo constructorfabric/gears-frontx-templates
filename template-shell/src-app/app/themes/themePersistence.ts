@@ -28,20 +28,25 @@ function storeThemeId(themeId: string): void {
   }
 }
 
+function storeCurrentTheme(registry: ThemeRegistry): void {
+  const current = registry.getCurrent();
+  if (current) storeThemeId(current.id);
+}
+
 /**
  * Applies the theme stored by an earlier session, or `fallbackId` when none is
- * stored or the stored one is no longer registered, then stores every theme
- * the registry applies from here on. Call it once, after every theme is
- * registered. Whatever applies a theme later (Studio, a screen's set_theme
- * action, `app.actions.changeTheme`) goes through the registry, so each of
- * them is remembered without knowing about this module.
+ * stored or the stored one is no longer registered, stores the theme that
+ * took, then stores every theme the registry applies from here on. So the
+ * stored id always names the applied theme, never a stale or unknown one.
+ * Call it once, after every theme is registered. Whatever applies a theme
+ * later (Studio, a screen's set_theme action, `app.actions.changeTheme`) goes
+ * through the registry, so each of them is remembered without knowing about
+ * this module.
  */
 export function applyPersistedTheme(registry: ThemeRegistry, fallbackId: string): void {
   const storedId = readStoredThemeId();
   registry.apply(storedId !== null && registry.get(storedId) ? storedId : fallbackId);
+  storeCurrentTheme(registry);
 
-  registry.subscribe(() => {
-    const current = registry.getCurrent();
-    if (current) storeThemeId(current.id);
-  });
+  registry.subscribe(() => storeCurrentTheme(registry));
 }
