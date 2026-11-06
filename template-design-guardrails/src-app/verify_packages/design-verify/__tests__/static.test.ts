@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { collectFiles, main } from '../runner/static.mjs';
-import { readSkillJson } from '../runner/skill.mjs';
+import { checkContext, checkScript, collectFiles, main } from '../runner/static.mjs';
+import { designMdParser, readSkillJson } from '../runner/skill.mjs';
 
 // A small DESIGN.md of its own, so a token edit in the project DESIGN.md
 // does not change the fix texts asserted here.
@@ -451,6 +451,22 @@ describe('exit codes and the baseline', () => {
     expect(report.waived).toEqual([
       expect.objectContaining({ file: 'src/tree/Tree.tsx', gate: 'SYS-001', waiver: { index: 0, reason: 'Tree grid: kit gap.' } }),
     ]);
+  // parseDiagnostics is internal to TypeScript; a release without it must not
+  // make every file parse clean.
+  it('reports syntax errors through the public API, without the internal parseDiagnostics', async () => {
+    const ts = (await import('typescript')).default;
+    const withoutInternals = {
+      ...ts,
+      createSourceFile: (...args: Parameters<typeof ts.createSourceFile>) =>
+        Object.defineProperty(ts.createSourceFile(...args), 'parseDiagnostics', { value: undefined }),
+    };
+    const { readDesignMd } = await designMdParser();
+    const ctx = checkContext(readSkillJson('rules/static-check.json'), readDesignMd(DESIGN_MD).front);
+    const { parseErrors } = checkScript(ctx, withoutInternals, 'export const = ;', 'src/Broken.tsx');
+    expect(parseErrors).toEqual([expect.stringMatching(/^src\/Broken\.tsx:1:14: Variable declaration expected\.$/)]);
+    expect(checkScript(ctx, withoutInternals, 'export const ok = <p />;', 'src/Ok.tsx').parseErrors).toEqual([]);
+  });
+
     expect(report.summary).toMatchObject({ totalFindings: 2, waived: 1 });
     const unread = 'needs a file matching src/billing/** under --src; none of the files read matches';
     expect(report.waivers).toMatchObject({

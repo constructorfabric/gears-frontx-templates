@@ -414,9 +414,18 @@ export function checkScript(ctx, ts, text, file) {
   const findings = [];
   const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
-  const parseErrors = (source.parseDiagnostics ?? []).map((d) => {
-    const { line, character } = source.getLineAndCharacterOfPosition(d.start ?? 0);
-    return `${file}:${line + 1}:${character + 1}: ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`;
+  // Syntax errors through the public API: transpileModule reports the
+  // syntactic diagnostics of the one file, and nothing about types or imports.
+  const { diagnostics = [] } = ts.transpileModule(text, {
+    fileName: file,
+    reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.Latest, jsx: ts.JsxEmit.Preserve },
+  });
+  const parseErrors = diagnostics.map((d) => {
+    const message = ts.flattenDiagnosticMessageText(d.messageText, ' ');
+    if (d.file === undefined || d.start === undefined) return `${file}: ${message}`;
+    const { line, character } = source.getLineAndCharacterOfPosition(d.start);
+    return `${file}:${line + 1}:${character + 1}: ${message}`;
   });
   const at = (node) => {
     const { line, character } = source.getLineAndCharacterOfPosition(node.getStart(source));
