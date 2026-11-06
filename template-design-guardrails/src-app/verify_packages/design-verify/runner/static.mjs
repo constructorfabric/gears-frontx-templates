@@ -9,7 +9,8 @@
  *
  * CSS Modules (`*.module.css`) are parsed with css-tree. Every declaration
  * value is walked outside `var()`: a colour literal anywhere (custom property
- * definitions included, or a literal would hide behind a local variable),
+ * definitions included, or a literal would hide behind a local variable; a
+ * relative colour by its origin, a `color-mix()` by each colour it mixes),
  * literal lengths in spacing, radius and font-size properties, any literal in
  * a shadow, and literal durations and easings in transitions and animations.
  * `0` is never a finding. TSX and TS are parsed with the project's own
@@ -162,9 +163,21 @@ function isZero(node) {
   return Number(node.value) === 0;
 }
 
+/**
+ * A colour written as a value rather than taken from a token. Relative
+ * colour syntax (`rgb(from <origin> r g b / 50%)`) derives a colour from its
+ * origin, so it is a literal only when the origin is one: a `var()` origin
+ * is a value derived from a token. `color-mix()` is not a colour function
+ * here, so the walk checks each of its colour arguments on its own.
+ */
 function isColorLiteral(ctx, node) {
   if (node.type === 'Hash') return true;
-  if (node.type === 'Function') return ctx.colorFunctions.has(node.name.toLowerCase());
+  if (node.type === 'Function') {
+    if (!ctx.colorFunctions.has(node.name.toLowerCase())) return false;
+    const [first, origin] = node.children.toArray().filter((n) => n.type !== 'WhiteSpace');
+    const relative = first?.type === 'Identifier' && first.name.toLowerCase() === 'from';
+    return !relative || origin === undefined || isColorLiteral(ctx, origin);
+  }
   if (node.type === 'Identifier') {
     const name = node.name.toLowerCase();
     if (ctx.allowed.has(name)) return false;

@@ -147,6 +147,44 @@ describe('CSS Modules', () => {
     ]);
   });
 
+  // references/foundations.md allows values derived from tokens: a relative
+  // colour or a color-mix() is checked by the colours it starts from.
+  it('checks a relative colour by its origin and color-mix() by each colour argument', async () => {
+    const root = project({
+      'src/Derived.module.css': [
+        '.a { color: rgb(from var(--foreground) r g b / 50%); }',
+        '.b { background: oklch(from var(--primary) calc(l * 0.9) c h); }',
+        '.c { border-color: hsl(from oklch(from var(--border) l c h) h s l); }',
+        '.d { outline-color: rgb(from currentColor r g b / 40%); }',
+        '.e { color: rgb(from #fff r g b / 50%); }',
+        '.f { color: hsl(from red h s l); }',
+        '.g { color: hsl(from oklch(from #123456 l c h) h s l); }',
+        '.h { background: color-mix(in srgb, var(--primary) 30%, transparent); }',
+        '.i { background: color-mix(in oklch, var(--primary), rgb(from var(--muted) r g b / 50%)); }',
+        '.j { background: color-mix(in srgb, var(--primary) 30%, #fff); }',
+        '.k { background: color-mix(in hsl longer hue, red, rgb(from #000 r g b)); }',
+        '.l { box-shadow: 0 0 0 var(--space-2) rgb(from var(--ring) r g b / 50%); }',
+        '.m { box-shadow: 0 0 0 var(--space-2) rgb(from #000 r g b / 50%); }',
+      ].join('\n'),
+      'src/Derived.tsx': [
+        "export const A = () => <p style={{ color: 'rgb(from var(--foreground) r g b / 50%)' }} />;",
+        "export const B = () => <p style={{ color: 'rgb(from #fff r g b)' }} />;",
+      ].join('\n'),
+    });
+    const { findings } = await check(root);
+    expect(findings.map((f) => `${f.file}:${f.line} ${f.kind} ${f.found}`)).toEqual([
+      'src/Derived.module.css:5 color rgb(from #fff r g b/50%) in color',
+      'src/Derived.module.css:6 color hsl(from red h s l) in color',
+      'src/Derived.module.css:7 color hsl(from oklch(from #123456 l c h) h s l) in color',
+      'src/Derived.module.css:10 color #fff in background',
+      'src/Derived.module.css:11 color red in background',
+      'src/Derived.module.css:11 color rgb(from #000 r g b) in background',
+      'src/Derived.module.css:13 shadow 0 0 0 var(--space-2) rgb(from #000 r g b/50%) in box-shadow',
+      'src/Derived.tsx:2 color rgb(from #fff r g b) in color',
+    ]);
+    expect(findings.every((f) => f.gate === 'SYS-002')).toBe(true);
+  });
+
   it('accepts tokens, var() fallbacks, 0, the allowed keywords and plain .css files', async () => {
     const root = project({
       'src/Clean.module.css': [
