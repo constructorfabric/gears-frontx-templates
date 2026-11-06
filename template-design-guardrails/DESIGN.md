@@ -338,9 +338,9 @@ Below 768 px the shell menu starts collapsed to its 56 px icon rail beside the s
 
 ## Known Gaps
 
-- Three kit badge pairs are below 4.5:1 in the light theme, measured on kit `0.4.1`: `{colors.success}` on `{colors.success-soft}` 3.43:1, `{colors.warning}` on `{colors.warning-soft}` 2.00:1 and `{colors.danger}` on `{colors.danger-soft}` 4.28:1. The kit keeps these drawn values on purpose and routes contrast to its designer; do not rely on badge colour alone, and raise the pairs with the kit owner.
+- Three kit badge pairs are below 4.5:1 in the light theme, measured on kit `0.4.1`: `{colors.success}` on `{colors.success-soft}` 3.43:1, `{colors.warning}` on `{colors.warning-soft}` 2.00:1 and `{colors.danger}` on `{colors.danger-soft}` 4.28:1. The kit keeps these drawn values on purpose and routes contrast to its designer; do not rely on badge colour alone, and raise the pairs with the kit owner. The contrast run reports them as COL-001 findings until the kit changes them.
 - The kit has no generic layout grid or stack component; page layout is composed with CSS Modules on `--space-*` tokens.
 - Only the kit's `Table` has a density axis; other components have one density.
 - Kit `0.4.1` has no KPI type role; a KPI value takes the display or heading roles (APP-002).
 - The `components` map covers the kit components whose colours and sizes a screen most often pairs, not every kit component or state; the installed kit documentation stays the reference for the rest.
-- `scripts/check-design-md.mjs` checks names and the kit version only. Whether a product theme keeps text readable is seen only in the rendered app: real values and contrast come from the verify runner (`references/verify.md`).
+- `scripts/check-design-md.mjs` checks names and the kit version only. Whether a product theme keeps text readable is seen only in the rendered app: the render runner's `--design-md` run measures the text contrast of every `components` pair in each theme (`references/design-md.md`, "Measure its contrast"); non-text contrast stays with the browser check and the review.

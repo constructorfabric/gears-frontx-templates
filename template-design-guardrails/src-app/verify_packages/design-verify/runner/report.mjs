@@ -21,7 +21,7 @@
 import { applyWaivers, waiverLines } from './waivers.mjs';
 
 /**
- * @typedef {{route: string, theme: string, width: number,
+ * @typedef {{route: string, theme: string, width: number, check?: string,
  *   findings?: Array<{id?: string, detail?: string, target?: string}>,
  *   needsReview?: Array<{id?: string, detail?: string, target?: string}>,
  *   waived?: Array<{id?: string, gate?: string, target?: string, waiver: {index: number, reason: string}}>,
@@ -148,6 +148,7 @@ export function buildReport(meta, states) {
  */
 function findingKey(state, finding) {
   return JSON.stringify([
+    state.check ?? 'sweep',
     state.route,
     state.theme,
     state.width,
@@ -156,9 +157,14 @@ function findingKey(state, finding) {
   ]);
 }
 
-/** @param {{route: string, theme: string, width: number}} state */
+/**
+ * A state's identity: the check (a route sweep, or the DESIGN.md contrast
+ * probe) plus its render state.
+ *
+ * @param {{check?: string, route: string, theme: string, width: number}} state
+ */
 function stateKey(state) {
-  return JSON.stringify([state.route, state.theme, state.width]);
+  return JSON.stringify([state.check ?? 'sweep', state.route, state.theme, state.width]);
 }
 
 /**
@@ -182,6 +188,7 @@ function collectFindings(report) {
         continue;
       }
       map.set(key, {
+        ...(state.check ? { check: state.check } : {}),
         route: state.route,
         theme: state.theme,
         width: state.width,
@@ -314,6 +321,11 @@ export function summaryLines(report, diff) {
       lines.push(
         `  SCREENSHOT ${state.route} ${state.theme} ${state.width}px: ${state.screenshotError}`,
       );
+    }
+    if (state.check === 'design-md-contrast') {
+      for (const entry of state.findings ?? []) {
+        lines.push(`  CONTRAST ${state.theme}: ${entry.gate} ${entry.target} ${entry.detail}`);
+      }
     }
     for (const entry of state.waived ?? []) {
       lines.push(

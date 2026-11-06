@@ -24,6 +24,7 @@ export const DEFAULTS = Object.freeze({
   failOnFindings: false,
   baseline: '',
   waivers: '',
+  designMd: '',
 });
 
 const LIST_FLAGS = new Set(['--routes', '--menu', '--widths', '--themes']);
@@ -41,6 +42,7 @@ const VALUE_FLAGS = new Set([
   '--settle-ms',
   '--baseline',
   '--waivers',
+  '--design-md',
 ]);
 const BOOL_FLAGS = new Set(['--fail-on-findings', '--screenshots', '--no-screenshots', '--help']);
 
@@ -128,6 +130,9 @@ export function parseArgs(argv) {
       case '--waivers':
         config.waivers = value;
         break;
+      case '--design-md':
+        config.designMd = value;
+        break;
       case '--server-timeout-ms':
       case '--sweep-timeout-ms':
       case '--settle-ms': {
@@ -195,6 +200,10 @@ Usage: node runner/cli.mjs [flags]
   --waivers <file>          Per-screen waiver file (default design-waivers.json
                             at the project root, when present): a finding a
                             waiver covers moves to the state's waived list
+  --design-md <file>        Also measure the text contrast of every DESIGN.md
+                            components pair in each theme, on the rendered
+                            app: a pair below its WCAG threshold is a finding
+                            (state "DESIGN.md", check design-md-contrast)
   --fail-on-findings        Exit 1 when any finding is reported (default:
                             advisory - findings never fail the run; exit 2 is
                             reserved for environment failures and for a
@@ -202,15 +211,15 @@ Usage: node runner/cli.mjs [flags]
                             or written, either way)
   --help                    Print this message
 
-Relative --out, --baseline, --waivers and --server-cwd paths resolve against
-the project root: $INIT_CWD (where npm was invoked), else the current
-directory.
+Relative --out, --baseline, --waivers, --design-md and --server-cwd paths
+resolve against the project root: $INIT_CWD (where npm was invoked), else
+the current directory.
 `;
 
 /**
  * The report and input paths, resolved against the project root.
  *
- * @template {{outDir: string, baseline: string, waivers: string, serverCwd: string}} C
+ * @template {{outDir: string, baseline: string, waivers: string, designMd: string, serverCwd: string}} C
  * @param {C} config
  * @param {string} root
  * @returns {C}
@@ -222,6 +231,7 @@ export function resolvePaths(config, root) {
     outDir: at(config.outDir),
     baseline: at(config.baseline),
     waivers: at(config.waivers),
+    designMd: at(config.designMd),
     serverCwd: at(config.serverCwd),
   };
 }

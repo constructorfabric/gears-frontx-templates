@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-alpha.0",
-  "description": "Data of the design-verify render runner (references/verify.md): the gate each runtime checker rule id reports under, with the level and waiver rules/quality-gates.json gives that gate. The runner writes the gate on every finding and needs-review entry; a rule id with no row reports under unmappedGate and cannot be waived.",
+  "description": "Data of the design-verify render runner (references/verify.md): the gate each runtime checker rule id reports under, with the level and waiver rules/quality-gates.json gives that gate, and the DESIGN.md contrast probe (--design-md): which components roles pair as text on background, and the WCAG 2.2 AA text thresholds. The runner writes the gate on every finding and needs-review entry; a rule id with no row reports under unmappedGate and cannot be waived.",
   "unmappedGate": "unmapped",
   "ruleGates": [
     {"gate": "COL-001", "rules": ["axe/color-contrast"], "note": "The one axe rule the jsdom suite cannot run: new evidence."},
@@ -17,6 +17,14 @@
     {"gate": "TYP-001", "rules": ["tiny-text", "small-control-text", "clipped-text"], "note": "Floors are the kit's --text-mono-size and --text-label-size; the fix is the kit role, never a literal size."},
     {"gate": "LAY-005", "rules": ["control-height-mismatch"], "note": "Fix with matching kit size variants, never spacers or margins."},
     {"gate": "LAY-005", "rules": ["card-missing-padding"], "note": "Padding floor and range in references/layout.md; the full-bleed media card is already exempt."},
-    {"gate": "SYS-004", "rules": ["dead-spacing-class"], "note": "A class no CSS rule defines: replace it with a CSS Module rule on a --space-* token, never with inline styles."}
-  ]
+    {"gate": "SYS-004", "rules": ["dead-spacing-class"], "note": "A class no CSS rule defines: replace it with a CSS Module rule on a --space-* token, never with inline styles."},
+    {"gate": "COL-001", "rules": ["design-md-contrast"], "note": "A DESIGN.md components pair below its WCAG 2.2 AA text threshold in a theme, measured in the rendered app with --design-md; a pair the page could not paint is a needs-review entry. A pair on kit tokens goes to the kit owner and under Known Gaps (references/design-md.md)."}
+  ],
+  "designMdContrast": {
+    "ruleId": "design-md-contrast",
+    "pairs": [{"text": "textColor", "background": "backgroundColor"}],
+    "typography": "typography",
+    "thresholds": {"text": 4.5, "largeText": 3},
+    "largeText": {"minPx": 24, "boldMinPx": 18.66, "boldWeight": 700}
+  }
 }

@@ -90,6 +90,31 @@ reports and set `version` to the new kit version. CI runs it on the shipped
 `DESIGN.md` in a shell composed with the kit version the shell pins, so a kit
 bump fails until both are updated.
 
+## Measure its contrast
+
+The front matter holds names, so a pair's contrast exists only in the
+rendered app. With the app running in dev (the preconditions of
+`references/verify.md`), the render runner measures every `components` entry
+that names both a `textColor` and a `backgroundColor`, in each theme:
+
+```sh
+npm run verify:ui --workspace=@gears-frontx/design-verify -- \
+  --design-md DESIGN.md [--start-server "npm run dev:all"]
+```
+
+It resolves each reference to its custom property, paints one probe per pair
+in the page with those properties (and the entry's type role), reads the
+computed colours and computes the WCAG ratio. A pair below 4.5:1, or 3:1 for
+large text (24 px, or 18.66 px at weight 700), is a COL-001 finding in the
+state `DESIGN.md` of that theme; a property the theme leaves empty is a
+`needsReview` entry; the state's `contrast` list holds every pair with both
+colours and its ratio. Pair roles and thresholds are data in
+`rules/render-check.json`. It measures text pairs only: the map pairs no
+boundary with the colour next to it, so non-text contrast (3:1) stays with
+the sweep's axe rules and the review. A pair below its threshold on kit
+tokens goes to the kit owner: record it under Known Gaps with the kit version
+it was measured on.
+
 ## Review a change
 
 After any change to the front matter:
@@ -97,10 +122,8 @@ After any change to the front matter:
 - The check script exits 0.
 - A new name sits in the map of its job and, when a screen often pairs it,
   in the `components` entry that uses it.
-- Real values and contrast come from the rendered app, in both themes, from
-  the verify runner (`references/verify.md`). A text and fill pair below the
-  WCAG 4.5:1 text contrast on a kit token is a finding for the kit owner;
-  record it under Known Gaps with the kit version it was measured on.
+- The contrast run above reports no pair under its threshold in either theme
+  other than those Known Gaps already lists.
 
 ## Change it with care
 

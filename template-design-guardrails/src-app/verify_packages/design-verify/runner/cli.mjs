@@ -42,7 +42,8 @@ import {
   summaryLines,
   waiveStates,
 } from './report.mjs';
-import { ContractError, projectRoot, readSkillJson } from './skill.mjs';
+import { ContractError, designMdParser, projectRoot, readSkillJson } from './skill.mjs';
+import { contrastPairs, contrastState, ContrastInputError, probeExpression } from './contrast.mjs';
 import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
 
 const SWEEP_LINE = /\[design-defects\]/;
@@ -108,18 +109,35 @@ async function main() {
 
   // The gate of every rule id and the waiver file, before any sweeping: a
   // waiver the run cannot honour fails now, not after minutes of work.
+  // The DESIGN.md pairs too, so a broken DESIGN.md fails before any browser work.
   let gateFor;
   let waivers;
+  let contrastSpec;
+  /** @type {import('./contrast.mjs').ContrastPair[] | undefined} */
+  let pairs;
+  let parser;
   try {
     const registry = readSkillJson('rules/quality-gates.json');
-    gateFor = gateLookup(readSkillJson('rules/render-check.json'));
+    const renderCheck = readSkillJson('rules/render-check.json');
+    gateFor = gateLookup(renderCheck);
     waivers = loadWaivers(config.waivers || undefined, root, registry);
+    if (config.designMd) {
+      contrastSpec = renderCheck.designMdContrast;
+      parser = await designMdParser();
+      pairs = contrastPairs(parser.readDesignMd(config.designMd).front, contrastSpec);
+    }
   } catch (error) {
-    if (!(error instanceof ContractError || error instanceof WaiverError)) throw error;
+    const known =
+      error instanceof ContractError ||
+      error instanceof WaiverError ||
+      error instanceof ContrastInputError ||
+      (parser !== undefined && error instanceof parser.InputError);
+    if (!known) throw error;
     console.error(`design-verify: ${error.message}`);
     return 2;
   }
   const coversState = coversRendered(mode);
+  const probedThemes = new Set();
 
   // Read the baseline up front: a bad path should fail before minutes of
   // sweeping, not after.
@@ -213,6 +231,23 @@ async function main() {
               `at ${route} (${theme}) - attempting on-demand sweep anyway`,
           );
         }
+        // Tokens are page-wide: probe the DESIGN.md pairs once per theme, on
+        // the first page that theme loads.
+        if (pairs && !probedThemes.has(theme)) {
+          probedThemes.add(theme);
+          await session.setWidth(width);
+          await new Promise((r) => setTimeout(r, config.settleMs));
+          const probe = await session.evaluate(probeExpression(pairs));
+          const contrast = contrastState({ theme, width, pairs, probe, spec: contrastSpec, gateFor });
+          states.push(contrast);
+          console.log(
+            `design-verify: DESIGN.md contrast ${theme} - ` +
+              (contrast.environmentError
+                ? `ENVIRONMENT: ${contrast.environmentError}`
+                : `${contrast.contrast.length} pair(s) measured, ${contrast.findings.length} below threshold` +
+                  (contrast.needsReview.length > 0 ? `, ${contrast.needsReview.length} needing review` : '')),
+          );
+        }
         if (menuMode) {
           const activationError = await activateMenu(session, route, config.sweepTimeoutMs);
           if (activationError) {
@@ -269,6 +304,19 @@ async function main() {
           (waivedCount > 0 ? `, ${waivedCount} waived` : '') +
           (record.screenshotError ? ` - SCREENSHOT FAILED: ${record.screenshotError}` : ''),
       );
+    }
+
+    // A theme whose every page failed to load was never probed: say so
+    // rather than leave its pairs out of the report.
+    for (const theme of pairs ? config.themes : []) {
+      if (probedThemes.has(theme)) continue;
+      states.push({
+        check: 'design-md-contrast',
+        route: 'DESIGN.md',
+        theme,
+        width: config.widths[0],
+        environmentError: 'contrast not measured: no page of this theme loaded',
+      });
     }
 
     const report = buildReport(
