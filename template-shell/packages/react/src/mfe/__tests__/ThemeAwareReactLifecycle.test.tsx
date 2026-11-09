@@ -26,11 +26,11 @@ beforeEach(async () => {
 });
 
 /**
- * Stands in for the shell's Tailwind preflight. Neutral, test-owned CSS, but the
- * shape is the one that caused the defect: an attribute selector at specificity
- * (0,1,0) that ties with a single-class component rule.
+ * Stands in for a host base reset. Neutral, test-owned CSS with the shape that
+ * matters here: an attribute selector at specificity (0,1,0) that ties with a
+ * single-class component rule.
  */
-const HOST_PREFLIGHT_CSS = "button, [type='submit'] { background-color: transparent; }";
+const HOST_RESET_CSS = "button, [type='submit'] { background-color: transparent; }";
 
 const HOST_LINK_HREF = 'https://shell.test/assets/shell.css';
 
@@ -146,12 +146,12 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
   });
 
   it('places the adopted host stylesheet ahead of an MFE stylesheet already in the shadow root, so a tied host rule cannot win on document order', () => {
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
     adoptIntoLifecycle(shadowRoot);
 
-    expect(cascadeOrder(shadowRoot)).toEqual([HOST_PREFLIGHT_CSS, MFE_BUTTON_CSS]);
+    expect(cascadeOrder(shadowRoot)).toEqual([HOST_RESET_CSS, MFE_BUTTON_CSS]);
   });
 
   it('places adopted host <link> stylesheets ahead of the MFE <link> that MfeHandlerMF injected before mount', () => {
@@ -168,14 +168,14 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     // through separate queries would concatenate the groups and hand the style
     // the later position, reversing which of the two wins a specificity tie.
     appendHostLink(HOST_LINK_HREF);
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
     adoptIntoLifecycle(shadowRoot);
 
     expect(cascadeOrder(shadowRoot)).toEqual([
       HOST_LINK_HREF,
-      HOST_PREFLIGHT_CSS,
+      HOST_RESET_CSS,
       MFE_BUTTON_CSS,
     ]);
   });
@@ -184,7 +184,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     // Stands for whatever initializeStyles() or a lazily imported CSS module
     // appends once mounting is under way: only the adopted block is moved to
     // the front, so everything arriving later keeps falling behind it.
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
     adoptIntoLifecycle(shadowRoot);
@@ -193,7 +193,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     shadowRoot.appendChild(lateStyle);
 
     expect(cascadeOrder(shadowRoot)).toEqual([
-      HOST_PREFLIGHT_CSS,
+      HOST_RESET_CSS,
       MFE_BUTTON_CSS,
       ':host { color: red; }',
     ]);
@@ -247,7 +247,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
   });
 
   it('keeps the media query of a host <style>, so a print-only host style stays print-only inside the MFE', () => {
-    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    const hostStyle = appendHostStyle(HOST_RESET_CSS);
     hostStyle.media = 'print';
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
@@ -257,7 +257,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
   });
 
   it('carries the nonce of a host <style>, so a nonce-based CSP admits the copy as it admitted the original', () => {
-    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    const hostStyle = appendHostStyle(HOST_RESET_CSS);
     hostStyle.nonce = 'host-style-nonce';
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
 
@@ -270,7 +270,7 @@ describe('ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot', () => {
     // styled-components, rendering into a shadow root, puts its tag right after
     // the last style[data-styled] there. A copy carrying the host's attribute
     // would pull the MFE's rules ahead of the base resets and the MFE's own CSS.
-    const hostStyle = appendHostStyle(HOST_PREFLIGHT_CSS);
+    const hostStyle = appendHostStyle(HOST_RESET_CSS);
     hostStyle.id = 'host-style';
     hostStyle.setAttribute('data-styled', 'active');
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
@@ -313,7 +313,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // unmount() removes no styles, so a remounted container arrives here
     // already carrying a full adopted block plus the base resets.
     appendHostLink(HOST_LINK_HREF);
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
     const lifecycle = new ProbeLifecycle(app);
 
@@ -339,7 +339,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     expect(cascadeOrder(shadowRoot)).toContain(MFE_BUTTON_CSS);
     expect(cascadeOrder(shadowRoot)).toEqual([
       HOST_LINK_HREF,
-      HOST_PREFLIGHT_CSS,
+      HOST_RESET_CSS,
       expect.stringContaining('box-sizing: border-box'),
       MFE_BUTTON_CSS,
     ]);
@@ -353,7 +353,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // mount put it lands behind that stylesheet the first time and ahead of it
     // the second - one component, two cascades - which is what the full-order
     // equality below rules out.
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootWithIsolationStyle();
     appendMfeRuntimeStyle(shadowRoot, MFE_BUTTON_CSS);
     const lifecycle = new ProbeLifecycle(app);
@@ -373,7 +373,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // Spelled out on the first mount too, so the equality holds the pair against
     // a stated order rather than against whatever the first mount happened to do.
     expect(afterFirstMount).toEqual([
-      HOST_PREFLIGHT_CSS,
+      HOST_RESET_CSS,
       SHADOW_ISOLATION_CSS,
       expect.stringContaining('box-sizing: border-box'),
       MFE_BUTTON_CSS,
@@ -387,7 +387,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // this method is called from, a subclass hook, a resize observer - would see
     // it with no host CSS at all. Records are queued in mutation order, so the
     // first addition arriving before the first removal is the claim.
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootWithIsolationStyle();
     adoptIntoLifecycle(shadowRoot);
 
@@ -417,7 +417,7 @@ describe('ThemeAwareReactLifecycle remount', () => {
     // context like the adopted block is: moved to the back they start winning
     // the specificity ties against the MFE's CSS that the front-insertion above
     // exists to make the MFE win.
-    appendHostStyle(HOST_PREFLIGHT_CSS);
+    appendHostStyle(HOST_RESET_CSS);
     const shadowRoot = shadowRootHoldingMfeStyle(MFE_BUTTON_CSS);
     const lifecycle = new ProbeLifecycle(app);
 

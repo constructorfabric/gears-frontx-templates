@@ -128,9 +128,8 @@ function MountRuntimeAwareProvider({
  *
  * Styling strategy:
  * 1. adoptHostStylesIntoShadowRoot() clones all host <style> and <link> into the
- *    front of the shadow root, bringing the full compiled Tailwind CSS (including
- *    MFE utilities, since the host's content paths cover src-app/mfe_packages/**) and
- *    the ui-kit component CSS (the host entry side-effect-imports
+ *    front of the shadow root, bringing the shell's global CSS (its base reset)
+ *    and the ui-kit component CSS (the host entry side-effect-imports
  *    @gears-frontx/ui-kit so that CSS exists in the host document; the kit's
  *    CSS-module class names are stable per kit version, so they match the
  *    classes MFE bundles reference only while host and MFE install the same
@@ -138,10 +137,10 @@ function MountRuntimeAwareProvider({
  *    that; a drifted MFE renders its kit components unstyled with no error).
  *    Front, not back, so the MFE's own stylesheets
  *    outrank them - see the method. Design tokens must therefore be full CSS
- *    colors - both Tailwind utilities (var(--x)) and ui-kit component CSS
- *    consume them directly.
- * 2. injectBaseResets() adds box-model resets and :host defaults that aren't part
- *    of Tailwind's compiled output but are needed for consistent rendering, and
+ *    colors - both the CSS Modules of shell and MFE (var(--x)) and ui-kit
+ *    component CSS consume them directly.
+ * 2. injectBaseResets() adds box-model resets and :host defaults that the host
+ *    stylesheets do not carry but that consistent rendering needs, and
  *    positions them at the end of the shell-owned head - after the adopted block
  *    and the isolation style, ahead of the MFE's own CSS.
  * 3. Subclasses may override initializeStyles() to inject additional CSS that is
@@ -218,18 +217,16 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
 
   /**
    * Copy all inline <style> and <link rel="stylesheet"> from the host document
-   * into the shadow root so that Tailwind and component styles apply inside the MFE.
+   * into the shadow root so that the shell's base reset and the kit's component
+   * styles apply inside the MFE.
    *
    * The clones are inserted ahead of everything already in the shadow root, never
    * appended, because adopted host styles are context rather than authority: where
    * they and the MFE's own CSS declare the same property at equal specificity, the
-   * MFE has to win. Appending inverted that. `MfeHandlerMF` injects the MFE's
-   * compiled stylesheet into the shadow root before it calls mount, so an appended
-   * clone of the shell's Tailwind preflight - whose
-   * `button, [type='button'], [type='reset'], [type='submit']` rule sets
-   * `background-color: transparent` at specificity (0,1,0) - tied with
-   * `@gears-frontx/ui-kit`'s single-class button rule and won on document order,
-   * leaving every kit Button transparent until it was hovered.
+   * MFE has to win. Appending would invert that: `MfeHandlerMF` injects the
+   * MFE's compiled stylesheet into the shadow root before it calls mount, so an
+   * appended clone of a host rule that ties with an MFE rule on specificity
+   * would win on document order and override the MFE.
    *
    * Inserting at the front rather than pushing MFE styles to the back is what makes
    * the invariant hold for stylesheets that appear after mount too - a lazily
@@ -237,8 +234,8 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * those land behind the adopted block by construction.
    *
    * A cascade layer around the adopted CSS was the alternative and is rejected:
-   * layered rules lose to unlayered ones at *any* specificity, so a host utility
-   * class would stop overriding an MFE element selector. Document order keeps
+   * layered rules lose to unlayered ones at *any* specificity, so a host class
+   * rule would stop overriding an MFE element selector. Document order keeps
    * specificity in charge and only settles the ties.
    *
    * The block replaces its predecessor instead of stacking on it, the same
@@ -318,8 +315,8 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
 
   /**
    * Box-model resets and :host defaults needed inside every shadow root.
-   * These aren't part of Tailwind's compiled output but are required for
-   * consistent rendering across browsers.
+   * The host stylesheets do not carry these, but consistent rendering across
+   * browsers needs them.
    *
    * Reuses the node a previous mount left behind, exactly as `injectStylesheet`
    * does in `@gears-frontx/mfes`' shadow utilities: a remount runs against a
@@ -329,7 +326,7 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * Reuse alone is not enough, which is why the node is also positioned on every
    * mount rather than left where the previous one sat. These resets are context
    * like the adopted block is - `border-color: currentColor` on `*` is a 0-0-0
-   * declaration that beats an MFE preflight's own 0-0-0 reset purely on document
+   * declaration that beats an MFE base reset's own 0-0-0 rule purely on document
    * order - so they have to stay ahead of the MFE's CSS, and where they land is
    * not stable on its own. `MfeHandlerMF.wrapLifecycleWithStylesheets` removes the
    * MFE's stylesheet on unmount and appends a fresh one before the next mount, so
@@ -389,7 +386,8 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * Hook for subclasses to inject additional CSS not covered by the adopted host
    * stylesheet (e.g., MFE-specific @font-face rules or custom animations).
    * No-op by default: host styles adopted in adoptHostStylesIntoShadowRoot()
-   * already include all Tailwind utilities compiled from MFE source files.
+   * already carry the shell's base reset and the kit's component CSS; an MFE's
+   * own CSS Modules arrive with its compiled stylesheet.
    */
   protected initializeStyles(_container: Element | ShadowRoot): void {
     // No-op by default.
