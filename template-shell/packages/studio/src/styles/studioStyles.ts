@@ -360,10 +360,8 @@ export const STUDIO_CSS = /* css */ `
   color: var(--foreground, hsl(0 0% 0%));
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-}
-/* Inside the studio's portal container the menu sits above the panel and
-   takes pointer events back from the container. */
-.studio-portal-container .studio-menu {
+  /* Above the panel wherever it is portaled, and clickable inside the
+     portal container, which itself takes no pointer events. */
   z-index: 99999;
   pointer-events: auto;
 }
