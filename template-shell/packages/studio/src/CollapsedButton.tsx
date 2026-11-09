@@ -37,7 +37,7 @@ export const CollapsedButton: React.FC<CollapsedButtonProps> = ({ toggleCollapse
 
   return (
     <div
-      className="fixed z-[10000]"
+      className="studio-collapsed"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -45,7 +45,7 @@ export const CollapsedButton: React.FC<CollapsedButtonProps> = ({ toggleCollapse
     >
       <GlassmorphicButton
         data-testid={STUDIO_EXPAND_TESTID}
-        icon={<StudioIcon className="w-6 h-6 text-foreground" />}
+        icon={<StudioIcon className="studio-glass-button__icon" />}
         onMouseDown={handleButtonMouseDown}
         onClick={handleButtonClick}
         title={t('studio:aria.openButton')}

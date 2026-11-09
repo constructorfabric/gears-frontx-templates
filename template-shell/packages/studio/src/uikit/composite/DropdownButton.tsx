@@ -24,11 +24,11 @@ export const DropdownButton = ({
     <Button
       ref={ref}
       variant={variant}
-      className={cn('min-w-40 justify-between rtl:flex-row-reverse', className)}
+      className={cn('studio-dropdown-button', className)}
       {...props}
     >
       <span>{children}</span>
-      <ChevronDownIcon className="h-4 w-4" />
+      <ChevronDownIcon />
     </Button>
   );
 };

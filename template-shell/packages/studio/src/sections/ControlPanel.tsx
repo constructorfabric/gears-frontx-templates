@@ -10,13 +10,13 @@ export const ControlPanel: React.FC = () => {
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+    <div className="studio-controls">
+      <div className="studio-controls__group">
+        <h3 className="studio-controls__heading">
           {t('studio:controls.heading')}
         </h3>
 
-        <div className="space-y-3">
+        <div className="studio-controls__list">
           <ApiModeToggle />
           <ThemeSelector />
           <LanguageSelector />

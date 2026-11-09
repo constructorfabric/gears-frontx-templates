@@ -34,11 +34,11 @@ export const StudioPanel: React.FC = () => {
       {/* High z-index portal container for dropdowns */}
       <div
         ref={portalRef}
-        className="studio-portal-container fixed z-[99999] pointer-events-none"
+        className="studio-portal-container"
       />
 
       <div
-        className="studio-panel fixed z-[10000]"
+        className="studio-panel"
         // The floating panel is page content outside <header>/<main>, so it
         // carries its own landmark (axe: region) — complementary fits a
         // supporting dev tool that is not part of the page's main flow.
@@ -51,7 +51,7 @@ export const StudioPanel: React.FC = () => {
           height: `${size.height}px`,
         }}
       >
-      <Card className="h-full w-full flex flex-col overflow-hidden bg-white/20 dark:bg-black/50 backdrop-blur-md backdrop-saturate-[180%] border border-white/30 dark:border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
+      <Card className="studio-glass studio-panel__surface">
         {/* Header with drag handle */}
         {/* jsx-a11y/no-static-element-interactions is exempted for this file in
             eslint.config.js (an inline directive can't be used: the plugin
@@ -60,22 +60,21 @@ export const StudioPanel: React.FC = () => {
             onMouseDown starts a pointer-only panel drag; the header's real
             controls (collapse button) are native and keyboard-reachable. */}
         <div
-          className="studio-header px-4 py-3 border-b border-[color-mix(in_oklab,var(--border)_50%,transparent)] select-none flex items-center justify-between"
+          className="studio-header"
           onMouseDown={handleDragMouseDown}
           style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
-          <h2 className="text-sm font-semibold text-foreground">{t('studio:title')}</h2>
+          <h2 className="studio-header__title">{t('studio:title')}</h2>
           <Button
             variant={ButtonVariant.Ghost}
             size={ButtonSize.Sm}
             onClick={toggleCollapsed}
             data-testid={STUDIO_COLLAPSE_TESTID}
-            className="h-7 w-7 p-0"
+            className="studio-header__collapse"
             aria-label={t('studio:aria.collapseButton')}
             title={t('studio:aria.collapseButton')}
           >
             <svg
-              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -91,13 +90,13 @@ export const StudioPanel: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="studio-panel__content">
           <ControlPanel />
         </div>
 
         {/* Resize handle */}
         <div
-          className="studio-resize-handle absolute bottom-1 right-1 w-5 h-5 cursor-nwse-resize"
+          className="studio-resize-handle"
           onMouseDown={handleResizeMouseDown}
           role="button"
           aria-label={t('studio:aria.resizeHandle')}
@@ -105,7 +104,7 @@ export const StudioPanel: React.FC = () => {
           tabIndex={0}
         >
           <svg
-            className="w-5 h-5 text-[color-mix(in_oklab,var(--muted-foreground)_70%,transparent)] hover:text-muted-foreground transition-colors"
+            className="studio-resize-handle__icon"
             fill="currentColor"
             viewBox="0 0 24 24"
           >

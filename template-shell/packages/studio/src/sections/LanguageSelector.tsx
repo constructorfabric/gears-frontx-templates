@@ -42,8 +42,8 @@ export function LanguageSelector({
   const currentLanguage = language ? getLanguageMetadata(language) : null;
 
   return (
-    <div className="flex items-center justify-between">
-      <label className="text-sm text-muted-foreground whitespace-nowrap">
+    <div className="studio-control-row">
+      <label className="studio-control-row__label">
         {t('studio:controls.language')}
       </label>
       <DropdownMenu>
@@ -55,7 +55,7 @@ export function LanguageSelector({
             }
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" container={portalContainer} className="z-[99999] pointer-events-auto">
+        <DropdownMenuContent align="end" container={portalContainer}>
           {SUPPORTED_LANGUAGES.map((lang) => (
             <DropdownMenuItem
               key={lang.code}

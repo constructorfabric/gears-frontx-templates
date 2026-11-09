@@ -38,7 +38,7 @@ export const GlassmorphicButton: React.FC<GlassmorphicButtonProps> = ({
       onMouseDown={onMouseDown}
       onClick={onClick}
       title={title}
-      className="w-12 h-12 p-0 rounded-full flex items-center justify-center pointer-events-auto bg-white/20 dark:bg-black/50 backdrop-blur-md backdrop-saturate-[180%] border border-white/30 dark:border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:bg-white/30 dark:hover:bg-black/60 transition-colors"
+      className="studio-glass studio-glass-button"
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
     >
       {icon}

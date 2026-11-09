@@ -46,8 +46,8 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
   const activeThemeLabel = themes.find((theme) => theme.id === currentTheme)?.name || currentTheme;
 
   return (
-    <div className={`flex items-center justify-between ${className}`}>
-      <label className="text-sm text-muted-foreground whitespace-nowrap">
+    <div className={`studio-control-row ${className}`}>
+      <label className="studio-control-row__label">
         {t('studio:controls.theme')}
       </label>
       <DropdownMenu>
@@ -64,7 +64,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
             {formatThemeName(activeThemeLabel || '')}
           </DropdownButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" container={portalContainer} className="z-[99999] pointer-events-auto">
+        <DropdownMenuContent align="end" container={portalContainer}>
           {themes.map((theme) => (
             <DropdownMenuItem
               key={theme.id}

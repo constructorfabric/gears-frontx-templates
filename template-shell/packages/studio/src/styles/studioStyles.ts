@@ -1,31 +1,39 @@
 /**
  * Studio self-contained CSS styles.
  *
- * The studio cannot rely on the host app having a Tailwind build pipeline.
- * Any utility classes unique to the studio (glassmorphic effects, arbitrary
- * z-index values, opacity modifiers, etc.) must be provided here.
+ * The studio is a published package mounted into hosts it does not control,
+ * so it brings every rule its markup needs in this one sheet, injected into
+ * the document head when the overlay mounts. Each class names one part of
+ * one studio component (`studio-<component>` and `studio-<component>__<part>`,
+ * `--<modifier>` for a variant or state); there are no general-purpose
+ * utility classes.
  *
- * Standard Tailwind utilities (flex, items-center, text-sm, etc.) are
- * intentionally duplicated for resilience — the studio must render correctly
- * regardless of the host app's styling setup.
+ * Colours, spacing, radius and type read @gears-frontx/ui-kit tokens. Every
+ * kit token carries a fallback inside `var()`, so a host that does not load
+ * the kit's theme.css still gets a usable panel painted from --foreground and
+ * --background.
  */
 
 const STUDIO_STYLE_ID = 'frontx-studio-styles';
 
+const TRANSITION_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
 export const STUDIO_CSS = /* css */ `
 /* ============================================================
-   Gears FrontX Studio — Self-contained utility styles
+   Gears FrontX Studio - self-contained component styles
    ============================================================ */
 
-/* --- Base normalization (Preflight may be absent in no-uikit hosts) ---
-   :where() keeps specificity at 0-0-0 so utility classes always win. */
+/* --- Base normalization ---
+   The host may ship no reset of its own. :where() keeps these at
+   specificity 0-0-0, so every component rule below wins over them. */
 .studio-panel,
-.studio-portal-container {
+.studio-portal-container,
+.studio-collapsed {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
 }
-:where(.studio-panel *, .studio-portal-container *) { box-sizing: border-box; }
-:where(.studio-panel button, .studio-portal-container button) {
+:where(.studio-panel *, .studio-portal-container *, .studio-collapsed *) { box-sizing: border-box; }
+:where(.studio-panel button, .studio-portal-container button, .studio-collapsed button) {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -42,241 +50,368 @@ export const STUDIO_CSS = /* css */ `
   margin: 0;
 }
 
-/* --- Layout --- */
-.fixed { position: fixed; }
-.absolute { position: absolute; }
-.relative { position: relative; }
-.flex { display: flex; }
-.inline-flex { display: inline-flex; }
-.block { display: block; }
-.peer { /* Radix peer marker — no CSS needed */ }
-.flex-col { flex-direction: column; }
-.flex-1 { flex: 1 1 0%; }
-.shrink-0 { flex-shrink: 0; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.justify-center { justify-content: center; }
-.gap-2 { gap: 0.5rem; }
-.overflow-hidden { overflow: hidden; }
-.overflow-y-auto { overflow-y: auto; }
-.overflow-x-hidden { overflow-x: hidden; }
+/* --- Overlay roots --- */
+.studio-panel {
+  position: fixed;
+  z-index: 10000;
+}
+.studio-collapsed {
+  position: fixed;
+  z-index: 10000;
+}
+/* Dropdown content portals in here, above the panel. */
+.studio-portal-container {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+}
 
-/* --- Sizing --- */
-.h-full { height: 100%; }
-.w-full { width: 100%; }
-.h-4 { height: 1rem; }
-.w-4 { width: 1rem; }
-.h-5 { height: 1.25rem; }
-.w-5 { width: 1.25rem; }
-.w-9 { width: 2.25rem; }
-.h-6 { height: 1.5rem; }
-.w-6 { width: 1.5rem; }
-.h-7 { height: 1.75rem; }
-.w-7 { width: 1.75rem; }
-.h-8 { height: 2rem; }
-.h-9 { height: 2.25rem; }
-.h-10 { height: 2.5rem; }
-.h-12 { height: 3rem; }
-.w-12 { width: 3rem; }
-.min-w-\\[8rem\\] { min-width: 8rem; }
-.min-w-40 { min-width: 10rem; }
+/* --- Card --- */
+.studio-card {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background-color: var(--card, var(--background));
+  color: var(--card-foreground, var(--foreground));
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
 
-/* --- Spacing --- */
-.p-0 { padding: 0; }
-.p-1 { padding: 0.25rem; }
-.p-4 { padding: 1rem; }
-.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
-.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
-.px-4 { padding-left: 1rem; padding-right: 1rem; }
-.px-8 { padding-left: 2rem; padding-right: 2rem; }
-.py-1\\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
-.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-.pl-8 { padding-left: 2rem; }
-.bottom-1 { bottom: 0.25rem; }
-.right-1 { right: 0.25rem; }
-.space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
-.space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
-
-/* --- Typography --- */
-.text-xs { font-size: 0.75rem; line-height: 1rem; }
-.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-.font-medium { font-weight: 500; }
-.font-semibold { font-weight: 600; }
-.uppercase { text-transform: uppercase; }
-.tracking-wider { letter-spacing: 0.05em; }
-.whitespace-nowrap { white-space: nowrap; }
-
-/* --- Colors (theme-aware via CSS variables) ---
-   Some theme variables (--popover-foreground, --card-foreground) may have
-   incorrect values in third-party themes. The Studio maps all component
-   colors to --foreground / --background which are always correct (body uses them).
-   :where() ensures host-app Tailwind utilities take precedence when available. */
-.text-foreground { color: var(--foreground); }
-.text-muted-foreground { color: var(--muted-foreground); }
-.text-\\[color-mix\\(in_oklab\\,var\\(--muted-foreground\\)_70\\%\\,transparent\\)\\] { color: color-mix(in oklab, var(--muted-foreground) 70%, transparent); }
-:where(.bg-popover) { background-color: var(--background); }
-:where(.text-popover-foreground) { color: var(--foreground); }
-:where(.bg-accent) { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
-:where(.text-accent-foreground) { color: var(--foreground); }
-:where(.bg-background) { background-color: var(--background); }
-:where(.bg-card) { background-color: var(--background); }
-:where(.text-card-foreground) { color: var(--foreground); }
-:where(.bg-primary) { background-color: var(--foreground); }
-:where(.text-primary-foreground) { color: var(--background); }
-:where(.bg-input) { background-color: color-mix(in oklab, var(--foreground) 15%, transparent); }
-:where(.border-input) { border-color: color-mix(in oklab, var(--foreground) 20%, transparent); }
-:where(.ring-ring) { --tw-ring-color: color-mix(in oklab, var(--foreground) 50%, transparent); }
-.border-transparent { border-color: transparent; }
-
-/* --- Borders --- */
-.border { border-width: 1px; }
-.border-2 { border-width: 2px; }
-.border-b { border-bottom-width: 1px; }
-:where(.border-\\[color-mix\\(in_oklab\\,var\\(--border\\)_50\\%\\,transparent\\)\\]) { border-color: color-mix(in oklab, var(--foreground) 15%, transparent); }
-.rounded-full { border-radius: 9999px; }
-.rounded-xl { border-radius: 0.75rem; }
-.rounded-md { border-radius: calc(var(--radius, 0.5rem) - 2px); }
-.rounded-sm { border-radius: calc(var(--radius, 0.5rem) - 4px); }
-
-/* --- Interaction --- */
-.select-none { -webkit-user-select: none; user-select: none; }
-.cursor-pointer { cursor: pointer; }
-.cursor-default { cursor: default; }
-.cursor-nwse-resize { cursor: nwse-resize; }
-.pointer-events-none { pointer-events: none; }
-.pointer-events-auto { pointer-events: auto; }
-.outline-none { outline: 2px solid transparent; outline-offset: 2px; }
-.transition-colors {
+/* --- Button --- */
+.studio-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 0.5rem);
+  white-space: nowrap;
+  border-radius: var(--radius-md, calc(0.5rem - 2px));
+  font-size: var(--text-body-size, 0.875rem);
+  line-height: var(--text-body-line-height, 1.25rem);
+  font-weight: 500;
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-timing-function: ${TRANSITION_EASE};
+  transition-duration: 150ms;
+  box-shadow: var(--studio-button-shadow, 0 0 #0000);
+}
+.studio-button:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px var(--ring, color-mix(in oklab, var(--foreground) 50%, transparent)),
+    var(--studio-button-shadow, 0 0 #0000);
+}
+.studio-button:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.studio-button svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.studio-button--default {
+  background-color: var(--primary, var(--foreground));
+  color: var(--primary-foreground, var(--background));
+  --studio-button-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+.studio-button--default:hover {
+  background-color: color-mix(in oklab, var(--primary, var(--foreground)) 90%, transparent);
+}
+.studio-button--destructive {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+  --studio-button-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.studio-button--destructive:hover {
+  background-color: color-mix(in oklab, var(--destructive) 90%, transparent);
+}
+.studio-button--outline {
+  border: 1px solid var(--input, color-mix(in oklab, var(--foreground) 20%, transparent));
+  background-color: var(--background);
+  color: var(--foreground);
+  --studio-button-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.studio-button--secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  --studio-button-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.studio-button--secondary:hover {
+  background-color: color-mix(in oklab, var(--secondary) 80%, transparent);
+}
+.studio-button--outline:hover,
+.studio-button--outline[data-state=open],
+.studio-button--ghost:hover,
+.studio-button--ghost[data-state=open] {
+  background-color: var(--accent, color-mix(in oklab, var(--foreground) 10%, transparent));
+}
+.studio-button--link {
+  color: var(--primary, var(--foreground));
+  text-underline-offset: 4px;
+}
+.studio-button--link:hover {
+  text-decoration-line: underline;
+}
+
+.studio-button--size-default {
+  height: 2.25rem;
+  padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+}
+.studio-button--size-sm {
+  height: 2rem;
+  padding: 0 var(--space-3, 0.75rem);
+  font-size: var(--text-label-size, 0.75rem);
+  line-height: var(--text-label-line-height, 1rem);
+}
+.studio-button--size-lg {
+  height: 2.5rem;
+  padding: 0 var(--space-8, 2rem);
+}
+.studio-button--size-icon {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+/* --- Dropdown button: a button that opens a menu --- */
+.studio-dropdown-button {
+  min-width: 10rem;
+  justify-content: space-between;
+}
+.studio-dropdown-button:where([dir=rtl], [dir=rtl] *) {
+  flex-direction: row-reverse;
+}
+
+/* --- Glass surface: the panel and the collapsed button --- */
+.studio-glass {
+  background-color: rgb(255 255 255 / 0.2);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.3);
+  --studio-button-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--studio-button-shadow);
+}
+
+/* --- Collapsed button --- */
+.studio-glass-button {
+  display: flex;
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border-radius: 9999px;
+  pointer-events: auto;
+}
+.studio-glass-button:hover {
+  background-color: rgb(255 255 255 / 0.3);
+}
+.studio-glass-button__icon {
+  color: var(--foreground);
+}
+
+/* --- Panel --- */
+.studio-panel__surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.studio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border-bottom: 1px solid color-mix(in oklab, var(--border, color-mix(in oklab, var(--foreground) 30%, transparent)) 50%, transparent);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.studio-header__title {
+  font-size: var(--text-body-size, 0.875rem);
+  line-height: var(--text-body-line-height, 1.25rem);
+  font-weight: 600;
+  color: var(--foreground);
+}
+.studio-header__collapse {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+}
+.studio-panel__content {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  padding: var(--space-4, 1rem);
+}
+.studio-resize-handle {
+  position: absolute;
+  right: var(--space-1, 0.25rem);
+  bottom: var(--space-1, 0.25rem);
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: nwse-resize;
+}
+.studio-resize-handle__icon {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: ${TRANSITION_EASE};
   transition-duration: 150ms;
 }
-.transition-transform {
+.studio-resize-handle__icon:hover {
+  color: var(--muted-foreground);
+}
+
+/* --- Control panel --- */
+.studio-controls__group > * + *,
+.studio-controls__list > * + * {
+  margin-top: var(--space-3, 0.75rem);
+}
+.studio-controls__heading {
+  font-size: var(--text-label-size, 0.75rem);
+  line-height: var(--text-label-line-height, 1rem);
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.studio-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.studio-control-row--toggle {
+  height: 2.25rem;
+}
+.studio-control-row__label {
+  font-size: var(--text-body-size, 0.875rem);
+  line-height: var(--text-body-line-height, 1.25rem);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.studio-control-row__label--clickable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* --- Switch --- */
+.studio-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  width: 2.25rem;
+  height: 1.25rem;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: ${TRANSITION_EASE};
+  transition-duration: 150ms;
+}
+.studio-switch[data-state=checked] {
+  background-color: var(--primary, var(--foreground));
+}
+.studio-switch[data-state=unchecked] {
+  background-color: var(--input, color-mix(in oklab, var(--foreground) 15%, transparent));
+}
+.studio-switch:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--ring, color-mix(in oklab, var(--foreground) 50%, transparent)),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.studio-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.studio-switch__thumb {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background-color: var(--background);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  pointer-events: none;
   transition-property: transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-timing-function: ${TRANSITION_EASE};
   transition-duration: 150ms;
 }
+.studio-switch__thumb[data-state=unchecked] { transform: translateX(0); }
+.studio-switch__thumb[data-state=checked]:where([dir=ltr], [dir=ltr] *) { transform: translateX(1rem); }
+.studio-switch__thumb[data-state=checked]:where([dir=rtl], [dir=rtl] *) { transform: translateX(-1rem); }
 
-/* --- Z-index (arbitrary values) --- */
-.z-\\[10000\\] { z-index: 10000; }
-.z-\\[99999\\] { z-index: 99999; }
-
-/* --- Glassmorphic: background with opacity --- */
-.bg-white\\/20 { background-color: rgb(255 255 255 / 0.2); }
-.bg-white\\/30 { background-color: rgb(255 255 255 / 0.3); }
-.dark .dark\\:bg-black\\/50 { background-color: rgb(0 0 0 / 0.5); }
-.dark .dark\\:bg-black\\/60 { background-color: rgb(0 0 0 / 0.6); }
-
-/* --- Glassmorphic: border with opacity --- */
-.border-white\\/30 { border-color: rgb(255 255 255 / 0.3); }
-.dark .dark\\:border-white\\/20 { border-color: rgb(255 255 255 / 0.2); }
-
-/* --- Glassmorphic: backdrop filters --- */
-.backdrop-blur-md {
-  --tw-backdrop-blur: blur(12px);
-  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
-  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
+/* --- Dropdown menu ---
+   Content and items paint from --foreground / --background rather than the
+   popover tokens: a third-party theme may leave --popover-foreground equal to
+   --popover, and the menu has to stay readable over any of them. */
+.studio-menu {
+  z-index: 50;
+  min-width: 8rem;
+  max-height: var(--radix-dropdown-menu-content-available-height);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-1, 0.25rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, calc(0.5rem - 2px));
+  background-color: var(--background, hsl(0 0% 100%));
+  color: var(--foreground, hsl(0 0% 0%));
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
 }
-.backdrop-saturate-\\[180\\%\\] {
-  --tw-backdrop-saturate: saturate(1.8);
-  -webkit-backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia, );
-  backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia, );
+/* Inside the studio's portal container the menu sits above the panel and
+   takes pointer events back from the container. */
+.studio-portal-container .studio-menu {
+  z-index: 99999;
+  pointer-events: auto;
+}
+.studio-menu__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: 0.375rem var(--space-2, 0.5rem);
+  border-radius: var(--radius-sm, calc(0.5rem - 4px));
+  font-size: var(--text-body-size, 0.875rem);
+  line-height: var(--text-body-line-height, 1.25rem);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: ${TRANSITION_EASE};
+  transition-duration: 150ms;
+}
+.studio-menu__item:focus {
+  background-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
+.studio-menu__item[data-disabled] {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.studio-menu__item > svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+.studio-menu__item--inset {
+  padding-left: 2rem;
 }
 
-/* --- Glassmorphic: box shadow (arbitrary) --- */
-.shadow-\\[0_8px_32px_rgba\\(0\\,0\\,0\\,0\\.2\\)\\] {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-}
-
-/* --- Shadows --- */
-.shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); }
-.shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
-.shadow-md { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
-.ring-0 { box-shadow: var(--tw-ring-inset,) 0 0 0 calc(0px + var(--tw-ring-offset-width, 0px)) var(--tw-ring-color, transparent); }
-
-/* --- Hover states --- */
-.hover\\:bg-white\\/30:hover { background-color: rgb(255 255 255 / 0.3); }
-.dark .dark\\:hover\\:bg-black\\/60:hover { background-color: rgb(0 0 0 / 0.6); }
-.hover\\:text-muted-foreground:hover { color: var(--muted-foreground); }
-:where(.hover\\:bg-accent:hover) { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
-:where(.hover\\:bg-\\[color-mix\\(in_oklab\\,var\\(--primary\\)_90\\%\\,transparent\\)\\]:hover) { background-color: color-mix(in oklab, var(--foreground) 85%, transparent); }
-:where(.hover\\:bg-\\[color-mix\\(in_oklab\\,var\\(--secondary\\)_80\\%\\,transparent\\)\\]:hover) { background-color: color-mix(in oklab, var(--foreground) 8%, transparent); }
-:where(.hover\\:bg-\\[color-mix\\(in_oklab\\,var\\(--destructive\\)_90\\%\\,transparent\\)\\]:hover) { background-color: hsl(0 60% 50% / 0.9); }
-
-/* --- Focus states --- */
-:where(.focus\\:bg-accent:focus) { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
-:where(.focus\\:text-foreground:focus) { color: var(--foreground); }
-:where(.focus\\:text-accent-foreground:focus) { color: var(--foreground); }
-.focus-visible\\:outline-none:focus-visible { outline: 2px solid transparent; outline-offset: 2px; }
-:where(.focus-visible\\:ring-1:focus-visible) {
-  box-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width, 0px)) var(--tw-ring-color, color-mix(in oklab, var(--foreground) 50%, transparent));
-}
-:where(.focus-visible\\:ring-2:focus-visible) {
-  box-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width, 0px)) var(--tw-ring-color, color-mix(in oklab, var(--foreground) 50%, transparent));
-}
-:where(.focus-visible\\:ring-ring:focus-visible) { --tw-ring-color: color-mix(in oklab, var(--foreground) 50%, transparent); }
-:where(.focus-visible\\:ring-offset-2:focus-visible) { --tw-ring-offset-width: 2px; }
-:where(.focus-visible\\:ring-offset-background:focus-visible) { --tw-ring-offset-color: var(--background); }
-
-/* --- Data-attribute & disabled states --- */
-:where(.data-\\[state\\=open\\]\\:bg-accent[data-state=open]) { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
-:where(.data-\\[state\\=checked\\]\\:bg-primary[data-state=checked]) { background-color: var(--foreground); }
-:where(.data-\\[state\\=unchecked\\]\\:bg-input[data-state=unchecked]) { background-color: color-mix(in oklab, var(--foreground) 15%, transparent); }
-.data-\\[disabled\\]\\:pointer-events-none[data-disabled] { pointer-events: none; }
-.data-\\[disabled\\]\\:opacity-50[data-disabled] { opacity: 0.5; }
-.disabled\\:pointer-events-none:disabled { pointer-events: none; }
-.disabled\\:opacity-50:disabled { opacity: 0.5; }
-.disabled\\:cursor-not-allowed:disabled { cursor: not-allowed; }
-
-/* --- SVG child selectors --- */
-[class*="[&>svg]:size-4"] > svg,
-[class*="[&_svg]:size-4"] svg { width: 1rem; height: 1rem; }
-[class*="[&>svg]:shrink-0"] > svg,
-[class*="[&_svg]:shrink-0"] svg { flex-shrink: 0; }
-[class*="[&_svg]:pointer-events-none"] svg { pointer-events: none; }
-
-/* --- RTL support --- */
-.rtl\\:flex-row-reverse:where([dir=rtl], [dir=rtl] *) { flex-direction: row-reverse; }
-.data-\\[state\\=checked\\]\\:ltr\\:translate-x-4[data-state=checked]:where([dir=ltr], [dir=ltr] *) { transform: translateX(1rem); }
-.data-\\[state\\=checked\\]\\:rtl\\:-translate-x-4[data-state=checked]:where([dir=rtl], [dir=rtl] *) { transform: translateX(-1rem); }
-.data-\\[state\\=unchecked\\]\\:translate-x-0[data-state=unchecked] { transform: translateX(0); }
-
-/* --- Radix animation (minimal enter/exit for dropdown) --- */
+/* --- Dropdown menu enter and exit ---
+   Radix keeps the menu mounted after close and waits for \`animationend\`
+   before unmounting it. Both rules name keyframes defined right here, so the
+   exit animation always runs and the closed menu always unmounts. */
 @keyframes frontx-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes frontx-fade-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes frontx-zoom-in { from { transform: scale(0.95); } to { transform: scale(1); } }
 @keyframes frontx-zoom-out { from { transform: scale(1); } to { transform: scale(0.95); } }
-.data-\\[state\\=open\\]\\:animate-in[data-state=open] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out; }
-.data-\\[state\\=closed\\]\\:animate-out[data-state=closed] { animation: frontx-fade-out 100ms ease-in, frontx-zoom-out 100ms ease-in; animation-fill-mode: forwards; }
-
-/* The same two rules again, scoped to the portal (specificity 0-3-0 against the
-   0-2-0 of the bare utility). A host running tailwindcss-animate emits these
-   exact class names with \`animation-name: exit\`, so the pair above wins only
-   while the studio's <style> is last in the document - which it is at mount and
-   need not stay: any stylesheet appended afterwards (a lazily mounted route or
-   MFE chunk) takes the cascade back on equal specificity.
-   Losing it is not cosmetic. Radix keeps the dropdown mounted after close and
-   waits for \`animationend\` before unmounting; if the winning rule names
-   keyframes the document does not define, no animation runs, that event never
-   fires, and the closed menu stays visible and clickable over the app until the
-   next navigation. Scoping pins the winner to keyframes defined right here. */
-.studio-portal-container .data-\\[state\\=open\\]\\:animate-in[data-state=open] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out; }
-.studio-portal-container .data-\\[state\\=closed\\]\\:animate-out[data-state=closed] { animation: frontx-fade-out 100ms ease-in, frontx-zoom-out 100ms ease-in; animation-fill-mode: forwards; }
-
-/* --- Studio portal: scoped dropdown color overrides ---
-   Dropdown content portaled here inherits host-app Tailwind utilities that
-   may reference broken theme variables (e.g. --popover-foreground identical
-   to --popover in some third-party themes). Scoped rules (specificity 0-2-0)
-   beat host-app Tailwind (0-1-0) and map everything to --foreground / --background. */
-.studio-portal-container .bg-popover { background-color: var(--background, hsl(0 0% 100%)); }
-.studio-portal-container .text-popover-foreground { color: var(--foreground, hsl(0 0% 0%)); }
-.studio-portal-container .focus\\:bg-accent:focus { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
-.studio-portal-container .focus\\:text-foreground:focus { color: var(--foreground); }
-
-/* --- Z-index (dropdown content) --- */
-.z-50 { z-index: 50; }
+.studio-menu[data-state=open] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out; }
+.studio-menu[data-state=closed] { animation: frontx-fade-out 100ms ease-in, frontx-zoom-out 100ms ease-in; animation-fill-mode: forwards; }
 `;
 
 /**

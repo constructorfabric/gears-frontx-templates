@@ -31,10 +31,10 @@ export const ApiModeToggle: React.FC<ApiModeToggleProps> = ({
   };
 
   return (
-    <div className={`flex items-center justify-between h-9 ${className ?? ''}`}>
+    <div className={`studio-control-row studio-control-row--toggle ${className ?? ''}`}>
       <label
         htmlFor="api-mode-toggle"
-        className="text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
+        className="studio-control-row__label studio-control-row__label--clickable"
       >
         {t('studio:controls.mockApi')}
       </label>

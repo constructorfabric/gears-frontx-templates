@@ -69,15 +69,12 @@ describe('ThemeSelector', () => {
     expect(screen.getByTestId('studio-theme-trigger').textContent).toContain('Dracula (Large)');
   });
 
-  it('portals the open menu into the studio container the scoped animation rules select on', async () => {
-    // The overlay hands the dropdown a container of its own, and studioStyles.ts
-    // re-declares the two animate-in/animate-out rules scoped under
-    // `.studio-portal-container` precisely so they outrank an identically named
-    // host utility that names keyframes this document may not define. Radix
-    // waits for `animationend` before unmounting a closed menu, so a scope that
-    // stops matching leaves the closed menu visible and clickable over the app.
-    // Nothing selects on it while the container is mocked away, which is what
-    // this case supplies.
+  it('portals the open menu into the studio container, with enter and exit rules on keyframes the sheet defines', async () => {
+    // Radix keeps a closed menu mounted until `animationend`, so the menu must
+    // carry the class the studio's open/closed animation rules select on, and
+    // those rules must name keyframes the studio sheet itself defines: a rule
+    // that names undefined keyframes runs no animation, the event never fires,
+    // and the closed menu stays visible and clickable over the app.
     const portalContainer = document.createElement('div');
     portalContainer.className = 'studio-portal-container';
     document.body.appendChild(portalContainer);
@@ -92,26 +89,25 @@ describe('ThemeSelector', () => {
     // Read off the stylesheet rather than retyped, so the case fails on either
     // side of the drift: a rule that stops naming the class the menu renders,
     // and a menu that stops rendering the class the rule names.
-    const scopedAnimationSelectors = STUDIO_CSS.split('\n')
+    const animationRules = STUDIO_CSS.split('\n')
       .map((line) => line.trim())
-      .filter((line) => line.startsWith('.studio-portal-container') && line.includes(':animate-'))
-      .map((line) => line.slice(0, line.indexOf('{')).trim());
-    expect(scopedAnimationSelectors).toHaveLength(2);
+      .filter((line) => /^\S+\[data-state=(open|closed)\] \{ animation:/.test(line));
+    expect(animationRules).toHaveLength(2);
 
-    for (const selector of scopedAnimationSelectors) {
-      // The state qualifier is dropped for the reachability check: only one of
-      // the two states holds at a time, and what the scope has to keep matching
+    for (const rule of animationRules) {
+      const selector = rule.slice(0, rule.indexOf('{')).trim();
+      // Only one of the two states holds at a time; what has to keep matching
       // is the class the menu carries in both.
       expect(document.querySelector(selector.replace(/\[data-state=\w+\]$/, ''))).toBe(menu);
+      for (const name of rule.match(/frontx-[\w-]+/g) ?? []) {
+        expect(STUDIO_CSS).toContain(`@keyframes ${name} `);
+      }
     }
-    // And in full for the state the open menu is actually in, so the pair is
-    // held as written and not only as trimmed above.
-    const openStateSelector = scopedAnimationSelectors.find((selector) =>
-      selector.endsWith('[data-state=open]')
-    );
-    if (!openStateSelector) {
-      throw new Error('studioStyles.ts declares no portal-scoped open-state animation rule');
+    // And in full for the state the open menu is actually in.
+    const openRule = animationRules.find((rule) => rule.includes('[data-state=open]'));
+    if (!openRule) {
+      throw new Error('studioStyles.ts declares no open-state animation rule');
     }
-    expect(document.querySelector(openStateSelector)).toBe(menu);
+    expect(document.querySelector(openRule.slice(0, openRule.indexOf('{')).trim())).toBe(menu);
   });
 });
