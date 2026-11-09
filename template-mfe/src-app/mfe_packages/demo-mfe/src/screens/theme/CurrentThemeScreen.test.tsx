@@ -79,10 +79,19 @@ describe('CurrentThemeScreen', () => {
 
   it('pads every card body more from 40rem up, as p-4 sm:p-6 did', async () => {
     await setupCurrentThemeScreen();
-    expect(document.querySelectorAll(`.${styles.cardBody}`).length).toBeGreaterThan(0);
-    expect(screenCss.match(/\.cardBody\s*\{([^}]*)\}/)?.[1]).toMatch(/padding:\s*var\(--space-4\)/);
-    const wide = screenCss.slice(screenCss.indexOf('@media (min-width: 40rem)', screenCss.indexOf('.cardBody')));
-    expect(wide.match(/\.cardBody\s*\{([^}]*)\}/)?.[1]).toMatch(/padding:\s*var\(--space-6\)/);
+    const cards = [...document.querySelectorAll(`.${styles.card}`)];
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) expect(card.querySelector(`.${styles.cardBody}`)).not.toBeNull();
+    // jsdom applies no media query, so the rules are read from the parsed sheet.
+    const style = document.createElement('style');
+    style.textContent = screenCss;
+    document.head.appendChild(style);
+    const rules = [...style.sheet!.cssRules];
+    style.remove();
+    const paddingOf = (list: CSSRule[]) => list.find((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === '.cardBody')?.style.padding;
+    expect(paddingOf(rules)).toBe('var(--space-4)');
+    const wide = rules.find((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText === '(min-width: 40rem)' && paddingOf([...rule.cssRules]) !== undefined);
+    expect(wide && paddingOf([...wide.cssRules])).toBe('var(--space-6)');
   });
 
   it('subscribes to theme and language bridge properties', async () => {
