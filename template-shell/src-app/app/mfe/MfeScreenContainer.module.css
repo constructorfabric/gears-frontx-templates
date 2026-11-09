@@ -1,0 +1,11 @@
+/* The side padding sits inside the scroller, so its scrollbar is at the
+   window's edge instead of inset by the padding. */
+.container {
+  flex: 1 1 0%;
+  overflow: auto;
+  padding: 0 var(--space-4);
+}
+
+.slot {
+  height: 100%;
+}

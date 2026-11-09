@@ -1,12 +1,13 @@
 /**
  * Sidebar Component - Based on shadcn/ui sidebar
- * Collapsible navigation; below md the expanded menu overlays the content
+ * Collapsible navigation; below 768px the expanded menu overlays the content
  */
 
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/app/lib/utils"
+import styles from "./sidebar.module.css"
 
 const Sidebar = (
   {
@@ -25,16 +26,7 @@ const Sidebar = (
       ref={ref}
       data-state={collapsed ? "collapsed" : "expanded"}
       data-collapsible={collapsed ? "icon" : ""}
-      className={cn(
-        "group flex flex-col border-r border-mainMenu-border transition-[width] duration-200 ease-linear",
-        "bg-mainMenu text-mainMenu-foreground",
-        collapsed ? "w-14" : "w-64",
-        // Below md an expanded menu lies over the content (the layout keeps
-        // only the collapsed rail's width for it) instead of taking 256 px of
-        // a phone screen.
-        !collapsed && "max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-lg",
-        className
-      )}
+      className={cn(styles.sidebar, className)}
       {...props}
     >
       {children}
@@ -54,10 +46,7 @@ const SidebarContent = (
 ) => (<div
   ref={ref}
   data-sidebar="content"
-  className={cn(
-    "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden p-2",
-    className
-  )}
+  className={cn(styles.content, className)}
   {...props}
 />)
 SidebarContent.displayName = "SidebarContent"
@@ -73,7 +62,7 @@ const SidebarMenu = (
 ) => (<ul
   ref={ref}
   data-sidebar="menu"
-  className={cn("flex w-full min-w-0 flex-col gap-1", className)}
+  className={cn(styles.menu, className)}
   {...props}
 />)
 SidebarMenu.displayName = "SidebarMenu"
@@ -89,7 +78,7 @@ const SidebarMenuItem = (
 ) => (<li
   ref={ref}
   data-sidebar="menu-item"
-  className={cn("group/menu-item relative", className)}
+  className={cn(styles.menuItem, className)}
   {...props}
 />)
 SidebarMenuItem.displayName = "SidebarMenuItem"
@@ -97,18 +86,15 @@ SidebarMenuItem.displayName = "SidebarMenuItem"
 type SidebarMenuButtonVariant = "default" | "outline"
 type SidebarMenuButtonSize = "default" | "sm" | "lg"
 
-const SIDEBAR_MENU_BUTTON_BASE_CLASSES =
-  "peer/menu-button flex w-full items-center gap-2 rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>span:last-child]:overflow-hidden [&>svg]:size-5 [&>svg]:shrink-0 text-mainMenu-foreground hover:bg-mainMenu-hover data-[active=true]:bg-mainMenu-selected data-[active=true]:text-white data-[active=true]:font-medium"
-
-const SIDEBAR_MENU_BUTTON_VARIANT_CLASSES: Record<SidebarMenuButtonVariant, string> = {
-  default: "",
-  outline: "bg-background shadow-[0_0_0_1px_var(--border)] hover:bg-mainMenu-hover",
+const SIDEBAR_MENU_BUTTON_VARIANT_CLASSES: Record<SidebarMenuButtonVariant, string | undefined> = {
+  default: undefined,
+  outline: styles.outline,
 }
 
 const SIDEBAR_MENU_BUTTON_SIZE_CLASSES: Record<SidebarMenuButtonSize, string> = {
-  default: "h-10 text-sm",
-  sm: "h-7 text-xs",
-  lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0",
+  default: styles.sizeDefault,
+  sm: styles.sizeSm,
+  lg: styles.sizeLg,
 }
 
 function sidebarMenuButtonVariants({
@@ -119,7 +105,7 @@ function sidebarMenuButtonVariants({
   size?: SidebarMenuButtonSize
 }) {
   return cn(
-    SIDEBAR_MENU_BUTTON_BASE_CLASSES,
+    styles.menuButton,
     SIDEBAR_MENU_BUTTON_VARIANT_CLASSES[variant],
     SIDEBAR_MENU_BUTTON_SIZE_CLASSES[size]
   )
@@ -170,7 +156,7 @@ const SidebarMenuIcon = (
   }
 ) => (<span
   ref={ref}
-  className={cn("size-5 min-w-[1.5rem] flex-shrink-0 [&>svg]:w-full [&>svg]:h-full", className)}
+  className={cn(styles.menuIcon, className)}
   {...props}
 />)
 SidebarMenuIcon.displayName = "SidebarMenuIcon"
@@ -213,23 +199,20 @@ const SidebarHeader = (
   return (
     <div
       ref={ref}
-      className={cn(
-        "flex flex-col h-16",
-        className
-      )}
+      className={cn(styles.header, className)}
       {...props}
     >
-      <div className="flex items-center flex-1 px-2">
+      <div className={styles.headerRow}>
         <SidebarMenuButton onClick={onClick} tooltip={collapsed ? "Expand menu" : "Collapse menu"}>
           {logo && <SidebarMenuIcon>{logo}</SidebarMenuIcon>}
           {logoText && (
-            <SidebarMenuLabel className="[&>svg]:h-5 [&>svg]:w-auto">
+            <SidebarMenuLabel className={styles.logoText}>
               {logoText}
             </SidebarMenuLabel>
           )}
         </SidebarMenuButton>
       </div>
-      <div className="border-b border-mainMenu-border mx-4" />
+      <div className={styles.headerDivider} />
     </div>
   )
 }

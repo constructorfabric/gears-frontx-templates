@@ -1,8 +1,12 @@
 /**
- * Skeleton Component - Based on shadcn/ui skeleton
+ * Skeleton Component - the kit's Skeleton with an option to paint in the
+ * surrounding text colour instead of the muted fill
  */
 
+import { Skeleton as KitSkeleton } from "@gears-frontx/ui-kit"
+
 import { cn } from "@/app/lib/utils"
+import styles from "./skeleton.module.css"
 
 function Skeleton({
   className,
@@ -10,12 +14,8 @@ function Skeleton({
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { inheritColor?: boolean }) {
   return (
-    <div
-      className={cn(
-        "animate-pulse rounded-md",
-        inheritColor ? "bg-current opacity-20" : "bg-muted",
-        className
-      )}
+    <KitSkeleton
+      className={cn(inheritColor && styles.inheritColor, className)}
       {...props}
     />
   )

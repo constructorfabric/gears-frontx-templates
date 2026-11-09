@@ -144,13 +144,12 @@ my-app/
 │   │   ├── mfe/             # MFE bootstrap + generated manifests
 │   │   ├── themes/          # Themes over the ui-kit palette
 │   │   ├── font.css         # Registers the kit's Inter face
-│   │   └── globals.css      # Tailwind entry and global styles
+│   │   └── globals.css      # Base reset and global styles
 │   └── mfe_packages/        # Microfrontends (empty until `frontx add frontx-template-mfe`)
 ├── src/                     # Shared solution lib (api, build, gts)
 ├── packages/                # Solution packages: react, framework, state, i18n, studio, auth
 ├── public/                  # Static assets + generated-mfe-manifests.json
 ├── scripts/                 # dev-all, build-mfes, manifest generation, dist layout
-├── tailwind.config.ts       # TailwindCSS configuration
 ├── vite.config.ts           # Host Vite + Module Federation config
 └── .frontx/                 # Template provenance (managed by the frontx CLI)
 ```
@@ -242,7 +241,8 @@ the root of a domain until screens can learn the shell's address.
 ## Tech stack
 
 - **React** + **TypeScript** + **Vite** with **Module Federation** for MFEs
-- **Tailwind CSS** with CSS-variable theme tokens (shadcn/ui primitives).
+- **CSS Modules** on CSS-variable theme tokens, with `@gears-frontx/ui-kit`
+  components first and a few app-owned primitives (shadcn/ui based).
   `@gears-frontx/ui-kit/theme.css` is the one palette: the themes in
   `src-app/app/themes/` declare the shell's own tokens and override a kit
   token only on purpose (the Dracula themes override all of its colours).

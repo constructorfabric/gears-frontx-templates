@@ -1,0 +1,38 @@
+.popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in oklab, var(--background) 80%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+/* z-index is 1000 + stack depth * 10; only the top popup renders. */
+.dialog {
+  position: relative;
+  z-index: 1001;
+  width: 100%;
+  max-width: 32rem;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background-color: var(--background);
+  box-shadow: var(--shadow-lg);
+}
+
+.header {
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}

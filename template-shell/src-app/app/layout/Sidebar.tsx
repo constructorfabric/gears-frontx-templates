@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { useAppSelector, type SidebarState } from '@gears-frontx/react';
+import styles from './Sidebar.module.css';
 
 export interface SidebarProps {
   children?: React.ReactNode;
@@ -23,8 +24,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
   }
 
   return (
-    <aside className={`border-l border-border bg-background transition-all duration-200 ${collapsed ? 'w-0' : 'w-80'}`}>
-      <div className="h-full overflow-y-auto p-4">
+    <aside className={collapsed ? `${styles.sidebar} ${styles.collapsed}` : styles.sidebar}>
+      <div className={styles.body}>
         {children}
       </div>
     </aside>

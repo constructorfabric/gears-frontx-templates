@@ -9,7 +9,6 @@
  */
 
 import type { ThemeConfig } from '@gears-frontx/react';
-import colors from './tailwindColors';
 import { cssColor } from './utils';
 
 /**
@@ -24,14 +23,14 @@ export const defaultTheme: ThemeConfig = {
   default: true,
   variables: {
     // State colour the kit has no token for (the kit's red is --destructive)
-    '--error': cssColor(colors.red[500]),
+    '--error': cssColor('hsl(0 84% 60%)'),
 
     // Left menu colors
-    '--left-menu': cssColor(colors.gray[900]),
-    '--left-menu-foreground': cssColor(colors.gray[400]),
-    '--left-menu-hover': cssColor(colors.gray[700]),
-    '--left-menu-selected': cssColor(colors.blue[600]),
-    '--left-menu-border': cssColor(colors.gray[700]),
+    '--left-menu': cssColor('hsl(221 39% 11%)'),
+    '--left-menu-foreground': cssColor('hsl(218 11% 65%)'),
+    '--left-menu-hover': cssColor('hsl(217 19% 27%)'),
+    '--left-menu-selected': cssColor('hsl(221 83% 53%)'),
+    '--left-menu-border': cssColor('hsl(217 19% 27%)'),
 
     // Spacing
     '--spacing-xs': '0.25rem',

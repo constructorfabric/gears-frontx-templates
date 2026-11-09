@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 /*
  * No theme tokens here. Colour, radius and type tokens come from
  * @gears-frontx/ui-kit/theme.css (imported before this file in main.tsx), and
@@ -11,19 +7,186 @@
  * replace its palette for every name both declare.
  */
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  html {
-    @apply overflow-hidden;
-  }
-  body {
-    @apply bg-background text-foreground overflow-hidden m-0;
-  }
-  #root {
-    @apply h-screen w-screen;
-  }
+/*
+ * Base reset. The shell's CSS Modules, the studio and every MFE screen are
+ * written against it: no default margins, borders that draw as soon as a rule
+ * sets a width, form controls that inherit their type and colour, block-level
+ * media. ThemeAwareReactLifecycle clones this sheet into each MFE shadow root,
+ * so a screen sees the same base as the host. The kit's component CSS comes
+ * after this file (main.tsx), so a component rule wins any tie with it.
+ */
+*,
+::before,
+::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--border);
+}
+
+html,
+:host {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  line-height: inherit;
+}
+
+hr {
+  height: 0;
+  color: inherit;
+  border-top-width: 1px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+b,
+strong {
+  font-weight: bolder;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+
+small {
+  font-size: 80%;
+}
+
+table {
+  text-indent: 0;
+  border-color: inherit;
+  border-collapse: collapse;
+}
+
+button,
+input,
+optgroup,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+button,
+select {
+  text-transform: none;
+}
+
+button,
+input:where([type='button'], [type='reset'], [type='submit']) {
+  -webkit-appearance: button;
+  background-color: transparent;
+  background-image: none;
+}
+
+blockquote,
+dl,
+dd,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+hr,
+figure,
+p,
+pre,
+fieldset {
+  margin: 0;
+}
+
+fieldset,
+legend,
+dialog {
+  padding: 0;
+}
+
+ol,
+ul,
+menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  opacity: 1;
+  color: var(--muted-foreground);
+}
+
+button,
+[role='button'] {
+  cursor: pointer;
+}
+
+:disabled {
+  cursor: default;
+}
+
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  vertical-align: middle;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+[hidden]:where(:not([hidden='until-found'])) {
+  display: none;
+}
+
+/* The page is a fixed viewport-sized frame; regions inside it scroll. */
+html,
+body {
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
 }
 
 /* Sonner toast styles */

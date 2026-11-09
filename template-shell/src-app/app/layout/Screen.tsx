@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import styles from './Screen.module.css';
 
 export interface ScreenProps {
   children?: React.ReactNode;
@@ -13,7 +14,7 @@ export interface ScreenProps {
 
 export const Screen: React.FC<ScreenProps> = ({ children }) => {
   return (
-    <main className="flex flex-col flex-1 overflow-hidden bg-background">
+    <main className={styles.screen}>
       {children}
     </main>
   );

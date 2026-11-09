@@ -1,0 +1,5 @@
+/* Paints in the surrounding text colour, for buttons, menu items and coloured text. */
+.inheritColor {
+  background-color: currentColor;
+  opacity: 0.2;
+}

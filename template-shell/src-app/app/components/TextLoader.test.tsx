@@ -48,13 +48,13 @@ describe('TextLoader', () => {
     mockUseTranslation.mockReturnValue({ language: undefined });
 
     renderWithProviders(
-      <TextLoader skeletonClassName="h-6 w-32" inheritColor>
+      <TextLoader skeletonClassName="title-skeleton" inheritColor>
         <span>Ready</span>
       </TextLoader>,
     );
 
     const skeleton = screen.getByTestId('text-loader-skeleton');
-    expect(skeleton.dataset.className).toBe('h-6 w-32');
+    expect(skeleton.dataset.className).toBe('title-skeleton');
     expect(skeleton.dataset.inheritColor).toBe('true');
   });
 

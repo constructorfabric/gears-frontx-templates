@@ -136,18 +136,18 @@ MFE screens render inside open shadow roots, and shadow roots do not see the
 host document's stylesheets by default. Three delivery paths exist; pick by
 what the package owns:
 
-1. **No package-owned CSS (the `template-mfe` examples).** The host's compiled
-   Tailwind covers `src-app/mfe_packages/**` content paths, and
+1. **No package-owned CSS.**
    `ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot()` clones every host
-   `<style>`/`<link>` into the shadow root. A package that only uses Tailwind
-   utilities and UI-kit components needs no stylesheet of its own.
+   `<style>`/`<link>` into the shadow root, which brings the shell's base reset
+   and the kit CSS of the components the host itself uses. A package that only
+   composes UI-kit components needs no stylesheet of its own.
    The copy is taken once, at mount, from the host `<head>` as it is then. A
    stylesheet the host adds or changes later — a lazily loaded chunk's CSS, a
    rule a CSS-in-JS library inserts after mount, a Vite dev-mode update —
    reaches a mounted MFE only on its next remount. Everything this path relies
    on is in the head before any MFE mounts: the shell's entry
-   (`src-app/app/main.tsx`) imports `globals.css`, which holds the compiled
-   Tailwind. What the copy carries is the host's own stylesheets: globals, the
+   (`src-app/app/main.tsx`) imports `globals.css`, which holds the base
+   reset. What the copy carries is the host's own stylesheets: globals, the
    theme tokens, and the kit CSS of the components the host itself uses; a
    screen's kit CSS arrives through its manifest (path 2), not through this
    copy. Theme changes are not affected: the shell's theme variables reach the
@@ -221,14 +221,13 @@ what the package owns:
    Module: the string carries no class map, so components reading
    `styles.frame` get `undefined`.
 
-**Package-owned CSS must never carry Tailwind's preflight (`@tailwind base` /
-the `@import "tailwindcss"` base layer).** A second preflight inside the shadow
+**Package-owned CSS must never carry a base reset of its own.** A second reset inside the shadow
 root — one the package compiled itself — lands after the UI-kit component CSS
 and its element resets (`button { background: transparent }` and friends)
 visibly break kit controls. A package-owned stylesheet destined for
-`initializeStyles()` must contain the utilities and components layers only;
+`initializeStyles()` must scope its rules to the package's own classes;
 `injectBaseResets()` already provides the box-model resets a shadow root needs.
-This rule is about path 2 and 3 stylesheets. The shell's own preflight does
+This rule is about path 2 and 3 stylesheets. The shell's own base reset does
 reach the shadow root through path 1 (`adoptHostStylesIntoShadowRoot()` clones
 every host stylesheet), and the lifecycle deliberately neutralises it — see the
 counter-declarations in `ThemeAwareReactLifecycle`.

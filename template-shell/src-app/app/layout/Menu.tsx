@@ -30,14 +30,13 @@ import { screenState } from '@/app/mfe/screenState';
 import { menuLabels } from '@/app/mfe/menuLabels';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
+import styles from './Menu.module.css';
 
 export interface MenuProps {
   children?: React.ReactNode;
 }
 
 type RegistryScreenExtension = Omit<ScreenExtension, 'route'>;
-
-const hintCodeClass = 'rounded bg-muted px-1.5 py-0.5 font-mono text-xs';
 
 /**
  * Test id of the menu item that mounts `extensionId`.
@@ -176,16 +175,16 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
             // tells them apart: a shell-only seed has no `src-app/mfe_packages/`
             // at all until the MFE template is added, and pointing such a
             // project at a scaffold it does not carry is a dead end.
-            // list-none <li>: SidebarMenu renders a <ul>, whose only valid
-            // direct children are <li> (axe: list, impact serious).
-            <li className="list-none px-3 py-4 text-sm text-muted-foreground">
+            // An <li>: SidebarMenu renders a <ul>, whose only valid direct
+            // children are <li> (axe: list, impact serious).
+            <li className={styles.emptyHint}>
               No screens yet. If this project has no{' '}
-              <code className={hintCodeClass}>src-app/mfe_packages/</code> directory, run{' '}
-              <code className={hintCodeClass}>frontx add frontx-template-mfe</code> and{' '}
-              <code className={hintCodeClass}>npm install</code> to get it. Then add a package by
-              copying the <code className={hintCodeClass}>_blank-mfe</code> scaffold, and delete{' '}
-              <code className={hintCodeClass}>templateExample</code> from the copy&rsquo;s{' '}
-              <code className={hintCodeClass}>mfe.json</code> so it reaches this menu.
+              <code className={styles.hintCode}>src-app/mfe_packages/</code> directory, run{' '}
+              <code className={styles.hintCode}>frontx add frontx-template-mfe</code> and{' '}
+              <code className={styles.hintCode}>npm install</code> to get it. Then add a package by
+              copying the <code className={styles.hintCode}>_blank-mfe</code> scaffold, and delete{' '}
+              <code className={styles.hintCode}>templateExample</code> from the copy&rsquo;s{' '}
+              <code className={styles.hintCode}>mfe.json</code> so it reaches this menu.
             </li>
           ) : (
             screens?.map((ext) => {
@@ -204,7 +203,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
                   >
                     {pres.icon && (
                       <SidebarMenuIcon>
-                        <Icon icon={pres.icon} className="w-4 h-4" />
+                        <Icon icon={pres.icon} className={styles.icon} />
                       </SidebarMenuIcon>
                     )}
                     <span>{label}</span>

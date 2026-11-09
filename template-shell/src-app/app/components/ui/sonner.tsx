@@ -11,16 +11,17 @@ import {
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
+import styles from "./sonner.module.css"
+
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
-      className="toaster group"
       icons={{
-        success: <CheckCircle2 className="size-4" />,
-        info: <Info className="size-4" />,
-        warning: <AlertTriangle className="size-4" />,
-        error: <XOctagon className="size-4" />,
-        loading: <Loader2 className="size-4 animate-spin" />,
+        success: <CheckCircle2 className={styles.icon} />,
+        info: <Info className={styles.icon} />,
+        warning: <AlertTriangle className={styles.icon} />,
+        error: <XOctagon className={styles.icon} />,
+        loading: <Loader2 className={styles.spinning} />,
       }}
       {...props}
     />

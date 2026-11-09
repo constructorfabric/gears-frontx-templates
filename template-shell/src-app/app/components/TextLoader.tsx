@@ -16,15 +16,15 @@ export interface TextLoaderProps {
   fallback?: React.ReactNode;
   /**
    * Optional className for the skeleton loader
-   * Use this to match the expected size of the text
-   * @example "h-8 w-48" for a heading
-   * @example "h-4 w-32" for a button label
+   * Use a CSS Module class that sets the width and height of the text it
+   * stands in for
+   * @example styles.titleSkeleton, with `.titleSkeleton { width: 12rem; height: var(--space-8); }`
    */
   skeletonClassName?: string;
   /** Optional className for the wrapper div */
   className?: string;
   /**
-   * If true, skeleton inherits the text color instead of using bg-muted
+   * If true, skeleton inherits the text color instead of the muted fill
    * Use this for buttons, menu items, and colored text
    * @default false
    */
@@ -40,14 +40,14 @@ export interface TextLoaderProps {
  *
  * @example
  * ```tsx
- * // Heading - default bg-muted skeleton
- * <TextLoader skeletonClassName="h-10 w-64">
- *   <h1 className="text-4xl font-bold">{t('screen.title')}</h1>
+ * // Heading - muted skeleton, sized by a CSS Module class
+ * <TextLoader skeletonClassName={styles.titleSkeleton}>
+ *   <h1 className={styles.title}>{t('screen.title')}</h1>
  * </TextLoader>
  *
  * // Button label - inherits button text color
  * <Button>
- *   <TextLoader skeletonClassName="h-4 w-24" inheritColor>
+ *   <TextLoader skeletonClassName={styles.labelSkeleton} inheritColor>
  *     {t('button.submit')}
  *   </TextLoader>
  * </Button>

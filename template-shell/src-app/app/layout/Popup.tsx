@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { useAppSelector, type PopupSliceState } from '@gears-frontx/react';
+import styles from './Popup.module.css';
 
 export interface PopupProps {
   children?: React.ReactNode;
@@ -24,15 +25,15 @@ export const Popup: React.FC<PopupProps> = ({ children }) => {
   const topPopup = stack[stack.length - 1];
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center">
+    <div className={styles.popup}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-[color-mix(in_oklab,var(--background)_80%,transparent)] backdrop-blur-sm" />
+      <div className={styles.backdrop} />
 
       {/* Dialog - z-index is calculated as 1000 + stack depth * 10 */}
-      <div className="relative z-[1001] w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-lg">
+      <div className={styles.dialog}>
         {topPopup.title && (
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold">{topPopup.title}</h2>
+          <div className={styles.header}>
+            <h2 className={styles.title}>{topPopup.title}</h2>
           </div>
         )}
         {children}

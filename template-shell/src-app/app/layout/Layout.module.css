@@ -1,0 +1,54 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+/* Below 768px the slot keeps only the collapsed rail's width, and the
+   expanded menu lies over the screen instead of pushing it aside. */
+.menuSlot {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background-color: var(--overlay-modal);
+}
+
+@media (max-width: 767.98px) {
+  .menuSlot {
+    width: 3.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .backdrop {
+    display: none;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 0%;
+  overflow: hidden;
+}

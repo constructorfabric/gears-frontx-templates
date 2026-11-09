@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import styles from './MfeScreenContainer.module.css';
 
 const mockBootstrapMFE = vi.fn();
 const mockUseFrontX = vi.fn();
@@ -103,7 +104,7 @@ describe('MfeScreenContainer', () => {
     const slot = screen.getByTestId('extension-domain-slot');
     expect(slot.dataset.domainId).toBe(mockScreenDomain.id);
     expect(slot.dataset.registryPresent).toBe('yes');
-    expect(slot.dataset.className).toContain('h-full');
+    expect(slot.dataset.className).toBe(styles.slot);
   });
 
   it('reuses the settled bootstrap across a real remount rather than re-invoking it (C8)', async () => {

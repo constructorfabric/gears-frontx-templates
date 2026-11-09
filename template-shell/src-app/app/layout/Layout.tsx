@@ -15,6 +15,7 @@ import { Screen } from './Screen';
 import { Popup } from './Popup';
 import { Overlay } from './Overlay';
 import { useNarrowViewportMenu } from './useNarrowViewportMenu';
+import styles from './Layout.module.css';
 
 export interface LayoutProps {
   children?: React.ReactNode;
@@ -30,13 +31,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
+    <div className={styles.root}>
       {/* Top row: Menu + Header + Content + Sidebar */}
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* Menu - full height on left. Below md the slot keeps only the
+      <div className={styles.row}>
+        {/* Menu - full height on left. Below 768px the slot keeps only the
             collapsed rail's width, and the expanded menu lies over the
             screen instead of pushing it aside. */}
-        <div ref={menuSlotRef} className="relative flex shrink-0 max-md:w-14">
+        <div ref={menuSlotRef} className={styles.menuSlot}>
           <Menu />
         </div>
 
@@ -45,19 +46,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             type="button"
             aria-label="Close menu"
             tabIndex={-1}
-            className="absolute inset-0 z-30 bg-[var(--overlay-modal)] md:hidden"
+            className={styles.backdrop}
             onClick={narrowMenu.collapse}
           />
         ) : null}
 
         {/* Right side: Header + Content. Inert while the menu lies over it,
             so keyboard focus cannot move into what the backdrop covers. */}
-        <div className="flex flex-col flex-1 overflow-hidden" inert={narrowMenu.overlaid}>
+        <div className={styles.content} inert={narrowMenu.overlaid}>
           {/* Header */}
           <Header />
 
           {/* Main content area */}
-          <div className="flex flex-1 overflow-hidden">
+          <div className={styles.main}>
             {/* Main content */}
             <Screen>{children}</Screen>
 

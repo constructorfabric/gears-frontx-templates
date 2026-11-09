@@ -35,6 +35,7 @@ import { bootstrapOnce } from './bootstrapOnce';
 import { registerScreenDomain } from './screenDomain';
 import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
+import styles from './MfeScreenContainer.module.css';
 
 /**
  * The error state without a UI kit, for projects created without one. The
@@ -110,16 +111,14 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   if (bootstrapFailed) retryFailed = () => window.location.reload();
   else if (loadFailure) retryFailed = retryScreen;
 
-  // The side padding sits inside the scroller, so its scrollbar is at the
-  // window's edge instead of inset by the padding.
   return (
-    <div className="flex-1 overflow-auto px-4" data-mfe-screen-container>
+    <div className={styles.container} data-mfe-screen-container>
       {retryFailed ? <LoadFailed onRetry={retryFailed} /> : null}
       {bootstrapped && app.mfeRegistry ? (
         <ExtensionDomainSlot
           registry={app.mfeRegistry}
           domainId={screenDomain.id}
-          className="h-full"
+          className={styles.slot}
         />
       ) : null}
     </div>

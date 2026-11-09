@@ -1,7 +1,7 @@
 /**
  * Keeps the main menu out of the screen's way on narrow viewports.
  *
- * Below the `md` breakpoint (768 px) the expanded menu is laid over the screen
+ * Below 768 px the expanded menu is laid over the screen
  * instead of beside it (see `Sidebar` in `components/ui/sidebar.tsx`), so the
  * screen keeps the full width. This hook supplies the behaviour that goes with
  * an overlay: the menu starts collapsed, collapses again once one of its items
@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } 
 import { eventBus, useAppSelector, type MenuState } from '@gears-frontx/react';
 import { screenState } from '@/app/mfe/screenState';
 
-/** The viewports below Tailwind's `md` breakpoint, which `max-md:` classes target. */
+/** The viewports below 768 px, the narrow width the layout CSS Modules also target. */
 export const NARROW_VIEWPORT_QUERY = '(max-width: 767.98px)';
 
 function subscribeNarrow(onChange: () => void): () => void {

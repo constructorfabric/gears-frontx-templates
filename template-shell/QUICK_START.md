@@ -39,7 +39,7 @@ src-app/
 │   ├── mfe/                  # bootstrap.ts: registers MFEs from public/generated-mfe-manifests.json
 │   ├── themes/               # Themes over the ui-kit palette
 │   ├── font.css              # Registers the kit's Inter face
-│   └── globals.css           # Tailwind entry and global styles
+│   └── globals.css           # Base reset and global styles
 └── mfe_packages/             # Microfrontends (from `frontx-template-mfe`; empty in a shell-only seed)
     ├── demo-mfe/             # Hello World, Profile, Theme, UIKit, Widgets Host
     ├── _blank-mfe/           # Minimal MFE — copy this to start a new one
@@ -181,7 +181,8 @@ destroying the container that holds that screen clears it), which the menu reads
 
 ## Styling
 
-Tailwind CSS with CSS-variable theme tokens. Colour, radius and type tokens
+Kit components first; anything else is styled with CSS Modules on
+CSS-variable theme tokens. Colour, radius and type tokens
 come from `@gears-frontx/ui-kit/theme.css`; the shell's themes
 (`src-app/app/themes/`) add the shell's own tokens (left menu, spacing,
 shadows, transitions) and override a kit token only on purpose, as the
@@ -189,10 +190,31 @@ Dracula themes do. The kit's Inter face is registered in
 `src-app/app/font.css`.
 
 ```tsx
-<div className="bg-background text-foreground">
-  <h1 className="text-2xl font-bold text-primary">Title</h1>
-  <p className="text-muted-foreground">Description</p>
+import styles from './Intro.module.css';
+
+<div className={styles.intro}>
+  <h1 className={styles.title}>Title</h1>
+  <p className={styles.description}>Description</p>
 </div>
+```
+
+```css
+/* Intro.module.css */
+.intro {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.title {
+  color: var(--primary);
+  font-size: var(--text-display-size);
+  font-weight: var(--text-display-weight);
+  line-height: var(--text-display-line-height);
+}
+
+.description {
+  color: var(--muted-foreground);
+}
 ```
 
 Common tokens: `background`, `foreground`, `primary`, `secondary`, `accent`,
@@ -244,7 +266,7 @@ npm run test:unit         # unit tests (package + app + workspace MFEs)
    don't hand-wire navigation.
 3. **Type everything** — no `any`, explicit return types, proper generics.
 4. **Prefer events** — emit events for state changes; use selectors for reads.
-5. **Use theme tokens** — avoid hard-coded colors; style with Tailwind utilities.
+5. **Use theme tokens** - avoid hard-coded colors; style with CSS Modules on kit tokens.
 
 ## Getting help
 

@@ -1,0 +1,36 @@
+.header {
+  display: flex;
+  align-items: center;
+  height: 4rem;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+}
+
+.user {
+  margin-left: auto;
+}
+
+.userRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+}
+
+.signedIn {
+  composes: userRow;
+  color: var(--muted-foreground);
+}
+
+.avatarSkeleton {
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-full);
+}
+
+.nameSkeleton {
+  width: 6rem;
+  height: var(--space-4);
+}

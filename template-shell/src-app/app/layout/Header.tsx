@@ -7,9 +7,9 @@
 
 import React, { useRef } from 'react';
 import { useAppSelector, type HeaderState } from '@gears-frontx/react';
-import { Avatar, AvatarImage, AvatarFallback } from '@/app/components/ui/avatar';
-import { Skeleton } from '@/app/components/ui/skeleton';
+import { Avatar, AvatarImage, AvatarFallback, Skeleton, VisuallyHidden } from '@gears-frontx/ui-kit';
 import { useOtherHeadingOne } from './useOtherHeadingOne';
+import styles from './Header.module.css';
 
 export interface HeaderProps {
   children?: React.ReactNode;
@@ -34,27 +34,27 @@ export const Header: React.FC<HeaderProps> = ({ children }) => {
   };
 
   return (
-    <header className="h-16 flex items-center px-4 border-b border-border bg-background">
+    <header className={styles.header}>
       {/* Every page needs exactly one h1 (axe: page-has-heading-one). A
           screen normally renders its own; this visually hidden one names the
           app only while nothing else on the page is a level-one heading, so a
           screen without one still leaves the page with a single h1. The
           visual brand is the logo in the sidebar. */}
       {screenHasHeadingOne ? null : (
-        <h1 ref={headingRef} className="sr-only">
-          FrontX
+        <h1 ref={headingRef}>
+          <VisuallyHidden>FrontX</VisuallyHidden>
         </h1>
       )}
       {children}
-      <div className="ml-auto">
+      <div className={styles.user}>
         {loading ? (
-          <div className="flex items-center gap-2 text-sm">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-4 w-24" />
+          <div className={styles.userRow}>
+            <Skeleton className={styles.avatarSkeleton} />
+            <Skeleton className={styles.nameSkeleton} />
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Avatar className="h-8 w-8">
+          <div className={styles.signedIn}>
+            <Avatar>
               {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.displayName || user?.email || 'User'} />}
               <AvatarFallback>{getInitials()}</AvatarFallback>
             </Avatar>

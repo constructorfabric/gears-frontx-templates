@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { useAppSelector, type FooterState } from '@gears-frontx/react';
+import styles from './Footer.module.css';
 
 export interface FooterProps {
   children?: React.ReactNode;
@@ -27,7 +28,7 @@ export const Footer: React.FC<FooterProps> = ({ children }) => {
   }
 
   return (
-    <footer className="h-10 flex items-center justify-between px-4 border-t border-border bg-background">
+    <footer className={styles.footer}>
       {children}
     </footer>
   );
