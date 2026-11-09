@@ -4,14 +4,6 @@
  *
  * Colour, spacing and type resolve through @gears-frontx/ui-kit tokens, which
  * KitThemedLifecycle re-anchors onto this shadow root's host.
- *
- * No Tailwind utility appears here, deliberately. The host's compiled Tailwind
- * does reach this shadow root — ThemeAwareReactLifecycle clones the document's
- * stylesheets into it — but its colour utilities read the shell's HSL-triplet
- * tokens through the same names the kit re-declares as complete colours, so
- * `text-muted-foreground` would resolve to `hsl(oklch(...))` and be dropped.
- * A showcase of the kit painted half in the shell's grammar would misrepresent
- * both.
  */
 
 /*
@@ -20,7 +12,7 @@
  * container, so the menu's own rules can follow the same point (see `.menu`).
  *
  * On a phone the shell's own 1rem side padding is the screen's margin, so the
- * screen adds none at the sides. From 40rem, Tailwind's `sm`, it pads 2rem all
+ * screen adds none at the sides. From 40rem it pads 2rem all
  * round, like the other demo screens.
  */
 .screen {

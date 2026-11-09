@@ -6,14 +6,8 @@
  * The placeholder dimensions at the end of this file are the one exception and
  * say why at their own declaration.
  *
- * No Tailwind utility appears in this screen, deliberately. The host's compiled
- * Tailwind does reach here — ThemeAwareReactLifecycle clones the document's
- * stylesheets into the shadow root — but its colour utilities read the shell's
- * HSL-triplet tokens through the same names the kit re-declares as complete
- * colours, so `text-muted-foreground` would resolve to `hsl(oklch(...))` and be
- * dropped. Layout utilities would still work, which is the trap: a scaffold
- * every new screen is copied from must not be one where some classes silently
- * do nothing.
+ * Everything outside kit components is styled here, in this CSS Module, on kit
+ * tokens; the screen's markup carries no other class names.
  */
 
 .screen {

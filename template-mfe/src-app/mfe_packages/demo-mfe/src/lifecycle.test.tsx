@@ -126,8 +126,8 @@ describe('demo-mfe lifecycles', () => {
    * kit components simply paint from unresolved `var()` references.
    *
    * The theme screen is the negative case rather than an omission: it paints
-   * from the shell's Tailwind colour utilities alone and renders no kit
-   * component, so it needs no kit CSS inside its shadow root.
+   * from the shell's tokens alone and renders no kit component, so it needs no
+   * kit CSS inside its shadow root.
    */
   it('builds the three kit screens on the lifecycle that carries the kit tokens', async () => {
     const kitEntries = await Promise.all([

@@ -248,16 +248,13 @@ kit's semantic tokens — `var(--space-6)`, `var(--radius-md)`,
 `node_modules/@gears-frontx/ui-kit/dist/theme.css`; per-component usage docs are
 in `dist/docs/`.
 
-**Do not use Tailwind utility classes here.** The host's compiled Tailwind does
-reach this shadow root, but its colour utilities read the shell's tokens, and
-the kit re-declares the same token names with a different value grammar
-(`#f8fafc` where the shell has `0 0% 100%`). Inside this shadow root a colour
-utility therefore resolves to `hsl(#f8fafc)`, which is invalid and drops out,
-while layout utilities keep working — the worst kind of failure to inherit into
-a copied screen.
+Style nothing through global utility classes: the template ships no utility
+framework, and a class name the screen's own module does not define matches
+nothing. The kit's own global classes from `@gears-frontx/ui-kit/utilities.css`
+(`sr-only`, `no-scrollbar`, `scroll-fade-*`, `shimmer*`) are the one exception.
 
-That token re-declaration is what `initializeStyles()` in `lifecycle.tsx` sets
-up: the kit declares its tokens on `:root`, which matches nothing inside a
+The kit's tokens reach this shadow root through `initializeStyles()` in
+`lifecycle.tsx`: the kit declares its tokens on `:root`, which matches nothing inside a
 shadow tree, so the lifecycle rewrites those selectors to `:host` before
 injecting the stylesheet. The screen root then carries `data-theme="light"` or
 `"dark"`, mapped from the host's current theme, which selects the kit's own
@@ -313,9 +310,9 @@ If a kit component renders unstyled — no fill, no radius, no height — its
 tokens did not reach the shadow root. Check the injected `<style>` in the
 shadow root: it must declare the kit's tokens on `:host`, not on `:root`.
 
-If a colour is wrong or missing while spacing and layout are right, something
-is reading the shell's tokens rather than the kit's. A Tailwind colour utility
-in this package is the usual cause — see [Styling](#styling).
+If a colour is wrong or missing while spacing and layout are right, the rule
+reads a token name the kit does not declare. Check the names in the module
+against the kit's `theme.css` - see [Styling](#styling).
 
 If a `Card`'s parts are crammed together vertically — a footer button flush
 against the last field — while its left and right padding looks right, an

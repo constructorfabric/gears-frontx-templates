@@ -1,0 +1,40 @@
+/*
+ * Widget A's card. Colours read the shell's tokens, which reach this shadow
+ * root by inheritance from the host document. The mount button's colours are
+ * fixed values that mark the fixture's own control in every theme.
+ */
+
+.widget {
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-lg);
+  color: var(--foreground);
+  margin: var(--space-2);
+  padding: var(--space-4);
+}
+
+.meta {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  margin-top: var(--space-1);
+}
+
+.instanceId {
+  opacity: 0.75;
+  word-break: break-all;
+}
+
+.mountButton {
+  background-color: #ffffff;
+  border: 1px solid #60a5fa;
+  border-radius: 0.25rem;
+  color: #1e3a8a;
+  font-size: var(--text-body-size);
+  font-weight: 500;
+  line-height: var(--text-body-line-height);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+}
+
+.mountButton:hover {
+  background-color: #dbeafe;
+}

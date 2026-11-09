@@ -4,22 +4,21 @@ import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
+import styles from './CurrentThemeScreen.module.css';
 
 /*
- * This screen renders the SHELL's theme, so it paints from the shell's Tailwind
- * colour utilities and takes no component from @gears-frontx/ui-kit. That is
- * also why `lifecycle-theme` does not extend KitThemedLifecycle: the kit's
- * tokens re-declare `--background`, `--primary` and their neighbours as
- * complete colours, and the utilities below read the same names as HSL
- * triplets. Anchoring kit tokens on this shadow host would blank every swatch
- * the screen exists to display.
+ * This screen renders the SHELL's theme. Its styles read the token names
+ * (`--background`, `--primary` and their neighbours) through var(), and the
+ * values arrive by inheritance from the host document, where the shell's
+ * active theme writes them. That is why `lifecycle-theme` does not extend
+ * KitThemedLifecycle and takes no component from @gears-frontx/ui-kit:
+ * anchoring the kit's own token values on this shadow host would replace the
+ * shell's values for the same names, and the swatches would show the kit's
+ * default palette instead of the theme the screen exists to display.
  *
- * `card` and `placeholder` below stand in for the kit's Card and Skeleton for
- * that reason; they are the shell's own utility classes, not a second component
- * library.
+ * The `card` and `placeholder` rules in the module stand in for the kit's Card
+ * and Skeleton for that reason.
  */
-const CARD_CLASS = 'rounded-lg border border-border bg-card text-card-foreground shadow-sm';
-const PLACEHOLDER_CLASS = 'animate-pulse rounded-md bg-muted';
 
 /**
  * Props for the CurrentThemeScreen component.
@@ -60,27 +59,27 @@ export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }
 
   // Color swatches data (names will be translated)
   const colorSwatches = [
-    { nameKey: 'color_background', class: 'bg-background text-foreground' },
-    { nameKey: 'color_foreground', class: 'bg-foreground text-background' },
-    { nameKey: 'color_primary', class: 'bg-primary text-primary-foreground' },
-    { nameKey: 'color_secondary', class: 'bg-secondary text-secondary-foreground' },
-    { nameKey: 'color_muted', class: 'bg-muted text-muted-foreground' },
-    { nameKey: 'color_accent', class: 'bg-accent text-accent-foreground' },
-    { nameKey: 'color_destructive', class: 'bg-destructive text-destructive-foreground' },
+    { nameKey: 'color_background', className: styles.background, tokens: '--background / --foreground' },
+    { nameKey: 'color_foreground', className: styles.foreground, tokens: '--foreground / --background' },
+    { nameKey: 'color_primary', className: styles.primary, tokens: '--primary / --primary-foreground' },
+    { nameKey: 'color_secondary', className: styles.secondary, tokens: '--secondary / --secondary-foreground' },
+    { nameKey: 'color_muted', className: styles.muted, tokens: '--muted / --muted-foreground' },
+    { nameKey: 'color_accent', className: styles.accent, tokens: '--accent / --accent-foreground' },
+    { nameKey: 'color_destructive', className: styles.destructive, tokens: '--destructive / --destructive-foreground' },
   ];
 
   // Show skeleton while translations are loading
   if (loading) {
     return (
-      <div ref={containerRef} className="px-0 py-4 sm:p-8" role="status" aria-busy="true">
-        <div className={`${PLACEHOLDER_CLASS} h-8 w-64 max-w-full mb-4`} />
-        <div className={`${PLACEHOLDER_CLASS} h-4 w-96 max-w-full mb-6`} />
-        <div className={CARD_CLASS}>
-          <div className="p-4 sm:p-6">
-            <div className={`${PLACEHOLDER_CLASS} h-6 w-48 max-w-full mb-4`} />
-            <div className="space-y-3">
-              <div className={`${PLACEHOLDER_CLASS} h-4 w-full`} />
-              <div className={`${PLACEHOLDER_CLASS} h-4 w-full`} />
+      <div ref={containerRef} className={styles.screen} role="status" aria-busy="true">
+        <div className={`${styles.placeholder} ${styles.placeholderTitle}`} />
+        <div className={`${styles.placeholder} ${styles.placeholderDescription}`} />
+        <div className={styles.card}>
+          <div className={styles.cardBody}>
+            <div className={`${styles.placeholder} ${styles.placeholderCardTitle}`} />
+            <div className={styles.placeholderLines}>
+              <div className={`${styles.placeholder} ${styles.placeholderLine}`} />
+              <div className={`${styles.placeholder} ${styles.placeholderLine}`} />
             </div>
           </div>
         </div>
@@ -89,44 +88,44 @@ export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }
   }
 
   return (
-    <div ref={containerRef} className="px-0 py-4 sm:p-8">
-      <h1 className="text-3xl font-bold mb-4">
+    <div ref={containerRef} className={styles.screen}>
+      <h1 className={styles.title}>
         {t('title')}
       </h1>
-      <p className="text-muted-foreground mb-6">
+      <p className={styles.description}>
         {t('description')}
       </p>
 
-      <div className="max-w-4xl space-y-4">
+      <div className={styles.cards}>
         {/* Theme Info Card */}
-        <div className={CARD_CLASS}>
-          <div className="p-4 sm:p-6">
-            <h2 className="text-xl font-semibold mb-3">
+        <div className={styles.card}>
+          <div className={styles.cardBody}>
+            <h2 className={styles.cardTitle}>
               {t('theme_information')}
             </h2>
-            <dl className="grid gap-2">
+            <dl className={styles.details}>
               <div>
-                <dt className="text-sm font-medium text-muted-foreground">{t('current_theme_label')}:</dt>
-                <dd className="text-foreground font-mono text-lg">{theme}</dd>
+                <dt className={styles.label}>{t('current_theme_label')}:</dt>
+                <dd className={styles.themeValue}>{theme}</dd>
               </div>
             </dl>
           </div>
         </div>
 
         {/* Color Swatches */}
-        <div className={CARD_CLASS}>
-          <div className="p-4 sm:p-6">
-            <h2 className="text-xl font-semibold mb-3">
+        <div className={styles.card}>
+          <div className={styles.cardBody}>
+            <h2 className={styles.cardTitle}>
               {t('theme_color_swatches')}
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={styles.swatches}>
               {colorSwatches.map((swatch) => (
                 <div
                   key={swatch.nameKey}
-                  className={`${swatch.class} border border-border rounded-md p-4`}
+                  className={`${styles.swatch} ${swatch.className}`}
                 >
-                  <div className="font-medium">{t(swatch.nameKey)}</div>
-                  <div className="text-sm font-mono">{swatch.class}</div>
+                  <div className={styles.swatchName}>{t(swatch.nameKey)}</div>
+                  <div className={styles.swatchTokens}>{swatch.tokens}</div>
                 </div>
               ))}
             </div>
@@ -134,12 +133,12 @@ export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }
         </div>
 
         {/* CSS Variables Reference */}
-        <div className={CARD_CLASS}>
-          <div className="p-4 sm:p-6">
-            <h2 className="text-xl font-semibold mb-3">
+        <div className={styles.card}>
+          <div className={styles.cardBody}>
+            <h2 className={styles.cardTitle}>
               {t('css_custom_properties')}
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm font-mono">
+            <div className={styles.variables}>
               <div>--background</div>
               <div>--foreground</div>
               <div>--primary</div>
@@ -157,28 +156,27 @@ export const CurrentThemeScreen: React.FC<CurrentThemeScreenProps> = ({ bridge }
         </div>
 
         {/* Bridge Info Card */}
-        <div className={CARD_CLASS}>
-          <div className="p-4 sm:p-6">
-            <h2 className="text-xl font-semibold mb-3">
+        <div className={styles.card}>
+          <div className={styles.cardBody}>
+            <h2 className={styles.cardTitle}>
               {t('bridge_info')}
             </h2>
-            {/* A GTS id has no break opportunity; break-all wraps it instead of widening the screen. */}
-            <dl className="grid gap-2">
+            <dl className={styles.details}>
               <div>
-                <dt className="font-medium">{t('domain_id')}</dt>
-                <dd className="font-mono text-sm text-muted-foreground break-all">{bridge.extDomainId}</dd>
+                <dt className={styles.term}>{t('domain_id')}</dt>
+                <dd className={`${styles.value} ${styles.id}`}>{bridge.extDomainId}</dd>
               </div>
               <div>
-                <dt className="font-medium">{t('instance_id')}</dt>
-                <dd className="font-mono text-sm text-muted-foreground break-all">{bridge.extensionId}</dd>
+                <dt className={styles.term}>{t('instance_id')}</dt>
+                <dd className={`${styles.value} ${styles.id}`}>{bridge.extensionId}</dd>
               </div>
               <div>
-                <dt className="font-medium">{t('current_theme')}</dt>
-                <dd className="font-mono text-sm text-muted-foreground">{theme}</dd>
+                <dt className={styles.term}>{t('current_theme')}</dt>
+                <dd className={styles.value}>{theme}</dd>
               </div>
               <div>
-                <dt className="font-medium">{t('current_language')}</dt>
-                <dd className="font-mono text-sm text-muted-foreground">{language}</dd>
+                <dt className={styles.term}>{t('current_language')}</dt>
+                <dd className={styles.value}>{language}</dd>
               </div>
             </dl>
           </div>

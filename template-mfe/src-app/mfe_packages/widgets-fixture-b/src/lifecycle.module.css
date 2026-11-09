@@ -1,0 +1,19 @@
+/*
+ * Widget B's card. Colours read the shell's tokens, which reach this shadow
+ * root by inheritance from the host document.
+ */
+
+.widget {
+  background-color: var(--muted);
+  border: 2px solid var(--muted-foreground);
+  border-radius: var(--radius-lg);
+  color: var(--foreground);
+  margin: var(--space-2);
+  padding: var(--space-4);
+}
+
+.note {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  margin-top: var(--space-1);
+}

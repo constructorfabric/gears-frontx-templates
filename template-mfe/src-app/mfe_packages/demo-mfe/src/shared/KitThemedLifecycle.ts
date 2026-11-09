@@ -3,10 +3,10 @@
  *
  * Three of this package's five entries render kit components and therefore
  * need the kit's design tokens inside their own shadow root; they extend this
- * class instead of `ThemeAwareReactLifecycle` directly. The other two —
- * `lifecycle-theme` and `lifecycle-widgets-host` — deliberately do not: they
- * paint from the shell's Tailwind colour utilities alone, render no kit
- * components, and so need no kit CSS inside their shadow root.
+ * class instead of `ThemeAwareReactLifecycle` directly. The other two,
+ * `lifecycle-theme` and `lifecycle-widgets-host`, deliberately do not: their
+ * CSS Modules paint from the shell's tokens alone, they render no kit
+ * components, and so they need no kit CSS inside their shadow root.
  */
 
 import { ThemeAwareReactLifecycle } from '@gears-frontx/react';

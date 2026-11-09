@@ -39,6 +39,7 @@ import {
   Outlet,
   useSearch,
 } from '@gears-frontx/routing-tanstack';
+import styles from './lifecycle.module.css';
 
 const PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
@@ -91,7 +92,7 @@ function WidgetARoot(): React.ReactElement {
       data-testid="widget-a-instance"
       data-instance-id={bridge.extensionId}
       data-instance-text={randomHex}
-      className="m-2 rounded-lg border-2 border-primary bg-primary/10 p-4 text-foreground"
+      className={styles.widget}
     >
       <Outlet />
     </div>
@@ -119,9 +120,9 @@ function WidgetAHome(): React.ReactElement {
     <>
       <strong>Widget A instance:</strong>{' '}
       <span data-testid="widget-a-random">{randomHex}</span>
-      <p className="mt-1 text-xs opacity-75 break-all">instance-id: {bridge.extensionId}</p>
+      <p className={`${styles.meta} ${styles.instanceId}`}>instance-id: {bridge.extensionId}</p>
       <p
-        className="mt-1 text-xs"
+        className={styles.meta}
         data-testid="widget-a-last-ping"
         data-last-ping={lastPing ?? ''}
       >
@@ -130,7 +131,7 @@ function WidgetAHome(): React.ReactElement {
       <button
         type="button"
         data-testid="widget-a-mount-helloworld"
-        className="mt-2 rounded border border-blue-400 bg-white px-3 py-1 text-sm font-medium text-blue-900 hover:bg-blue-100"
+        className={styles.mountButton}
         onClick={handleMountHelloWorld}
       >
         Mount Hello World (shell, 2 hops up)

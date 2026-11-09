@@ -15,6 +15,7 @@ import {
   type ChildMfeBridge,
   type MfeMountContext,
 } from '@gears-frontx/react';
+import styles from './lifecycle.module.css';
 
 const fixtureApp = createFrontX()
   .use(effects())
@@ -39,10 +40,10 @@ class WidgetsFixtureBLifecycle extends ThemeAwareReactLifecycle {
     return (
       <div
         data-fixture-id="widgets-fixture-b"
-        className="m-2 rounded-lg border-2 border-muted-foreground bg-muted p-4 text-foreground"
+        className={styles.widget}
       >
         <strong>Widget B (fixture-b)</strong>
-        <p className="mt-1 text-sm">
+        <p className={styles.note}>
           Mounted concurrently in the widgets domain.
         </p>
       </div>

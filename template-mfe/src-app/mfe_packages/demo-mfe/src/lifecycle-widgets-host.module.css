@@ -1,0 +1,62 @@
+/*
+ * Layout for the widgets-host screen, a test fixture for the widgets domain.
+ *
+ * The fixture's state colours (the ping buttons and the error line) are fixed
+ * values rather than theme tokens: they mark the fixture's own controls apart
+ * from the widgets it hosts in every theme.
+ */
+
+.screen {
+  padding: var(--space-4) 0;
+}
+
+/* On a phone the shell's own 1rem side padding is the screen's margin. */
+@media (min-width: 40rem) {
+  .screen {
+    padding: var(--space-4);
+  }
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+}
+
+.title {
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  letter-spacing: var(--text-heading-1-tracking);
+  line-height: var(--text-heading-1-line-height);
+}
+
+.summary {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  opacity: 0.75;
+}
+
+.pings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ping {
+  background-color: #dbeafe;
+  border: 1px solid #60a5fa;
+  border-radius: 0.25rem;
+  color: #1e3a8a;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  padding: var(--space-1) var(--space-3);
+}
+
+.ping:hover {
+  background-color: #bfdbfe;
+}

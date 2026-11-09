@@ -66,6 +66,7 @@ import {
   languageSchema,
   extensionScreenSchema,
 } from '@gears-frontx/frontx-template-shell';
+import styles from './lifecycle-widgets-host.module.css';
 
 const WIDGET_PING_ACTION_TYPE =
   'gts.frontx.mfes.comm.action.v1~frontx.widgets.test.widget_ping.v1~';
@@ -388,7 +389,7 @@ function WidgetsHostScreen({
   if (error) {
     return (
       <div
-        className="px-0 py-4 sm:p-4 text-red-700"
+        className={`${styles.screen} ${styles.error}`}
         data-demo-mfe-widgets-host="error"
       >
         Widgets host runtime failed: {error}
@@ -398,7 +399,7 @@ function WidgetsHostScreen({
 
   if (!widgetsDomain) {
     return (
-      <div className="px-0 py-4 sm:p-4" data-demo-mfe-widgets-host="loading">
+      <div className={styles.screen} data-demo-mfe-widgets-host="loading">
         Loading widgets host runtime…
       </div>
     );
@@ -421,11 +422,11 @@ function WidgetsHostScreen({
   return (
     <div
       data-demo-mfe-widgets-host="true"
-      className="flex h-full flex-col gap-2 px-0 py-4 sm:p-4"
+      className={`${styles.screen} ${styles.host}`}
     >
       <header>
-        <h2 className="text-xl font-semibold">Widgets Host</h2>
-        <p className="text-sm opacity-75">
+        <h2 className={styles.title}>Widgets Host</h2>
+        <p className={styles.summary}>
           Multi-mount fixture: widgets-fixture-a's entry is wired here as
           two distinct extension instances (alpha and beta) sharing the same
           entry path; widgets-fixture-b's entry is wired as a third
@@ -433,7 +434,7 @@ function WidgetsHostScreen({
           slot below.
         </p>
       </header>
-      <div className="flex flex-wrap gap-2">
+      <div className={styles.pings}>
         {pingTargets.map((ext) => {
           const role = ext.id.includes('widget_alpha') ? 'alpha' : 'beta';
           return (
@@ -443,7 +444,7 @@ function WidgetsHostScreen({
               data-testid={`ping-${role}`}
               data-target-extension-id={ext.id}
               onClick={() => handlePing(ext.id)}
-              className="rounded border border-blue-400 bg-blue-100 px-3 py-1 text-sm text-blue-900 hover:bg-blue-200"
+              className={styles.ping}
             >
               Ping {role}
             </button>

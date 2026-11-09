@@ -58,7 +58,7 @@ describe('CurrentThemeScreen', () => {
     expect(screen.getByText('fr')).toBeTruthy();
     expect(screen.getByText('theme-domain')).toBeTruthy();
     expect(screen.getByText('theme-screen')).toBeTruthy();
-    expect(screen.getAllByText(/^bg-/).length).toBeGreaterThanOrEqual(7);
+    expect(screen.getAllByText(/^--[a-z-]+ \/ --[a-z-]+$/).length).toBe(7);
     expect(screen.getAllByText(/^--/).length).toBeGreaterThanOrEqual(12);
   });
 

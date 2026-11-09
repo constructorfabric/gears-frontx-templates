@@ -1,0 +1,212 @@
+/*
+ * Screen-local layout for the current-theme screen.
+ *
+ * Every colour reads a token by name through var(), so the screen paints in
+ * whatever values the shell's active theme gives those names. The tokens reach
+ * this shadow root by inheritance from the host document; this screen anchors
+ * no kit tokens of its own (see CurrentThemeScreen.tsx).
+ */
+
+.screen {
+  padding: var(--space-4) 0;
+}
+
+/* On a phone the shell's own 1rem side padding is the screen's margin. */
+@media (min-width: 40rem) {
+  .screen {
+    padding: var(--space-8);
+  }
+}
+
+.title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 2.25rem;
+  margin-bottom: var(--space-4);
+}
+
+.description {
+  color: var(--muted-foreground);
+  margin-bottom: var(--space-6);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 56rem;
+}
+
+/* The page card. It mirrors the kit's Card look, painted from the shell's tokens. */
+.card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  color: var(--card-foreground);
+}
+
+.cardBody {
+  padding: var(--space-4);
+}
+
+.cardTitle {
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  letter-spacing: var(--text-heading-1-tracking);
+  line-height: var(--text-heading-1-line-height);
+  margin-bottom: var(--space-3);
+}
+
+.details {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  color: var(--muted-foreground);
+  font-size: var(--text-body-size);
+  font-weight: 500;
+  line-height: var(--text-body-line-height);
+}
+
+.themeValue {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.term {
+  font-weight: 500;
+}
+
+.value {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+}
+
+/* A GTS id has no break opportunity; break-all wraps it instead of widening the screen. */
+.id {
+  word-break: break-all;
+}
+
+.swatches,
+.variables {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.swatches {
+  gap: var(--space-3);
+}
+
+.variables {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-size);
+  gap: var(--space-2);
+  line-height: var(--text-body-line-height);
+}
+
+@media (min-width: 40rem) {
+  .swatches,
+  .variables {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.swatch {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.swatchName {
+  font-weight: 500;
+}
+
+.swatchTokens {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+}
+
+.background {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.foreground {
+  background-color: var(--foreground);
+  color: var(--background);
+}
+
+.primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.muted {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.accent {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.destructive {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+/* Loading placeholders. They mirror the kit's Skeleton look, painted from the shell's tokens. */
+.placeholder {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background-color: var(--muted);
+  border-radius: var(--radius-md);
+  max-width: 100%;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.placeholderTitle {
+  height: 2rem;
+  margin-bottom: var(--space-4);
+  width: 16rem;
+}
+
+.placeholderDescription {
+  height: 1rem;
+  margin-bottom: var(--space-6);
+  width: 24rem;
+}
+
+.placeholderCardTitle {
+  height: 1.5rem;
+  margin-bottom: var(--space-4);
+  width: 12rem;
+}
+
+.placeholderLines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.placeholderLine {
+  height: 1rem;
+  width: 100%;
+}

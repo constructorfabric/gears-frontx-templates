@@ -3,14 +3,6 @@
  *
  * Colour, spacing and type resolve through @gears-frontx/ui-kit tokens, which
  * KitThemedLifecycle re-anchors onto this shadow root's host.
- *
- * No Tailwind utility appears here, deliberately. The host's compiled Tailwind
- * does reach this shadow root — ThemeAwareReactLifecycle clones the document's
- * stylesheets into it — but its colour utilities read the shell's HSL-triplet
- * tokens through the same names the kit re-declares as complete colours, so
- * `text-muted-foreground` would resolve to `hsl(oklch(...))` and be dropped.
- * Layout utilities would still work, which is the trap: a screen mixing the two
- * is one where some classes silently do nothing.
  */
 
 .screen {
