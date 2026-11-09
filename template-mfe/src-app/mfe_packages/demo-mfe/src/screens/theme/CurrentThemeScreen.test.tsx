@@ -3,6 +3,7 @@ import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import styles from './CurrentThemeScreen.module.css';
 import screenCss from './CurrentThemeScreen.module.css?raw';
 
 const { useScreenTranslationsMock } = vi.hoisted(() => ({
@@ -61,11 +62,17 @@ describe('CurrentThemeScreen', () => {
     expect(screen.getByText('theme-screen')).toBeTruthy();
     const swatchLabels = screen.getAllByText(/^--[a-z-]+ \/ --[a-z-]+$/);
     expect(swatchLabels.length).toBe(7);
-    // Each label names the pair a rule of the screen's stylesheet paints with,
-    // so a label cannot drift from the colours its swatch shows.
+    // Each label names the pair its own swatch's rule paints with, so a label
+    // cannot drift from the colours its swatch shows.
+    const classKeys = Object.keys(styles) as (keyof typeof styles)[];
     for (const label of swatchLabels) {
       const [surface, ink] = label.textContent!.split(' / ');
-      expect(screenCss).toContain(`background-color: var(${surface});\n  color: var(${ink});`);
+      const swatch = label.parentElement!;
+      const key = classKeys.find((name) => name !== 'swatch' && swatch.classList.contains(styles[name]));
+      expect(key).toBeDefined();
+      const rule = screenCss.match(new RegExp(`\\.${key}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+      expect(rule).toMatch(new RegExp(`background-color:\\s*var\\(${surface}\\)`));
+      expect(rule).toMatch(new RegExp(`(^|[;\\s])color:\\s*var\\(${ink}\\)`));
     }
     expect(screen.getAllByText(/^--/).length).toBeGreaterThanOrEqual(12);
   });
