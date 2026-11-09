@@ -3,6 +3,7 @@ import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import screenCss from './CurrentThemeScreen.module.css?raw';
 
 const { useScreenTranslationsMock } = vi.hoisted(() => ({
   useScreenTranslationsMock: vi.fn(),
@@ -58,7 +59,14 @@ describe('CurrentThemeScreen', () => {
     expect(screen.getByText('fr')).toBeTruthy();
     expect(screen.getByText('theme-domain')).toBeTruthy();
     expect(screen.getByText('theme-screen')).toBeTruthy();
-    expect(screen.getAllByText(/^--[a-z-]+ \/ --[a-z-]+$/).length).toBe(7);
+    const swatchLabels = screen.getAllByText(/^--[a-z-]+ \/ --[a-z-]+$/);
+    expect(swatchLabels.length).toBe(7);
+    // Each label names the pair a rule of the screen's stylesheet paints with,
+    // so a label cannot drift from the colours its swatch shows.
+    for (const label of swatchLabels) {
+      const [surface, ink] = label.textContent!.split(' / ');
+      expect(screenCss).toContain(`background-color: var(${surface});\n  color: var(${ink});`);
+    }
     expect(screen.getAllByText(/^--/).length).toBeGreaterThanOrEqual(12);
   });
 

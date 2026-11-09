@@ -99,7 +99,11 @@ describe('ThemeSelector', () => {
       // Only one of the two states holds at a time; what has to keep matching
       // is the class the menu carries in both.
       expect(document.querySelector(selector.replace(/\[data-state=\w+\]$/, ''))).toBe(menu);
-      for (const name of rule.match(/frontx-[\w-]+/g) ?? []) {
+      const animation = rule.match(/animation: ([^;]+);/)?.[1] ?? '';
+      const names = animation.split(',').map((part) => part.trim().split(/\s+/)[0]);
+      expect(animation).not.toBe('');
+      expect(names.every(Boolean)).toBe(true);
+      for (const name of names) {
         expect(STUDIO_CSS).toContain(`@keyframes ${name} `);
       }
     }
