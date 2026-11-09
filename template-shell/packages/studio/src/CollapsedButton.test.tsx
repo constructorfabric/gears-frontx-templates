@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CollapsedButton } from './CollapsedButton';
+import { STUDIO_CSS } from './styles/studioStyles';
 
 const toggleCollapsed = vi.fn();
 const { handleDragMouseDown } = vi.hoisted(() => ({ handleDragMouseDown: vi.fn() }));
@@ -43,6 +44,22 @@ describe('CollapsedButton', () => {
     fireEvent.click(expandButton, { clientX: 10, clientY: 10 });
 
     expect(toggleCollapsed).toHaveBeenCalledTimes(1);
+  });
+
+  it('darkens its glass and its hover under a host .dark class', () => {
+    render(
+      <div className="dark">
+        <CollapsedButton toggleCollapsed={toggleCollapsed} />
+      </div>,
+    );
+    const button = screen.getByRole('button', { name: 'studio:aria.openButton' });
+    // The .dark rules of the injected stylesheet, each with the element it must reach.
+    const darkRules = [...STUDIO_CSS.matchAll(/^(\.dark [^{]+)\{([^}]*)\}/gm)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
+    const surface = darkRules.find(({ selector }) => button.matches(selector));
+    expect(surface?.body).toMatch(/background-color:\s*rgb\(0 0 0 \/ 0\.5\)/);
+    expect(surface?.body).toMatch(/border-color:\s*rgb\(255 255 255 \/ 0\.2\)/);
+    const hover = darkRules.find(({ selector }) => selector.endsWith(':hover') && button.matches(selector.replace(/:hover$/, '')));
+    expect(hover?.body).toMatch(/background-color:\s*rgb\(0 0 0 \/ 0\.6\)/);
   });
 
   it('places the button where the draggable position puts it', () => {

@@ -203,6 +203,14 @@ export const STUDIO_CSS = /* css */ `
 .studio-glass-button:hover {
   background-color: rgb(255 255 255 / 0.3);
 }
+/* Under a host's .dark class the glass darkens, as it did before the studio left Tailwind. */
+.dark .studio-glass {
+  background-color: rgb(0 0 0 / 0.5);
+  border-color: rgb(255 255 255 / 0.2);
+}
+.dark .studio-glass-button:hover {
+  background-color: rgb(0 0 0 / 0.6);
+}
 .studio-glass-button__icon {
   color: var(--foreground);
 }

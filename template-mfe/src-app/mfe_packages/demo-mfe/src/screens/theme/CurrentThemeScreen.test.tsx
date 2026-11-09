@@ -77,6 +77,14 @@ describe('CurrentThemeScreen', () => {
     expect(screen.getAllByText(/^--/).length).toBeGreaterThanOrEqual(12);
   });
 
+  it('pads every card body more from 40rem up, as p-4 sm:p-6 did', async () => {
+    await setupCurrentThemeScreen();
+    expect(document.querySelectorAll(`.${styles.cardBody}`).length).toBeGreaterThan(0);
+    expect(screenCss.match(/\.cardBody\s*\{([^}]*)\}/)?.[1]).toMatch(/padding:\s*var\(--space-4\)/);
+    const wide = screenCss.slice(screenCss.indexOf('@media (min-width: 40rem)', screenCss.indexOf('.cardBody')));
+    expect(wide.match(/\.cardBody\s*\{([^}]*)\}/)?.[1]).toMatch(/padding:\s*var\(--space-6\)/);
+  });
+
   it('subscribes to theme and language bridge properties', async () => {
     const { bridgeFixture } = await setupCurrentThemeScreen();
 
