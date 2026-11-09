@@ -348,7 +348,6 @@ export const STUDIO_CSS = /* css */ `
    popover tokens: a third-party theme may leave --popover-foreground equal to
    --popover, and the menu has to stay readable over any of them. */
 .studio-menu {
-  z-index: 50;
   min-width: 8rem;
   max-height: var(--radix-dropdown-menu-content-available-height);
   overflow-x: hidden;
