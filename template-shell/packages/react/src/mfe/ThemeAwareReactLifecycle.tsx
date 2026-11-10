@@ -190,12 +190,12 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
   /**
    * `Root.unmount()` itself is synchronous, but a nested `ExtensionDomainSlot`
    * mounted anywhere in this root's own tree cannot make ITS cleanup
-   * synchronous too — its mounter's own `detach()` awaits per-extension
+   * synchronous too - its mounter's own `detach()` awaits per-extension
    * unmounts. Collecting whatever that cleanup fire-and-forgets (through
    * `domainTeardownCollector`, scoped to this one `Root.unmount()` call) and
    * awaiting it here is what makes this method's own returned promise settle
    * only once every nested domain this root owns has actually finished
-   * tearing down — never before. A root with no routed nested domain
+   * tearing down - never before. A root with no routed nested domain
    * collects nothing, and this resolves exactly as before (a microtask after
    * the synchronous unmount, same observable timing `void | Promise<void>`
    * already allows).

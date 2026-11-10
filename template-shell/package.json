@@ -1,7 +1,7 @@
 {
   "name": "@gears-frontx/frontx-template-shell",
   "version": "0.1.0-alpha.9",
-  "description": "Standard FrontX application template \u2014 target scaffold for template-side code relocation",
+  "description": "Standard FrontX application template - target scaffold for template-side code relocation",
   "private": true,
   "type": "module",
   "//": "overrides pins two things for unrelated reasons, both load-bearing: \"@gears-frontx/frontx-template-shell\": \"file:.\" is the self-link every template-mfe fixture's exact pin on this package resolves through (npm/cli#524's subject - see CONTRIBUTING.md); the symlink resolves correctly, though `npm ls` prints it as an \"invalid\" alias under packages/framework regardless of npm version (cosmetic, not a real resolution failure - confirmed on npm 11.7.0 through 11.14.0). \"nwsapi\": \"2.2.28\" pins jsdom's transitive CSS-matching engine past a performance regression: on 2.2.26 and 2.2.27, @testing-library/user-event's getComputedStyle-based pointer-events checks hang 25-30 s per click, enough to time out packages/studio's ThemeSelector.test.tsx (measured on 2.2.27 with the current studio sheet and with the earlier one, so the cause is not escaped selectors in STUDIO_CSS); 2.2.28 runs the same tests in milliseconds. jsdom's own range (^2.2.16) still allows 2.2.27, hence the pin. template-mfe/package.json carries the same pin for the same reason.",

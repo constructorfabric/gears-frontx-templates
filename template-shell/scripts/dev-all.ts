@@ -28,7 +28,7 @@ import {
   type PreviewCommand,
 } from './lib/preview-ports.js';
 
-// Build preview-only commands (no build step — MFEs are pre-built)
+// Build preview-only commands (no build step - MFEs are pre-built)
 function buildPreviewCommands(mfes: MfeInfo[]): PreviewCommand[] {
   const commands: PreviewCommand[] = [];
 

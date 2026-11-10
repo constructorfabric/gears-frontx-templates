@@ -164,15 +164,15 @@ All MFE content renders inside a Shadow DOM root, ensuring complete CSS
 isolation from the host application. Three separate things put CSS in there,
 and it helps to know which is which:
 
-1. **This package's own CSS** — the component styles from `@gears-frontx/ui-kit`
-   and `HomeScreen.module.css` — is emitted by the build into this MFE's own
+1. **This package's own CSS** - the component styles from `@gears-frontx/ui-kit`
+   and `HomeScreen.module.css` - is emitted by the build into this MFE's own
    stylesheet, listed in its `mf-manifest.json`, and injected as a `<link>`
    into the shadow root by the host's MFE handler *before* `mount()` runs.
    Nothing in the package has to arrange this.
 2. **The host document's stylesheets** are cloned into the shadow root by
    `ThemeAwareReactLifecycle.mount()`, once, at mount.
 3. **The kit's design tokens** are injected by this package's
-   `initializeStyles()` override — see [Styling](#styling) for why they need
+   `initializeStyles()` override - see [Styling](#styling) for why they need
    a step of their own.
 
 ### Bridge Communication
@@ -192,7 +192,7 @@ Each screen manages its own translations using `useScreenTranslations`:
 ### Styling
 
 Components come from `@gears-frontx/ui-kit`, pinned to an exact version. It is
-a dependency, not a folder of copied files — do not vendor primitives into this
+a dependency, not a folder of copied files - do not vendor primitives into this
 package.
 
 ```tsx
@@ -209,7 +209,7 @@ falls between `Card`'s *direct* children. Wrap the slots and it applies to
 nothing.
 
 ```tsx
-// Correct — the slots stay direct children of Card, the form lives in a slot.
+// Correct - the slots stay direct children of Card, the form lives in a slot.
 <Card>
   <CardHeader>
     <CardTitle>Sign in</CardTitle>
@@ -222,7 +222,7 @@ nothing.
   </CardFooter>
 </Card>
 
-// Wrong — Card has a single child now, and its gap applies to nothing.
+// Wrong - Card has a single child now, and its gap applies to nothing.
 <Card>
   <form onSubmit={handleSubmit}>
     <CardHeader>…</CardHeader>
@@ -239,11 +239,11 @@ and the submit button ends up flush against the last field. The native `form`
 attribute above is what keeps a submit button in `CardFooter` while its fields
 live in `CardContent`; a form whose actions sit inside the form itself needs no
 `CardFooter` at all, which is how `demo-mfe`'s `ProfileDetailsCard` composes
-one. `Card` cannot render as a `<form>` element instead — the kit's card parts
+one. `Card` cannot render as a `<form>` element instead - the kit's card parts
 are plain `div`s with no element-swapping `render` prop.
 
 Screen-local layout goes in a `*.module.css` beside the screen and reads the
-kit's semantic tokens — `var(--space-6)`, `var(--radius-md)`,
+kit's semantic tokens - `var(--space-6)`, `var(--radius-md)`,
 `var(--muted-foreground)`, `var(--text-heading-1-size)`. The full token list is
 `node_modules/@gears-frontx/ui-kit/dist/theme.css`; per-component usage docs are
 in `dist/docs/`.
@@ -277,7 +277,7 @@ npm run dev
 ```
 
 The MFE will be served at `http://localhost:[YOUR_PORT]/assets/remoteEntry.js`.
-It renders only inside a shell. An MFE is tested inside a shell — a simple dummy shell, for instance the template shell via `npm run dev:all`; it has no standalone preview. `dev:all` builds the package, starts
+It renders only inside a shell. An MFE is tested inside a shell - a simple dummy shell, for instance the template shell via `npm run dev:all`; it has no standalone preview. `dev:all` builds the package, starts
 its `preview` server and runs the shell that mounts it.
 
 ### Build
@@ -296,7 +296,7 @@ npm run test:unit
 Both resolve through files the shell contributes to the same `src-app/`:
 `vitest.config.ts` extends `../../vitest.mfe.base`, and `tsconfig.json` maps
 `@frontx-test-utils/*` to `../../__test-utils__/*`. They run from an assembled
-project — a shell plus this template — not from either template alone.
+project - a shell plus this template - not from either template alone.
 
 ## Troubleshooting
 
@@ -314,7 +314,7 @@ If TypeScript cannot resolve `@gears-frontx/*` imports:
 
 ### Style Issues
 
-If a kit component renders unstyled — no fill, no radius, no height — its
+If a kit component renders unstyled - no fill, no radius, no height - its
 tokens did not reach the shadow root. Check the injected `<style>` in the
 shadow root: it must declare the kit's tokens on `:host`, not on `:root`.
 
@@ -322,10 +322,10 @@ If a colour is wrong or missing while spacing and layout are right, the rule
 reads a token name the kit does not declare. Check the names in the module
 against the kit's `theme.css` - see [Styling](#styling).
 
-If a `Card`'s parts are crammed together vertically — a footer button flush
-against the last field — while its left and right padding looks right, an
+If a `Card`'s parts are crammed together vertically - a footer button flush
+against the last field - while its left and right padding looks right, an
 element wraps the card's slots and swallows the card's gap. Make the slots
-direct children of `Card` again — see [Styling](#styling).
+direct children of `Card` again - see [Styling](#styling).
 
 If a component's own styles are missing, the CSS is not reaching the shadow
 root at all. The loader injects every stylesheet an entry declares, both the
