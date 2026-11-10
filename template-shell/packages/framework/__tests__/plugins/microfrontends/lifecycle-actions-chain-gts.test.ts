@@ -21,6 +21,25 @@ const HOOKED_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~acme.hooks.layout.hooked
 const ENTRY_ID = 'gts.frontx.mfes.mfe.entry.v1~acme.hooks.mfe.entry.v1';
 const EXT_ID = 'gts.frontx.mfes.ext.extension.v1~acme.hooks.mfe.ext.v1';
 const LATER_EXT_ID = 'gts.frontx.mfes.ext.extension.v1~acme.hooks.mfe.later.v1';
+const NOTIFY_ACTION_ID = 'gts.frontx.mfes.comm.action.v1~acme.hooks.mfe.notify.v1~';
+
+// An application action derived from the base action that targets an
+// extension, which mount_ext's own schema does not allow (domains only).
+// The plugin checks a hook's action against the base action and requires
+// its type to be registered; this schema's own target shape is for the
+// reader and is not applied to the hook.
+const notifyActionSchema = {
+  $id: `gts://${NOTIFY_ACTION_ID}`,
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    type: { 'x-gts-type-ref': '/$id' },
+    target: { 'x-gts-instance-ref': 'gts.frontx.mfes.ext.extension.v1~*' },
+    timeout: { type: 'number', minimum: 1 },
+  },
+  required: ['type', 'target'],
+};
 
 describe('lifecycle hooks with an actions chain on the real GtsPlugin', () => {
   let plugin: GtsPlugin;
@@ -95,8 +114,9 @@ describe('lifecycle hooks with an actions chain on the real GtsPlugin', () => {
       id: EXT_ID,
       domain: DOMAIN_ID,
       entry: ENTRY_ID,
-      lifecycle: [{ stage: activated, actions_chain: { action: { type: mountExt, target: LATER_EXT_ID } } }],
+      lifecycle: [{ stage: activated, actions_chain: { action: { type: NOTIFY_ACTION_ID, target: LATER_EXT_ID } } }],
     };
+    plugin.registerSchema(notifyActionSchema);
 
     expect(() => plugin.register(extension)).toThrow(/actions_chain\/action\/target/);
 
