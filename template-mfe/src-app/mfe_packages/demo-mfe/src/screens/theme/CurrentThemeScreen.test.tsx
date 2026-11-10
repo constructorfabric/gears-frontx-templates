@@ -77,7 +77,7 @@ describe('CurrentThemeScreen', () => {
     expect(screen.getAllByText(/^--/).length).toBeGreaterThanOrEqual(12);
   });
 
-  it('pads every card body more from 40rem up, as p-4 sm:p-6 did', async () => {
+  it('pads every card body with --space-4, and --space-6 from 40rem up', async () => {
     await setupCurrentThemeScreen();
     const cards = [...document.querySelectorAll(`.${styles.card}`)];
     expect(cards.length).toBeGreaterThan(0);
