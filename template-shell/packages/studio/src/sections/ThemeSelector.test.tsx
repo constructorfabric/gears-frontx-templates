@@ -116,16 +116,28 @@ describe('ThemeSelector', () => {
 
     // On open the menu also slides in from the side of the trigger it sits on:
     // one rule per Radix side, each keeping the fade and zoom and adding a slide
-    // from the opposite edge, on keyframes the sheet defines.
-    const slideFrom = { bottom: 'top', top: 'bottom', right: 'left', left: 'right' } as const;
-    for (const [side, from] of Object.entries(slideFrom)) {
-      const sideRule = STUDIO_CSS.split('\n')
-        .map((line) => line.trim())
-        .find((line) => line.startsWith(`.studio-menu[data-state=open][data-side=${side}] {`));
+    // from the opposite edge, on keyframes the sheet defines. Rules are found by
+    // selector whatever their line layout, and each slide's start offset is read
+    // off its keyframes, so a slide from the wrong edge fails.
+    const sheet = STUDIO_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selectors, body]) => ({
+      selectors: selectors.split(',').map((selector) => selector.trim()),
+      body,
+    }));
+    const slideFrom = {
+      bottom: { from: 'top', offset: '0 -0.5rem' },
+      top: { from: 'bottom', offset: '0 0.5rem' },
+      right: { from: 'left', offset: '-0.5rem 0' },
+      left: { from: 'right', offset: '0.5rem 0' },
+    } as const;
+    for (const [side, { from, offset }] of Object.entries(slideFrom)) {
+      const sideRule = rules.find(({ selectors }) => selectors.includes(`.studio-menu[data-state=open][data-side=${side}]`));
       expect(sideRule, side).toBeDefined();
-      const names = (sideRule?.match(/animation: ([^;]+);/)?.[1] ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]);
+      const names = (sideRule?.body.match(/animation:\s*([^;]+);/)?.[1] ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]);
       expect(names, side).toEqual(['frontx-fade-in', 'frontx-zoom-in', `frontx-slide-in-from-${from}`]);
-      expect(STUDIO_CSS).toContain(`@keyframes frontx-slide-in-from-${from} `);
+      const start = sheet.match(new RegExp(`@keyframes\\s+frontx-slide-in-from-${from}\\s*\\{\\s*from\\s*\\{([^}]*)\\}`))?.[1];
+      expect(start, from).toBeDefined();
+      expect(start?.match(/translate:\s*([^;]+);/)?.[1].trim().replace(/\s+/g, ' '), from).toBe(offset);
     }
     // The open menu carries a side, so one of those rules is the one it gets.
     const side = menu?.getAttribute('data-side');

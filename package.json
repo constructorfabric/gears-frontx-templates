@@ -1,4 +1,5 @@
 {
+  "//": "overrides pins vite to 8.3.5 for this repo-root test harness: vitest 4.1.4 pulls vite 8.3.0, inside the 8.3.0 - 8.3.2 range that carries high-severity advisories (launch-editor command injection, cross-origin script execution through custom middleware, files outside server.fs.allow served). 8.3.5 is clear of them and also brings postcss 8.5.32 with source-map-js 1.2.2 (clear of its high advisory). Remove the override once the pinned vitest resolves a vite clear of those advisories on its own.",
   "name": "gears-frontx-templates",
   "version": "0.1.0",
   "description": "FrontX templates (template-shell, template-mfe, template-design-guardrails) consumed by the FrontX CLI via github:constructorfabric/gears-frontx-templates//<template>@<ref> - see README.md.",
