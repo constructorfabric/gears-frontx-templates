@@ -11,8 +11,7 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync } from 'fs';
-import { join, relative } from 'path';
+import { relative } from 'path';
 import { concurrently } from 'concurrently';
 import {
   buildMfesSequentially,
@@ -29,28 +28,12 @@ import {
   type PreviewCommand,
 } from './lib/preview-ports.js';
 
-// Determine main app command based on available scripts
-function getMainAppCommand(): string {
-  const rootPkgPath = join(process.cwd(), 'package.json');
-  try {
-    const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8')) as {
-      scripts?: Record<string, string>;
-    };
-    if (rootPkg.scripts?.['generate:colors']) {
-      return 'npm run generate:colors && vite';
-    }
-  } catch {
-    // ignore — fall through to default
-  }
-  return 'vite';
-}
-
 // Build preview-only commands (no build step — MFEs are pre-built)
 function buildPreviewCommands(mfes: MfeInfo[]): PreviewCommand[] {
   const commands: PreviewCommand[] = [];
 
   // Add main app
-  commands.push({ command: getMainAppCommand() });
+  commands.push({ command: 'vite' });
 
   // MFE preview only (build already done in the sequential step), each in
   // its package on a strict port (scripts/lib/preview-ports.ts)
