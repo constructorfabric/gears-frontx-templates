@@ -8,10 +8,12 @@
  * `--<modifier>` for a variant or state); there are no general-purpose
  * utility classes.
  *
- * Colours, spacing, radius and type read @gears-frontx/ui-kit tokens. Every
- * kit token carries a fallback inside `var()`, so a host that does not load
- * the kit's theme.css still gets a usable panel painted from --foreground and
- * --background.
+ * Colours, spacing, radius and type read @gears-frontx/ui-kit tokens. Spacing,
+ * radius and type tokens carry a fixed fallback inside `var()`, and the card,
+ * primary, input, ring and accent colours fall back to values built from
+ * --foreground and --background. --foreground, --background, --border,
+ * --muted-foreground and the secondary and destructive button colours carry
+ * none, so a host that does not load the kit's theme.css defines them itself.
  */
 
 const STUDIO_STYLE_ID = 'frontx-studio-styles';
