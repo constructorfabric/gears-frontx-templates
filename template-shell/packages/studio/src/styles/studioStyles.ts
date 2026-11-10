@@ -9,11 +9,16 @@
  * utility classes.
  *
  * Colours, spacing, radius and type read @gears-frontx/ui-kit tokens. Spacing,
- * radius and type tokens carry a fixed fallback inside `var()`, and the card,
- * primary, input, ring and accent colours fall back to values built from
- * --foreground and --background. --foreground, --background, --border,
+ * radius and type tokens carry a fixed fallback inside `var()` in every use.
+ * The card and primary colours fall back to --background and --foreground,
+ * and the input, ring and accent colours to mixes of --foreground.
  * --muted-foreground and the secondary and destructive button colours carry
- * none, so a host that does not load the kit's theme.css defines them itself.
+ * no fallback. --foreground, --background and --border carry none in most
+ * uses: only the dropdown menu gives --foreground and --background fixed
+ * black and white, and only the header divider gives --border a --foreground
+ * mix. A host that does not load the kit's theme.css therefore defines
+ * --foreground, --background, --border, --muted-foreground and the secondary
+ * and destructive button colours itself.
  */
 
 const STUDIO_STYLE_ID = 'frontx-studio-styles';
