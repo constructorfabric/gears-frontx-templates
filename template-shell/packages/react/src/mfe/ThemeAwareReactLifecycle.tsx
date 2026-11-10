@@ -128,13 +128,11 @@ function MountRuntimeAwareProvider({
  *
  * Styling strategy:
  * 1. adoptHostStylesIntoShadowRoot() clones all host <style> and <link> into the
- *    front of the shadow root, bringing the shell's global CSS (its base reset)
- *    and the ui-kit component CSS (the host entry side-effect-imports
- *    @gears-frontx/ui-kit so that CSS exists in the host document; the kit's
- *    CSS-module class names are stable per kit version, so they match the
- *    classes MFE bundles reference only while host and MFE install the same
- *    kit version - the template-pin-drift policy check is what guarantees
- *    that; a drifted MFE renders its kit components unstyled with no error).
+ *    front of the shadow root. What the copy carries is the host's own
+ *    stylesheets: the shell's global CSS (its base reset), the theme tokens,
+ *    and the kit CSS of the components the host itself uses. A screen's kit CSS
+ *    arrives through its manifest, not through this copy: the manifest lists
+ *    the kit CSS the screen bundles, at the screen's own kit version.
  *    Front, not back, so the MFE's own stylesheets
  *    outrank them - see the method. Design tokens must therefore be full CSS
  *    colors - both the CSS Modules of shell and MFE (var(--x)) and ui-kit
@@ -217,8 +215,10 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
 
   /**
    * Copy all inline <style> and <link rel="stylesheet"> from the host document
-   * into the shadow root so that the shell's base reset and the kit's component
-   * styles apply inside the MFE.
+   * into the shadow root so that the host's own stylesheets apply inside the
+   * MFE: the shell's global CSS and base reset, the theme tokens, and the kit
+   * CSS of the components the host itself uses. A screen's kit CSS arrives
+   * through its manifest, not through this copy.
    *
    * The clones are inserted ahead of everything already in the shadow root, never
    * appended, because adopted host styles are context rather than authority: where
