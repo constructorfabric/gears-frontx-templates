@@ -210,12 +210,17 @@ export const STUDIO_CSS = /* css */ `
 .studio-glass-button:hover {
   background-color: rgb(255 255 255 / 0.3);
 }
-/* Under a host's .dark class the glass and its button hover darken. */
-.dark .studio-glass {
+/*
+ * Under a dark host the glass and its button hover darken: the shell's theme
+ * registry stamps data-theme="dark" on <html>, and a host may set a .dark class.
+ */
+.dark .studio-glass,
+[data-theme='dark'] .studio-glass {
   background-color: rgb(0 0 0 / 0.5);
   border-color: rgb(255 255 255 / 0.2);
 }
-.dark .studio-glass-button:hover {
+.dark .studio-glass-button:hover,
+[data-theme='dark'] .studio-glass-button:hover {
   background-color: rgb(0 0 0 / 0.6);
 }
 .studio-glass-button__icon {
@@ -424,6 +429,17 @@ export const STUDIO_CSS = /* css */ `
 @keyframes frontx-zoom-out { from { transform: scale(1); } to { transform: scale(0.95); } }
 .studio-menu[data-state=open] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out; }
 .studio-menu[data-state=closed] { animation: frontx-fade-out 100ms ease-in, frontx-zoom-out 100ms ease-in; animation-fill-mode: forwards; }
+/* On open the menu also slides 0.5rem in from the side of the trigger it sits
+   on (Radix sets data-side). The slide animates the separate translate
+   property, so it adds to the zoom's transform instead of replacing it. */
+@keyframes frontx-slide-in-from-top { from { translate: 0 -0.5rem; } to { translate: 0 0; } }
+@keyframes frontx-slide-in-from-bottom { from { translate: 0 0.5rem; } to { translate: 0 0; } }
+@keyframes frontx-slide-in-from-left { from { translate: -0.5rem 0; } to { translate: 0 0; } }
+@keyframes frontx-slide-in-from-right { from { translate: 0.5rem 0; } to { translate: 0 0; } }
+.studio-menu[data-state=open][data-side=bottom] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out, frontx-slide-in-from-top 150ms ease-out; }
+.studio-menu[data-state=open][data-side=top] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out, frontx-slide-in-from-bottom 150ms ease-out; }
+.studio-menu[data-state=open][data-side=right] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out, frontx-slide-in-from-left 150ms ease-out; }
+.studio-menu[data-state=open][data-side=left] { animation: frontx-fade-in 150ms ease-out, frontx-zoom-in 150ms ease-out, frontx-slide-in-from-right 150ms ease-out; }
 `;
 
 /**

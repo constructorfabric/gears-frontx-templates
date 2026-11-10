@@ -46,27 +46,44 @@ describe('CollapsedButton', () => {
     expect(toggleCollapsed).toHaveBeenCalledTimes(1);
   });
 
-  it('darkens its glass and its hover under a host .dark class', () => {
+  // The shell's theme registry stamps data-theme="dark" on <html>; a host may
+  // instead set a .dark class on an ancestor. Both must darken the glass.
+  it.each([
+    {
+      host: 'data-theme="dark" on <html>',
+      wrap: (node: React.ReactElement) => node,
+      setUp: () => document.documentElement.setAttribute('data-theme', 'dark'),
+    },
+    {
+      host: 'a .dark class',
+      wrap: (node: React.ReactElement) => <div className="dark">{node}</div>,
+      setUp: () => undefined,
+    },
+  ])('darkens its glass and its hover under $host', ({ wrap, setUp }) => {
     const removeStyles = injectStudioStyles();
     try {
       const { unmount } = render(<CollapsedButton toggleCollapsed={toggleCollapsed} />);
       const light = getComputedStyle(screen.getByRole('button', { name: 'studio:aria.openButton' }));
       expect([light.backgroundColor, light.borderTopColor]).toEqual(['rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.3)']);
       unmount();
-      render(
-        <div className="dark">
-          <CollapsedButton toggleCollapsed={toggleCollapsed} />
-        </div>,
-      );
+      setUp();
+      render(wrap(<CollapsedButton toggleCollapsed={toggleCollapsed} />));
       const button = screen.getByRole('button', { name: 'studio:aria.openButton' });
       const dark = getComputedStyle(button);
       expect([dark.backgroundColor, dark.borderTopColor]).toEqual(['rgba(0, 0, 0, 0.5)', 'rgba(255, 255, 255, 0.2)']);
-      // jsdom cannot hover, so the hover rule is read from the stylesheet: the .dark one that reaches this button.
-      const hover = [...STUDIO_CSS.matchAll(/^(\.dark [^{]+):hover\s*\{([^}]*)\}/gm)].find(([, selector]) => button.matches(selector.trim()));
+      // jsdom cannot hover, so the hover rule is read from the stylesheet: the
+      // dark :hover rule one of whose selectors reaches this button.
+      const hover = [...STUDIO_CSS.matchAll(/^([^{}]*:hover[^{}]*)\{([^}]*)\}/gm)].find(([, selectors]) =>
+        selectors
+          .split(',')
+          .map((selector) => selector.trim())
+          .some((selector) => /^(\.dark|\[data-theme='dark'\]) /.test(selector) && button.matches(selector.replace(/:hover$/, ''))),
+      );
       expect(hover).toBeDefined();
       expect(hover?.[2]).toMatch(/background-color:\s*rgb\(0 0 0 \/ 0\.6\)/);
     } finally {
       removeStyles();
+      document.documentElement.removeAttribute('data-theme');
     }
   });
 

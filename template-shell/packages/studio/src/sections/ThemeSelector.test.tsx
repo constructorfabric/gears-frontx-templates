@@ -113,5 +113,23 @@ describe('ThemeSelector', () => {
       throw new Error('studioStyles.ts declares no open-state animation rule');
     }
     expect(document.querySelector(openRule.slice(0, openRule.indexOf('{')).trim())).toBe(menu);
+
+    // On open the menu also slides in from the side of the trigger it sits on:
+    // one rule per Radix side, each keeping the fade and zoom and adding a slide
+    // from the opposite edge, on keyframes the sheet defines.
+    const slideFrom = { bottom: 'top', top: 'bottom', right: 'left', left: 'right' } as const;
+    for (const [side, from] of Object.entries(slideFrom)) {
+      const sideRule = STUDIO_CSS.split('\n')
+        .map((line) => line.trim())
+        .find((line) => line.startsWith(`.studio-menu[data-state=open][data-side=${side}] {`));
+      expect(sideRule, side).toBeDefined();
+      const names = (sideRule?.match(/animation: ([^;]+);/)?.[1] ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]);
+      expect(names, side).toEqual(['frontx-fade-in', 'frontx-zoom-in', `frontx-slide-in-from-${from}`]);
+      expect(STUDIO_CSS).toContain(`@keyframes frontx-slide-in-from-${from} `);
+    }
+    // The open menu carries a side, so one of those rules is the one it gets.
+    const side = menu?.getAttribute('data-side');
+    expect(side && side in slideFrom).toBe(true);
+    expect(menu?.matches(`.studio-menu[data-state=open][data-side=${side}]`)).toBe(true);
   });
 });
