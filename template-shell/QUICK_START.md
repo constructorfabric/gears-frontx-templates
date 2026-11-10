@@ -79,13 +79,32 @@ scaffold step deletes it.
    // src/screens/my-screen/MyScreen.tsx
    import React from 'react';
    import type { ChildMfeBridge } from '@gears-frontx/react';
+   import styles from './MyScreen.module.css';
 
    export const MyScreen: React.FC<{ bridge: ChildMfeBridge }> = () => (
-     <div className="p-6">
-       <h1 className="text-2xl font-bold text-primary">My Screen</h1>
-       <p className="text-muted-foreground">Content goes here</p>
+     <div className={styles.screen}>
+       <h1 className={styles.title}>My Screen</h1>
+       <p className={styles.description}>Content goes here</p>
      </div>
    );
+   ```
+
+   ```css
+   /* src/screens/my-screen/MyScreen.module.css */
+   .screen {
+     padding: var(--space-6);
+   }
+
+   .title {
+     color: var(--primary);
+     font-size: var(--text-display-size);
+     font-weight: var(--text-display-weight);
+     line-height: var(--text-display-line-height);
+   }
+
+   .description {
+     color: var(--muted-foreground);
+   }
    ```
 
 2. **Wrap it in a Module Federation lifecycle**
@@ -229,12 +248,26 @@ App-owned primitives live in `src-app/app/components/ui`:
 // src-app/app/components/ui/badge.tsx
 import React from 'react';
 import { cn } from '@/app/lib/utils';
+import styles from './badge.module.css';
 
 export const Badge: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-  <span className={cn('px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground', className)}>
+  <span className={cn(styles.badge, className)}>
     {children}
   </span>
 );
+```
+
+```css
+/* src-app/app/components/ui/badge.module.css */
+.badge {
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-xs);
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-line-height);
+}
 ```
 
 Import via the `@` alias: `import { Badge } from '@/app/components/ui/badge';`

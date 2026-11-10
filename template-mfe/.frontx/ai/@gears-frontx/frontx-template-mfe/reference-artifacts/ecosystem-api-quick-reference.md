@@ -271,7 +271,10 @@ if (loading) return <div className={styles.screen}><Skeleton className={styles.p
 
 `styles` is the screen's CSS Module (`HomeScreen.module.css`): it pads the screen and
 sizes the placeholder on kit tokens. A screen carries no global utility classes; the
-kit's own `@gears-frontx/ui-kit/utilities.css` classes are the one exception.
+kit's own `@gears-frontx/ui-kit/utilities.css` classes are the one exception, and only
+once the package imports that file in its expose module (`src/lifecycle.tsx`), which
+delivers it with the package's own compiled CSS; nothing loads it by default. For text
+only screen readers should hear, use the kit's `VisuallyHidden` instead of `sr-only`.
 
 **2. Derive translated collections with `useMemo(..., [t])`, never a `useState`
 initializer.** `t` is a `useCallback` keyed on the loaded map, so its identity CHANGES when

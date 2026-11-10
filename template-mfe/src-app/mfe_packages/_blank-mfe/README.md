@@ -250,8 +250,16 @@ in `dist/docs/`.
 
 Style nothing through global utility classes: the template ships no utility
 framework, and a class name the screen's own module does not define matches
-nothing. The kit's own global classes from `@gears-frontx/ui-kit/utilities.css`
-(`sr-only`, `no-scrollbar`, `scroll-fade-*`, `shimmer*`) are the one exception.
+nothing. The kit's own global classes in `@gears-frontx/ui-kit/utilities.css`
+(`sr-only`, `no-scrollbar`, `scroll-fade-*`, `shimmer*`) are the one exception,
+and only once the package loads that file: nothing loads it by default, so
+until then they match nothing too. To use them, add
+`import '@gears-frontx/ui-kit/utilities.css';` to the expose module
+(`src/lifecycle.tsx`); the file then reaches the shadow root with the package's
+own compiled CSS (path 2 in the shell's `mfe-package-contract.md` guideline).
+For text that only screen readers should hear, use the kit's `VisuallyHidden`
+component instead of `sr-only`; its CSS comes with the component, like any
+other kit component's.
 
 The kit's tokens reach this shadow root through `initializeStyles()` in
 `lifecycle.tsx`: the kit declares its tokens on `:root`, which matches nothing inside a
