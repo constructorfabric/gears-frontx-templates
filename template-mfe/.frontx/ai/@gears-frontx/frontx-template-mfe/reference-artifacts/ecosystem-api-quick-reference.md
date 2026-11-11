@@ -387,6 +387,22 @@ export const HomeScreen = () => {
 };
 ```
 
+The two classes the skeleton names are its own `HomeScreen.module.css`, on the same kit
+tokens the shipped `_blank-mfe` module uses; a copied screen declares every class it names:
+
+```css
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.label {
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+}
+```
+
 The components under `src/components/ui/` belong to the MFE package that ships them,
 so a screen imports them by relative path and no ecosystem package declares them. What
 a solution puts there is its own decision - swapping them for a component library is a
