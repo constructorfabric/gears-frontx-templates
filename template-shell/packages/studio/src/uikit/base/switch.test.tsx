@@ -26,14 +26,15 @@ describe('Switch thumb', () => {
   });
 
   // @gears-frontx/i18n stamps dir only in setLanguage, so "no dir anywhere"
-  // is a real page state, not only a test one.
+  // is a real page state, not only a test one. The wrapper is the studio panel
+  // (no dir of its own unless given), which sets the box model the app renders.
   it.each([
     { direction: 'no dir on any ancestor', dir: undefined, expected: 16 },
     { direction: 'dir=rtl', dir: 'rtl' as const, expected: -16 },
   ])('moves inside the track when checked under $direction', ({ dir, expected }) => {
     removeStyles = injectStudioStyles();
     render(
-      <div dir={dir}>
+      <div className="studio-panel" dir={dir}>
         <Switch checked aria-label="toggle" onCheckedChange={() => undefined} />
       </div>,
     );
@@ -46,6 +47,9 @@ describe('Switch thumb', () => {
     expect(offset).toBe(expected);
 
     const trackStyle = getComputedStyle(track);
+    // The track is a <button>: border-box by the UA sheet and again by the
+    // .studio-panel rule, as in the app, so width minus borders is its content box.
+    expect(trackStyle.boxSizing).toBe('border-box');
     const inner = toPx(trackStyle.width) - toPx(trackStyle.borderLeftWidth) - toPx(trackStyle.borderRightWidth);
     const thumbWidth = toPx(getComputedStyle(thumb).width);
     // The thumb starts at the inline-start edge of the track's content box, so
