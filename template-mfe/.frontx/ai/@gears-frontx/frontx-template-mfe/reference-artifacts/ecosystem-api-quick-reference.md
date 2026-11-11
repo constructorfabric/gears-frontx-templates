@@ -387,8 +387,9 @@ export const HomeScreen = () => {
 };
 ```
 
-The two classes the skeleton names are its own `HomeScreen.module.css`, on the same kit
-tokens the shipped `_blank-mfe` module uses; a copied screen declares every class it names:
+The two classes the skeleton names live in the screen's own `HomeScreen.module.css`, on the
+same kit tokens the shipped `_blank-mfe` module uses; a copied screen declares every class
+it names:
 
 ```css
 .content {
