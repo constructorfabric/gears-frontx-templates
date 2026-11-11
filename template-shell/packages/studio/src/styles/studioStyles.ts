@@ -360,7 +360,10 @@ export const STUDIO_CSS = /* css */ `
   transition-duration: 150ms;
 }
 .studio-switch__thumb[data-state=unchecked] { transform: translateX(0); }
-.studio-switch__thumb[data-state=checked]:where([dir=ltr], [dir=ltr] *) { transform: translateX(1rem); }
+/* LTR is the default: @gears-frontx/i18n stamps dir only in setLanguage, so a
+   page with no dir anywhere must still move the thumb. The RTL rule has the
+   same specificity (:where adds none) and comes later, so it wins under dir=rtl. */
+.studio-switch__thumb[data-state=checked] { transform: translateX(1rem); }
 .studio-switch__thumb[data-state=checked]:where([dir=rtl], [dir=rtl] *) { transform: translateX(-1rem); }
 
 /* --- Dropdown menu ---
