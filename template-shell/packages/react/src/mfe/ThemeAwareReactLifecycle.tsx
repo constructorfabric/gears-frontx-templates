@@ -386,8 +386,9 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * Hook for subclasses to inject additional CSS not covered by the adopted host
    * stylesheet (e.g., MFE-specific @font-face rules or custom animations).
    * No-op by default: host styles adopted in adoptHostStylesIntoShadowRoot()
-   * already carry the shell's base reset and the kit's component CSS; an MFE's
-   * own CSS Modules arrive with its compiled stylesheet.
+   * already carry the shell's global CSS (its base reset) and the kit CSS of the
+   * components the host itself uses. A screen's kit CSS arrives through its
+   * manifest, and an MFE's own CSS Modules arrive with its compiled stylesheet.
    */
   protected initializeStyles(_container: Element | ShadowRoot): void {
     // No-op by default.
