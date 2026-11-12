@@ -23,7 +23,7 @@
     "@module-federation/vite": "1.20.5",
     "vite": "6.4.6",
     "typescript": "5.9.3",
-    "@gears-frontx/framework": "0.2.0-alpha.17",
+    "@gears-frontx/framework": "0.2.0-alpha.18",
     "@gears-frontx/state": "0.2.0-alpha.4",
     "@gears-frontx/mfes": "0.6.0",
     "@gears-frontx/routing": "0.4.0",

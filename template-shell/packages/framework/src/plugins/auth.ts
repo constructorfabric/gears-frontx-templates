@@ -157,6 +157,7 @@ export type AuthTransportBinder = (args: {
   provider: AuthProvider;
   csrfHeaderName?: string;
   allowedCookieOrigins?: string[];
+  allowedBearerOrigins?: string[];
   /**
    * Call when starting a refresh the binder makes on its own (for example on a
    * 401) and pass the outcome to the returned function, so the auth plugin can
@@ -174,8 +175,19 @@ export type AuthTransportBinder = (args: {
   removeRestPlugin: (pluginClass: new (...args: never[]) => RestPlugin) => void;
 }) => AuthTransportBinding;
 
+/**
+ * Credentials go to the app's own origin and to the origins listed here, and nowhere else.
+ * Write each origin the way `URL.origin` gives it: scheme, host and port, with no path or
+ * trailing slash, such as `'https://api.example.com'`.
+ */
 export type Hai3ApiAuthTransportConfig = {
+  /** Other origins where a cookie session's requests go with `withCredentials` and the CSRF header. */
   allowedCookieOrigins?: string[];
+  /**
+   * Other origins where a bearer session's requests carry `Authorization: Bearer <token>`,
+   * also on the retry after a refresh. An app whose API is on another origin lists it here.
+   */
+  allowedBearerOrigins?: string[];
   csrfHeaderName?: string;
 };
 
@@ -517,17 +529,11 @@ function toAuthTransportRequest(request: RestRequestContext): AuthTransportReque
   };
 }
 
-function isRelativeUrl(url: string): boolean {
-  return url.startsWith('/') && !url.startsWith('//');
-}
-
-function getOrigin(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-}
+/**
+ * Stands in for the app's origin where the runtime has none, as in Node or a sandboxed
+ * frame, so a relative URL still counts as the app's own. No real host ends in `.invalid`.
+ */
+const NO_RUNTIME_ORIGIN = 'http://runtime-origin.invalid';
 
 function getRuntimeOrigin(): string | null {
   const maybeLocation = (globalThis as { location?: { origin?: string } }).location;
@@ -535,17 +541,26 @@ function getRuntimeOrigin(): string | null {
   return maybeLocation.origin;
 }
 
+/**
+ * Whether a request to `url` may carry the session's credentials: it goes to the app's own
+ * origin, or to an origin listed in `allowedOrigins`.
+ *
+ * The URL is resolved the way the browser resolves it, not read by its prefix. Browsers read
+ * `\` as `/` and drop tabs and newlines, so `/\evil.example/x` goes to `evil.example`, just
+ * like `//evil.example/x`.
+ */
 function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[] | undefined): boolean {
-  if (isRelativeUrl(url)) return true;
-
-  const origin = getOrigin(url);
-  if (!origin) return false;
-
-  const runtimeOrigin = getRuntimeOrigin();
-  if (runtimeOrigin && origin === runtimeOrigin) return true;
-
-  if (!allowedOrigins || allowedOrigins.length === 0) return false;
-  return allowedOrigins.includes(origin);
+  const ownOrigin = getRuntimeOrigin() ?? NO_RUNTIME_ORIGIN;
+  let origin: string;
+  try {
+    origin = new URL(url, ownOrigin).origin;
+  } catch {
+    return false;
+  }
+  if (origin === ownOrigin) return true;
+  // A URL without an origin of its own, such as `data:`, reports the opaque origin 'null'.
+  if (origin === 'null') return false;
+  return allowedOrigins?.includes(origin) ?? false;
 }
 
 type RefreshFlight = {
@@ -595,6 +610,8 @@ class AuthRestPlugin extends RestPlugin {
     }
 
     if (session.kind === 'bearer' && session.token) {
+      if (!shouldIncludeCredentials(ctx.url, this.config.frontxApi?.allowedBearerOrigins)) return ctx;
+
       return {
         ...ctx,
         headers: {
@@ -665,6 +682,11 @@ class AuthRestPlugin extends RestPlugin {
 
     if (refreshed.kind === 'bearer') {
       if (!refreshed.token) return ctx.error;
+      // The retry sets this header itself, before `onRequest` runs again, so it needs the
+      // same origin check. Without the token, the retry would only repeat the request.
+      if (!shouldIncludeCredentials(ctx.request.url, this.config.frontxApi?.allowedBearerOrigins)) {
+        return ctx.error;
+      }
       return ctx.retry({
         headers: { Authorization: `Bearer ${refreshed.token}` },
       });
@@ -708,6 +730,7 @@ export function frontxApiTransport(): AuthTransportBinder {
         provider: args.provider,
         frontxApi: {
           allowedCookieOrigins: args.allowedCookieOrigins,
+          allowedBearerOrigins: args.allowedBearerOrigins,
           csrfHeaderName: args.csrfHeaderName,
         },
       },
@@ -1036,6 +1059,7 @@ export function auth(config: AuthPluginConfig): FrontXPlugin {
       binding = transport({
         provider: config.provider,
         allowedCookieOrigins: config.frontxApi?.allowedCookieOrigins,
+        allowedBearerOrigins: config.frontxApi?.allowedBearerOrigins,
         csrfHeaderName: config.frontxApi?.csrfHeaderName,
         addRestPlugin: (plugin) => app.apiRegistry.plugins.add(RestProtocol, plugin),
         removeRestPlugin: (pluginClass) => app.apiRegistry.plugins.remove(RestProtocol, pluginClass),

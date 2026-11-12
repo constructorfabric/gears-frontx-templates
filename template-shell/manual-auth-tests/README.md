@@ -8,6 +8,10 @@ They run against a public test backend (DummyJSON) to validate:
 - refresh + retry on `401`
 - request cancellation via `AbortSignal` (axios cancellation bypasses plugin `onError`)
 
+`auth()` sends the bearer token only to the app's own origin and to origins listed in
+`frontxApi.allowedBearerOrigins`. DummyJSON is neither, and Node has no own origin, so each
+script lists `https://dummyjson.com` there. Remove it and `bearer-attach.mjs` fails with a 401.
+
 Cookie-session is intentionally NOT covered here because Node.js fetch/axios do not manage browser cookies the same way.
 Test cookie-session in a real browser against your own backend (see below).
 
@@ -69,6 +73,8 @@ use(auth({
 3. Ensure `provider.getSession()` returns `{ kind: 'cookie', csrfToken }`.
 
 Expected: requests to the allowlisted origin are sent with `withCredentials: true` and include the CSRF header.
+A request to any other origin goes without either. `allowedCookieOrigins` covers cookie sessions only;
+bearer tokens have their own list, `allowedBearerOrigins`.
 
 ## Use In An External App With Local FrontX Changes
 

@@ -2,9 +2,9 @@
  * Unit tests for auth plugin
  *
  * Covers:
- * 1. Bearer header attached when provider session is bearer token.
+ * 1. Bearer header attached only for relative URLs, the app origin and allowedBearerOrigins.
  * 2. Cookie-session credentials enabled only for relative URLs and allowlisted origins.
- * 3. Refresh+retry on 401: calls ctx.retry once with new Authorization.
+ * 3. Refresh+retry on 401: calls ctx.retry once with new Authorization, under the same origin rule.
  * 4. Custom transport binder is used and default binding is not.
  * 5. app.auth surface exists and delegates methods.
  * 6. CSRF header attached when csrfHeaderName + session.csrfToken are set.
@@ -80,7 +80,7 @@ function makeNullSessionProvider(): AuthProvider {
 /** Use frontxApiTransport directly to capture the internal plugin instance. */
 function capturePlugin(
   provider: AuthProvider,
-  opts?: { allowedCookieOrigins?: string[]; csrfHeaderName?: string },
+  opts?: { allowedCookieOrigins?: string[]; allowedBearerOrigins?: string[]; csrfHeaderName?: string },
 ): AuthRestPlugin {
   const binder = frontxApiTransport();
   let captured: AuthRestPlugin | null = null;
@@ -88,6 +88,7 @@ function capturePlugin(
   binder({
     provider,
     allowedCookieOrigins: opts?.allowedCookieOrigins,
+    allowedBearerOrigins: opts?.allowedBearerOrigins,
     csrfHeaderName: opts?.csrfHeaderName,
     addRestPlugin: (p: RestPlugin) => {
       captured = p as AuthRestPlugin;
@@ -136,6 +137,82 @@ describe('auth plugin', () => {
       const result = (await plugin.onRequest?.(ctx)) as RestRequestContext;
 
       expect(result.headers['Authorization']).toBeUndefined();
+    });
+
+    it('sends no Authorization header to an origin that is not listed', async () => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const result = (await plugin.onRequest?.(
+        makeReqCtx('https://maps.example.com/tiles'),
+      )) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBeUndefined();
+    });
+
+    it("keeps the app's own Authorization header for an origin that is not listed", async () => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'));
+
+      const result = (await plugin.onRequest?.(
+        makeReqCtx('https://partner.example.com/api', { Authorization: 'ApiKey partner-key' }),
+      )) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBe('ApiKey partner-key');
+    });
+
+    it('sends no Authorization header to a URL that starts with /\\', async () => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'));
+
+      const result = (await plugin.onRequest?.(makeReqCtx('/\\evil.example/x'))) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBeUndefined();
+    });
+
+    it('attaches the header for a listed origin', async () => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const result = (await plugin.onRequest?.(
+        makeReqCtx('https://api.example.com/v1/me'),
+      )) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBe('Bearer tok-abc');
+    });
+
+    it("attaches the header for an absolute URL on the app's own origin", async () => {
+      vi.stubGlobal('location', { origin: 'https://app.example' });
+      try {
+        const plugin = capturePlugin(makeBearerProvider('tok-abc'));
+
+        const result = (await plugin.onRequest?.(
+          makeReqCtx('https://app.example/api'),
+        )) as RestRequestContext;
+
+        expect(result.headers['Authorization']).toBe('Bearer tok-abc');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('keeps the two lists apart: a cookie origin gets no token, a bearer origin no cookies', async () => {
+      const opts = {
+        allowedCookieOrigins: ['https://sso.example.com'],
+        allowedBearerOrigins: ['https://api.example.com'],
+      };
+      const bearer = capturePlugin(makeBearerProvider('tok-abc'), opts);
+      const cookie = capturePlugin(makeCookieProvider(), opts);
+
+      const bearerToSso = (await bearer.onRequest?.(
+        makeReqCtx('https://sso.example.com/x'),
+      )) as RestRequestContext;
+      const cookieToApi = (await cookie.onRequest?.(
+        makeReqCtx('https://api.example.com/x'),
+      )) as RestRequestContext;
+
+      expect(bearerToSso.headers['Authorization']).toBeUndefined();
+      expect(cookieToApi.withCredentials).toBeUndefined();
     });
   });
 
@@ -221,6 +298,45 @@ describe('auth plugin', () => {
       await plugin.onError?.(errCtx);
 
       expect(refreshFn).toHaveBeenCalledTimes(1);
+      expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
+    });
+
+    it('does not retry with the refreshed token to an origin that is not listed', async () => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const errCtx = {
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('https://maps.example.com/tiles'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+      };
+
+      const result = await plugin.onError?.(errCtx);
+
+      expect(errCtx.retry).not.toHaveBeenCalled();
+      expect(result).toBe(errCtx.error);
+    });
+
+    it('retries with the refreshed token to a listed origin', async () => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const errCtx = {
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('https://api.example.com/v1/me'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+      };
+
+      await plugin.onError?.(errCtx);
+
       expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
     });
 
@@ -1359,6 +1475,39 @@ describe('auth plugin', () => {
       const result = (await plugin.onRequest?.(makeReqCtx('//cdn.example.com/asset'))) as RestRequestContext;
 
       expect(result.withCredentials).toBeUndefined();
+    });
+
+    // Browsers read `\` as `/` and drop tabs and newlines, so each of these goes to evil.example.
+    it.each([
+      ['a backslash after the slash', '/\\evil.example/x'],
+      ['two backslashes', '\\\\evil.example/x'],
+      ['a tab between the slashes', '/\t/evil.example/x'],
+      ['a leading space', ' //evil.example/x'],
+    ])('sends no credentials or CSRF header to a URL that starts with %s', async (_name, url) => {
+      const provider: AuthProvider = {
+        getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-abc' } satisfies AuthSession),
+        checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+        logout: vi.fn().mockResolvedValue({ type: 'none' }),
+      };
+      const plugin = capturePlugin(provider, { csrfHeaderName: 'X-CSRF-Token' });
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.withCredentials).toBeUndefined();
+      expect(result.headers['X-CSRF-Token']).toBeUndefined();
+    });
+
+    it('sets withCredentials for a protocol-relative URL on the app origin', async () => {
+      vi.stubGlobal('location', { origin: 'https://app.example' });
+      try {
+        const plugin = capturePlugin(makeCookieProvider());
+
+        const result = (await plugin.onRequest?.(makeReqCtx('//app.example/api'))) as RestRequestContext;
+
+        expect(result.withCredentials).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 

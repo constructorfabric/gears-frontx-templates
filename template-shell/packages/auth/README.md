@@ -43,6 +43,15 @@ const app = createFrontX()
   .build();
 ```
 
+The plugin sends credentials only to the app's own origin and to the origins you list. A cookie session gets `withCredentials` and the CSRF header on `frontxApi.allowedCookieOrigins`. A bearer session gets its `Authorization` header on `frontxApi.allowedBearerOrigins`. Requests to any other origin go without them, so list your API's origin when it is not the app's own:
+
+```ts
+auth({
+  provider,
+  frontxApi: { allowedBearerOrigins: ['https://api.example.com'] },
+});
+```
+
 ## Local Development (Using A Local Gears FrontX Checkout)
 
 If you are testing changes made locally in the Gears FrontX monorepo, you can install the packages into a separate consumer app via `file:` dependencies.

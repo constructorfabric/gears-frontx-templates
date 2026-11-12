@@ -2,7 +2,7 @@ import { apiRegistry } from '@gears-frontx/api';
 import { createFrontX } from '@gears-frontx/framework';
 import { auth } from '@gears-frontx/framework';
 
-import { DummyJsonService } from './dummyjson-service.mjs';
+import { DUMMYJSON_ORIGIN, DummyJsonService } from './dummyjson-service.mjs';
 
 /**
  * Scenario A: bearer token attachment.
@@ -36,7 +36,9 @@ const provider = {
   },
 };
 
-createFrontX().use(auth({ provider })).build();
+createFrontX()
+  .use(auth({ provider, frontxApi: { allowedBearerOrigins: [DUMMYJSON_ORIGIN] } }))
+  .build();
 
 const me = await svc.me();
 if (!me || typeof me !== 'object') {
