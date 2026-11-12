@@ -137,10 +137,10 @@ function MountRuntimeAwareProvider({
  *    outrank them - see the method. Design tokens must therefore be full CSS
  *    colors - both the CSS Modules of shell and MFE (var(--x)) and ui-kit
  *    component CSS consume them directly.
- * 2. injectBaseResets() adds box-model resets and :host defaults that the host
- *    stylesheets do not carry but that consistent rendering needs, and
- *    positions them at the end of the shell-owned head - after the adopted block
- *    and the isolation style, ahead of the MFE's own CSS.
+ * 2. injectBaseResets() adds the shadow-root resets and :host defaults, which
+ *    override the adopted base reset's border colour and root font and zero
+ *    margin and padding, and positions them at the end of the shell-owned head -
+ *    after the adopted block and the isolation style, ahead of the MFE's own CSS.
  * 3. Subclasses may override initializeStyles() to inject additional CSS that is
  *    not covered by the host stylesheet (e.g., MFE-specific @font-face rules).
  *
@@ -314,9 +314,10 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
   }
 
   /**
-   * Box-model resets and :host defaults needed inside every shadow root.
-   * The host stylesheets do not carry these, but consistent rendering across
-   * browsers needs them.
+   * Box-model resets and :host defaults needed inside every shadow root. The
+   * lifecycle applies them after the adopted host block, so at equal
+   * specificity they override the host base reset's border colour
+   * (currentColor) and root font (system-ui) and zero margin and padding.
    *
    * Reuses the node a previous mount left behind, exactly as `injectStylesheet`
    * does in `@gears-frontx/mfes`' shadow utilities: a remount runs against a
@@ -386,9 +387,10 @@ export abstract class ThemeAwareReactLifecycle implements MfeEntryLifecycle<Chil
    * Hook for subclasses to inject additional CSS not covered by the adopted host
    * stylesheet (e.g., MFE-specific @font-face rules or custom animations).
    * No-op by default: host styles adopted in adoptHostStylesIntoShadowRoot()
-   * already carry the shell's global CSS (its base reset) and the kit CSS of the
-   * components the host itself uses. A screen's kit CSS arrives through its
-   * manifest, and an MFE's own CSS Modules arrive with its compiled stylesheet.
+   * already carry the shell's global CSS (its base reset), the theme tokens, and
+   * the kit CSS of the components the host itself uses. A screen's kit CSS
+   * arrives through its manifest, and an MFE's own CSS Modules arrive with its
+   * compiled stylesheet.
    */
   protected initializeStyles(_container: Element | ShadowRoot): void {
     // No-op by default.

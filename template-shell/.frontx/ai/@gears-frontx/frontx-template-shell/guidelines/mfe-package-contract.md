@@ -138,9 +138,8 @@ what the package owns:
 
 1. **No package-owned CSS.**
    `ThemeAwareReactLifecycle.adoptHostStylesIntoShadowRoot()` clones every host
-   `<style>`/`<link>` into the shadow root, which brings the shell's base reset
-   and the kit CSS of the components the host itself uses. A package that only
-   composes UI-kit components needs no stylesheet of its own.
+   `<style>`/`<link>` into the shadow root. A package that only composes UI-kit
+   components needs no stylesheet of its own.
    The copy is taken once, at mount, from the host `<head>` as it is then. A
    stylesheet the host adds or changes later — a lazily loaded chunk's CSS, a
    rule a CSS-in-JS library inserts after mount, a Vite dev-mode update —
@@ -221,16 +220,17 @@ what the package owns:
    Module: the string carries no class map, so components reading
    `styles.frame` get `undefined`.
 
-**Package-owned CSS must never carry a base reset of its own.** A second reset inside the shadow
-root — one the package compiled itself — lands after the UI-kit component CSS
-and its element resets (`button { background: transparent }` and friends)
-visibly break kit controls. A package-owned stylesheet destined for
-`initializeStyles()` must scope its rules to the package's own classes;
-`injectBaseResets()` already provides the box-model resets a shadow root needs.
-This rule is about path 2 and 3 stylesheets. The shell's own base reset does
-reach the shadow root through path 1 (`adoptHostStylesIntoShadowRoot()` clones
-every host stylesheet), and the lifecycle deliberately neutralises it — see the
-counter-declarations in `ThemeAwareReactLifecycle`.
+**Package-owned CSS must never carry a base reset of its own.**
+A second reset inside the shadow root - one the package compiled itself - lands
+after the UI-kit component CSS and its element resets (`button { background:
+transparent }` and friends) visibly break kit controls. A package-owned
+stylesheet destined for `initializeStyles()` must scope its rules to the
+package's own classes; `injectBaseResets()` already provides the box-model
+resets a shadow root needs. This rule is about path 2 and 3 stylesheets. The
+shell's own base reset does reach the shadow root, on purpose, through path 1
+(`adoptHostStylesIntoShadowRoot()` clones every host stylesheet), and
+`injectBaseResets()` overrides only its border colour, root font and margin and
+padding there.
 
 ## What the shell does with a conforming package
 
