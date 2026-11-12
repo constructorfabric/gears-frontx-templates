@@ -12,10 +12,10 @@
  * written against it: no default margins, borders that draw as soon as a rule
  * sets a width, form controls that inherit their type and colour, block-level
  * media. ThemeAwareReactLifecycle clones this sheet into each MFE shadow root,
- * where its injectBaseResets() then sets the border colour (currentColor), the
- * root font (system-ui) and zero margin and padding; the rest of this base
- * applies there as in the host. The kit's component CSS comes after this file
- * (main.tsx), so a component rule wins any tie with it.
+ * where its injectBaseResets() then overrides the border colour (currentColor)
+ * and root font (system-ui) and zeroes margin and padding on every element;
+ * the rest of this base applies there as in the host. The kit's component CSS
+ * comes after this file (main.tsx), so a component rule wins any tie with it.
  */
 *,
 ::before,

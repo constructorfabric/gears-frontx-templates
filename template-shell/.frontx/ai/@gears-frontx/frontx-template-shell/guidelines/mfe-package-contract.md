@@ -229,8 +229,8 @@ package's own classes; `injectBaseResets()` already provides the box-model
 resets a shadow root needs. This rule is about path 2 and 3 stylesheets. The
 shell's own base reset does reach the shadow root, on purpose, through path 1
 (`adoptHostStylesIntoShadowRoot()` clones every host stylesheet), and
-`injectBaseResets()` overrides only its border colour, root font and margin and
-padding there.
+`injectBaseResets()` overrides only its border colour (currentColor) and root
+font (system-ui) there, and zeroes margin and padding on every element.
 
 ## What the shell does with a conforming package
 
