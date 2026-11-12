@@ -72,9 +72,9 @@ use(auth({
 
 3. Ensure `provider.getSession()` returns `{ kind: 'cookie', csrfToken }`.
 
-Expected: requests to the allowlisted origin are sent with `withCredentials: true` and include the CSRF header.
-A request to any other origin goes without either. `allowedCookieOrigins` covers cookie sessions only;
-bearer tokens have their own list, `allowedBearerOrigins`.
+Expected: requests to the app's own origin and to the allowlisted origin are sent with `withCredentials: true`
+and include the CSRF header. A request to an origin that is neither goes without both. `allowedCookieOrigins`
+covers cookie sessions only; bearer tokens have their own list, `allowedBearerOrigins`.
 
 ## Use In An External App With Local FrontX Changes
 

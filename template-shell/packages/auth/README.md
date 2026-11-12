@@ -43,14 +43,18 @@ const app = createFrontX()
   .build();
 ```
 
-The plugin sends credentials only to the app's own origin and to the origins you list. A cookie session gets `withCredentials` and the CSRF header on `frontxApi.allowedCookieOrigins`. A bearer session gets its `Authorization` header on `frontxApi.allowedBearerOrigins`. Requests to any other origin go without them, so list your API's origin when it is not the app's own:
+The plugin sends credentials only to the app's own origin and to the origins you list, so list your API's origin when it is not the app's own. For the cookie provider above, that list is `allowedCookieOrigins`, and its origins also get the CSRF header:
 
 ```ts
 auth({
   provider,
-  frontxApi: { allowedBearerOrigins: ['https://api.example.com'] },
+  frontxApi: { allowedCookieOrigins: ['https://api.example.com'] },
 });
 ```
+
+A provider that returns `{ kind: 'bearer', token }` lists the origin in `frontxApi.allowedBearerOrigins` instead. The two lists are separate: a cookie origin gets no token, and a bearer origin gets no cookies. A 401 from an origin in neither list does not refresh the session.
+
+One limit holds until [constructorfabric/gears-frontx#770](https://github.com/constructorfabric/gears-frontx/issues/770) is fixed. The plugin checks the URL that `@gears-frontx/api` shows it, which joins the service's `baseURL` and the path. Axios skips the `baseURL` when the path is absolute (`https://…`) or protocol-relative (`//…`). So on a service with a `baseURL`, `get('https://other.example/x')` is checked as a path under the `baseURL`, but it goes to `other.example`, with the credentials. Pass only relative paths to a service with a `baseURL`. To call another origin, give it a service whose `baseURL` is that origin.
 
 ## Local Development (Using A Local Gears FrontX Checkout)
 

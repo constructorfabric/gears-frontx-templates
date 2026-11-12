@@ -181,6 +181,43 @@ describe('auth plugin', () => {
       expect(result.headers['Authorization']).toBe('Bearer tok-abc');
     });
 
+    // Each URL starts with the listed origin's text but goes to another origin.
+    it.each([
+      ['a longer host', 'https://api.example.com.evil.example/x'],
+      ['userinfo', 'https://api.example.com@evil.example/x'],
+      ['another port', 'https://api.example.com:8443/x'],
+      ['another scheme', 'http://api.example.com/x'],
+    ])('sends no Authorization header to a lookalike of a listed origin with %s', async (_name, url) => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBeUndefined();
+    });
+
+    it('reads allowedBearerOrigins from the auth() config', async () => {
+      const app = createFrontX()
+        .use(auth({
+          provider: makeBearerProvider('tok-abc'),
+          frontxApi: { allowedBearerOrigins: ['https://api.example.com'] },
+        }))
+        .build();
+      const plugin = apiRegistry.plugins.getAll(RestProtocol)[0] as AuthRestPlugin;
+
+      const listed = (await plugin.onRequest?.(
+        makeReqCtx('https://api.example.com/v1/me'),
+      )) as RestRequestContext;
+      const unlisted = (await plugin.onRequest?.(
+        makeReqCtx('https://maps.example.com/tiles'),
+      )) as RestRequestContext;
+
+      expect(listed.headers['Authorization']).toBe('Bearer tok-abc');
+      expect(unlisted.headers['Authorization']).toBeUndefined();
+      app.destroy();
+    });
+
     it("attaches the header for an absolute URL on the app's own origin", async () => {
       vi.stubGlobal('location', { origin: 'https://app.example' });
       try {
@@ -301,7 +338,7 @@ describe('auth plugin', () => {
       expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
     });
 
-    it('does not retry with the refreshed token to an origin that is not listed', async () => {
+    it('neither refreshes nor retries on a 401 from an origin that is not listed', async () => {
       const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
       const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn), {
         allowedBearerOrigins: ['https://api.example.com'],
@@ -317,8 +354,53 @@ describe('auth plugin', () => {
 
       const result = await plugin.onError?.(errCtx);
 
+      expect(refreshFn).not.toHaveBeenCalled();
       expect(errCtx.retry).not.toHaveBeenCalled();
       expect(result).toBe(errCtx.error);
+    });
+
+    it('does not retry with the refreshed token to an origin listed only for cookies', async () => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn), {
+        allowedCookieOrigins: ['https://sso.example.com'],
+      });
+
+      const errCtx = {
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('https://sso.example.com/session'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+      };
+
+      const result = await plugin.onError?.(errCtx);
+
+      expect(refreshFn).toHaveBeenCalledTimes(1);
+      expect(errCtx.retry).not.toHaveBeenCalled();
+      expect(result).toBe(errCtx.error);
+    });
+
+    it('keeps the refresh limit for its own API when another origin keeps answering 401', async () => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn));
+      const fail401 = (url: string) => {
+        const errCtx = {
+          error: new Error('HTTP 401'),
+          request: makeReqCtx(url),
+          response: { status: 401, headers: {}, data: null },
+          retryCount: 0,
+          retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+        };
+        return { errCtx, result: plugin.onError?.(errCtx) };
+      };
+
+      await fail401('https://maps.example.com/tiles').result;
+      await fail401('https://maps.example.com/tiles').result;
+      const own = fail401('/api/me');
+      await own.result;
+
+      expect(refreshFn).toHaveBeenCalledTimes(1);
+      expect(own.errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
     });
 
     it('retries with the refreshed token to a listed origin', async () => {

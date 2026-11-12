@@ -179,6 +179,10 @@ export type AuthTransportBinder = (args: {
  * Credentials go to the app's own origin and to the origins listed here, and nowhere else.
  * Write each origin the way `URL.origin` gives it: scheme, host and port, with no path or
  * trailing slash, such as `'https://api.example.com'`.
+ *
+ * The check reads the URL plugins get, the service's `baseURL` joined with the path, but
+ * axios skips the `baseURL` for an absolute or `//` path. Until constructorfabric/gears-frontx#770 is fixed,
+ * pass only relative paths to a service with a `baseURL`.
  */
 export type Hai3ApiAuthTransportConfig = {
   /** Other origins where a cookie session's requests go with `withCredentials` and the CSRF header. */
@@ -657,6 +661,12 @@ class AuthRestPlugin extends RestPlugin {
     if (ctx.response?.status !== 401) return ctx.error;
     if (ctx.retryCount !== 0) return ctx.error;
     if (!this.config.provider.refresh) return ctx.error;
+    // A 401 from an origin that gets no credentials under either list says nothing about this
+    // session: it neither refreshes the session nor counts toward the refresh limit.
+    const { allowedCookieOrigins = [], allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
+    if (!shouldIncludeCredentials(ctx.request.url, [...allowedCookieOrigins, ...allowedBearerOrigins])) {
+      return ctx.error;
+    }
 
     // Dedup concurrent 401 refresh calls into a single in-flight promise.
     // NOTE: shared refresh must NOT be bound to any single request's AbortSignal —
@@ -683,8 +693,9 @@ class AuthRestPlugin extends RestPlugin {
     if (refreshed.kind === 'bearer') {
       if (!refreshed.token) return ctx.error;
       // The retry sets this header itself, before `onRequest` runs again, so it needs the
-      // same origin check. Without the token, the retry would only repeat the request.
-      if (!shouldIncludeCredentials(ctx.request.url, this.config.frontxApi?.allowedBearerOrigins)) {
+      // bearer check too: an origin listed only for cookies passed the check above.
+      // Without the token, the retry would only repeat the request.
+      if (!shouldIncludeCredentials(ctx.request.url, allowedBearerOrigins)) {
         return ctx.error;
       }
       return ctx.retry({
