@@ -14,6 +14,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  /*
+   * Keeps the screen root as tall as the host, so the themed surface it
+   * paints covers all of it.
+   */
+  min-height: 100%;
   padding: var(--space-4) 0;
 }
 

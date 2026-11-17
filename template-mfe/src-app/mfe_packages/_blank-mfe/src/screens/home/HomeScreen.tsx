@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Skeleton } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
+import { DEFAULT_THEME_ID, readBridgeProperty } from '../../shared/readBridgeProperty';
 import { _BlankApiService } from '../../api/_BlankApiService';
 import styles from './HomeScreen.module.css';
 
@@ -24,11 +25,6 @@ const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
 // reads as Arabic.
 function isRtlLanguage(language: string): boolean {
   return RTL_LANGUAGES.includes(language.split('-')[0].toLowerCase());
-}
-
-function readBridgeProperty(bridge: ChildMfeBridge, property: string, fallback: string): string {
-  const current = bridge.getProperty(property);
-  return current && typeof current.value === 'string' ? current.value : fallback;
 }
 
 /**
@@ -67,7 +63,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ bridge }) => {
    * SUBSCRIBE.
    */
   const [theme, setTheme] = useState<string>(() =>
-    readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default')
+    readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, DEFAULT_THEME_ID)
   );
   const [language, setLanguage] = useState<string>(() =>
     readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en')
@@ -78,7 +74,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ bridge }) => {
   const [prevBridge, setPrevBridge] = useState(bridge);
   if (prevBridge !== bridge) {
     setPrevBridge(bridge);
-    setTheme(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default'));
+    setTheme(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, DEFAULT_THEME_ID));
     setLanguage(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en'));
   }
 

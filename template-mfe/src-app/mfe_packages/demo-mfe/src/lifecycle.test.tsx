@@ -22,20 +22,26 @@ async function mountHelloWorld(bridge: TestBridge): Promise<object> {
 const superMountSpy = vi.fn();
 const fetchUserSpy = vi.fn();
 
-vi.mock('@gears-frontx/react', () => ({
-  ActionHandler: class ActionHandler {
-    static {
-      void 0;
-    }
-  },
-  ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
-    constructor(public readonly app: TestApp) {}
+vi.mock('@gears-frontx/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@gears-frontx/react')>();
+  return {
+    ...actual,
+    ActionHandler: class ActionHandler {
+      static {
+        void 0;
+      }
+    },
+    ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
+      constructor(public readonly app: TestApp) {}
 
-    mount(container: Element | ShadowRoot, bridge: TestBridge): void {
-      superMountSpy(container, bridge);
-    }
-  },
-}));
+      mount(container: Element | ShadowRoot, bridge: TestBridge, mountContext?: unknown): void {
+        superMountSpy(container, bridge, mountContext);
+      }
+
+      async unmount(_container: Element | ShadowRoot): Promise<void> {}
+    },
+  };
+});
 
 vi.mock('./init', () => ({
   mfeApp: { id: 'demo-mfe-app' },
@@ -189,7 +195,7 @@ describe('demo-mfe lifecycles', () => {
 
     lifecycle.mount(container, fixture.bridge);
 
-    expect(superMountSpy).toHaveBeenCalledWith(container, fixture.bridge);
+    expect(superMountSpy).toHaveBeenCalledWith(container, fixture.bridge, undefined);
     expect(fixture.registerActionHandler).toHaveBeenCalledTimes(1);
 
     const [actionId, handler] = fixture.registerActionHandler.mock.calls[0] as [

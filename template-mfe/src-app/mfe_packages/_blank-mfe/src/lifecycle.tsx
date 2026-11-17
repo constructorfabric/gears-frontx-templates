@@ -1,9 +1,11 @@
 import React from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { ThemeAwareReactLifecycle } from '@gears-frontx/react';
+import type { ChildMfeBridge, MfeMountContext } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_THEME, ThemeAwareReactLifecycle } from '@gears-frontx/react';
 import kitThemeCss from '@gears-frontx/ui-kit/theme.css?inline';
 import { mfeApp } from './init';
 import { anchorKitThemeOnShadowHost } from './shared/anchorKitThemeOnShadowHost';
+import { kitThemeScopeFor } from './shared/kitThemeScope';
+import { DEFAULT_THEME_ID, readBridgeProperty } from './shared/readBridgeProperty';
 import { HomeScreen } from './screens/home/HomeScreen';
 
 /**
@@ -21,10 +23,63 @@ import { HomeScreen } from './screens/home/HomeScreen';
 const kitThemeCssForShadowRoot = anchorKitThemeOnShadowHost(kitThemeCss);
 
 class BlankMfeLifecycle extends ThemeAwareReactLifecycle {
+  /*
+   * The base class keeps one React root per instance, so one subscription is
+   * kept: every mount cancels the previous one, so a remount (same or another
+   * container) never leaks a listener.
+   */
+  private unsubscribeFromTheme: (() => void) | null = null;
+
   constructor() {
     // ThemeAwareReactLifecycle consumes the host handoff and passes the
     // shared server-state runtime into FrontXProvider for this mounted root.
     super(mfeApp);
+  }
+
+  /**
+   * The host itself carries the shell's kit scope, so it follows the shell
+   * theme and not the OS colour scheme: the kit's dark block is rewritten onto
+   * `:host` (anchorKitThemeOnShadowHost), and a featureless host matches its
+   * `prefers-color-scheme` fallback, which is how an OS set to dark painted
+   * the host dark inside a light shell. Reading the current theme and
+   * subscribing here mirrors HomeScreen, and unmount cancels the subscription.
+   */
+  override mount(
+    container: Element | ShadowRoot,
+    bridge: ChildMfeBridge,
+    mountContext?: MfeMountContext
+  ): void {
+    // Every mount cancels the previous subscription first, so a stale listener
+    // cannot keep stamping a host the new subscription owns.
+    this.unsubscribeFromTheme?.();
+    this.unsubscribeFromTheme = null;
+
+    super.mount(container, bridge, mountContext);
+
+    const host = container instanceof ShadowRoot ? container.host : container;
+    host.setAttribute(
+      'data-theme',
+      kitThemeScopeFor(readBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, DEFAULT_THEME_ID))
+    );
+    this.unsubscribeFromTheme = bridge.subscribeToProperty(
+      FRONTX_SHARED_PROPERTY_THEME,
+      (property) => {
+        if (typeof property.value === 'string') {
+          host.setAttribute('data-theme', kitThemeScopeFor(property.value));
+        }
+      }
+    );
+  }
+
+  /**
+   * Cancels the theme subscription before the base teardown. The attribute is
+   * left in place on purpose: the host belongs to the shell's domain slot,
+   * where the last scope is harmless.
+   */
+  override async unmount(container: Element | ShadowRoot): Promise<void> {
+    this.unsubscribeFromTheme?.();
+    this.unsubscribeFromTheme = null;
+    return super.unmount(container);
   }
 
   /**
@@ -40,7 +95,10 @@ class BlankMfeLifecycle extends ThemeAwareReactLifecycle {
    * The kit's own `[data-theme]` rule paints the screen root, which is the
    * shadow root's only rendered child and sits at the host's origin covering
    * its full width and height. A screen that leaves part of the host
-   * uncovered has to paint the host itself.
+   * uncovered has to paint the host itself. The lifecycle also puts the
+   * shell's kit scope on the host in `mount` (kept current through the theme
+   * subscription), so the host follows the shell theme and not the OS colour
+   * scheme.
    *
    * `@gears-frontx/mfes` exports `injectStylesheet`, which is these three lines
    * plus id-keyed idempotency, and is deliberately not used: it takes a

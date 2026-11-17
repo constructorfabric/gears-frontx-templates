@@ -43,7 +43,7 @@ import type { ChildMfeBridge } from '@gears-frontx/react';
  * @returns The current value of the property
  */
 export function useBridgeProperty<T>(bridge: ChildMfeBridge, propertyId: string, fallback: T): T {
-  const [value, setValue] = useState<T>(() => readBridgeProperty(bridge, propertyId, fallback));
+  const [value, setValue] = useState<T>(() => readBridgePropertyValue(bridge, propertyId, fallback));
 
   useEffect(() => {
     return bridge.subscribeToProperty(propertyId, (property) => {
@@ -54,7 +54,7 @@ export function useBridgeProperty<T>(bridge: ChildMfeBridge, propertyId: string,
   return value;
 }
 
-function readBridgeProperty<T>(bridge: ChildMfeBridge, propertyId: string, fallback: T): T {
+function readBridgePropertyValue<T>(bridge: ChildMfeBridge, propertyId: string, fallback: T): T {
   const current = bridge.getProperty(propertyId);
   // SharedProperty.value is `unknown`; the schema check already happened in
   // the type-system plugin, so the caller's T is the only narrowing left.
