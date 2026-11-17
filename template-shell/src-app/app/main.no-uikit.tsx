@@ -5,6 +5,7 @@ import { FrontXProvider, apiRegistry, createFrontX, presets } from '@gears-front
 import { AccountsApiService } from '@/app/api';
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
+import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
 import { loadStudioOverlay } from './studioOverlay';
@@ -21,6 +22,12 @@ const app = createFrontX().useAll(presets.full()).build();
 
 // Register app-level effects (pass store dispatch)
 registerBootstrapEffects(app.store.dispatch);
+
+// Apply the language the user chose in an earlier session (the i18n plugin's
+// startup English, not stored, on a first visit), and remember every later
+// change, whatever sent it. Runs after the build so the i18n plugin's
+// subscription is in place, and before the first render.
+applyPersistedLanguage();
 
 /**
  * Render application

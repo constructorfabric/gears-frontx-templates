@@ -6,18 +6,111 @@
  */
 
 import React, { useRef } from 'react';
-import { useAppSelector, useTranslation, type HeaderState } from '@gears-frontx/react';
-import { Avatar, AvatarImage, AvatarFallback, Skeleton, VisuallyHidden } from '@gears-frontx/ui-kit';
+import { useAppSelector, useTranslation, getLanguageMetadata, type HeaderState, type Language } from '@gears-frontx/react';
+import { Avatar, AvatarImage, AvatarFallback, NativeSelect, Skeleton, VisuallyHidden } from '@gears-frontx/ui-kit';
+import { SHELL_LANGUAGES, isShellLanguage } from '@/app/i18n/shellLanguages';
+import { useShellWord } from '@/app/i18n/useShellWord';
 import { useOtherHeadingOne } from './useOtherHeadingOne';
 import styles from './Header.module.css';
 
 export interface HeaderProps {
   children?: React.ReactNode;
+  /**
+   * Which control renders the header's language switch: the kit's select for
+   * the shell as shipped (`kit`, the default), or a plain native select for
+   * projects created without the UI kit, which `App.no-uikit.tsx` asks for.
+   * Both list the project's languages by their own names and both change the
+   * language through `setLanguage`.
+   */
+  languageControl?: 'kit' | 'plain';
 }
 
-export const Header: React.FC<HeaderProps> = ({ children }) => {
+/**
+ * The header's language switch. One behavior, two renderings: the kit's
+ * native select where the kit is in, a bare `select` where it is not. The
+ * accessible name comes from the shell namespace, the options from the
+ * project's own language list, and a choice goes out through `setLanguage`,
+ * so the same event reaches the registry, the screens and the persistence
+ * whatever the rendering is. A current language the project does not list
+ * (Studio can set any of the SDK's languages) keeps a disabled option of its
+ * own, so the select always shows the language in force.
+ */
+const LanguageControl = ({ plain }: { plain: boolean }) => {
+  const { language, setLanguage } = useTranslation();
+
+  // `t` answers a dictionary miss with the raw key, and the shell namespace
+  // loads its dictionary asynchronously, so a render that outruns the load
+  // (or a load that fails for good) would carry the key as the accessible
+  // name. The shell word hook serves the English word instead, the way the
+  // menu and the backdrop already read their words.
+  const languageLabel = useShellWord('shell:header.language', 'Language');
+
+  // The options carry only listed codes (the disabled unlisted option cannot
+  // be picked), but nothing structural enforces that, so the value is checked
+  // before it goes out instead of being trusted with a cast.
+  const change = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = event.target.value;
+    if (isShellLanguage(next)) {
+      setLanguage(next);
+    }
+  };
+
+  const current = language ?? '';
+
+  const options = [
+    // An unlisted current language gets a disabled option so the select's
+    // value matches one of its options: without it the browser shows the
+    // first entry ("English") while the app is in another language, and
+    // picking English then fires no change event, so the control could not
+    // switch back. The option carries the language's own name from the SDK's
+    // metadata, or the bare code when the SDK does not know it, and it is
+    // marked as that language for screen readers, like every option here.
+    ...(current !== '' && !isShellLanguage(current)
+      ? [
+          <option key={current} value={current} lang={current} disabled>
+            {getLanguageMetadata(current as Language)?.name ?? current}
+          </option>,
+        ]
+      : []),
+    ...SHELL_LANGUAGES.map((metadata) => (
+      <option key={metadata.code} value={metadata.code} lang={metadata.code}>
+        {metadata.name}
+      </option>
+    )),
+  ];
+
+  if (plain) {
+    return (
+      <select
+        className={styles.languagePlain}
+        aria-label={languageLabel}
+        value={language ?? ''}
+        onChange={change}
+      >
+        {options}
+      </select>
+    );
+  }
+
+  return (
+    <NativeSelect
+      className={styles.languageControl}
+      aria-label={languageLabel}
+      value={language ?? ''}
+      onChange={change}
+    >
+      {options}
+    </NativeSelect>
+  );
+};
+
+export const Header: React.FC<HeaderProps> = ({ children, languageControl = 'kit' }) => {
   const headerState = useAppSelector((state) => state['layout/header'] as HeaderState | undefined);
-  const { t } = useTranslation();
+
+  // The signed-out fallback for the user block, read through the shell word
+  // hook like the select's accessible name: `t` would echo the raw key until
+  // the shell dictionary has landed (or for good, if the load fails).
+  const userLabel = useShellWord('shell:header.user', 'User');
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const screenHasHeadingOne = useOtherHeadingOne(headingRef);
@@ -47,7 +140,8 @@ export const Header: React.FC<HeaderProps> = ({ children }) => {
         </h1>
       )}
       {children}
-      <div className={styles.user}>
+      <LanguageControl plain={languageControl === 'plain'} />
+      <div>
         {loading ? (
           <div className={styles.userRow}>
             <Skeleton className={styles.avatarSkeleton} />
@@ -56,10 +150,10 @@ export const Header: React.FC<HeaderProps> = ({ children }) => {
         ) : (
           <div className={styles.signedIn}>
             <Avatar>
-              {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.displayName || user?.email || t('shell:header.user')} />}
+              {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.displayName || user?.email || userLabel} />}
               <AvatarFallback>{getInitials()}</AvatarFallback>
             </Avatar>
-            <span>{user?.displayName || user?.email || t('shell:header.user')}</span>
+            <span>{user?.displayName || user?.email || userLabel}</span>
           </div>
         )}
       </div>

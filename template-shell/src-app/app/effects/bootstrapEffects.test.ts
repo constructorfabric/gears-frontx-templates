@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Language, setHeaderLoading, setUser } from '@gears-frontx/react';
 import { UserRole } from '@/app/api/types';
+import { LANGUAGE_STORAGE_KEY } from '@/app/i18n/languagePersistence';
 
 type BootstrapUserSnapshot = {
   id: string;
@@ -26,6 +27,7 @@ type BootstrapEventHandler = (
 ) => void | Promise<void>;
 
 const listeners = new Map<string, Array<BootstrapEventHandler>>();
+const languageChanges: string[] = [];
 const mockHas = vi.fn();
 const mockGetService = vi.fn();
 const spyCleanups: Array<() => void> = [];
@@ -54,6 +56,10 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
       };
     }),
     emit: async (eventName: string, payload?: BootstrapTestBusPayload) => {
+      if (eventName === 'i18n/language/changed') {
+        languageChanges.push((payload as unknown as { language: string }).language);
+        return;
+      }
       const handlers = listeners.get(eventName) ?? [];
       await Promise.all(handlers.map((handler) => handler(payload)));
     },
@@ -86,9 +92,13 @@ function getDispatchedActions(dispatch: ReturnType<typeof vi.fn>) {
 describe('registerBootstrapEffects', () => {
   beforeEach(() => {
     listeners.clear();
+    languageChanges.length = 0;
     mockHas.mockReset();
     mockGetService.mockReset();
     spyCleanups.length = 0;
+    // Nothing remembered unless a test says otherwise: the profile is the
+    // default in every other case.
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -236,5 +246,96 @@ describe('registerBootstrapEffects', () => {
       email: undefined,
       avatarUrl: undefined,
     }));
+  });
+
+  it('applies the fetched user\'s language when nothing is stored', async () => {
+    mockHas.mockReturnValue(true);
+    mockGetService.mockReturnValue({
+      getCurrentUser: {
+        fetch: vi.fn().mockResolvedValue({
+          user: {
+            id: 'user-ada',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            email: 'ada@example.com',
+            role: UserRole.User,
+            language: Language.German,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        }),
+      },
+    });
+    const dispatch = vi.fn();
+    const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+    registerBootstrapEffects(dispatch);
+    await emitEvent('app/user/fetch');
+
+    // Storage holds no usable choice, so the profile is the default: the
+    // change goes out on the same event every other language change uses.
+    expect(languageChanges).toEqual([Language.German]);
+  });
+
+  it('keeps the stored choice when the fetched user\'s language differs', async () => {
+    // The shell applied what an earlier session stored, before the user came.
+    // Stored English against a German profile: the registry is still on its
+    // startup English here, so if the stored-choice guard went missing the
+    // profile language would be emitted and this test would fail.
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, Language.English);
+    mockHas.mockReturnValue(true);
+    mockGetService.mockReturnValue({
+      getCurrentUser: {
+        fetch: vi.fn().mockResolvedValue({
+          user: {
+            id: 'user-ada',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            email: 'ada@example.com',
+            role: UserRole.User,
+            language: Language.German,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        }),
+      },
+    });
+    const dispatch = vi.fn();
+    const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+    registerBootstrapEffects(dispatch);
+    await emitEvent('app/user/fetch');
+
+    // The stored choice wins: the profile language is no change to announce,
+    // and nothing of it is stored either.
+    expect(languageChanges).toEqual([]);
+    expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe(Language.English);
+  });
+
+  it('does not apply the fetched user\'s language when it is outside the project list', async () => {
+    mockHas.mockReturnValue(true);
+    mockGetService.mockReturnValue({
+      getCurrentUser: {
+        fetch: vi.fn().mockResolvedValue({
+          user: {
+            id: 'user-ada',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            email: 'ada@example.com',
+            role: UserRole.User,
+            language: 'fr' as Language,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        }),
+      },
+    });
+    const dispatch = vi.fn();
+    const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+    registerBootstrapEffects(dispatch);
+    await emitEvent('app/user/fetch');
+
+    expect(languageChanges).toEqual([]);
   });
 });

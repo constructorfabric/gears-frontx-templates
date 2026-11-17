@@ -11,6 +11,7 @@ import './globals.css'; // Global styles with CSS variables
 import '@gears-frontx/ui-kit'; // side-effect: styles the host's own ui-kit components in the host document; screens get their kit CSS through their manifest. Must come after globals.css so component rules beat the base reset there on specificity ties.
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
+import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
 import { loadStudioOverlay } from './studioOverlay';
@@ -69,6 +70,12 @@ app.themeRegistry.register(draculaLargeTheme);
 applyPersistedTheme(app.themeRegistry, DEFAULT_THEME_ID);
 // Name the applied theme on <html> (data-theme-id), now and on every switch
 stampAppliedThemeId(app.themeRegistry);
+
+// Apply the language the user chose in an earlier session (the i18n plugin's
+// startup English, not stored, on a first visit), and remember every later
+// change, whatever sent it. Runs after the build so the i18n plugin's
+// subscription is in place, and before the first render.
+applyPersistedLanguage();
 
 /**
  * Render application

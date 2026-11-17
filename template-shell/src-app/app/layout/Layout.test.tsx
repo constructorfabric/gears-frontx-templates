@@ -7,9 +7,18 @@ import { Layout } from './Layout';
 
 vi.mock('@/app/actions/bootstrapActions', () => ({ fetchCurrentUser: vi.fn() }));
 
+// The props the header received, for the test that pins the language control
+// hand-down.
+const headerProps = vi.hoisted(() => [] as Array<{ languageControl?: 'kit' | 'plain' }>);
+
 // Every slot Layout composes is stubbed, so what the assertions see is Layout's
 // own JSX and nothing the slots decide for themselves.
-vi.mock('./Header', () => ({ Header: () => <div data-testid="header" /> }));
+vi.mock('./Header', () => ({
+  Header: (props: { languageControl?: 'kit' | 'plain' }) => {
+    headerProps.push(props);
+    return <div data-testid="header" />;
+  },
+}));
 // The menu stub carries the two kinds of button the real one renders, marked
 // the way `components/ui/sidebar.tsx` marks them: the collapse toggle in its
 // header and an item that opens a screen.
@@ -93,6 +102,7 @@ describe('Layout', () => {
     mockLayoutState = { visible: true };
     screenState.set(undefined);
     setViewport(false);
+    headerProps.length = 0;
   });
 
   afterEach(() => {
@@ -110,6 +120,21 @@ describe('Layout', () => {
     render(<Layout>screen content</Layout>);
 
     expect(screen.getByTestId('screen').textContent).toBe('screen content');
+  });
+
+  it('hands the header the kit language control when the layout is asked for none', () => {
+    render(<Layout />);
+
+    expect(headerProps).toHaveLength(1);
+    // The default is the layout's decision, so the header is told explicitly.
+    expect(headerProps[0]?.languageControl).toBe('kit');
+  });
+
+  it('hands the header the plain language control the layout was asked for', () => {
+    render(<Layout languageControl="plain" />);
+
+    expect(headerProps).toHaveLength(1);
+    expect(headerProps[0]?.languageControl).toBe('plain');
   });
 
   describe('on a narrow viewport', () => {

@@ -7,8 +7,27 @@
   background-color: var(--background);
 }
 
-.user {
+/* The header is a flex row and the control renders before the user block, so
+   the control carries the auto margin: it becomes the first item on the row's
+   right side, and the free space goes to its left instead of opening up
+   between the two. */
+.languageControl {
   margin-left: auto;
+  margin-right: var(--space-3);
+}
+
+/* The plain native select the no-kit variant asks for draws its own chrome,
+   from the same tokens the kit styles the kit rendering with. */
+.languagePlain {
+  composes: languageControl;
+  height: var(--space-8);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
 }
 
 .userRow {

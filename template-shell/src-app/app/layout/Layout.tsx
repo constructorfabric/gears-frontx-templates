@@ -20,9 +20,15 @@ import styles from './Layout.module.css';
 
 export interface LayoutProps {
   children?: React.ReactNode;
+  /**
+   * Which language control the header renders. The shell as shipped takes the
+   * kit's select; a project created without the UI kit asks for the plain
+   * native one (`App.no-uikit.tsx`).
+   */
+  languageControl?: 'kit' | 'plain';
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, languageControl = 'kit' }) => {
   const menuSlotRef = useRef<HTMLDivElement>(null);
   const narrowMenu = useNarrowViewportMenu(menuSlotRef);
   // The backdrop's name in the current language, with the English word while
@@ -60,7 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             so keyboard focus cannot move into what the backdrop covers. */}
         <div className={styles.content} inert={narrowMenu.overlaid}>
           {/* Header */}
-          <Header />
+          <Header languageControl={languageControl} />
 
           {/* Main content area */}
           <div className={styles.main}>

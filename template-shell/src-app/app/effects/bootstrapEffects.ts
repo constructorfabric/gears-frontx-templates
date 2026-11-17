@@ -10,6 +10,7 @@
 import trim from 'lodash/trim';
 import { eventBus, setUser, setHeaderLoading, apiRegistry, type AppDispatch, type HeaderUser } from '@gears-frontx/react';
 import { AccountsApiService, type ApiUser } from '@/app/api';
+import { applyProfileLanguage } from '@/app/i18n/languagePersistence';
 
 /**
  * Convert API user to header user info
@@ -50,6 +51,12 @@ export function registerBootstrapEffects(appDispatch: AppDispatch): void {
       const response = await accountsService.getCurrentUser.fetch();
       if (response?.user) {
         dispatch(setUser(toHeaderUser(response.user)));
+        // Language order: a choice the shell already stored wins, so the
+        // profile is the default and applies only when nothing usable is
+        // stored; English stays when neither names a listed language. The
+        // profile language is that default, not a choice: it applies without
+        // being stored, so a later change to it still reaches the shell.
+        applyProfileLanguage(response.user.language);
       }
     } catch (error) {
       console.warn('Failed to fetch user:', error);

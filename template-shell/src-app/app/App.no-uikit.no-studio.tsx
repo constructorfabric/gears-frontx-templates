@@ -10,7 +10,9 @@ import { MfeScreenContainer } from '@/app/mfe/MfeScreenContainer';
 
 function App() {
   return (
-    <Layout>
+    // No UI kit is in the build, so the header's language control is the
+    // plain native select rather than the kit's.
+    <Layout languageControl="plain">
       <MfeScreenContainer />
     </Layout>
   );

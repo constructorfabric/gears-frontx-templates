@@ -10,6 +10,7 @@
     "close": "Close menu"
   },
   "header": {
-    "user": "User"
+    "user": "User",
+    "language": "Language"
   }
 }
