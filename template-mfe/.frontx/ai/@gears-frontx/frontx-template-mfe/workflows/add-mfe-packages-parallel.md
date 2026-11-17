@@ -19,9 +19,11 @@ new MFE.
 
 1. For each new MFE, run the `add-mfe-package` skill steps 1-4: copy
    `_blank-mfe` and strip `templateExample`, assign the port, rename the
-   package identity, assign GTS IDs. Assign all ports from one central list
-   (`3010`, `3020`, ...) in this phase — two parallel agents choosing their
-   own ports is a collision, and `dev:all`'s auto-discovery will not warn.
+   package identity, assign GTS IDs. Assign all ports from one central list,
+   chosen the way the add-mfe-package skill's port step says (the project's own
+   range first, `3010`, `3020`, ... only as the default), in this phase. Two
+   parallel agents choosing their own ports collide; `dev:all` stops on a port
+   two packages declare, but only after the parallel work is done.
 2. Declare each package's full dependency set now (the scaffold already
    carries `@gears-frontx/ui-kit` and the framework packages; add anything
    the screen's plan calls for), then run `npm install` once. The lockfile is

@@ -92,6 +92,8 @@ gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~my_org.my_ap
 }
 ```
 
+The screen opens at `/?screen=your-route`; the pathname (`/your-route`) selects no screen.
+
 ### 4. Customize the Screen Component
 
 Edit `src/screens/home/HomeScreen.tsx`:

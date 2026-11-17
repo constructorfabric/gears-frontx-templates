@@ -47,7 +47,7 @@ with a thrown registration error, not a silent skip):
 | Field (on the extension) | Required | Meaning |
 |---|---|---|
 | `label` | yes | fallback menu item text and tooltip when the current language has no dictionary label |
-| `route` (top level, beside `id`/`domain`/`entry`) | yes | route value (e.g. `/widgets-host`) the FrontX router finds the extension by; with the screen domain's own route it gives the extension its private subroute — keep it unique within the domain and stable across releases. It must reduce to one valid name under the naming rule of `@gears-frontx/routing`; otherwise the router refuses the registration |
+| `route` (top level, beside `id`/`domain`/`entry`) | yes | route value (e.g. `/widgets-host`) the FrontX router finds the extension by; with the screen domain's own route it gives the extension its private subroute - keep it unique within the domain and stable across releases. It must reduce to one valid name under the naming rule of `@gears-frontx/routing`; otherwise the router refuses the registration. The screen opens at `/?screen=<route without its leading slash>` (e.g. `/?screen=widgets-host`); the pathname selects no screen |
 | `icon` | no | Iconify name with prefix (e.g. `lucide:user`); omitted = no icon |
 | `order` | no | sort key across the whole menu, lower = earlier; omitted = `999` (last) |
 

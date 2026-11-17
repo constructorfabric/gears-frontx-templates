@@ -135,7 +135,8 @@ export class BillingApiService extends BaseApiService {
 ## Mocks and bootstrap order
 
 `type MockMap = Record<string, MockResponseFactory<JsonValue, JsonCompatible>>`, keyed
-`'<METHOD> <full path including baseURL>'`. `mock()` in the plugin chain activates the
+`'<METHOD> <full path including baseURL>'`; in mock mode a request no key matches passes
+through to the network with one console warning per method and URL. `mock()` in the plugin chain activates the
 registered plugins; `apiRegistry.register` must run BEFORE `.build()`, because the mock
 plugin syncs during build, and `registerSlice` AFTER it, because it needs the store.
 
@@ -202,6 +203,13 @@ export const blankMockMap: MockMap = {
   'GET /api/blank/status': (): GetBlankStatusResponse => ({ message: '...', generatedAt: '...', capabilities: [] }),
 };
 const response = blankMockMap['GET /api/blank/status']() as GetBlankStatusResponse;  // mocks.test.ts
+
+// _BlankApiService.test.ts - one per service, beside the map test: it sends the
+// request the service really builds, so a key that misses that URL fails here,
+// while the map test above still passes.
+const service = new _BlankApiService() as ApiServiceWithRegisteredMocks;
+attachRegisteredRestMocks(service);
+expect(await service.getStatus.fetch()).toEqual(expect.objectContaining({ message: expect.any(String) }));
 
 // demo-mfe/src/api/mocks.ts is where a mutation mock ships, and it narrows the body
 // once, at the top of the factory:

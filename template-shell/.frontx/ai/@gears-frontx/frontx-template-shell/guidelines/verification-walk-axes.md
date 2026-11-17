@@ -22,8 +22,8 @@ Authoritative files:
 ## The checkpoint axis: this shell's screens
 
 This shell mounts one screen extension at a time into the screen domain it
-declares, each addressable at its own path, and its menu is the chrome that moves
-between them. That is what makes the kit's checkpoint axis expressible here at
+declares, each addressable at its own address, `/?screen=<route without its leading slash>` (below), and
+its menu is the chrome that moves between them. That is what makes the kit's checkpoint axis expressible here at
 all - it is a property of this shell, not of FrontX. **A host that mounts several
 extensions into one domain concurrently has no one active point to walk to**, and
 `src-app/mfe_packages/widgets-fixture-a/mfe.json` in template-mfe is exactly such
@@ -37,13 +37,19 @@ The `route` sits at the extension's top level, beside `id`, `domain` and
 `entry`, not inside `presentation`. The menu enumerates what the menu chose to offer, which is a
 different question, and a set taken from it is a set nothing confirmed.
 
+**A checkpoint's destination is `/?screen=<route without its leading slash>`,
+never the bare `route`.** The router names the mounted screen in the `screen`
+query parameter; the pathname is the shell's own and selects no screen, so
+`<host>/hello-world` loads the shell with an empty content area and the
+checkpoint times out on its ready testid.
+
 demo-mfe's shipped extensions declare, for example:
 
-| Checkpoint name | `route` | Extension id (the `{handle}` value) |
-|---|---|---|
-| `helloworld` | `/hello-world` | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1` |
-| `profile` | `/profile` | `...~frontx.demo.screens.profile.v1` |
-| `uikit` | `/uikit-elements` | `...~frontx.demo.screens.uikit.v1` |
+| Checkpoint name | `route` | Destination | Extension id (the `{handle}` value) |
+|---|---|---|---|
+| `helloworld` | `/hello-world` | `/?screen=hello-world` | `gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.helloworld.v1` |
+| `profile` | `/profile` | `/?screen=profile` | `...~frontx.demo.screens.profile.v1` |
+| `uikit` | `/uikit-elements` | `/?screen=uikit-elements` | `...~frontx.demo.screens.uikit.v1` |
 
 **The reaching control is keyed by the whole extension id.** `menuItemTestId`
 builds each item's handle as `menu-item-<extension id>`, and a short name cannot
@@ -60,7 +66,8 @@ carries the checkpoint's short name as a whole segment - which is unambiguous
 here as long as no two realized screens share a name segment.
 
 Declaring `--checkpoint-selector` is what makes the walk click its way between
-the screens. **Leave it out to have each screen loaded at its route instead** -
+the screens. **Leave it out to have each screen loaded at its destination
+(`/?screen=<route without its leading slash>`) instead** -
 useful when the run wants every point reached by a full load rather than through
 the menu.
 
@@ -142,6 +149,55 @@ resolves that text through the registry list on purpose, so the trigger reads
 back the same label the option carried and the driver's whole-word confirmation
 has something to agree with.
 
+## Prepare the walk before the driver runs
+
+Two steps stand between this file and a walk invocation:
+
+1. Start it in the background, with its own log, and keep its pid:
+
+   ```bash
+   npm run verify:preflight > .frontx/verify-preflight.log 2>&1 &
+   PREFLIGHT=$!
+   ```
+
+   It is ready when the log has the line that starts with
+   `[verify-preflight] READY`. Wait for that line, then take `--host` and
+   `--cdp-port` for the driver from it. The wait below also ends when the
+   process is gone: it then prints the log, which says why it exited.
+
+   ```bash
+   until grep -q '^\[verify-preflight\] READY' .frontx/verify-preflight.log; do
+     kill -0 "$PREFLIGHT" 2>/dev/null || { cat .frontx/verify-preflight.log; break; }
+     sleep 2
+   done
+   ```
+
+   The pid on the READY line says what is left to stop. `READY pid=<n>` means
+   preflight is supervising what it started: stop it with `kill -TERM <n>` when
+   the walk is done. `READY pid=none` means it started nothing and has already
+   exited, so there is nothing to stop. It stops only what it started and
+   removes its own browser profile. If the supervisor itself was killed hard
+   after READY, the summary lists each started process group, and only then is
+   that list complete: a kill before READY leaves no group list to read. Run
+   `pgrep -g <pgid>` for each group before you signal it. The probe proves only
+   that some group with that id exists right now, not that it is this run's:
+   once the supervisor is gone nothing keeps its leaders unreaped, so a group
+   id can be reused by an unrelated group. Look at what the probe lists, with
+   `ps -o pid,pgid,command -p <pids>`, and run `kill -- -<pgid>` for that group,
+   with the placeholder replaced by its id, only when the processes it lists
+   are recognisable as this project's dev servers or the preflight browser
+   (its user data dir `frontx-verify-*`). A group whose members you cannot
+   recognise as this run's belongs to something else now: do not signal it.
+   The summary never prints a ready-made kill line, because the group ids it
+   names are not safe to signal on their own.
+2. Read the walk driver's flags with its `--help` instead of its source: it
+   prints the whole flag surface.
+
+The first browser launch keeps Chrome's sandbox on. Only if it fails does
+verify-preflight retry once, adding only `--no-sandbox`, and it says so in its
+output, because some sandboxed agent environments cannot start Chrome with its
+own sandbox.
+
 ## `dracula` and `dracula-large` are walked in two invocations
 
 The driver confirms a value from the switcher label by requiring the value's name
@@ -165,9 +221,10 @@ DRIVER=<installed kit root>/skills/project-scaffolding/scripts/verify-walk.mjs
 
 node "$DRIVER" \
   --host <dev server origin> \
+  --cdp-port <the port preflight printed> \
   --browser-cmd 'npx --yes agent-browser@<the version this run pinned>' \
   --capdir "$CAPDIR/pass-1" \
-  --checkpoints '<name>:<route>:<that screen's ready testid>:<its extension id>,...' \
+  --checkpoints '<name>:/?screen=<route without its leading slash>:<that screen's ready testid>:<its extension id>,...' \
   --checkpoint-selector 'menu-item-{handle}' \
   --variants default,light,dark,dracula \
   --variant-switcher studio-theme-trigger \
@@ -178,9 +235,10 @@ node "$DRIVER" \
 
 node "$DRIVER" \
   --host <dev server origin> \
+  --cdp-port <the port preflight printed> \
   --browser-cmd 'npx --yes agent-browser@<the version this run pinned>' \
   --capdir "$CAPDIR/pass-2" \
-  --checkpoints '<name>:<route>:<that screen's ready testid>:<its extension id>,...' \
+  --checkpoints '<name>:/?screen=<route without its leading slash>:<that screen's ready testid>:<its extension id>,...' \
   --checkpoint-selector 'menu-item-{handle}' \
   --variants dracula-large \
   --variant-switcher studio-theme-trigger \

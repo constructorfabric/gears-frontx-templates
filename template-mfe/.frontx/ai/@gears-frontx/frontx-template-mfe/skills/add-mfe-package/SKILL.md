@@ -70,11 +70,18 @@ authority on each step.
    ```bash
    grep -q templateExample "$NEW/mfe.json" && echo "FLAG STILL PRESENT - remove it" || echo "flag stripped"
    ```
-2. **Pick a free port** — template-mfe's convention reserves `3001` for `demo-mfe`;
-   pick the next free `30N0` slot (`3010`, `3020`, ...) and set it in both the `dev`
+2. **Pick a free port**: read the ports the project's MFE packages already use (the
+   `--port <N>` in the `dev` and `preview` scripts of every
+   `src-app/mfe_packages/*/package.json`, which `dev:all` also reads), and pick the
+   next free port in the range the project already uses. Only when the project has
+   no MFE package of its own yet (only the template's examples: `demo-mfe` on
+   `3001`, `_blank-mfe` on `3099`, the widgets fixtures on `3201`/`3202`), use the
+   default slots `3010`, `3020`, and so on. Set it in both the `dev`
    (`vite --port {port}`) and `preview` (`vite preview --port {port}`) scripts of the
-   copied package's `package.json`. `dev:all`'s port auto-discovery depends on the
-   `preview`/`dev` script carrying `--port <N>` literally.
+   copied package's `package.json`. The same port also goes into the copied
+   `mfe.json` `manifest.remoteEntry` URL
+   (`http://localhost:<port>/assets/remoteEntry.js`; the `_blank-mfe` copy points at
+   `3099`). `dev:all` needs `--port <N>` literally in those scripts.
 3. **Rename package identity** — update the copied `package.json` `name` and the
    Module Federation `name` in `vite.config.ts` (camelCase, must match across both), and keep `@gears-frontx/routing` in `sharedDeps` there and pinned in `package.json`, as the scaffold has it (add `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the MFE uses `<ExtensionRouter>` or `navigation()`).
 4. **Assign GTS IDs** — rewrite every placeholder ID in `mfe.json` following
@@ -91,7 +98,12 @@ authority on each step.
 5. **Implement the lifecycle** — `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
    from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
-   joins the host's shared `QueryClient` without owning a second one.
+   joins the host's shared `QueryClient` without owning a second one. Each API
+   service gets one service-level test beside its mock-map test, modelled on
+   `_blank-mfe/src/api/_BlankApiService.test.ts`: `attachRegisteredRestMocks(service)`,
+   then each endpoint's `fetch()`, asserting the mocked payload. A map test only
+   calls the factory, so a key that misses the URL the service really sends
+   passes it while the screen renders empty.
 6. **Build the screen's UI from `@gears-frontx/ui-kit`** — the shell installs the
    kit, and its installed `llms.txt` is the component inventory. The kit is the
    only component source: no other component library, and no shadcn components

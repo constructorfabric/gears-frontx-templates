@@ -72,6 +72,12 @@ each step names the concrete command or file template-mfe ships.
    - Keep `src/lifecycle.tsx` extending `ThemeAwareReactLifecycle`; keep `init.ts`'s
      plugin chain (`effects()`, `queryCacheShared()`, `mock()`) unless the new MFE has
      a documented reason to diverge.
+   - Give each API service one service-level test beside its mock-map test,
+     modelled on `_blank-mfe/src/api/_BlankApiService.test.ts`
+     (`attachRegisteredRestMocks(service)`, then each endpoint's `fetch()`,
+     asserting the mocked payload). A map test only calls the factory, so a key
+     that misses the URL the service really sends passes it while the screen
+     renders empty.
 
 6. **Regenerate manifests**
    ```bash
