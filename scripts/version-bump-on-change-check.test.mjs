@@ -110,13 +110,10 @@ const MANIFEST_ONLY_NAME = '@gears-frontx/template-design-guardrails';
  */
 async function writeManifestOnlyTemplateFixture(root, version = '0.1.0-alpha.1') {
   await writeJson(path.join(root, MANIFEST_ONLY_DIR, 'frontx-template.json'), {
-    schemaVersion: '1.0',
     name: MANIFEST_ONLY_NAME,
     ...(version === null ? {} : { version }),
-    ownershipBoundaries: {
-      exclusiveSubtrees: ['DESIGN.md', `.frontx/ai/${MANIFEST_ONLY_NAME}/`],
-      sharedFiles: [],
-    },
+    description: 'manifest-only fixture',
+    excludedSubtrees: [],
   });
   await writeFile(path.join(root, MANIFEST_ONLY_DIR, 'DESIGN.md'), '# Design guardrails\n');
   await writeJson(path.join(root, MANIFEST_ONLY_DIR, '.frontx', 'ai', MANIFEST_ONLY_NAME, 'extension.json'), {
@@ -593,13 +590,10 @@ describe('manifest-only template (frontx-template.json carries the version)', ()
     commitAll(root, 'base');
     git(root, ['checkout', '-q', '-b', 'feature']);
     await writeJson(path.join(root, MANIFEST_ONLY_DIR, 'frontx-template.json'), {
-      schemaVersion: '1.0',
       name: MANIFEST_ONLY_NAME,
       version: '0.1.0-alpha.2',
-      ownershipBoundaries: {
-        exclusiveSubtrees: ['DESIGN.md', `.frontx/ai/${MANIFEST_ONLY_NAME}/`],
-        sharedFiles: [],
-      },
+      description: 'manifest-only fixture',
+      excludedSubtrees: [],
     });
     commitAll(root, 'bump the manifest version alone');
 

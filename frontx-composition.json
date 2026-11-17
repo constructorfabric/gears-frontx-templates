@@ -1,0 +1,8 @@
+{
+  "//": "The batch a project applies to compose these templates, in frontx apply --input form: template name -> targets. scripts/compose-templates.mjs lays the same tree out for CI and the local dev loop; scripts/seeded-gitignore-check.mjs reads the targets from here.",
+  "templates": {
+    "@gears-frontx/frontx-template-shell": ["."],
+    "@gears-frontx/frontx-template-mfe": ["src-app/mfe_packages"],
+    "@gears-frontx/template-design-guardrails": ["src-app/verify_packages"]
+  }
+}

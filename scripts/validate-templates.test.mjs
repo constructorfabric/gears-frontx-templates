@@ -21,7 +21,8 @@ function validManifest(overrides = {}) {
   return JSON.stringify({
     name: 'tpl',
     version: '1.0.0',
-    ownershipBoundaries: { exclusiveSubtrees: [], sharedFiles: [] },
+    description: 'fixture',
+    excludedSubtrees: [],
     ...overrides,
   });
 }
@@ -56,10 +57,6 @@ describe('runCli', () => {
       validManifest({
         name,
         version: '0.1.0-alpha.1',
-        ownershipBoundaries: {
-          exclusiveSubtrees: ['DESIGN.md', `.frontx/ai/${name}/`],
-          sharedFiles: [],
-        },
       }),
     );
     await writeFile(path.join(dir, 'DESIGN.md'), '# Design guardrails\n');
@@ -100,7 +97,7 @@ describe('runCli', () => {
     await mkdir(path.join(root, 'template-shell'), { recursive: true });
     await writeFile(
       path.join(root, 'template-shell', 'frontx-template.json'),
-      validManifest({ ownershipBoundaries: { exclusiveSubtrees: ['package.json'], sharedFiles: [] } }),
+      validManifest(),
     );
     await writeFile(
       path.join(root, 'template-shell', 'package.json'),

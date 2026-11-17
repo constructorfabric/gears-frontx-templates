@@ -101,7 +101,9 @@ jobs:
       run: npm run policy:template-mfes-import-boundary
 
     # A .gitignore a template ships lands in every seeded project: none may
-    # ignore a path any template declares in its ownershipBoundaries (the
+    # ignore a path any template puts into a project: its payload at the target
+    # frontx-composition.json names, its AI bundle, or the ground its
+    # excludedSubtrees reserve for a nested template (the
     # shell's once hid every MFE package `frontx add` brought in). Unlike the
     # other policy guards (findGuardedTemplateDirs), it finds templates by
     # manifest presence (findTemplateDirs): a template without a manifest
@@ -225,21 +227,20 @@ jobs:
     - name: Validate installed kits
       run: python3 .cf-studio/.core/skills/studio/scripts/studio.py validate-kits
 
-  # template-shell and template-mfe carry their own arch:deps / lint /
-  # test:unit scripts, and nothing else in this workflow enters them - so
-  # without this job their checks are enforced only when someone runs them by
-  # hand, and they rot (#483).
+  # template-shell carries its own arch:deps / lint / test:unit scripts, and
+  # nothing else in this workflow enters it - so without this job its checks
+  # are enforced only when someone runs them by hand, and they rot (#483).
   #
   # Two kinds of template, both need covering:
   #   - self-contained (template-shell): root package.json and lockfile of
   #     its own, validated standalone by the glob loop below, which
   #     deliberately avoids hardcoding template names;
-  #   - add-only overlay (template-mfe): no root package.json, no tooling of
-  #     its own. It cannot be validated in place - its packages' file: links
-  #     resolve to template-mfe/../template-shell, and its vite/vitest
-  #     configs import out of the shell. The only way to run its checks is to
-  #     compose the pair the way `frontx add` does and validate the result,
-  #     which the second step does.
+  #   - overlay (template-mfe, template-design-guardrails): no root
+  #     package.json, no tooling of its own. It cannot be validated in place -
+  #     its packages' vite/vitest configs import out of the shell at the
+  #     target it is applied to. The only way to run its checks is to compose
+  #     the batch the way `frontx apply` does and validate the result, which
+  #     the second step does.
   template-validate:
     name: Template Validate
     runs-on: ubuntu-latest
@@ -261,11 +262,10 @@ jobs:
     - name: Enable Corepack
       run: corepack enable
 
-    # Split the templates by what their manifests CLAIM, not by what happens
-    # to sit on disk. A template that declares "package.json" among its
-    # ownership boundaries owns its own tooling and is validated standalone;
-    # one that does not is an add-only overlay and is only meaningful
-    # composed onto a shell.
+    # Split the templates by shape: one carrying a root package.json owns its
+    # own toolchain and is validated standalone; one without is an overlay,
+    # meaningful only composed onto a shell at the target
+    # frontx-composition.json gives it.
     - name: Classify templates
       run: |
         set -euo pipefail
@@ -274,12 +274,7 @@ jobs:
           const selfContained = [], overlays = [];
           for (const dir of fs.readdirSync(".").filter((d) => d.startsWith("template-")).sort()) {
             if (!fs.existsSync(dir + "/frontx-template.json")) continue;
-            const b = JSON.parse(fs.readFileSync(dir + "/frontx-template.json", "utf8")).ownershipBoundaries || {};
-            if ((b.sharedFiles || []).length) {
-              throw new Error(dir + " declares ownershipBoundaries.sharedFiles, which this job does not classify or compose — extend \"Classify templates\" and \"Validate shell + overlay composition\" to handle it before adding one");
-            }
-            const claims = b.exclusiveSubtrees || [];
-            (claims.includes("package.json") ? selfContained : overlays).push(dir);
+            (fs.existsSync(dir + "/package.json") ? selfContained : overlays).push(dir);
           }
           if (!selfContained.length) throw new Error("no self-contained template found");
           console.log("self-contained: " + selfContained.join(" "));
@@ -313,93 +308,23 @@ jobs:
           )
         done
 
-    # Composes the overlays onto the shell and runs the shell's checks over
-    # the union - the tree a real `frontx seed shell && frontx add mfe`
-    # produces. Every pin the composed tree carries is already a real
-    # published registry version (this repo has no unpublished ecosystem
-    # source to substitute the way the old in-monorepo job did), so this is a
-    # plain `npm install` with nothing rewritten first.
-    - name: Validate shell + overlay composition
+    # Composes every template at the target frontx-composition.json names -
+    # the tree `frontx apply` produces for that batch - and runs the shell's
+    # checks over it. scripts/compose-templates.mjs is the one layout rule,
+    # shared with the local dev loop (`npm run compose:templates`). Every pin
+    # the composed tree carries is a real published registry version, so this
+    # is a plain `npm install` with nothing rewritten first.
+    - name: Validate the composed templates
       run: |
         set -euo pipefail
 
-        # shellcheck disable=SC2086
-        set -- $SELF_CONTAINED_TEMPLATES
-        if [ "$#" -ne 1 ]; then
-          echo "::error::composition needs exactly one self-contained template, got: $*"
-          exit 1
-        fi
-        shell="$1"
-
         if [ -z "${OVERLAY_TEMPLATES// /}" ]; then
-          echo "::error::no overlay templates found — this step would be a no-op"
+          echo "::error::no overlay templates found - this step would be a no-op"
           exit 1
         fi
 
-        composed_total=0
-        for overlay in $OVERLAY_TEMPLATES; do
-          subtrees="$(node -e '
-            const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            const s = m.ownershipBoundaries && m.ownershipBoundaries.exclusiveSubtrees;
-            if (!s || !s.length) {
-              console.error("no exclusiveSubtrees declared in " + process.argv[1]);
-              process.exit(1);
-            }
-            console.log(s.join("\n"));
-          ' "$overlay/frontx-template.json")"
-
-          overlay_count=0
-          overlay_has_pkg=0
-          while read -r subtree; do
-            [ -n "$subtree" ] || continue
-            if [ -n "$(find "$overlay/$subtree" -not -path '*/node_modules/*' \
-              -name package.json -print -quit 2>/dev/null)" ]; then
-              overlay_has_pkg=1
-            fi
-            if [ -d "$overlay/$subtree" ]; then
-              if [ -e "$shell/${subtree%/}" ]; then
-                echo "::error::$overlay's exclusiveSubtree '$subtree' is already occupied in $shell"
-                exit 1
-              fi
-              echo "==> Overlaying $overlay/$subtree"
-              mkdir -p "$shell/${subtree%/}"
-              cp -R "$overlay/$subtree/." "$shell/${subtree%/}/"
-            elif [ -f "$overlay/$subtree" ]; then
-              if [ -e "$shell/$subtree" ]; then
-                echo "::error::$overlay's exclusiveSubtree '$subtree' is already occupied in $shell"
-                exit 1
-              fi
-              echo "==> Overlaying $overlay/$subtree (file)"
-              mkdir -p "$shell/$(dirname "$subtree")"
-              cp "$overlay/$subtree" "$shell/$subtree"
-            else
-              echo "::error::$overlay declares exclusiveSubtree '$subtree', which does not exist"
-              exit 1
-            fi
-            find "$shell/${subtree%/}" -not -path '*/node_modules/*' \
-              -name package-lock.json -delete
-            subtree_count="$(find "$shell/${subtree%/}" -not -path '*/node_modules/*' \
-              -name package.json 2>/dev/null | wc -l)"
-            overlay_count=$((overlay_count + subtree_count))
-          done <<< "$subtrees"
-
-          if [ "$overlay_has_pkg" -eq 0 ]; then
-            echo "==> $overlay is manifest-only; composed without MFE packages (by design)"
-            continue
-          fi
-
-          if [ "$overlay_count" -eq 0 ]; then
-            echo "::error::$overlay's exclusiveSubtrees exist but contain no MFE package (no package.json found)"
-            exit 1
-          fi
-          echo "==> $overlay contributed $overlay_count MFE package(s)"
-          composed_total=$((composed_total + overlay_count))
-        done
-        echo "==> Composed $composed_total MFE package(s) into $shell"
-
-        composed="$RUNNER_TEMP/composed-$(basename "$shell")"
-        rm -rf "$composed" && mkdir -p "$composed"
-        tar -C "$shell" --exclude=node_modules -cf - . | tar -C "$composed" -xf -
+        composed="$RUNNER_TEMP/composed"
+        node scripts/compose-templates.mjs --out "$composed"
 
         cd "$composed"
         # npm install, not npm ci: the shell's committed lockfile is generated
@@ -407,13 +332,16 @@ jobs:
         # would fail as out of sync.
         npm install
 
-        # The design-guardrails overlay's DESIGN.md names the kit's token
-        # names and the kit version they come from. Check both against the kit
-        # this shell pins, now installed: a kit bump in the shell fails here
-        # until DESIGN.md names its tokens and its version. Exit 1 (findings)
-        # and 2 (input error) both fail the step under `set -e`.
+        # The design-guardrails template keeps its canonical DESIGN.md in its
+        # AI bundle; a project's root DESIGN.md is the project's own file,
+        # created once from that copy (init writes only when absent) and then
+        # checked: its token names and kit version against the kit this shell
+        # pins, now installed. A kit bump in the shell fails here until the
+        # canonical DESIGN.md names its tokens and its version. Exit 1
+        # (findings) and 2 (input error) both fail the step under `set -e`.
         case " $OVERLAY_TEMPLATES " in
           *" template-design-guardrails "*)
+            node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/init-design-md.mjs
             node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs
             ;;
         esac

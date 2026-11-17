@@ -20,8 +20,9 @@ Each template directory carries a `frontx-template.json` manifest - that is what
 The FrontX CLI addresses a template here by subtree, not by cloning the whole repo (ADR-0017, subtree addressing):
 
 ```
-frontx seed shell --source github:constructorfabric/gears-frontx-templates//template-shell@<ref>
-frontx add mfe    --source github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx register github:constructorfabric/gears-frontx-templates//template-shell@<ref>
+frontx register github:constructorfabric/gears-frontx-templates//template-mfe@<ref>
+frontx apply --input '{"templates":{"@gears-frontx/frontx-template-shell":["."],"@gears-frontx/frontx-template-mfe":["src-app/mfe_packages"]}}'
 ```
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.
@@ -40,10 +41,10 @@ npm run policy:template-pin-drift     # every exact ecosystem pin is a real publ
 npm run policy:template-lockfile-selflink
 npm run policy:token-format
 npm run policy:template-mfes-import-boundary  # ADR-0003 consumer half - no template may import a concrete @gears-frontx/mfes name
-npm run policy:seeded-gitignore      # no .gitignore a template ships may ignore a path any template declares
+npm run policy:seeded-gitignore      # no .gitignore a template ships may ignore ground any template puts into a project
 ```
 
-The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `template-design-guardrails/tests/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
+The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `tooling/tests/design-guardrails/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
 
 `policy:template-pin-drift` runs in one of two modes, for TEMPLATE pin sites:
 

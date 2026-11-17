@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const template = path.join(here, '..');
+const template = path.join(here, '../../../template-design-guardrails');
 const bundle = path.join(template, '.frontx/ai/@gears-frontx/template-design-guardrails');
 const skill = path.join(bundle, 'skills/frontx-design');
 const SKILL_DIRS = ['references', 'rules', 'templates', 'scripts'];
@@ -85,7 +85,7 @@ describe('rules/static-check.json', () => {
   // which runs with the kit installed.
   it('gives every literal kind a DESIGN.md group that names at least one token for it', async () => {
     const { readDesignMd } = await import(path.join(skill, 'scripts/check-design-md.mjs'));
-    const { front } = readDesignMd(path.join(template, 'DESIGN.md'));
+    const { front } = readDesignMd(path.join(skill, 'templates/DESIGN.md'));
     for (const [kind, spec] of Object.entries(rules.literals.kinds)) {
       const pattern = new RegExp(spec.keyPattern ?? '');
       const tokens = Object.entries(front[spec.group] ?? {})
@@ -134,7 +134,7 @@ describe('gate ids cited in prose', () => {
   const known = new Set(readJson('rules/quality-gates.json').gates.map((g) => g.id));
   const prose = [
     ['SKILL.md', skillMd],
-    ['DESIGN.md', readText(path.join(template, 'DESIGN.md'))],
+    ['DESIGN.md', readText(path.join(skill, 'templates/DESIGN.md'))],
     ...skillFiles.filter((f) => f.endsWith('.md')).map((f) => [f, readText(path.join(skill, f))]),
   ];
 
@@ -168,10 +168,16 @@ describe('the SKILL.md map', () => {
     expect(missing).toEqual([]);
   });
 
-  it('names the outside files that exist: DESIGN.md and the design-verify package', () => {
-    for (const rel of ['DESIGN.md', 'src-app/verify_packages/design-verify/']) {
+  it('names the outside files by their project paths, and the template carries each one', () => {
+    // The project path the skill names, and where the template holds it: the
+    // package is the template's payload (applied under src-app/verify_packages/),
+    // DESIGN.md is the bundle's canonical copy the init script places at the root.
+    for (const [rel, inTemplate] of [
+      ['DESIGN.md', path.join(skill, 'templates/DESIGN.md')],
+      ['src-app/verify_packages/design-verify/', path.join(template, 'design-verify')],
+    ]) {
       expect(skillMd).toContain(`\`${rel}\``);
-      expect(existsSync(path.join(template, rel))).toBe(true);
+      expect(existsSync(inTemplate)).toBe(true);
     }
   });
 });

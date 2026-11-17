@@ -16,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(here, 'fixtures/check-design-md');
 const script = path.join(
   here,
-  '../.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs',
+  '../../../template-design-guardrails/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs',
 );
 const DESIGN = readFileSync(path.join(fixtures, 'DESIGN.md'), 'utf8');
 const THEME = readFileSync(path.join(fixtures, 'theme.css'), 'utf8');

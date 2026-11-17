@@ -5,14 +5,16 @@
 Every top-level directory carrying `frontx-template.json` is a template (ADR-0018: manifest presence, never a `template-*` name guess - `scripts/template-discovery.mjs` is the one place that rule lives). Today three templates carry a manifest:
 
 - **`template-shell/`** - self-contained: a full FrontX host app with its own `package.json`, lockfile, and toolchain (build, lint, type-check, test:unit, arch:deps).
-- **`template-mfe/`** - add-only overlay: example MFE packages meant to be composed onto a shell by `frontx add`. It has no runtime of its own to validate standalone; `template-mfe/package.json` is a monorepo-only dev harness (see its leading `//` comment) that `frontx add` never copies into a seeded project.
-- **`template-design-guardrails/`** - manifest-only overlay: a design-review AI bundle and a verification package, no root `package.json` at all.
+- **`template-mfe/`** - overlay: the example MFE packages a project applies under `src-app/mfe_packages/` of a shell (`frontx-composition.json` records that target). It has no runtime of its own to validate standalone; its checks run over the composed tree (below).
+- **`template-design-guardrails/`** - overlay: the `@gears-frontx/design-verify` package, applied under `src-app/verify_packages/`, plus a design-review AI bundle whose `templates/DESIGN.md` is the canonical copy of the project's root `DESIGN.md` (`scripts/init-design-md.mjs` in the bundle creates that file once; see the skill's `references/design-md.md`). No root `package.json`.
 
 One more template is in the repo without a manifest yet:
 
-- **`template-dashboard/`** - its packages and runtime are in, but it has no manifest, so `frontx add` cannot apply it: a product clones this repository and connects the two packages as workspaces (`template-dashboard/docs/embedding.md`). Its widget bundle build imports the FrontX manifest build plugin from `template-shell/src/build`, so it builds only inside this repository. When it gets a manifest is not decided yet. Until then `template-validate` does not see it, but the policy guards do: `scripts/template-discovery.mjs` lists it in `PRE_MANIFEST_TEMPLATE_DIRS`, the one explicit list next to manifest discovery, and only the policy guards read it. The PR that adds its manifest removes the entry. Its `package.json` is a dev harness that installs the two packages under `src-app/mfe_packages/` as workspaces; run its checks locally with `cd template-dashboard && npm ci && npm run type-check && npm test && npm run build:widgets && npm run build:host` (CI job `Dashboard Template Tests`).
+- **`template-dashboard/`** - its packages and runtime are in, but it has no manifest, so `frontx apply` cannot apply it: a product clones this repository and connects the two packages as workspaces (`template-dashboard/docs/embedding.md`). Its widget bundle build imports the FrontX manifest build plugin from `template-shell/src/build`, so it builds only inside this repository. When it gets a manifest is not decided yet. Until then `template-validate` does not see it, but the policy guards do: `scripts/template-discovery.mjs` lists it in `PRE_MANIFEST_TEMPLATE_DIRS`, the one explicit list next to manifest discovery, and only the policy guards read it. The PR that adds its manifest removes the entry. Its `package.json` is a dev harness that installs the two packages under `src-app/mfe_packages/` as workspaces; run its checks locally with `cd template-dashboard && npm ci && npm run type-check && npm test && npm run build:widgets && npm run build:host` (CI job `Dashboard Template Tests`).
 
 `scripts/` holds the guards that keep the templates consistent with each other and with the FrontX ecosystem, plus the dev-loop tooling for working on a template against a local ecosystem checkout.
+
+Manifests follow the FrontX CLI's four-field contract - `name`, `version`, `description`, `excludedSubtrees` - and a template's payload is its whole directory minus the manifest, its `.frontx/ai/<name>/` bundle and the subtrees it excludes (ground reserved for a template nested inside its target; the shell excludes `src-app/mfe_packages/` and `src-app/verify_packages/`). `frontx-composition.json` is the batch a project applies, in `frontx apply --input` form; `scripts/compose-templates.mjs` lays that tree out for CI and for the local dev loop, and `policy:seeded-gitignore` reads the targets from it. Repository-only tooling that must not ship lives under `tooling/`: the shell's manual auth scripts and the design-guardrails bundle tests.
 
 ## Versioning and publishing
 
@@ -83,7 +85,7 @@ npm run policy:token-format
 npm run policy:template-mfes-import-boundary
 ```
 
-The former `policy:guideline-index` check is gone with the generated index: `template-design-guardrails/tests/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
+The former `policy:guideline-index` check is gone with the generated index: `tooling/tests/design-guardrails/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
 
 Each template is also independently validatable:
 
@@ -91,7 +93,19 @@ Each template is also independently validatable:
 cd template-shell && npm ci && npm run build && npm run type-check && npm run lint && npm run test:unit
 ```
 
-`template-mfe` cannot be validated in place - its packages' `file:` links resolve into `template-mfe/../template-shell`, and its own root `package.json` is a monorepo-only harness, never something a seeded project sees. `main.yml`'s `template-validate` job composes it onto `template-shell` (the way `frontx add` does) and validates the result; there is no equivalent single local command today.
+`template-mfe` and `template-design-guardrails` cannot be validated in place: their packages' vite/vitest configs import out of the shell at the target they are applied to, and the MFE packages' `test-utils/` shims re-export the shell's `src-app/__test-utils__/`. `main.yml`'s `template-validate` job composes the batch with `scripts/compose-templates.mjs` and runs the shell's checks over the result; the same tree is the local dev loop:
+
+```bash
+npm run compose:templates -- --out .harness      # .harness/ is gitignored; refuses an existing directory
+cd .harness && npm install
+node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/init-design-md.mjs
+FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run build && FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run type-check
+npm run test:unit
+```
+
+For a real CLI-applied project, follow initialization with `frontx ownership add DESIGN.md --json`, even if the file already existed. This records project ownership so shell upgrade/delete also preserve it; the filesystem-only composition above has no CLI project state and is only a dev/test tree.
+
+`validate:templates` runs the CLI's own `frontx validate` over every template and needs `@gears-frontx/cli` 0.4.0, the release that introduced the four-field contract; until it is published, install a locally packed build without saving it (`npm install --no-save <path to gears-frontx-cli-0.4.0.tgz>`) and leave the root `devDependency` pin to the follow-up that bumps it with the lockfile.
 
 ### Architecture documents
 

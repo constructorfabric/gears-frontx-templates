@@ -42,6 +42,9 @@ public/generated-mfe-manifests.json
 # Claude Code local settings
 .claude/settings.local.json
 
+# Local agent runtime state (oh-my-claudecode hooks write it next to the cwd)
+.omc/
+
 # Python bytecode cache (kit scripts under .cf-studio/ may be executed locally)
 __pycache__/
 *.pyc
@@ -62,10 +65,10 @@ __pycache__/
 # PR review data (.cf-studio/config/pr-review.toml sets data_dir = ".prs").
 /.prs/
 
-# MFE packages composed into template-shell for local dev and testing. The rule
-# lives here, not in template-shell/.gitignore: that file is copied into every
-# seeded project, where src-app/mfe_packages/ holds the team's own MFE source.
-/template-shell/src-app/mfe_packages/*
+# The composed tree `npm run compose:templates -- --out .harness` lays out for
+# the local dev loop (shell + overlays at their targets); CI composes the same
+# tree into a runner temp directory.
+/.harness/
 
 # BEGIN Constructor Studio
 # Generated Constructor Studio runtime and agent integration files.

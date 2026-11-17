@@ -10,7 +10,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "stripInternal": true,
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
@@ -26,9 +25,15 @@
     "noImplicitThis": true,
     "baseUrl": ".",
     "paths": {
-      "@frontx-test-utils/*": ["../../__test-utils__/*"]
+      "@frontx-test-utils/*": ["./test-utils/*"]
     }
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "src/screens/helloworld",
+    "src/screens/profile",
+    "src/screens/theme",
+    "src/screens/uikit"
+  ],
   "exclude": ["node_modules", "dist"]
 }

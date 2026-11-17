@@ -31,7 +31,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
-A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
+A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. Initialize a missing root DESIGN.md and record its project ownership as `references/design-md.md` describes. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
 
 ## Map
 
@@ -66,12 +66,12 @@ A request that spans rows runs them in this order: place, theme, build, verify, 
 - `rules/static-check.json` - data of the static check: native elements and roles with a kit component, literal kinds with the DESIGN.md group of their tokens.
 - `rules/render-check.json` - data of the render runner: the gate of each runtime checker rule id.
 
-`templates/`, blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps).
+`templates/`: `templates/DESIGN.md`, the canonical `DESIGN.md` that `scripts/init-design-md.mjs` copies to the project root when the project has none (an upgrade refreshes this copy, never the root file); blanks to fill: `templates/state-inventory.md` (one row per data region with each state's outcome, widths and themes seen) and `templates/handoff.md` (built, checked with gate id and outcome, not checked, known gaps).
 
-`scripts/`, run from the project root: `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit; exit 0 clean, 1 findings, 2 input error.
+`scripts/`, run from the project root: `scripts/init-design-md.mjs` creates `DESIGN.md` from `templates/DESIGN.md` when the root has none and otherwise touches nothing (exit 0 either way, 2 input error); `scripts/check-design-md.mjs` checks the `DESIGN.md` front matter token names and `version` against the installed kit and writes nothing; exit 0 clean, 1 findings, 2 input error.
 
 Outside this directory:
-- `DESIGN.md` at the project root - kit token names in its front matter (the kit version is its `version`) and the human summary.
+- `DESIGN.md` at the project root - the project's own file: kit token names in its front matter (the kit version is its `version`) and the human summary. Created once by `scripts/init-design-md.mjs` from `templates/DESIGN.md`; absent until that runs, and never overwritten by it.
 - `src-app/verify_packages/design-verify/` - the runtime design-defect checker the shell loads in dev, its headless runner `npm run verify:ui` and the static check `npm run verify:static` (both `--workspace=@gears-frontx/design-verify`).
 - `design-waivers.json` at the project root, when the project has one - the per-screen waivers both checks honour.
 
