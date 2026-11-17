@@ -14,3 +14,11 @@ public/generated-mfe-manifests.json
 .env
 .env.local
 .env.*.local
+
+# Leftover state and log dir from the earlier state-file version (preflight.json,
+# dev-all.log, browser.log); kept so old checkouts stay clean.
+.frontx/verify/
+
+# Log from the documented background verify:preflight run; the script itself
+# writes only under the OS temp dir.
+.frontx/verify-preflight.log

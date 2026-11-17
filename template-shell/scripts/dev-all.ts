@@ -22,18 +22,40 @@ import {
 import {
   findSharedPreviewPorts,
   findTakenPreviewPorts,
+  isPortFree,
   previewCommand,
   sharedPreviewPortsMessage,
   takenPreviewPortsMessage,
   type PreviewCommand,
 } from './lib/preview-ports.js';
+// The variable's name and the resolution of its value live with the preflight
+// that sets the variable; importing both keeps the two scripts on one name,
+// one set of accepted values and one message. The import is side-effect free:
+// that script runs its command only as the entry point.
+import { FRONTX_VERIFY_HOST_PORT, resolveEnvHostPort } from './verify-preflight.js';
 
-// Build preview-only commands (no build step - MFEs are pre-built)
-function buildPreviewCommands(mfes: MfeInfo[]): PreviewCommand[] {
+/**
+ * The command the host (the shell itself) is started with. Without
+ * FRONTX_VERIFY_HOST_PORT this is plain `vite`, whose port comes from the
+ * project's own vite.config.ts, exactly as before any verification run. The
+ * variable is set by verify-preflight to the port it resolved and waits for:
+ * `--port` then overrides the config so the host serves on exactly that port,
+ * and `--strictPort` fails the run instead of drifting to the next free port
+ * when the port is taken in between (the same rule the MFE previews run on).
+ */
+function hostCommand(hostPort: number | undefined): string {
+  return hostPort === undefined ? 'vite' : `vite --port ${hostPort} --strictPort`;
+}
+
+// Build preview-only commands (no build step - MFEs are pre-built). The host
+// command arrives already resolved: resolving it here would run first in
+// Step 3, after the MFE builds, and an invalid FRONTX_VERIFY_HOST_PORT would
+// only be reported once they are done.
+function buildPreviewCommands(mfes: MfeInfo[], hostCmd: string): PreviewCommand[] {
   const commands: PreviewCommand[] = [];
 
   // Add main app
-  commands.push({ command: 'vite' });
+  commands.push({ command: hostCmd });
 
   // MFE preview only (build already done in the sequential step), each in
   // its package on a strict port (scripts/lib/preview-ports.ts)
@@ -82,8 +104,17 @@ async function main() {
     console.log();
   }
 
-  // Step 0: every declared preview port must be one package's own and free,
-  // before any screen package is built
+  // Step 0: every port this run will hold must be free before any package is
+  // built. The host port is resolved and probed here, next to the preview port
+  // checks: a FRONTX_VERIFY_HOST_PORT that is not a port, or that names a port
+  // something else already holds, fails the run here rather than after the MFE
+  // builds, where the host command is first used and `vite --strictPort` would
+  // fail only then.
+  const hostEnv = resolveEnvHostPort(process.env);
+  if (hostEnv.error !== undefined) {
+    throw new Error(hostEnv.error);
+  }
+
   const shared = findSharedPreviewPorts(packages);
   if (shared.length > 0) {
     throw new Error(sharedPreviewPortsMessage(shared));
@@ -92,6 +123,12 @@ async function main() {
   if (taken.length > 0) {
     throw new Error(takenPreviewPortsMessage(taken));
   }
+  if (hostEnv.port !== undefined && !(await isPortFree(hostEnv.port))) {
+    throw new Error(
+      `Host port ${hostEnv.port} (${FRONTX_VERIFY_HOST_PORT}) is already in use; stop the process holding it and run dev:all again.`,
+    );
+  }
+  const hostCmd = hostCommand(hostEnv.port);
 
   // Step 1: Build all MFEs (produces dist/ with mf-manifest.json)
   await buildMfesSequentially(packages);
@@ -101,7 +138,7 @@ async function main() {
   await generateManifests();
 
   // Step 3: Start host + MFE preview servers concurrently
-  const commands = buildPreviewCommands(packages);
+  const commands = buildPreviewCommands(packages, hostCmd);
 
   console.log('📝 Running concurrently:');
   commands.forEach(({ command, cwd }, idx) => {

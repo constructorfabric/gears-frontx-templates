@@ -190,6 +190,11 @@ Two steps stand between this file and a walk invocation:
    recognise as this run's belongs to something else now: do not signal it.
    The summary never prints a ready-made kill line, because the group ids it
    names are not safe to signal on their own.
+
+   The host port preflight starts dev:all on, and prints as `--host`, comes
+   from `--host-port` when given, then from the `FRONTX_VERIFY_HOST_PORT`
+   environment variable, then from the port the project's `vite.config.ts`
+   configures for its dev server, then 5173.
 2. Read the walk driver's flags with its `--help` instead of its source: it
    prints the whole flag surface.
 

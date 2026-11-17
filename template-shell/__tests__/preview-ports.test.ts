@@ -1,5 +1,8 @@
 /**
- * Tests for the strict preview ports of `dev:all` (`scripts/lib/preview-ports.ts`).
+ * Tests for the strict preview ports of `dev:all` (`scripts/lib/preview-ports.ts`)
+ * and for the Step 0 port checks `dev-all.ts` runs before it builds anything:
+ * two packages on one port, a taken preview port, and a host port the
+ * environment names that is taken or is not a port.
  *
  * The probe runs against a real listening socket, and one case runs the real
  * `dev-all.ts` over a fixture project whose package declares a taken port: the
@@ -67,7 +70,7 @@ describe('previewCommand', () => {
   });
 });
 
-describe('dev:all with a taken preview port', () => {
+describe('dev:all Step 0 port checks', () => {
   let project: string;
 
   beforeEach(() => {
@@ -85,12 +88,17 @@ describe('dev:all with a taken preview port', () => {
     writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name, scripts: { preview: `vite preview --port ${port}` } }));
   }
 
-  function runDevAll() {
+  function runDevAll(extraEnv: NodeJS.ProcessEnv = {}) {
     writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'fixture', private: true }));
+    // Start from a copy with the variable under test removed, so a value set in
+    // the shell running the tests cannot decide what the fixture run sees.
+    const env = { ...process.env };
+    delete env.FRONTX_VERIFY_HOST_PORT;
+    Object.assign(env, extraEnv);
     return spawnSync(
       process.execPath,
       [join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(SHELL_DIR, 'scripts', 'dev-all.ts')],
-      { cwd: project, encoding: 'utf-8' },
+      { cwd: project, encoding: 'utf-8', env },
     );
   }
 
@@ -123,6 +131,32 @@ describe('dev:all with a taken preview port', () => {
     expect(run.stderr).toContain(`port ${ordersPort} (orders-mfe, src-app/mfe_packages/orders-mfe/package.json)`);
     expect(run.stderr).toContain(`port ${reportsPort} (reports-mfe, src-app/mfe_packages/reports-mfe/package.json)`);
     expect(run.stderr).not.toContain('billing-mfe');
+    expect(run.stdout).not.toContain('Building MFE packages');
+  });
+
+  it('stops before building when FRONTX_VERIFY_HOST_PORT names a taken port, naming the port and the variable', async () => {
+    const hostPort = await holdPort();
+    // A free preview port, so the taken host port is the only reason to stop.
+    const previewPort = await holdPort();
+    await release(holders.pop()!);
+    previewPackage('orders-mfe', previewPort);
+
+    const run = runDevAll({ FRONTX_VERIFY_HOST_PORT: String(hostPort) });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(`Host port ${hostPort} (FRONTX_VERIFY_HOST_PORT) is already in use`);
+    expect(run.stdout).not.toContain('Building MFE packages');
+  });
+
+  it('stops before building when FRONTX_VERIFY_HOST_PORT is not a port, naming the variable and the value', async () => {
+    const previewPort = await holdPort();
+    await release(holders.pop()!);
+    previewPackage('orders-mfe', previewPort);
+
+    const run = runDevAll({ FRONTX_VERIFY_HOST_PORT: 'not-a-port' });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('FRONTX_VERIFY_HOST_PORT expects a port between 1 and 65535, got "not-a-port"');
     expect(run.stdout).not.toContain('Building MFE packages');
   });
 });
