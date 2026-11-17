@@ -77,7 +77,8 @@ export async function loadCliModule(importFn = (specifier) => import(specifier))
  *   rootDir?: string;
  *   loadCliModule?: typeof loadCliModule;
  *   readFileFn?: import('@gears-frontx/cli').ReadFileFn;
- *   listContentOwnedFilesFn?: import('@gears-frontx/cli').ListContentOwnedFilesFn;
+ *   listPayloadFilesFn?: import('@gears-frontx/cli').ListPayloadFilesFn;
+ *   resolveDeclaredExclusionFn?: import('@gears-frontx/cli').ResolveDeclaredExclusionFn;
  *   log?: (line: string) => void;
  *   logError?: (line: string) => void;
  * }} [options]
@@ -93,10 +94,29 @@ export async function runCli(options = {}) {
     logError(`[validate-templates] FAIL: ${loaded.message}`);
     return 1;
   }
-  const { createFsListContentOwnedFilesFn, createFsReadFileFn, MANIFEST_FILENAME, validateCommand } = loaded.module;
+  const {
+    createFsListPayloadFilesFn,
+    createFsReadFileFn,
+    createFsResolveDeclaredExclusionFn,
+    MANIFEST_FILENAME,
+    validateCommand,
+  } = loaded.module;
+  // The four-field manifest contract (name, version, description,
+  // excludedSubtrees) arrived with @gears-frontx/cli 0.4.0, together with
+  // these two adapters; an older CLI validates the retired five-field shape
+  // and would refuse every manifest here, so say which release is needed
+  // instead of failing on a missing export.
+  if (typeof createFsListPayloadFilesFn !== 'function' || typeof createFsResolveDeclaredExclusionFn !== 'function') {
+    logError(
+      '[validate-templates] FAIL: the installed @gears-frontx/cli predates the four-field manifest contract; ' +
+        'this repository needs @gears-frontx/cli >= 0.4.0 (bump the root devDependency once it is published).',
+    );
+    return 1;
+  }
 
   const readFileFn = options.readFileFn ?? createFsReadFileFn();
-  const listContentOwnedFilesFn = options.listContentOwnedFilesFn ?? createFsListContentOwnedFilesFn();
+  const listPayloadFilesFn = options.listPayloadFilesFn ?? createFsListPayloadFilesFn();
+  const resolveDeclaredExclusionFn = options.resolveDeclaredExclusionFn ?? createFsResolveDeclaredExclusionFn();
 
   const templateDirs = findTemplateDirs(rootDir, MANIFEST_FILENAME);
 
@@ -113,7 +133,7 @@ export async function runCli(options = {}) {
 
   for (const templateDir of templateDirs) {
     const templateName = path.basename(templateDir);
-    const result = await validateCommand(templateDir, readFileFn, listContentOwnedFilesFn);
+    const result = await validateCommand(templateDir, readFileFn, listPayloadFilesFn, resolveDeclaredExclusionFn);
     if (result.ok) {
       log(`[validate-templates] PASS: ${templateName}`);
     } else {

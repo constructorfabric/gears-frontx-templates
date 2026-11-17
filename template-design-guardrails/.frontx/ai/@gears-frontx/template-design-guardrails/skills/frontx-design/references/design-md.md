@@ -39,6 +39,21 @@ this skill's rules), `sourcePrecedence` in `rules/design-contract.json` is
 the order, within the scope `sourcePrecedenceScope` sets. For the value a
 token has in this app, read the rendered app, not this file.
 
+## Initialize it
+
+`DESIGN.md` is the project's file, not this template's payload: applying or
+upgrading the template never writes it. From the project root:
+
+```sh
+node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/init-design-md.mjs
+```
+
+It copies this skill's `templates/DESIGN.md` to `DESIGN.md` (or the file
+`--design <path>` names) only when nothing is there, and leaves an existing
+file exactly as it is - run it after a fresh apply and as often as you like.
+An upgrade of the template refreshes `templates/DESIGN.md`; carry what you
+need from it into the root file by hand, then run the check below.
+
 ## Check it
 
 From the project root, with the kit installed:

@@ -1,0 +1,16 @@
+{
+  "name": "frontx-manual-auth-tests",
+  "private": true,
+  "type": "module",
+  "description": "Manual verification scripts for FrontX auth() against a public test backend; a repository dev tool, never part of a template.",
+  "scripts": {
+    "bearer-attach": "node bearer-attach.mjs",
+    "refresh-retry": "node refresh-retry.mjs",
+    "abort": "node abort.mjs"
+  },
+  "dependencies": {
+    "@gears-frontx/api": "0.3.0",
+    "@gears-frontx/framework": "file:../../template-shell/packages/framework",
+    "axios": "1.7.9"
+  }
+}

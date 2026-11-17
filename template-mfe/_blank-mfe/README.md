@@ -294,8 +294,11 @@ npm run test:unit
 ```
 
 Both resolve through files the shell contributes to the same `src-app/`:
-`vitest.config.ts` extends `../../vitest.mfe.base`, and `tsconfig.json` maps
-`@frontx-test-utils/*` to `../../__test-utils__/*`. They run from an assembled
+`vitest.config.ts` extends `../../vitest.mfe.base`, which resolves
+`@frontx-test-utils/*` to the shell's `src-app/__test-utils__/`, and
+`tsconfig.json` maps the same alias to this package's own `test-utils/`, whose
+files re-export those utilities (one file per utility a test imports, so the
+type check never references ground outside the package). They run from an assembled
 project - a shell plus this template - not from either template alone.
 
 ## Troubleshooting

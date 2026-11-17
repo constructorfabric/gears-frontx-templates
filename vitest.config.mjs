@@ -21,8 +21,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['scripts/**/*.test.mjs', 'template-design-guardrails/tests/**/*.test.mjs'],
-    exclude: ['**/node_modules/**', '**/dist/**', 'template-!(design-guardrails)/**'],
+    include: ['scripts/**/*.test.mjs', 'tooling/**/*.test.mjs'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'template-*/**'],
     passWithNoTests: false,
   },
 });

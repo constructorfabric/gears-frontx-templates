@@ -15,6 +15,7 @@
     "test:watch": "vitest --watch",
     "dev:template:link": "node scripts/link-template-ecosystem.mjs",
     "validate:templates": "node scripts/validate-templates.mjs",
+    "compose:templates": "node scripts/compose-templates.mjs",
     "policy:template-pin-drift": "node scripts/template-pin-drift-check.mjs",
     "policy:template-lockfile-selflink": "node scripts/template-lockfile-selflink-check.mjs",
     "policy:token-format": "node scripts/token-format-check.mjs",

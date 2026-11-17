@@ -11,34 +11,26 @@ They run against a public test backend (DummyJSON) to validate:
 Cookie-session is intentionally NOT covered here because Node.js fetch/axios do not manage browser cookies the same way.
 Test cookie-session in a real browser against your own backend (see below).
 
-## Not part of this template
+## Not part of any template
 
-This directory is deliberately absent from `template-shell/frontx-template.json`'s
-`ownershipBoundaries` - unlike everything else under `template-shell/`, `frontx add`/`frontx seed`
-never copies it into a seeded project. It's a monorepo-only developer verification tool, moved here
-(from `gears-frontx`'s own `scripts/manual-auth-tests/`) when the templates split into this repo,
-because it imports `@gears-frontx/framework` - a `template-shell` workspace package that stopped
-being resolvable from the ecosystem repo the moment `template-shell` left it. Living here instead
-under `template-shell/` is what makes the import resolve again: `@gears-frontx/framework` is a
-`template-shell` workspace member, so after `npm ci` in `template-shell/` it's hoisted into
-`template-shell/node_modules/@gears-frontx/framework` as a symlink to `packages/framework`, and
-`@gears-frontx/api` resolves there too as a real registry install (`template-shell`'s own pinned
-dependency). Node's module resolution walks up from wherever the running script lives looking for
-a `node_modules` directory - anywhere under `template-shell/` finds it; nothing above this
-directory needs it to be there.
+Under the four-field manifest contract a template's whole directory is its
+payload, so these scripts live here, under `tooling/`, where nothing ships
+them into a project. They import `@gears-frontx/framework` - a `template-shell`
+workspace package - through this directory's own `package.json`, which links it
+from `../../template-shell/packages/framework` and pins `@gears-frontx/api` and
+`axios` to the versions the shell pins.
 
 ## Run From This Repo
 
-From `template-shell/`:
+Build the shell's packages once, then install here:
 
 ```bash
-cd template-shell
-npm ci
-npm run build:packages
+(cd template-shell && npm ci && npm run build:packages)
+cd tooling/manual-auth-tests && npm install
 
-node manual-auth-tests/bearer-attach.mjs
-node manual-auth-tests/refresh-retry.mjs
-node manual-auth-tests/abort.mjs
+node bearer-attach.mjs
+node refresh-retry.mjs
+node abort.mjs
 ```
 
 Both steps are required. `npm ci` installs `@gears-frontx/api` (a real registry tarball) and
