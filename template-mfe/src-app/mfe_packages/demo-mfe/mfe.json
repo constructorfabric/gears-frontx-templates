@@ -113,6 +113,19 @@
       "domainActions": [],
       "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1",
       "exposedModule": "./lifecycle-uikit"
+    },
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.settings.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [],
+      "domainActions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_language.v1~"
+      ],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1",
+      "exposedModule": "./lifecycle-settings"
     }
   ],
   "extensions": [
@@ -169,6 +182,17 @@
         "label": "UIKit Elements",
         "icon": "lucide:component",
         "order": 40
+      }
+    },
+    {
+      "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.settings.v1",
+      "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
+      "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.settings.v1",
+      "route": "/settings",
+      "presentation": {
+        "label": "Settings",
+        "icon": "lucide:settings",
+        "order": 50
       }
     }
   ]

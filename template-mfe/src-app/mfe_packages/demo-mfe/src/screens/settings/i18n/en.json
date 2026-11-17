@@ -1,0 +1,7 @@
+{
+  "title": "Settings",
+  "description": "An example settings screen. The language chosen here goes to the shell as a set_language action, and the shell applies it to itself and every screen.",
+  "language_title": "Language",
+  "language_description": "Choose the language the shell and its screens use. The control shows the language the shell runs, so it follows a change made from the shell header too.",
+  "current_language": "Current Language:"
+}

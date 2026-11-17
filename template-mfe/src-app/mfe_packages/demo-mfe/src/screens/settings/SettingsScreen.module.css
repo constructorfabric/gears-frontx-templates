@@ -1,0 +1,121 @@
+/*
+ * Screen-local layout for the settings screen.
+ *
+ * Colour, spacing and type resolve through @gears-frontx/ui-kit tokens, which
+ * KitThemedLifecycle re-anchors onto this shadow root's host.
+ */
+
+.screen {
+  background-color: var(--background);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4) 0;
+}
+
+/* On a phone the shell's own 1rem side padding is the screen's margin. */
+@media (min-width: 40rem) {
+  .screen {
+    padding: var(--space-8);
+  }
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  letter-spacing: var(--text-heading-1-tracking);
+  line-height: var(--text-heading-1-line-height);
+}
+
+.description {
+  color: var(--muted-foreground);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+}
+
+/*
+ * The heading element exists for the document outline: the kit's CardTitle
+ * renders a plain div and contributes nothing to it, so its type comes from
+ * the CardTitle it sits in, and this rule only has to stop the UA stylesheet's
+ * own h2 size and margins from overriding what it inherits.
+ */
+.sectionTitle {
+  font: inherit;
+  margin: 0;
+}
+
+.prose {
+  color: var(--muted-foreground);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  margin: 0;
+}
+
+/*
+ * The description above the choice and the choice itself belong together:
+ * the card's slot rhythm stops between CardContent's children, so this
+ * wrapper carries the gap between them.
+ */
+.languageChoice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* One row per language: the radio and its native name side by side. */
+.languageOption {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.definitions {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.term {
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+}
+
+.value {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-size);
+  line-height: var(--text-mono-line-height);
+}
+
+.placeholders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * Kit Skeleton bakes in no dimension by design: the consumer sizes each
+ * instance. These shape the placeholder roughly like the content it stands in
+ * for, so the literals are silhouettes of that content rather than values a
+ * token could carry: there is no kit token for "as wide as a heading".
+ */
+.placeholderTitle {
+  height: var(--control-height-lg);
+  max-width: 100%;
+  width: 16rem;
+}
+
+.placeholderLine {
+  height: var(--space-4);
+}
+
+.placeholderLineShort {
+  height: var(--space-4);
+  width: 75%;
+}

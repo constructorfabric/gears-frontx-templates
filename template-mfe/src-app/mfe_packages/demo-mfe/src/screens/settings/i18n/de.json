@@ -1,0 +1,7 @@
+{
+  "title": "Einstellungen",
+  "description": "Ein Beispiel-Bildschirm für Einstellungen. Die hier gewählte Sprache geht als set_language-Aktion an die Shell, die sie für sich und alle Bildschirme anwendet.",
+  "language_title": "Sprache",
+  "language_description": "Wählen Sie die Sprache, in der die Shell und ihre Bildschirme erscheinen. Der Schalter zeigt die Sprache, die die Shell gerade nutzt, und folgt damit auch einer Änderung über die Kopfzeile der Shell.",
+  "current_language": "Aktuelle Sprache:"
+}

@@ -16,6 +16,19 @@ export const UIKIT_EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.scree
 export const DEMO_ACTION_REFRESH_PROFILE = 'gts.frontx.mfes.comm.action.v1~frontx.demo.action.refresh_profile.v1~';
 
 /**
+ * The shell's own chrome action for switching the language, redeclared as a
+ * literal: a screen bundle cannot import the shell app's constants, the way
+ * the IDs above redeclare IDs mfe.json already carries. The shell owns the
+ * action's schema and registers its handler on the screen domain; a screen
+ * that sends the action lists this ID in its entry's `domainActions` (the
+ * settings entry in `demo-mfe/mfe.json`), because that is the field for an
+ * action the parent domain must support, while `actions[]` lists only the
+ * actions the entry itself receives and handles. The payload carries
+ * `language`, a language code of the shell's language code type.
+ */
+export const CHROME_ACTION_SET_LANGUAGE = 'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_language.v1~';
+
+/**
  * Extension ID of the Widgets Host screen extension, owned by the shell's screen
  * domain. Mounting it evicts whatever else occupies that domain (e.g. Hello World
  * itself) per the shell's `ExclusiveMountStrategy`.

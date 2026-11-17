@@ -33,6 +33,7 @@ export default defineConfig({
         './lifecycle-theme': './src/lifecycle-theme.tsx',
         './lifecycle-uikit': './src/lifecycle-uikit.tsx',
         './lifecycle-widgets-host': './src/lifecycle-widgets-host.tsx',
+        './lifecycle-settings': './src/lifecycle-settings.tsx',
       },
       // Empty shared config — MF 2.0's shared dep mechanism is bypassed.
       // Shared deps are externalized via rollupOptions.external and provided
