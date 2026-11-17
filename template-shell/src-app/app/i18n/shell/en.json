@@ -1,0 +1,15 @@
+{
+  "loadFailed": {
+    "title": "This screen could not be loaded",
+    "description": "Check the connection and try again.",
+    "retry": "Retry"
+  },
+  "menu": {
+    "expand": "Expand menu",
+    "collapse": "Collapse menu",
+    "close": "Close menu"
+  },
+  "header": {
+    "user": "User"
+  }
+}

@@ -48,6 +48,17 @@ let mockLayoutState: { visible?: boolean; collapsed?: boolean } = { visible: tru
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => mockLayoutState,
+  // The backdrop's aria-label goes through the shell word hook, which reads
+  // the registry through `useTranslation`; without the provider this test
+  // does not mount. The stub translates the one key the backdrop reads, so
+  // the assertions address the backdrop by the word that key yields, and a
+  // renamed key fails here instead of silently reading the English fallback.
+  useTranslation: () => ({
+    t: (key: string) => (key === 'shell:menu.close' ? 'Close the menu' : key),
+    language: 'en',
+    setLanguage: () => {},
+    isRTL: false,
+  }),
 }));
 
 /** Makes every media query report `narrow`, the way a phone-width window would. */
@@ -129,7 +140,7 @@ describe('Layout', () => {
       render(<Layout />);
       const { requests, stop } = collapseRequests();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Close menu' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Close the menu' }));
       stop();
 
       expect(requests).toEqual([true]);
@@ -214,7 +225,7 @@ describe('Layout', () => {
 
       render(<Layout />);
 
-      expect(screen.queryByRole('button', { name: 'Close menu' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Close the menu' })).toBeNull();
     });
   });
 
@@ -228,7 +239,7 @@ describe('Layout', () => {
       stop();
 
       expect(requests).toEqual([]);
-      expect(screen.queryByRole('button', { name: 'Close menu' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Close the menu' })).toBeNull();
     });
 
     it('ignores menu item clicks and Escape, and keeps the screen reachable', async () => {

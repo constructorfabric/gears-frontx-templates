@@ -181,6 +181,16 @@ export interface SidebarHeaderProps extends React.ComponentProps<"div"> {
   logoText?: React.ReactNode
   collapsed?: boolean
   onClick?: () => void
+  /**
+   * The label naming the expansion the toggle performs while collapsed. The
+   * tooltip is rendered in both states and always names the action the toggle
+   * performs in the current one: `expandLabel` while collapsed,
+   * `collapseLabel` while expanded. The primitive translates nothing: the
+   * words come from the app layer that renders it.
+   */
+  expandLabel?: string
+  /** The label naming the collapse the toggle performs while expanded. */
+  collapseLabel?: string
 }
 
 const SidebarHeader = (
@@ -190,6 +200,8 @@ const SidebarHeader = (
     logoText,
     collapsed = false,
     onClick,
+    expandLabel,
+    collapseLabel,
     className,
     ...props
   }: SidebarHeaderProps & {
@@ -203,7 +215,7 @@ const SidebarHeader = (
       {...props}
     >
       <div className={styles.headerRow}>
-        <SidebarMenuButton onClick={onClick} tooltip={collapsed ? "Expand menu" : "Collapse menu"}>
+        <SidebarMenuButton onClick={onClick} tooltip={collapsed ? expandLabel : collapseLabel}>
           {logo && <SidebarMenuIcon>{logo}</SidebarMenuIcon>}
           {logoText && (
             <SidebarMenuLabel className={styles.logoText}>

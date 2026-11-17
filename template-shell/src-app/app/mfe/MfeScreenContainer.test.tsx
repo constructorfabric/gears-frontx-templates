@@ -14,6 +14,16 @@ vi.mock('./bootstrap', () => ({
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, never>>()),
   useFrontX: () => mockUseFrontX(),
+  // The error state's words come from the shell namespace through
+  // `useTranslation`; the stub echoes the key, which is the state the
+  // component treats as "translations not loaded yet" and answers with its
+  // plain-English fallback, so the assertions below stay on those words.
+  useTranslation: () => ({
+    t: (key: string) => key,
+    language: 'en',
+    setLanguage: () => {},
+    isRTL: false,
+  }),
   screenDomain: mockScreenDomain,
   FRONTX_SCREEN_DOMAIN,
   // `ExtensionDomainSlot` itself owns starting/stopping a routed domain's

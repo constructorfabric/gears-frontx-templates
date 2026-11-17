@@ -18,6 +18,16 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => mockMenuState,
   useFrontX: () => mockUseFrontX(),
+  // The menu's toggle words go through the shell word hook, which reads the
+  // registry through `useTranslation`; without the provider this test does
+  // not mount, the stub echoes the key verbatim, and the hook answers the
+  // miss with the toggle's English fallback words.
+  useTranslation: () => ({
+    t: (key: string) => key,
+    language: 'en',
+    setLanguage: () => {},
+    isRTL: false,
+  }),
 }));
 
 const screenExtension = (
@@ -61,6 +71,7 @@ describe('Menu', () => {
     i18nRegistry: {
       getLanguage: () => string;
       subscribe: (listener: () => void) => () => void;
+      t: (key: string) => string;
     };
   };
 
@@ -77,6 +88,11 @@ describe('Menu', () => {
           registryListeners.add(listener);
           return () => { registryListeners.delete(listener); };
         },
+        // The menu's labels load against the language this registry reports;
+        // its toggle words come from the stubbed hook. Nothing here loads a
+        // dictionary, so the words echo their keys, the way a registry with
+        // nothing registered answers.
+        t: (key: string) => key,
       },
     };
     language = 'en';

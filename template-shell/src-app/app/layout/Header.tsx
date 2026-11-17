@@ -6,7 +6,7 @@
  */
 
 import React, { useRef } from 'react';
-import { useAppSelector, type HeaderState } from '@gears-frontx/react';
+import { useAppSelector, useTranslation, type HeaderState } from '@gears-frontx/react';
 import { Avatar, AvatarImage, AvatarFallback, Skeleton, VisuallyHidden } from '@gears-frontx/ui-kit';
 import { useOtherHeadingOne } from './useOtherHeadingOne';
 import styles from './Header.module.css';
@@ -17,6 +17,7 @@ export interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ children }) => {
   const headerState = useAppSelector((state) => state['layout/header'] as HeaderState | undefined);
+  const { t } = useTranslation();
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const screenHasHeadingOne = useOtherHeadingOne(headingRef);
@@ -55,10 +56,10 @@ export const Header: React.FC<HeaderProps> = ({ children }) => {
         ) : (
           <div className={styles.signedIn}>
             <Avatar>
-              {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.displayName || user?.email || 'User'} />}
+              {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.displayName || user?.email || t('shell:header.user')} />}
               <AvatarFallback>{getInitials()}</AvatarFallback>
             </Avatar>
-            <span>{user?.displayName || user?.email || 'User'}</span>
+            <span>{user?.displayName || user?.email || t('shell:header.user')}</span>
           </div>
         )}
       </div>

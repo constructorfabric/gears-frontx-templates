@@ -23,6 +23,7 @@ import {
   SidebarMenuIcon,
   SidebarHeader,
 } from '@/app/components/ui/sidebar';
+import { useShellWord } from '@/app/i18n/useShellWord';
 import { Icon } from '@iconify/react';
 import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
 import { screenState } from '@/app/mfe/screenState';
@@ -74,6 +75,15 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     () => i18nRegistry?.getLanguage() ?? 'en',
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();
+
+  // The words of the menu's own chrome, in the current language. The sidebar
+  // primitive takes its labels as props and translates nothing itself, so the
+  // words are read here, in the app layer, through the shell word hook: it
+  // reads the registry through `useTranslation`, so both a language change and
+  // a dictionary load re-render the menu and the toggle's words follow, and a
+  // dictionary miss is answered with the English word instead of the key.
+  const expandLabel = useShellWord('shell:menu.expand', 'Expand menu');
+  const collapseLabel = useShellWord('shell:menu.collapse', 'Collapse menu');
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +169,8 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
         logoText={!collapsed ? <FrontXLogoTextIcon /> : undefined}
         collapsed={collapsed}
         onClick={handleToggleCollapse}
+        expandLabel={expandLabel}
+        collapseLabel={collapseLabel}
       />
 
       {/* Menu items */}
@@ -170,6 +182,8 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
             // tells them apart: a shell-only seed has no `src-app/mfe_packages/`
             // at all until the MFE template is added, and pointing such a
             // project at a scaffold it does not carry is a dead end.
+            // Developer guidance for an empty project, kept in English on
+            // purpose: it only ever shows before any screen exists.
             // An <li>: SidebarMenu renders a <ul>, whose only valid direct
             // children are <li> (axe: list, impact serious).
             <li className={styles.emptyHint}>

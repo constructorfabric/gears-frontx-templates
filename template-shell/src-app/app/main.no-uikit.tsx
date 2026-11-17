@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { FrontXProvider, apiRegistry, createFrontX, presets } from '@gears-frontx/react';
 import { AccountsApiService } from '@/app/api';
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
+import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
 import { loadStudioOverlay } from './studioOverlay';

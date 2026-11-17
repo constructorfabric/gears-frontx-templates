@@ -3,6 +3,21 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { ScreenLoadFailed } from './ScreenLoadFailed';
 
+// The words come from the shell namespace through `useTranslation`, which
+// needs the provider this test does not mount. The stub echoes the key,
+// which is the state the component treats as "translations not loaded yet"
+// and answers with its plain-English fallback, so the assertions below stay
+// on those words.
+vi.mock('@gears-frontx/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@gears-frontx/react')>()),
+  useTranslation: () => ({
+    t: (key: string) => key,
+    language: 'en',
+    setLanguage: () => {},
+    isRTL: false,
+  }),
+}));
+
 describe('ScreenLoadFailed', () => {
   it('announces the failure as an alert with a level-two title, keeping the header the page one h1', () => {
     render(<ScreenLoadFailed onRetry={() => {}} />);

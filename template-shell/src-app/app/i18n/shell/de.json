@@ -1,0 +1,15 @@
+{
+  "loadFailed": {
+    "title": "Dieser Bildschirm konnte nicht geladen werden",
+    "description": "Verbindung prüfen und erneut versuchen.",
+    "retry": "Erneut versuchen"
+  },
+  "menu": {
+    "expand": "Menü ausklappen",
+    "collapse": "Menü einklappen",
+    "close": "Menü schließen"
+  },
+  "header": {
+    "user": "Nutzer"
+  }
+}

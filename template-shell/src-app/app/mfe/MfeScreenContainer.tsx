@@ -38,7 +38,7 @@ import {
 } from '@gears-frontx/react';
 import { bootstrapOnce } from './bootstrapOnce';
 import { registerScreenDomain } from './screenDomain';
-import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
+import { useLoadFailedText, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
 import { addressScreenEntry, firstScreenId, type RegistryScreenExtension } from './defaultScreen';
 import { screenState } from './screenState';
@@ -49,12 +49,13 @@ import styles from './MfeScreenContainer.module.css';
  * page's one level-one heading is the header's, so the title is level two.
  */
 function PlainLoadFailed({ onRetry }: LoadFailedProps) {
+  const text = useLoadFailedText();
   return (
     <div role="alert">
-      <h2>{LOAD_FAILED_TEXT.title}</h2>
-      <p>{LOAD_FAILED_TEXT.description}</p>
+      <h2>{text.title}</h2>
+      <p>{text.description}</p>
       <button type="button" onClick={onRetry}>
-        {LOAD_FAILED_TEXT.retry}
+        {text.retry}
       </button>
     </div>
   );

@@ -10,6 +10,7 @@ import './font.css'; // Registers Inter, the face the kit's --font-sans and --fo
 import './globals.css'; // Global styles with CSS variables
 import '@gears-frontx/ui-kit'; // side-effect: styles the host's own ui-kit components in the host document; screens get their kit CSS through their manifest. Must come after globals.css so component rules beat the base reset there on specificity ties.
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
+import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
 import { loadStudioOverlay } from './studioOverlay';

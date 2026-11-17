@@ -6,19 +6,20 @@
  */
 
 import { Button, Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@gears-frontx/ui-kit';
-import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
+import { useLoadFailedText, type LoadFailedProps } from './loadFailedText';
 
 export function ScreenLoadFailed({ onRetry }: LoadFailedProps) {
+  const text = useLoadFailedText();
   return (
     <Empty role="alert">
       <EmptyHeader>
         <EmptyTitle role="heading" aria-level={2}>
-          {LOAD_FAILED_TEXT.title}
+          {text.title}
         </EmptyTitle>
-        <EmptyDescription>{LOAD_FAILED_TEXT.description}</EmptyDescription>
+        <EmptyDescription>{text.description}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <Button onClick={onRetry}>{LOAD_FAILED_TEXT.retry}</Button>
+        <Button onClick={onRetry}>{text.retry}</Button>
       </EmptyContent>
     </Empty>
   );

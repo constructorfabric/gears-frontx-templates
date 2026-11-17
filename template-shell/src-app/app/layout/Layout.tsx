@@ -8,6 +8,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { fetchCurrentUser } from '@/app/actions/bootstrapActions';
+import { useShellWord } from '@/app/i18n/useShellWord';
 import { Header } from './Header';
 import { Menu } from './Menu';
 import { Sidebar } from './Sidebar';
@@ -24,6 +25,10 @@ export interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuSlotRef = useRef<HTMLDivElement>(null);
   const narrowMenu = useNarrowViewportMenu(menuSlotRef);
+  // The backdrop's name in the current language, with the English word while
+  // (or if) the shell dictionary has not loaded: the registry echoes the raw
+  // key on a dictionary miss, and the shell never renders a key.
+  const closeLabel = useShellWord('shell:menu.close', 'Close menu');
 
   useEffect(() => {
     // Bootstrap application on mount - fetch current user
@@ -44,7 +49,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         {narrowMenu.overlaid ? (
           <button
             type="button"
-            aria-label="Close menu"
+            aria-label={closeLabel}
             tabIndex={-1}
             className={styles.backdrop}
             onClick={narrowMenu.collapse}

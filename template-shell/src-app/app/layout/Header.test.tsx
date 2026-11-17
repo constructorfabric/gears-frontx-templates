@@ -5,6 +5,14 @@ import { Header } from './Header';
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => undefined,
+  // The header's user fallback is translated; without the provider this test
+  // does not mount, the stub echoes the key verbatim.
+  useTranslation: () => ({
+    t: (key: string) => key,
+    language: 'en',
+    setLanguage: () => {},
+    isRTL: false,
+  }),
 }));
 
 /**
