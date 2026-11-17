@@ -96,10 +96,11 @@
   background-color: var(--left-menu-hover);
 }
 
-/* The selected item's label is white on every theme's --left-menu-selected. */
+/* The selected item's label reads the theme's --left-menu-selected-foreground:
+   white on the kit's --primary, the palette background on Dracula's purple. */
 .menuButton[data-active='true'] {
   background-color: var(--left-menu-selected);
-  color: #ffffff;
+  color: var(--left-menu-selected-foreground);
   font-weight: 500;
 }
 

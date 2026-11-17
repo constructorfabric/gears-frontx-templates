@@ -46,9 +46,43 @@ const kitFirstFamily = (token: string): string | undefined =>
 
 /** Names the shell owns: the kit declares none of them. */
 const isShellToken = (name: string): boolean =>
-  name === '--error' ||
   name === '--radius-none' ||
   /^--(left-menu|spacing|shadow|transition)(-|$)/.test(name);
+
+/**
+ * The left menu family a kit-palette theme declares, selected label token
+ * included. The set is pinned so a member dropped or added by hand is caught.
+ */
+const leftMenuTokens = [
+  '--left-menu',
+  '--left-menu-border',
+  '--left-menu-foreground',
+  '--left-menu-hover',
+  '--left-menu-selected',
+  '--left-menu-selected-foreground',
+];
+
+/**
+ * Every name the shell's own themes declare: the shell tokens as they exist.
+ * A reference that points at a shell token must point at one of these, so a
+ * typo in the shell namespace fails here as well as a kit rename does.
+ */
+const shellTokens = new Set(frontxThemes.flatMap((theme) => Object.keys(theme.variables)));
+
+/** The custom property names a value references through `var()`, in order. */
+const referencedTokens = (value: string): string[] =>
+  [...value.matchAll(/var\((--[\w-]+)\)/g)].map((match) => match[1]);
+
+/**
+ * True when a colour value is built only from token references: var() and
+ * color-mix() of var(). After the wrappers are stripped, a literal colour
+ * always leaves its function name or hex digits behind.
+ */
+const isDerivedFromTokens = (value: string): boolean =>
+  value
+    .replace(/var\(--[\w-]+\)/g, '')
+    .replace(/color-mix\(\s*in\s+oklab\s*,/g, '')
+    .replace(/[\s(),%/.0-9]/g, '') === '';
 
 const byId = (id: string): ThemeConfig => {
   const theme = frontxThemes.find((candidate) => candidate.id === id);
@@ -98,6 +132,26 @@ describe('shell themes over the ui-kit palette', () => {
 
   it.each(['default', 'light', 'dark'])('keeps %s on the kit palette, re-declaring no kit token', (id) => {
     expect(names(byId(id)).filter((name) => kitTokens.has(name))).toEqual([]);
+  });
+
+  it.each(['default', 'light', 'dark'])('builds every %s left menu colour from theme tokens, with no literal', (id) => {
+    const theme = byId(id);
+    const family = names(theme).filter((name) => /^--left-menu(-|$)/.test(name)).sort();
+    expect(family, theme.id).toEqual(leftMenuTokens);
+    for (const name of family) {
+      const value = theme.variables[name] ?? '';
+      // A missing or empty value references nothing, and would otherwise pass
+      // the no-literal check below.
+      const referenced = referencedTokens(value);
+      expect(referenced.length, `${theme.id} ${name} = "${value}" references no token`).toBeGreaterThan(0);
+      expect(isDerivedFromTokens(value), `${theme.id} ${name} = ${value}`).toBe(true);
+      // The wrappers above are stripped before the literal check, so the names
+      // inside them have to be checked separately: a renamed kit token or a
+      // misspelled shell token resolves to nothing in the browser.
+      for (const token of referenced) {
+        expect(kitTokens.has(token) || shellTokens.has(token), `${theme.id} ${name} -> ${token}`).toBe(true);
+      }
+    }
   });
 
   it('scales dracula-large to 1.5x the kit --radius, which every kit radius step derives from', () => {

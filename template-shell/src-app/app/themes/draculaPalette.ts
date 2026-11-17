@@ -94,13 +94,16 @@ export const draculaKitColors: Record<string, string> = {
 
 /** The shell's own colour tokens in the Dracula palette. */
 export const draculaShellColors: Record<string, string> = {
-  // State colour the kit has no token for (the kit's red is --destructive)
-  '--error': cssColor(dracula.red),
-
-  // Left menu colors
+  // Left menu colors. Panel text mixes the palette comment grey toward the
+  // palette foreground: the comment grey on its own reads 3.4:1 on the panel,
+  // the mix clears 4.5:1. Hover is the current line thinned toward the dark
+  // background so the mixed text also clears 4.5:1 on it. The selected label
+  // takes the palette background, the dark ink that reads on the light
+  // purple selection fill, the same pair --primary-foreground uses.
   '--left-menu': cssColor(dracula.backgroundDark),
-  '--left-menu-foreground': cssColor(dracula.comment),
-  '--left-menu-hover': cssColor(dracula.currentLine),
+  '--left-menu-foreground': `color-mix(in oklab, ${cssColor(dracula.comment)} 60%, ${cssColor(dracula.foreground)})`,
+  '--left-menu-hover': `color-mix(in oklab, ${cssColor(dracula.currentLine)} 50%, ${cssColor(dracula.backgroundDark)})`,
   '--left-menu-selected': cssColor(dracula.purple),
+  '--left-menu-selected-foreground': cssColor(dracula.background),
   '--left-menu-border': cssColor(dracula.currentLine),
 };

@@ -3,13 +3,16 @@
  *
  * Colour, radius and type tokens come from @gears-frontx/ui-kit's theme.css,
  * resolved for the `appearance` below. This theme declares only the shell's
- * own tokens (left menu, spacing, shadows, transitions, `--error`,
- * `--radius-none`) and re-declares no kit token, so the kit stays the one
- * palette. themes.test.ts enforces both halves.
+ * own tokens (left menu, spacing, shadows, transitions, `--radius-none`) and
+ * re-declares no kit token, so the kit stays the one palette. themes.test.ts
+ * enforces both halves.
+ *
+ * The left menu is the page inverted: the panel takes --foreground, its text
+ * a wash of --background over it, and hover, border and selection mix or read
+ * the same pair, so the panel follows the kit's light values by construction.
  */
 
 import type { ThemeConfig } from '@gears-frontx/react';
-import { cssColor } from './utils';
 
 /**
  * Default theme ID
@@ -22,15 +25,15 @@ export const defaultTheme: ThemeConfig = {
   appearance: 'light',
   default: true,
   variables: {
-    // State colour the kit has no token for (the kit's red is --destructive)
-    '--error': cssColor('hsl(0 84% 60%)'),
-
-    // Left menu colors
-    '--left-menu': cssColor('hsl(221 39% 11%)'),
-    '--left-menu-foreground': cssColor('hsl(218 11% 65%)'),
-    '--left-menu-hover': cssColor('hsl(217 19% 27%)'),
-    '--left-menu-selected': cssColor('hsl(221 83% 53%)'),
-    '--left-menu-border': cssColor('hsl(217 19% 27%)'),
+    // Left menu colors: the page pair inverted. Panel text is background
+    // lightened toward foreground, which keeps the muted grey of the old
+    // literal while clearing 4.5:1 on the panel.
+    '--left-menu': 'var(--foreground)',
+    '--left-menu-foreground': 'color-mix(in oklab, var(--background) 70%, var(--foreground))',
+    '--left-menu-hover': 'color-mix(in oklab, var(--foreground) 82%, var(--background))',
+    '--left-menu-selected': 'var(--primary)',
+    '--left-menu-selected-foreground': 'var(--primary-foreground)',
+    '--left-menu-border': 'color-mix(in oklab, var(--foreground) 82%, var(--background))',
 
     // Spacing
     '--spacing-xs': '0.25rem',

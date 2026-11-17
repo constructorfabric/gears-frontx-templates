@@ -3,13 +3,17 @@
  *
  * Colour, radius and type tokens come from @gears-frontx/ui-kit's theme.css,
  * resolved for the `appearance` below. This theme declares only the shell's
- * own tokens (left menu, spacing, shadows, transitions, `--error`,
- * `--radius-none`) and re-declares no kit token, so the kit stays the one
- * palette. themes.test.ts enforces both halves.
+ * own tokens (left menu, spacing, shadows, transitions, `--radius-none`) and
+ * re-declares no kit token, so the kit stays the one palette. themes.test.ts
+ * enforces both halves.
+ *
+ * The left menu stays on the kit's dark surfaces rather than inverting to a
+ * light panel: the panel reads the sidebar family the kit keeps for
+ * navigation chrome, its hover the card hover step, its text a wash of the
+ * sidebar foreground over the panel.
  */
 
 import type { ThemeConfig } from '@gears-frontx/react';
-import { cssColor } from './utils';
 
 /**
  * Dark theme ID
@@ -21,15 +25,15 @@ export const darkTheme: ThemeConfig = {
   name: 'Dark',
   appearance: 'dark',
   variables: {
-    // State colour the kit has no token for (the kit's red is --destructive)
-    '--error': cssColor('hsl(0 63% 31%)'),
-
-    // Left menu colors
-    '--left-menu': cssColor('hsl(0 0% 0%)'),
-    '--left-menu-foreground': cssColor('hsl(240 5% 65%)'),
-    '--left-menu-hover': cssColor('hsl(240 6% 10%)'),
-    '--left-menu-selected': cssColor('hsl(240 4% 46%)'),
-    '--left-menu-border': cssColor('hsl(240 4% 16%)'),
+    // Left menu colors: the kit's dark sidebar surfaces. Text is the sidebar
+    // foreground washed toward the panel, which keeps the muted tone of the
+    // old literal while clearing 4.5:1 on the panel.
+    '--left-menu': 'var(--sidebar)',
+    '--left-menu-foreground': 'color-mix(in oklab, var(--sidebar-foreground) 70%, var(--sidebar))',
+    '--left-menu-hover': 'var(--card-hover)',
+    '--left-menu-selected': 'var(--primary)',
+    '--left-menu-selected-foreground': 'var(--primary-foreground)',
+    '--left-menu-border': 'color-mix(in oklab, var(--sidebar-border) 45%, var(--sidebar))',
 
     // Spacing
     '--spacing-xs': '0.25rem',

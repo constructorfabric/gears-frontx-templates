@@ -1,7 +1,7 @@
 /*
  * No theme tokens here. Colour, radius and type tokens come from
  * @gears-frontx/ui-kit/theme.css (imported before this file in main.tsx), and
- * the shell's own tokens (left menu, spacing, shadows, transitions, --error)
+ * the shell's own tokens (left menu, spacing, shadows, transitions)
  * from the active theme, which themeRegistry.apply() writes before the first
  * render. A :root block here would sit after the kit's in source order and
  * replace its palette for every name both declare.

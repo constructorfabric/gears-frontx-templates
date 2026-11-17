@@ -14,7 +14,7 @@ it never brings a parallel token set.
 ## Decide the kind
 
 1. **On the kit palette.** The theme declares the shell's own tokens (left
-   menu, spacing, shadows, transitions, `--error`, `--radius-none`) and at
+   menu, spacing, shadows, transitions, `--radius-none`) and at
    most a few kit tokens it overrides on purpose, such as a brand
    `--primary`. The shell's `light`, `dark` and `default` override none.
 2. **A palette of its own.** A theme that repaints the page surface
