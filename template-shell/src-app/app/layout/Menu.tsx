@@ -13,7 +13,6 @@ import {
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type MenuState,
-  type ScreenExtension,
 } from '@gears-frontx/react';
 import {
   Sidebar,
@@ -28,6 +27,7 @@ import { Icon } from '@iconify/react';
 import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
 import { screenState } from '@/app/mfe/screenState';
 import { menuLabels } from '@/app/mfe/menuLabels';
+import { screensInMenuOrder, type RegistryScreenExtension } from '@/app/mfe/defaultScreen';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
 import styles from './Menu.module.css';
@@ -35,8 +35,6 @@ import styles from './Menu.module.css';
 export interface MenuProps {
   children?: React.ReactNode;
 }
-
-type RegistryScreenExtension = Omit<ScreenExtension, 'route'>;
 
 /**
  * Test id of the menu item that mounts `extensionId`.
@@ -111,15 +109,12 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
     bootstrapSettled().then(
       () => {
         if (cancelled) return;
-        // The cast asserts `presentation` rather than checking it, and nothing
-        // between the manifest and `registry.registerExtension` does either, so
-        // an extension without it is dropped here instead of throwing mid-sort.
+        // The cast asserts `presentation` rather than checking it; the sort
+        // below is the one the default screen selects by (`defaultScreen.ts`),
+        // so the first item this menu shows is the screen the shell opens when
+        // the address names none.
         const screenExts = mfeRegistry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as RegistryScreenExtension[];
-        setExtensions(
-          screenExts
-            .filter((ext) => ext?.presentation)
-            .sort((a, b) => (a.presentation.order ?? 999) - (b.presentation.order ?? 999)),
-        );
+        setExtensions(screensInMenuOrder(screenExts));
       },
       // `MfeScreenContainer` logs the bootstrap failure; the menu only shows
       // that there is nothing to list.

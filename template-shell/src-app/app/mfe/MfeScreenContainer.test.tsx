@@ -38,7 +38,7 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
 }));
 
 describe('MfeScreenContainer', () => {
-  let app: { mfeRegistry: Record<string, never> };
+  let app: { mfeRegistry: Record<string, unknown> };
   let bootstrap: { resolve: () => void; reject: (error: Error) => void };
 
   beforeEach(() => {
@@ -48,7 +48,10 @@ describe('MfeScreenContainer', () => {
     // instead of leaking the previous test's (already-settled) promise into
     // this one via the dynamic `import('./MfeScreenContainer')` below.
     vi.resetModules();
-    app = { mfeRegistry: {} };
+    // `getExtensionsForDomain` is on the mock because the container asks the
+    // registry for the default screen once the bootstrap has settled; an empty
+    // answer selects nothing, which is what these tests mean by "no screens".
+    app = { mfeRegistry: { getExtensionsForDomain: () => [] } };
     mockUseFrontX.mockReturnValue(app);
     mockBootstrapMFE.mockReset();
     // Bootstrap settles only when a test says so, inside `act`.
@@ -185,7 +188,7 @@ describe('MfeScreenContainer', () => {
       'mounts the screen again on Retry with the failed action history intent (%s)',
       async (history) => {
         const executeActionsChain = vi.fn();
-        app.mfeRegistry = { executeActionsChain } as never;
+        app.mfeRegistry = { getExtensionsForDomain: () => [], executeActionsChain } as never;
         const { MfeScreenContainer } = await import('./MfeScreenContainer');
         const { screenLoadFailure } = await import('./screenLoadFailure');
         render(<MfeScreenContainer />);

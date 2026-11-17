@@ -21,9 +21,14 @@
  * intent, so a failed menu click still adds its entry and a mount the address
  * drove writes nothing. A failed bootstrap is not safe to repeat in the same
  * page (`bootstrapOnce.ts`), so its Retry reloads the page.
+ *
+ * When the bootstrap has settled and the address names no screen, the first
+ * item of the menu is opened in the address's place (`defaultScreen.ts`), with
+ * the `replace` history intent, so the visit gains no history entry. A deep
+ * link always wins over it.
  */
 
-import { useEffect, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 import {
   useFrontX,
   ExtensionDomainSlot,
@@ -35,6 +40,8 @@ import { bootstrapOnce } from './bootstrapOnce';
 import { registerScreenDomain } from './screenDomain';
 import { LOAD_FAILED_TEXT, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
+import { addressScreenEntry, firstScreenId, type RegistryScreenExtension } from './defaultScreen';
+import { screenState } from './screenState';
 import styles from './MfeScreenContainer.module.css';
 
 /**
@@ -63,12 +70,20 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
   const [bootstrapped, setBootstrapped] = useState(false);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const loadFailure = useScreenLoadFailure();
+  // Whether the address named a screen when the bootstrap settled. Read at the
+  // settle, before the flip below renders the slot: once the slot starts the
+  // routed domain, the router's page-load step has already cleared every entry
+  // from the address, so this is the last moment a deep link can still be seen
+  // in it. The default screen defers to what was recorded here.
+  const addressNamedScreen = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     bootstrapOnce(app, [registerScreenDomain])
       .then(() => {
-        if (!cancelled) setBootstrapped(true);
+        if (cancelled) return;
+        addressNamedScreen.current = addressScreenEntry() !== undefined;
+        setBootstrapped(true);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -79,6 +94,34 @@ export function MfeScreenContainer({ LoadFailed = PlainLoadFailed }: MfeScreenCo
       cancelled = true;
     };
   }, [app]);
+
+  // The default screen. Runs once the bootstrap has settled and the slot is
+  // rendered, so the screen domain is started and the mount writes the address
+  // itself. An address that named no screen has opened nothing at this point:
+  // mount the menu's first screen, with the `replace` history intent, so the
+  // visit gains no history entry and the address reads as if that screen had
+  // been opened all along. A deep link recorded at the settle wins over it,
+  // and so does a screen that is already mounted or arriving. No screens
+  // registered means there is nothing to select and nothing is sent; a failed
+  // bootstrap never reaches this effect, since `bootstrapped` stays down.
+  useEffect(() => {
+    if (!bootstrapped) return;
+    if (addressNamedScreen.current) return;
+    if (screenState.getSnapshot() !== undefined) return;
+    const registry = app.mfeRegistry;
+    if (!registry) return;
+    const first = firstScreenId(
+      registry.getExtensionsForDomain(FRONTX_SCREEN_DOMAIN) as RegistryScreenExtension[],
+    );
+    if (!first) return;
+    registry.executeActionsChain({
+      action: {
+        type: FRONTX_ACTION_MOUNT_EXT,
+        target: FRONTX_SCREEN_DOMAIN,
+        payload: { subject: first, history: 'replace' },
+      },
+    });
+  }, [app, bootstrapped]);
 
   // A history step (back, forward) leaves the failed navigation behind, so its
   // error state and Retry go with it, and so does the report of a mount still
