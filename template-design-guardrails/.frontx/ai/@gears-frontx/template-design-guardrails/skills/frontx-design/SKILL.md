@@ -31,7 +31,7 @@ The one skill for everything visual in a FrontX app. This file is the map; the d
 | Read or update DESIGN.md | `references/design-md.md` |
 | Close any task | `templates/handoff.md`, plus `templates/state-inventory.md` for a screen |
 
-A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
+A request that spans rows runs them in this order: place, theme, build, verify, review, DESIGN.md, close. Initialize a missing root DESIGN.md and record its project ownership as `references/design-md.md` describes. The theme, build and review rows read `DESIGN.md` at the project root first. Surface: application screens by default. On marketing and documentation pages every gate binds except APP-001 and APP-002, which only advise; documentation pages also load `references/typography.md`.
 
 ## Map
 

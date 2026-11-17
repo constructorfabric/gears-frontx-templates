@@ -44,7 +44,7 @@ npm run policy:template-mfes-import-boundary  # ADR-0003 consumer half - no temp
 npm run policy:seeded-gitignore      # no .gitignore a template ships may ignore ground any template puts into a project
 ```
 
-The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `template-design-guardrails/tests/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
+The design-guardrails bundle has no generated index: its one skill's `SKILL.md` map is the index, and `tooling/tests/design-guardrails/design-skill.test.mjs` (part of `npm test`) checks that the map names every file of the skill, that every gate id the skill cites exists, and that `SKILL.md` stays within 80 lines.
 
 `policy:template-pin-drift` runs in one of two modes, for TEMPLATE pin sites:
 

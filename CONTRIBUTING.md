@@ -85,7 +85,7 @@ npm run policy:token-format
 npm run policy:template-mfes-import-boundary
 ```
 
-The former `policy:guideline-index` check is gone with the generated index: `template-design-guardrails/tests/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
+The former `policy:guideline-index` check is gone with the generated index: `tooling/tests/design-guardrails/design-skill.test.mjs`, run by `npm test`, checks the design skill's `SKILL.md` map instead. A file added to the skill's `references/`, `rules/` or `templates/` needs a line in that map.
 
 Each template is also independently validatable:
 
@@ -102,6 +102,8 @@ node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/sc
 FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run build && FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npm run type-check
 npm run test:unit
 ```
+
+For a real CLI-applied project, follow initialization with `frontx ownership add DESIGN.md --json`, even if the file already existed. This records project ownership so shell upgrade/delete also preserve it; the filesystem-only composition above has no CLI project state and is only a dev/test tree.
 
 `validate:templates` runs the CLI's own `frontx validate` over every template and needs `@gears-frontx/cli` 0.4.0, the release that introduced the four-field contract; until it is published, install a locally packed build without saving it (`npm install --no-save <path to gears-frontx-cli-0.4.0.tgz>`) and leave the root `devDependency` pin to the follow-up that bumps it with the lockfile.
 

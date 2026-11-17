@@ -424,7 +424,7 @@ These rules fix where the content of the source the family is split from, `templ
 
 ### Worked Example: The Family's GTS Surface
 
-Requested as a concrete check for `cpt-frontx-workspace-templates-fr-screen-domain-registration` and the order-band and route obligations of §2.3: the shape one wrapped screen's MFE manifest takes when `template-mfe` wraps a screen member, following the working pattern the MFE manifests in this repository already use - `template-mfe/src-app/mfe_packages/_blank-mfe/mfe.json`, the scaffold a new package is copied from, and `.../demo-mfe/mfe.json`, the worked example beside it. Both declare screen extensions against this same domain in the same shape - a top-level `route` beside a `presentation` block carrying `label`, `icon` and `order` - with values of their own: `_blank-mfe` one extension at `/blank-home`, `demo-mfe` five, at `/widgets-host`, `/hello-world`, `/profile`, `/current-theme` and `/uikit-elements`.
+Requested as a concrete check for `cpt-frontx-workspace-templates-fr-screen-domain-registration` and the order-band and route obligations of §2.3: the shape one wrapped screen's MFE manifest takes when `template-mfe` wraps a screen member, following the working pattern the MFE manifests in this repository already use - `template-mfe/_blank-mfe/mfe.json`, the scaffold a new package is copied from, and `.../demo-mfe/mfe.json`, the worked example beside it. Both declare screen extensions against this same domain in the same shape - a top-level `route` beside a `presentation` block carrying `label`, `icon` and `order` - with values of their own: `_blank-mfe` one extension at `/blank-home`, `demo-mfe` five, at `/widgets-host`, `/hello-world`, `/profile`, `/current-theme` and `/uikit-elements`.
 
 ```json
 {

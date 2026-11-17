@@ -46,11 +46,20 @@ upgrading the template never writes it. From the project root:
 
 ```sh
 node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/init-design-md.mjs
+frontx ownership add DESIGN.md --json
 ```
 
 It copies this skill's `templates/DESIGN.md` to `DESIGN.md` (or the file
 `--design <path>` names) only when nothing is there, and leaves an existing
 file exactly as it is - run it after a fresh apply and as often as you like.
+After initialization, `frontx ownership add DESIGN.md` records the existing file
+in `projectOwnedRoots`, excluding it from the shell target as well as all other
+template ownership. Run it even when DESIGN.md already existed. Without this
+step, the shell applied at `.` owns the file and its delete plan can remove it.
+Deleting guardrails removes its AI bundle and verify package; the marked project
+file remains. The CLI 0.4.0 ownership command supports files and needs no contract
+extension.
+
 An upgrade of the template refreshes `templates/DESIGN.md`; carry what you
 need from it into the root file by hand, then run the check below.
 
@@ -143,7 +152,6 @@ After any change to the front matter:
 
 ## Change it with care
 
-- `DESIGN.md` is owned by this template; a template upgrade replaces it. Put
-  product-specific decisions in the product's own documents and link them,
-  rather than editing the template's text.
+- Root `DESIGN.md` belongs to the project once marked with `frontx ownership add`.
+  Edit it for product decisions; upgrades replace only the canonical AI-bundle copy.
 - Keep the body short. It points to rules; it does not restate them.
