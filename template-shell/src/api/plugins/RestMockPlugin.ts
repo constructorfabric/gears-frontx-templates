@@ -22,6 +22,11 @@ import {
   MOCK_PLUGIN,
 } from '@gears-frontx/api';
 
+/** Distinct unmatched requests warned about before warnings stop, so the dedupe set stays bounded */
+const MAX_WARNED_UNMATCHED = 50;
+/** Number of mock map keys listed in the unmatched-request warning */
+const MAX_KEYS_SHOWN = 5;
+
 /**
  * REST Mock Configuration
  */
@@ -64,6 +69,8 @@ export class RestMockPlugin extends RestPluginWithConfig<RestMockConfig> {
   static readonly [MOCK_PLUGIN] = true;
   /** Current mock map (can be updated via setMockMap) */
   private currentMockMap?: Readonly<Record<string, MockResponseFactory<JsonValue, JsonCompatible>>>;
+  /** Query-free `METHOD url` pairs already warned about as unmatched, capped at MAX_WARNED_UNMATCHED */
+  private readonly warnedUnmatched = new Set<string>();
 
   constructor(config: RestMockConfig = {}) {
     super(config);
@@ -75,6 +82,8 @@ export class RestMockPlugin extends RestPluginWithConfig<RestMockConfig> {
    */
   setMockMap(mockMap: Readonly<Record<string, MockResponseFactory<JsonValue, JsonCompatible>>>): void {
     this.currentMockMap = mockMap;
+    // A request that warned under the old map may match the new one, so let it warn again.
+    this.warnedUnmatched.clear();
   }
 
   /**
@@ -107,7 +116,10 @@ export class RestMockPlugin extends RestPluginWithConfig<RestMockConfig> {
       };
     }
 
-    // No mock found, pass through
+    // No mock found, pass through: a project may mock only part of its
+    // endpoints. Warn once per method and URL, since a key that misses the
+    // request the service really sends otherwise fails with no signal.
+    this.warnUnmatched(context.method, context.url);
     return context;
   }
   // @cpt-end:cpt-frontx-flow-api-communication-mock-activation:p2:inst-1
@@ -147,6 +159,25 @@ export class RestMockPlugin extends RestPluginWithConfig<RestMockConfig> {
     return undefined;
   }
   // @cpt-end:cpt-frontx-algo-api-communication-mock-factory-match:p2:inst-find-mock-factory
+
+  /**
+   * Warn, once per method and query-free URL and for at most MAX_WARNED_UNMATCHED
+   * distinct requests, that no mock key matches a request.
+   */
+  private warnUnmatched(method: string, url: string): void {
+    if (this.warnedUnmatched.size >= MAX_WARNED_UNMATCHED) return;
+    const request = `${method.toUpperCase()} ${url.split(/[?#]/, 1)[0]}`;
+    if (this.warnedUnmatched.has(request)) return;
+    this.warnedUnmatched.add(request);
+    const keys = Object.keys(this.currentMockMap ?? {});
+    const shown = keys.slice(0, MAX_KEYS_SHOWN).join(', ');
+    const more = keys.length > MAX_KEYS_SHOWN ? ` (and ${keys.length - MAX_KEYS_SHOWN} more)` : '';
+    console.warn(
+      `[RestMockPlugin] Mock mode is on and no mock matches ${request}; the request passes through to the network. ` +
+        `Write mock keys as "<METHOD> <full path including baseURL>". ` +
+        `Known keys: ${keys.length > 0 ? shown + more : 'none'}.`
+    );
+  }
 
   /**
    * Match URL against pattern with :params.
