@@ -1,0 +1,32 @@
+{
+  "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_language.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Schema for the host chrome's set_language action. Closed over its own shape: re-declares every property action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload. Not self-contained, though: the payload's language field references gts.frontx.i18n.lang.code.v1~, the SDK's language list, so that type must be registered on the same type system before this schema is validated.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "x-gts-type-ref": "/$id",
+      "$comment": "Self-reference to this action's schema type ID"
+    },
+    "target": {
+      "x-gts-instance-ref": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
+      "$comment": "The screen domain specifically, not any domain the way mount_ext.v1.json allows: the screen domain is the one that registers a handler for this action (see bootstrap.ts), so a chain aimed at sidebar, popup or overlay is refused here instead of two layers later as a missing handler"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "language": { "$ref": "gts://gts.frontx.i18n.lang.code.v1~" }
+      },
+      "required": ["language"],
+      "$comment": "Action payload closed around the single field the handler forwards"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 1,
+      "$comment": "Optional timeout override in milliseconds"
+    }
+  },
+  "required": ["type", "target", "payload"]
+}

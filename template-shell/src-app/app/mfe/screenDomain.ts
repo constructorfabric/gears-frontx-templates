@@ -5,7 +5,7 @@
  * renders its slot and hands `registerScreenDomain` to the bootstrap it starts,
  * and the bootstrap runs it before it walks the manifests. The registration
  * puts the domain's types on the type system itself (the screen extension type
- * the declaration names in `extensionsTypeId`, and the two chrome actions it
+ * the declaration names in `extensionsTypeId`, and the chrome actions it
  * opts into) and then registers the domain with the implementation below. A
  * project that renders no screen container has no screen domain.
  */
@@ -25,9 +25,11 @@ import type {
   ActionPayload,
   MountStrategy,
 } from '@gears-frontx/react';
-import { extensionScreenSchema } from '@gears-frontx/frontx-template-shell';
+import { extensionScreenSchema, languageCodeSchema } from '@gears-frontx/frontx-template-shell';
+import { isShellLanguage } from '@/app/i18n/shellLanguages';
 import {
   CHROME_ACTION_SCHEMAS,
+  CHROME_SET_LANGUAGE,
   CHROME_SET_MENU_COLLAPSED,
   CHROME_SET_THEME,
 } from './chrome-actions';
@@ -55,7 +57,7 @@ class ScreenContainerHooks implements ContainerHooks {
   }
 }
 
-// The two readers below state, to TypeScript, an invariant the type system
+// The readers below state, to TypeScript, an invariant the type system
 // already enforces at runtime: `chrome-actions.ts` closes each chrome payload
 // around a single required field of a declared type, and the mediator validates
 // an action against that schema before it resolves any handler for it. So a
@@ -81,6 +83,16 @@ function readCollapsed(payload: Record<string, unknown> | undefined): boolean {
     );
   }
   return collapsed;
+}
+
+function readLanguage(payload: Record<string, unknown> | undefined): string {
+  const language = payload?.language;
+  if (typeof language !== 'string') {
+    throw new Error(
+      '[MFE Bootstrap] set_language payload has no string language; the action schema should have refused this action before it reached the handler',
+    );
+  }
+  return language;
 }
 
 class ScreenDomainImpl extends ExtensionDomainImplementation {
@@ -124,10 +136,10 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
     );
     // The host chrome a mounted screen may drive. The one thing neither the
     // action schema nor the domain declaration can decide is whether THIS host
-    // runs the plugin the action needs - `themes` and `layout` are both opt-in
-    // - so each handler resolves rather than throws when it does not: chrome is
-    // decoration around a screen, and a request the shell cannot honour should
-    // leave the screen running instead of failing its chain.
+    // runs the plugin the action needs - `themes`, `layout` and `i18n` are all
+    // opt-in - so each handler resolves rather than throws when it does not:
+    // chrome is decoration around a screen, and a request the shell cannot
+    // honour should leave the screen running instead of failing its chain.
     ctx.registerHandler(
       CHROME_SET_THEME,
       ActionHandler.fromFunction((_t, p) => {
@@ -146,6 +158,30 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
           console.warn('[MFE Bootstrap] set_menu_collapsed ignored: no layout plugin on this host');
         } else {
           app.actions.toggleMenuCollapsed({ collapsed: readCollapsed(p) });
+        }
+        return Promise.resolve();
+      }),
+    );
+    ctx.registerHandler(
+      CHROME_SET_LANGUAGE,
+      ActionHandler.fromFunction((_t, p) => {
+        if (typeof app.actions.setLanguage !== 'function') {
+          console.warn('[MFE Bootstrap] set_language ignored: no i18n plugin on this host');
+        } else {
+          // The action schema only checks the code against the SDK's language
+          // list, which is wider than what this shell carries words for.
+          // Storage, profile and the header control all go through
+          // `isShellLanguage`, and this handler does too: a code the shell
+          // cannot speak is ignored with a warning instead of switching to a
+          // language that has no words and no header entry.
+          const language = readLanguage(p);
+          if (!isShellLanguage(language)) {
+            console.warn(
+              `[MFE Bootstrap] set_language ignored: ${language} is not a language this shell offers`,
+            );
+          } else {
+            app.actions.setLanguage({ language });
+          }
         }
         return Promise.resolve();
       }),
@@ -169,10 +205,14 @@ class ScreenDomainFactory extends ExtensionDomainImplementationFactory {
  *
  * The types go first: the registry validates the declaration against them,
  * and an action carrying a chrome type can be dispatched as soon as the
- * domain is registered. The shipped `screenDomain` is spread rather than
- * edited: this shell opts itself into the two chrome actions its handlers
- * answer, and the declaration's `extensionsActions` stays untouched, since
- * listing them there would make them mandatory for every screen extension.
+ * domain is registered. The set is complete for the schemas it holds, the
+ * language code type included, so a host without the app entry's own schema
+ * block still resolves every reference the chrome actions declare.
+ *
+ * The shipped `screenDomain` is spread rather than edited: this shell opts
+ * itself into the chrome actions its handlers answer, and the declaration's
+ * `extensionsActions` stays untouched, since listing them there would make
+ * them mandatory for every screen extension.
  *
  * @param app - FrontX application instance whose registry hosts the domain
  */
@@ -181,12 +221,20 @@ export function registerScreenDomain(app: FrontXApp): void {
   if (!registry) {
     throw new Error('[MFE Bootstrap] mfeRegistry is not available on app instance');
   }
+  // The set_language schema validates its payload through a `$ref` to
+  // `gts://gts.frontx.i18n.lang.code.v1~`, so the language code type has to be
+  // on this type system before the chrome schemas: `registerSchema` resolves
+  // no references, and the mediator resolves them per action at dispatch.
+  registry.typeSystem.registerSchema(languageCodeSchema);
   registry.typeSystem.registerSchema(extensionScreenSchema);
   for (const schema of CHROME_ACTION_SCHEMAS) {
     registry.typeSystem.registerSchema(schema);
   }
   registry.registerDomain(
-    { ...screenDomain, actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED] },
+    {
+      ...screenDomain,
+      actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED, CHROME_SET_LANGUAGE],
+    },
     new ScreenDomainFactory(app),
   );
 }

@@ -27,15 +27,17 @@ import {
 
 import {
   CHROME_ACTION_SCHEMAS,
+  CHROME_SET_LANGUAGE,
   CHROME_SET_MENU_COLLAPSED,
   CHROME_SET_THEME,
 } from './chrome-actions';
 
-/** Both chrome action types with a payload their schema accepts, so a case
+/** Every chrome action type with a payload its schema accepts, so a case
  * that fails does so over the target and nothing else. */
 const CHROME_ACTIONS = [
   { type: CHROME_SET_THEME, payload: { themeId: 'dark' } },
   { type: CHROME_SET_MENU_COLLAPSED, payload: { collapsed: true } },
+  { type: CHROME_SET_LANGUAGE, payload: { language: 'es' } },
 ] as const;
 
 /** The schema carrying `actionTypeId`, found by its `$id` rather than by
@@ -133,13 +135,14 @@ describe('the chrome action JSON schemas against the constants they are addresse
     const declaredIds = CHROME_ACTION_SCHEMAS.map((schema) => schema.$id).sort();
 
     expect(declaredIds).toEqual(
-      [CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED].map((type) => `gts://${type}`).sort(),
+      [CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED, CHROME_SET_LANGUAGE].map((type) => `gts://${type}`).sort(),
     );
   });
 
   it.each([
     ['set_theme', CHROME_SET_THEME],
     ['set_menu_collapsed', CHROME_SET_MENU_COLLAPSED],
+    ['set_language', CHROME_SET_LANGUAGE],
   ])('points %s at the screen domain the shell actually registers', (_name, actionTypeId) => {
     expect(targetRefOf(schemaFor(actionTypeId))).toBe(FRONTX_SCREEN_DOMAIN);
   });

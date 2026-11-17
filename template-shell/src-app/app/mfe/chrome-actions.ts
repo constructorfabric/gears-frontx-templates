@@ -5,11 +5,11 @@
  * A microfrontend runs in its own module graph (per-load blob instantiation,
  * ADR-0011), so it has no handle on the host app and no shared event bus to
  * emit on. The actions chain is the one declared upward channel, and it carries
- * a payload. These two action types are what this shell chooses to expose over
+ * a payload. These action types are what this shell chooses to expose over
  * it; the handlers live in `bootstrap.ts` and call the public `app.actions`
  * surface.
  *
- * Both are app-layer, not framework: `screenDomain` in
+ * They are app-layer, not framework: `screenDomain` in
  * `@gears-frontx/framework` ships to every template, and a host that does not
  * want its chrome driven from a microfrontend simply does not spread these into
  * its own screen-domain declaration.
@@ -17,6 +17,7 @@
 
 import type { JSONSchema } from '@gears-frontx/react';
 
+import setLanguageActionSchema from './gts/frontx.screensets/schemas/chrome/set_language.v1.json';
 import setMenuCollapsedActionSchema from './gts/frontx.screensets/schemas/chrome/set_menu_collapsed.v1.json';
 import setThemeActionSchema from './gts/frontx.screensets/schemas/chrome/set_theme.v1.json';
 
@@ -28,8 +29,12 @@ export const CHROME_SET_THEME =
 export const CHROME_SET_MENU_COLLAPSED =
   'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_menu_collapsed.v1~';
 
+/** Switches the shell's language - the payload carries `language`. */
+export const CHROME_SET_LANGUAGE =
+  'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_language.v1~';
+
 /**
- * The two schemas themselves are JSON, under
+ * The schemas themselves are JSON, under
  * `gts/frontx.screensets/schemas/chrome/`, where the directory path spells the
  * GTS id the way `packages/gts-plugin/src/frontx.mfes/schemas/ext/` and the
  * framework's own `gts/frontx.screensets/instances/domains/` do. Each file
@@ -43,8 +48,16 @@ export const CHROME_SET_MENU_COLLAPSED =
  * They must reach the type system before `registerDomain`, because the mediator
  * resolves an action's schema from its `type` at dispatch time and rejects an
  * action it cannot validate.
+ *
+ * Unlike the theme and menu schemas, whose payload fields are declared inline,
+ * set_language constrains its payload through a `$ref` to
+ * `gts://gts.frontx.i18n.lang.code.v1~`, the SDK's language list. Registering
+ * this array on a type system therefore also requires `languageCodeSchema`
+ * (`@gears-frontx/frontx-template-shell`) on that same type system, registered
+ * ahead of these schemas: `registerSchema` resolves no references itself.
  */
 export const CHROME_ACTION_SCHEMAS: JSONSchema[] = [
   setThemeActionSchema as JSONSchema,
   setMenuCollapsedActionSchema as JSONSchema,
+  setLanguageActionSchema as JSONSchema,
 ];

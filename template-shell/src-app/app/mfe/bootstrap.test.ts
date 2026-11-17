@@ -185,16 +185,34 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    const { CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } = await import('./chrome-actions');
+    const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE, CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } =
+      await import('./chrome-actions');
+    const { languageCodeSchema } = await import('@gears-frontx/frontx-template-shell');
     await bootstrapMFE(mockApp as never);
 
     const [screenDeclaration] = registerDomain.mock.calls[0];
-    expect(screenDeclaration.actions).toEqual([CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED]);
+    expect(screenDeclaration.actions).toEqual([
+      CHROME_SET_THEME,
+      CHROME_SET_MENU_COLLAPSED,
+      CHROME_SET_LANGUAGE,
+    ]);
     // Making them domain actions must not make them mandatory for the
     // extensions that mount into the domain.
     expect(screenDeclaration.extensionsActions).toBeUndefined();
-    // The screen extension type and the two chrome action types.
-    expect(registerSchema).toHaveBeenCalledTimes(3);
+    // The screen extension type, the language code type the set_language
+    // schema references, and the three chrome action types.
+    expect(registerSchema).toHaveBeenCalledTimes(5);
+    expect(registerSchema).toHaveBeenCalledWith(languageCodeSchema);
+    // The language code type has to precede the chrome schemas: registerSchema
+    // resolves no $refs, and the set_language payload points at that type.
+    // Assert the order, not just that both were registered at some point.
+    const registeredSchemas = registerSchema.mock.calls.map(([schema]) => schema);
+    const languageCodeAt = registeredSchemas.indexOf(languageCodeSchema);
+    const setLanguageAt = registeredSchemas.indexOf(
+      CHROME_ACTION_SCHEMAS.find((schema) => schema.$id === `gts://${CHROME_SET_LANGUAGE}`),
+    );
+    expect(languageCodeAt).toBeGreaterThanOrEqual(0);
+    expect(setLanguageAt).toBeGreaterThan(languageCodeAt);
   });
 
   it("the screen mount handler only calls the strategy's own mount — URL reflection is the runtime's `reflect` commands to the injected router (ADR 0036), not this handler's concern", async () => {
@@ -526,9 +544,57 @@ describe('bootstrapMFE (host-app)', () => {
       expect(toggleMenuCollapsed).toHaveBeenCalledWith({ collapsed: true });
     });
 
+    it('changes the language a set_language action names through the host i18n plugin, and the language shared property follows', async () => {
+      const { CHROME_SET_LANGUAGE } = await import('./chrome-actions');
+      // The real host app is the only witness for both halves of this case.
+      // The handler forwards the code to `app.actions.setLanguage`, the action
+      // the i18n plugin provides, and the event that action emits is what the
+      // microfrontends plugin republishes the `language` shared property from.
+      // The registry that plugin builds is not the mock the screen domain
+      // registers on above, so the propagation is observed on the real one.
+      const react = await import('@gears-frontx/react');
+      const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
+        '@gears-frontx/frontx-template-shell',
+      );
+      // The schemas `main.tsx` puts on the type system, so the registry
+      // validates the shared property value the way the app itself runs.
+      react.gtsPlugin.registerSchema(themeSchema);
+      react.gtsPlugin.registerSchema(languageCodeSchema);
+      react.gtsPlugin.registerSchema(languageSchema);
+      react.gtsPlugin.registerSchema(screenLabelsSchema);
+      const host = react
+        .createFrontX()
+        .use(react.effects())
+        .use(react.i18n())
+        .use(react.microfrontends({ typeSystem: react.gtsPlugin }))
+        .build();
+
+      try {
+        const updateSpy = vi.spyOn(host.mfeRegistry!, 'updateSharedProperty');
+        const handlers = await chromeHandlersFor({ setLanguage: host.actions.setLanguage });
+
+        // A code the shell lists: the handler forwards it to the i18n plugin.
+        // `es` below in the refusal cases is admitted by the schema but never
+        // reaches the plugin, since the shell carries no words for it.
+        await handlerFor(handlers, CHROME_SET_LANGUAGE).handleAction(CHROME_SET_LANGUAGE, {
+          language: 'de',
+        });
+
+        // The registry holds the new language, and the microfrontends plugin
+        // passed it on as the `language` shared property value.
+        await vi.waitFor(() => {
+          expect(host.i18nRegistry.getLanguage()).toBe('de');
+          expect(updateSpy).toHaveBeenCalledWith(react.FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+        });
+      } finally {
+        host.destroy();
+      }
+    });
+
     it.each([
       ['set_theme', 'CHROME_SET_THEME', { themeId: 'dark' }],
       ['set_menu_collapsed', 'CHROME_SET_MENU_COLLAPSED', { collapsed: true }],
+      ['set_language', 'CHROME_SET_LANGUAGE', { language: 'es' }],
     ] as const)(
       'resolves %s on a host that runs no plugin for it, leaving the chain to continue',
       async (_name, constantName, payload) => {
@@ -536,8 +602,8 @@ describe('bootstrapMFE (host-app)', () => {
         const actionTypeId = chromeActions[constantName];
 
         // An empty `actions` surface is the shell that opted into neither the
-        // themes nor the layout plugin — the only case these handlers still
-        // guard against.
+        // themes, the layout nor the i18n plugin - the only case these
+        // handlers still guard against.
         const handlers = await chromeHandlersFor({});
 
         await expect(
@@ -559,6 +625,125 @@ describe('bootstrapMFE (host-app)', () => {
         handlerFor(handlers, CHROME_SET_THEME).handleAction(CHROME_SET_THEME, {}),
       ).toThrow(/no string themeId/);
       expect(changeTheme).not.toHaveBeenCalled();
+    });
+
+    it('refuses a set_language payload carrying no language rather than driving the plugin with it', async () => {
+      const setLanguage = vi.fn();
+      const { CHROME_SET_LANGUAGE } = await import('./chrome-actions');
+
+      const handlers = await chromeHandlersFor({ setLanguage });
+
+      // The action schema marks `language` required, so the mediator refuses
+      // this action before any handler sees it; reaching the throw means schema
+      // and handler have drifted apart.
+      expect(() =>
+        handlerFor(handlers, CHROME_SET_LANGUAGE).handleAction(CHROME_SET_LANGUAGE, {}),
+      ).toThrow(/no string language/);
+      expect(setLanguage).not.toHaveBeenCalled();
+    });
+
+    it('refuses a set_language payload carrying an unknown language code, and passes a listed one to the plugin', async () => {
+      // `handleAction` is the call a dispatch makes only after it has admitted
+      // the action on the type system, which the direct calls above skip. This
+      // case makes both calls in the mediator's order against the real type
+      // system: the schema's `$ref` to the language code type refuses the
+      // payload, so the handler never reaches the i18n plugin.
+      const react = await import('@gears-frontx/react');
+      const actual = await vi.importActual<typeof import('@gears-frontx/react')>(
+        '@gears-frontx/react',
+      );
+      const {
+        themeSchema,
+        languageCodeSchema,
+        languageSchema,
+        extensionScreenSchema,
+      } = await import('@gears-frontx/frontx-template-shell');
+      const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
+      const setLanguage = vi.fn();
+      const handlers = await chromeHandlersFor({ setLanguage });
+      const screenDomainTypeId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
+
+      // The real screen domain instance is what the schema's `target` ref
+      // resolves against; the file's `@gears-frontx/react` mock replaces the
+      // export, so take the actual one.
+      for (const schema of [
+        themeSchema,
+        languageCodeSchema,
+        languageSchema,
+        extensionScreenSchema,
+        ...CHROME_ACTION_SCHEMAS,
+      ]) {
+        react.gtsPlugin.registerSchema(schema);
+      }
+      react.gtsPlugin.register(actual.screenDomain);
+
+      const dispatch = (language: string) => {
+        react.gtsPlugin.register({
+          type: CHROME_SET_LANGUAGE,
+          target: screenDomainTypeId,
+          payload: { language },
+        });
+        return handlerFor(handlers, CHROME_SET_LANGUAGE).handleAction(CHROME_SET_LANGUAGE, {
+          language,
+        });
+      };
+
+      expect(() => dispatch('xx')).toThrow(/to be one of/);
+      expect(setLanguage).not.toHaveBeenCalled();
+
+      // Positive control: through this same setup, a listed code is admitted
+      // and does reach the plugin. Without it the refusal above would also
+      // pass if the domain registration or the target `$ref` were broken, and
+      // the assertion that the plugin was never called would say nothing.
+      await dispatch('de');
+      expect(setLanguage).toHaveBeenCalledWith({ language: 'de' });
+    });
+
+    it('ignores a set_language code the schema admits but the shell does not list, and warns', async () => {
+      // The schema checks the code against the SDK's language list, which is
+      // wider than the languages the shell carries words for. `'es'` is one of
+      // the SDK's codes and `'xx'` is not, so unlike the case above this
+      // dispatch passes the type system and reaches the handler: the guard in
+      // the handler is what refuses it, and the plugin is never called.
+      const react = await import('@gears-frontx/react');
+      const actual = await vi.importActual<typeof import('@gears-frontx/react')>(
+        '@gears-frontx/react',
+      );
+      const {
+        themeSchema,
+        languageCodeSchema,
+        languageSchema,
+        extensionScreenSchema,
+      } = await import('@gears-frontx/frontx-template-shell');
+      const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
+      const setLanguage = vi.fn();
+      const handlers = await chromeHandlersFor({ setLanguage });
+      const screenDomainTypeId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
+
+      for (const schema of [
+        themeSchema,
+        languageCodeSchema,
+        languageSchema,
+        extensionScreenSchema,
+        ...CHROME_ACTION_SCHEMAS,
+      ]) {
+        react.gtsPlugin.registerSchema(schema);
+      }
+      react.gtsPlugin.register(actual.screenDomain);
+
+      react.gtsPlugin.register({
+        type: CHROME_SET_LANGUAGE,
+        target: screenDomainTypeId,
+        payload: { language: 'es' },
+      });
+      await handlerFor(handlers, CHROME_SET_LANGUAGE).handleAction(CHROME_SET_LANGUAGE, {
+        language: 'es',
+      });
+
+      expect(setLanguage).not.toHaveBeenCalled();
+      expect(vi.mocked(console.warn)).toHaveBeenCalledWith(
+        expect.stringContaining('es is not a language this shell offers'),
+      );
     });
   });
 
