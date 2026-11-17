@@ -52,23 +52,17 @@ Minimize the panel to a circular button in the bottom-right corner when screen s
 
 ## Integration
 
-### Automatic Loading (Recommended)
-
-FrontXProvider automatically detects studio package installation and loads it in development mode only. No explicit imports or configuration required - install the package and it activates automatically in development.
-
-### Manual Integration (Advanced)
-
-For custom loading scenarios, import the StudioOverlay component directly and conditionally render based on environment. Useful when implementing custom development mode detection or build-time environment variables.
+The application entry calls `loadStudioOverlay()` (`src-app/app/studioOverlay.ts`) before the first render. In development mode the loader dynamically imports `@gears-frontx/studio` and returns the `StudioOverlay` component, which the entry renders with the app; in every other mode it resolves to `null` without importing Studio. No other app module imports Studio directly.
 
 ## Production Safety
 
-### Tree-Shaking
+### Dev-Only Loading
 
-Studio code automatically eliminates from production bundles through conditional imports. FrontXProvider uses lazy loading with environment checks to ensure zero studio code reaches production.
+`loadStudioOverlay()` gates the Studio import on `import.meta.env.DEV`. In a production build the flag is false, the loader resolves to `null`, and the dynamic import is tree-shaken out of the bundle, so no Studio code ships to users.
 
 ### Bundle Verification
 
-After production builds, studio adds 0 bytes to bundle size. No studio code appears in the dist/assets directory. The framework's conditional import pattern guarantees complete code elimination.
+After a production build, no Studio code appears in the dist/assets directory. The only import of the package sits behind the `import.meta.env.DEV` check in `src-app/app/studioOverlay.ts`, so nothing reachable from the entry pulls Studio into the production bundle.
 
 ## Technical Architecture
 

@@ -82,7 +82,15 @@ describe('useDraggable', () => {
     });
   });
 
-  it('re-clamps the current position when the viewport shrinks', () => {
+  const resizeTo = (width: number, height: number) => {
+    Object.defineProperty(globalThis, 'innerWidth', { value: width, configurable: true });
+    Object.defineProperty(globalThis, 'innerHeight', { value: height, configurable: true });
+    act(() => {
+      globalThis.dispatchEvent(new Event('resize'));
+    });
+  };
+
+  it('re-clamps the displayed position when the viewport shrinks, without writing it', () => {
     localStorage.setItem(STORAGE_KEYS.POSITION, JSON.stringify({ x: 760, y: 560 }));
 
     const { result } = renderHook(() =>
@@ -91,16 +99,47 @@ describe('useDraggable', () => {
       })
     );
 
-    Object.defineProperty(globalThis, 'innerWidth', { value: 700, configurable: true });
-    Object.defineProperty(globalThis, 'innerHeight', { value: 500, configurable: true });
-
-    act(() => {
-      globalThis.dispatchEvent(new Event('resize'));
-    });
+    resizeTo(700, 500);
 
     expect(result.current.position).toEqual({ x: 280, y: 180 });
-    expect(eventBus.emit).toHaveBeenCalledWith(StudioEvents.PositionChanged, {
-      position: { x: 280, y: 180 },
-    });
+    expect(eventBus.emit).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.POSITION)).toBe(JSON.stringify({ x: 760, y: 560 }));
+  });
+
+  it('returns the button to its saved position when the window grows again', () => {
+    localStorage.setItem(STORAGE_KEYS.BUTTON_POSITION, JSON.stringify({ x: 600, y: 400 }));
+
+    const { result } = renderHook(() =>
+      useDraggable({
+        panelSize: { width: 48, height: 48 },
+        storageKey: STORAGE_KEYS.BUTTON_POSITION,
+      })
+    );
+
+    resizeTo(80, 80);
+    expect(result.current.position).toEqual({ x: 20, y: 20 });
+
+    resizeTo(1200, 900);
+    expect(result.current.position).toEqual({ x: 600, y: 400 });
+    expect(eventBus.emit).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.BUTTON_POSITION)).toBe(JSON.stringify({ x: 600, y: 400 }));
+  });
+
+  it('keeps the default bottom-right corner across a shrink and a grow, storing nothing', () => {
+    const { result } = renderHook(() =>
+      useDraggable({
+        panelSize: { width: 48, height: 48 },
+        storageKey: STORAGE_KEYS.BUTTON_POSITION,
+      })
+    );
+    expect(result.current.position).toEqual({ x: 1132, y: 832 });
+
+    resizeTo(80, 80);
+    expect(result.current.position).toEqual({ x: 20, y: 20 });
+
+    resizeTo(390, 844);
+    expect(result.current.position).toEqual({ x: 322, y: 776 });
+    expect(eventBus.emit).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.BUTTON_POSITION)).toBeNull();
   });
 });

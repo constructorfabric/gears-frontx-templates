@@ -490,13 +490,12 @@ export default [
     },
   },
 
-  // App: Studio should only be imported via FrontXProvider (auto-detection)
-  // Only App.tsx variants are allowed to import StudioOverlay directly
+  // App: Studio is dev tooling loaded once before the first render
+  // Only the studioOverlay.ts loader is allowed to import @gears-frontx/studio
   {
     files: ['src-app/**/*'],
     ignores: [
-      'src-app/app/App.tsx', // Monorepo demo app - renders StudioOverlay
-      'src-app/app/App.no-uikit.tsx', // --uikit none variant - renders StudioOverlay
+      'src-app/app/studioOverlay.ts', // Dev-only loader - imports Studio before the first render
     ],
     rules: {
       'no-restricted-imports': [
@@ -506,7 +505,7 @@ export default [
             {
               group: ['@gears-frontx/studio', '@gears-frontx/studio/**'],
               message:
-                'STUDIO VIOLATION: Studio should not be imported directly in app code. FrontXProvider auto-detects and loads Studio in development mode.',
+                'STUDIO VIOLATION: Studio should not be imported directly in app code. Studio is loaded by src-app/app/studioOverlay.ts in development mode only.',
             },
           ],
         },

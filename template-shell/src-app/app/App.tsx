@@ -17,24 +17,29 @@
  * - MFE extension loading and mounting
  * - DOM container for MFE content
  *
- * StudioOverlay (dev mode only):
+ * StudioOverlay (development builds only; a production build carries none of
+ * it):
  * - Development tools for theme/screenset switching
  * - Language selection
  * - API mode toggle (services register their own mocks)
+ *
+ * The entry loads it with loadStudioOverlay() before the first render and
+ * passes it in as a prop, so its restore of mock mode, theme and language
+ * runs in the same commit as the app instead of after a lazy chunk.
  */
 
+import type { ComponentType } from 'react';
 import { Layout } from '@/app/layout';
-import { StudioOverlay } from '@gears-frontx/studio';
 import { MfeScreenContainer } from '@/app/mfe/MfeScreenContainer';
 import { ScreenLoadFailed } from '@/app/mfe/ScreenLoadFailed';
 
-function App() {
+function App({ StudioOverlay }: { StudioOverlay?: ComponentType | null }) {
   return (
     <>
       <Layout>
         <MfeScreenContainer LoadFailed={ScreenLoadFailed} />
       </Layout>
-      <StudioOverlay />
+      {StudioOverlay ? <StudioOverlay /> : null}
     </>
   );
 }

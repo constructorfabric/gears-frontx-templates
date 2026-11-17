@@ -12,6 +12,7 @@ import '@gears-frontx/ui-kit'; // side-effect: styles the host's own ui-kit comp
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import { registerBootstrapEffects } from '@/app/effects/bootstrapEffects'; // Register app-level effects
 import App from './App';
+import { loadStudioOverlay } from './studioOverlay';
 
 // Import all themes
 import { DEFAULT_THEME_ID, defaultTheme } from '@/app/themes/default';
@@ -82,14 +83,24 @@ stampAppliedThemeId(app.themeRegistry);
  * Note: Mock API is controlled via the FrontX Studio panel.
  * The mock plugin (included in full preset) handles mock plugin lifecycle automatically.
  */
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <FrontXProvider app={app}>
-      <App />
-      <Toaster />
-    </FrontXProvider>
-  </StrictMode>
-);
+// Studio is dev tooling whose provider restores mock mode, theme and language
+// on mount. Without top-level await the render waits for loadStudioOverlay()
+// so that restore runs in the same commit as the app; in a production build
+// loadStudioOverlay() resolves to null and no Studio is rendered.
+void loadStudioOverlay()
+  .then((StudioOverlay) => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <FrontXProvider app={app}>
+          <App StudioOverlay={StudioOverlay} />
+          <Toaster />
+        </FrontXProvider>
+      </StrictMode>
+    );
+  })
+  .catch((error: unknown) => {
+    console.error('[app] failed to render', error);
+  });
 
 // Dev-only verification hooks. The shell defines only the convention: any
 // installed verify package (src-app/verify_packages/*, delivered by

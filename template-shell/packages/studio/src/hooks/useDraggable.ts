@@ -27,6 +27,14 @@ function clampToViewport(pos: Position, size: Size): Position {
 }
 // @cpt-end:cpt-frontx-algo-studio-devtools-clamp-to-viewport:p1:inst-1
 
+// Default position: bottom-right with margin, for the current window size.
+function defaultPosition(size: Size): Position {
+  return {
+    x: window.innerWidth - size.width - VIEWPORT_MARGIN,
+    y: window.innerHeight - size.height - VIEWPORT_MARGIN,
+  };
+}
+
 interface UseDraggableProps {
   panelSize: Size;
   storageKey?: string;
@@ -39,14 +47,13 @@ interface UseDraggableProps {
 // @cpt-begin:cpt-frontx-flow-studio-devtools-viewport-clamp:p1:inst-1
 // @cpt-begin:cpt-frontx-state-studio-devtools-drag:p1:inst-1
 export const useDraggable = ({ panelSize, storageKey = STORAGE_KEYS.POSITION }: UseDraggableProps) => {
-  // Calculate default position (bottom-right with margin)
-  const getDefaultPosition = (): Position => ({
-    x: window.innerWidth - panelSize.width - VIEWPORT_MARGIN,
-    y: window.innerHeight - panelSize.height - VIEWPORT_MARGIN,
-  });
-
+  // The position the user chose by dragging, or null for the default corner.
+  // A resize clamps only what is displayed; this preference changes only on a
+  // drag, so the element returns to it once the window is large enough again.
+  const [storedPosition] = useState(() => loadStudioState<Position | null>(storageKey, null));
+  const preferred = useRef<Position | null>(storedPosition);
   const [position, setPosition] = useState<Position>(() =>
-    clampToViewport(loadStudioState(storageKey, getDefaultPosition()), panelSize)
+    clampToViewport(storedPosition ?? defaultPosition(panelSize), panelSize)
   );
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef<Position>({ x: 0, y: 0 });
@@ -69,6 +76,7 @@ export const useDraggable = ({ panelSize, storageKey = STORAGE_KEYS.POSITION }: 
       const newY = clamp(e.clientY - dragStartPos.current.y, VIEWPORT_MARGIN, maxY);
 
       const newPosition = { x: newX, y: newY };
+      preferred.current = newPosition;
       setPosition(newPosition);
 
       // Emit appropriate event based on storage key
@@ -92,21 +100,14 @@ export const useDraggable = ({ panelSize, storageKey = STORAGE_KEYS.POSITION }: 
   }, [isDragging, panelSize.width, panelSize.height, storageKey]);
 
   useEffect(() => {
+    // Display only: no position event, so the stored preference is untouched.
     const handleResize = () => {
-      setPosition((prev) => {
-        const clamped = clampToViewport(prev, panelSize);
-        if (clamped.x === prev.x && clamped.y === prev.y) return prev;
-        const eventName =
-          storageKey === STORAGE_KEYS.BUTTON_POSITION
-            ? StudioEvents.ButtonPositionChanged
-            : StudioEvents.PositionChanged;
-        eventBus.emit(eventName, { position: clamped });
-        return clamped;
-      });
+      const next = clampToViewport(preferred.current ?? defaultPosition(panelSize), panelSize);
+      setPosition((prev) => (prev.x === next.x && prev.y === next.y ? prev : next));
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [panelSize.width, panelSize.height, panelSize, storageKey]);
+  }, [panelSize.width, panelSize.height, panelSize]);
 
   return {
     position,
