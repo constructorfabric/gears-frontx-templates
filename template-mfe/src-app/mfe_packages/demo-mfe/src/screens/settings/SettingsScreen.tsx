@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import type { ChildMfeBridge } from '@gears-frontx/react';
 import {
   FRONTX_SCREEN_DOMAIN,
@@ -83,13 +83,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ bridge }) => {
    * starts one, and replacing the radios with skeletons would drop the
    * keyboard focus to the document and the returning group would not regain
    * it. The words already on screen stay until the new dictionary lands.
+   *
+   * The flag is set during render rather than in an effect, so when the first
+   * load lands React redoes that render before committing it, instead of
+   * committing it and then rendering again. `react-hooks/set-state-in-effect`
+   * rejects the effect form.
    */
   const [hasLoadedTranslations, setHasLoadedTranslations] = useState(false);
-  useEffect(() => {
-    if (!loading) {
-      setHasLoadedTranslations(true);
-    }
-  }, [loading]);
+  if (!loading && !hasLoadedTranslations) {
+    setHasLoadedTranslations(true);
+  }
 
   // Send the chosen language to the shell. The group's change callback is
   // generically typed and hands back whatever the kit emits, so the value is
