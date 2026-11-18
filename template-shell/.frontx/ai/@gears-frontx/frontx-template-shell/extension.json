@@ -13,6 +13,11 @@
       "path": "guidelines/navigation-composition.md"
     },
     {
+      "id": "sign-in",
+      "category": "guidelines",
+      "path": "guidelines/sign-in.md"
+    },
+    {
       "id": "verification-walk-axes",
       "category": "guidelines",
       "path": "guidelines/verification-walk-axes.md"

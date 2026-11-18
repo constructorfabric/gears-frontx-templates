@@ -23,6 +23,12 @@ Authoritative files:
   its registration, the screen extension type included
 - `src-app/app/mfe/MfeScreenContainer.tsx` - starts the bootstrap with the
   screen domain and renders the screen domain's own `<ExtensionDomainSlot>`
+- `src-app/app/mfe/defaultScreen.ts` - the default screen, the menu's first
+  item by `presentation.order`, and the address entry the router reads
+- `src-app/app/mfe/modalDomain.ts` - the popup domain's implementation, the
+  modal extension domain (see the `sign-in` guideline in this bundle)
+- `src-app/app/i18n/languagePersistence.ts` - the language the shell reads
+  from storage at startup
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
 - `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/screen.v1.json` -
   the screen domain instance
@@ -79,17 +85,35 @@ for instance) calls `navigation()` from the same package. Everything outside a
 runtime's private subroute, including which screen is shown, changes through
 actions (`mount_ext`, `unmount_ext`), never through navigation.
 
-An address that names no screen leaves the content area empty, on purpose. At
-page load the router mounts only a screen the address names by a registered
-`route`; an unknown name is dropped and the address is rewritten without it,
-so a stale bookmark opens the shell with an empty content area and no menu
-item active, the same as an address naming no screen at all.
+An address that names no screen opens the default screen. At page load the
+router mounts only a screen the address names by a registered `route`, and an
+unknown name is dropped and the address rewritten without it, so a stale
+bookmark still opens the shell with an empty content area and no menu item
+active. An address that names no screen at all is a different case: once the
+bootstrap has settled, `MfeScreenContainer` mounts the menu's first item, the
+screen with the lowest `presentation.order` (a missing order counts as
+`999`), and writes it into the address with the `replace` history intent, so
+the visit gains no history entry and the address reads as if that screen had
+been opened all along. `firstScreenId` and `screensInMenuOrder` in
+`src-app/app/mfe/defaultScreen.ts` select it with the same sort the menu
+renders, so the default screen is by definition the first menu item, and a
+deep link, a screen already mounted and a failed bootstrap all win over it.
 `MfeScreenContainer` shows no "no screen matches" message: it renders the
 screen domain's slot and, for a screen or bootstrap that failed to load, the
 `LoadFailed` error state, and nothing else. A shell that wants an empty state
 of its own renders it once bootstrap has settled while `screenState` (in
 `src-app/app/mfe/screenState.ts`) names no screen and no load failure is
 reported; it needs no route state for that.
+
+## The language
+
+The shell may read `localStorage` to decide the language at startup:
+`applyPersistedLanguage` (`src-app/app/i18n/languagePersistence.ts`) reads the
+key `frontx:shell:language` before the first render and applies a language the
+project lists. A screen never reads storage. It takes the language from the
+`language` shared property its entry requires, and it sends a change upward
+with the `set_language` action of the screen domain, as the example settings
+screen does (`demo-mfe`, `src/screens/settings/SettingsScreen.tsx`).
 
 ## From `mfe.json` to the browser
 
@@ -130,13 +154,16 @@ package (`MfeManifestConfig` in `bootstrap.ts`):
 
 ## Registration order and ownership
 
-A domain exists because something implements it. The shell implements one,
-the screen domain: `MfeScreenContainer` starts the bootstrap
-(`bootstrapOnce(app, [registerScreenDomain])`), and the menu only waits for
-that bootstrap to settle. A shell that renders no screen container runs no
-bootstrap and has no screen domain, and its menu stays blank. The shell
-registers no `sidebar`, `popup` or `overlay` domain: nothing in it renders
-one.
+A domain exists because something implements it. The shell implements two,
+the screen domain and the popup domain, the second as its modal extension
+domain: `MfeScreenContainer` starts the bootstrap
+(`bootstrapOnce(app, [registerScreenDomain, registerModalDomain])`), and the
+menu only waits for that bootstrap to settle. A shell that renders no screen
+container runs no bootstrap and has no screen domain, and its menu stays
+blank. The popup domain exists because the container also renders the modal
+layer, and the sign-in flow mounts into it (the `sign-in` guideline in this
+bundle). The shell registers no `sidebar` or `overlay` domain: nothing in it
+renders one.
 
 `bootstrapMFE()` proceeds in a fixed order:
 
@@ -146,9 +173,11 @@ one.
    (`extension_screen.v1.json`) and the shell's chrome action schemas, then
    the `screen` domain (with `ExclusiveMountStrategy`: one mounted screen at a
    time; the domain declares no `unmount_ext` and registers no handler for
-   it). The walk decides per extension whether this host admits it by
-   checking which domains are registered, so this step comes before the
-   manifests are walked.
+   it). `registerModalDomain` does the same for the popup domain in the same
+   step: the modal extension type (`extension_modal.v1.json`), the `sign_in`
+   action schema, then the domain with `OptionalMountStrategy`. The walk
+   decides per extension whether this host admits it by checking which domains
+   are registered, so this step comes before the manifests are walked.
 3. Broadcast initial shared properties (`theme`, `language`).
 4. Fetch the manifest aggregate. An empty aggregate ends the bootstrap here
    with a warning.
@@ -208,9 +237,12 @@ declare for it.
 
 Base types (`extension.v1`, `domain.v1`, entries, actions, shared properties,
 lifecycle) are owned by `@gears-frontx/gts-plugin` and never redefined here.
-The shell owns one derived type, `extension_screen.v1.json`, which is what
-makes a screen extension menu-renderable — it requires the extension's
-top-level `route` and its `presentation`:
+The shell owns two derived types. `extension_screen.v1.json` is what makes a
+screen extension menu-renderable: it requires the extension's top-level
+`route` and its `presentation`. `extension_modal.v1.json` is the modal
+domain's, and it requires `presentation.size` and `presentation.cancelable`
+beside `label` (the `sign-in` guideline in this bundle covers it). The screen
+type's fields:
 
 | Field | Required | Meaning |
 |---|---|---|

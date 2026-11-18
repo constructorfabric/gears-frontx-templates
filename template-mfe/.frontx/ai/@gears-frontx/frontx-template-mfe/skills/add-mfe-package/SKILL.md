@@ -24,6 +24,14 @@ follow `workflows/add-mfe-packages-parallel.md` in this bundle: it phases this
 skill's steps so the per-package work runs concurrently — this skill remains the
 authority on each step.
 
+**A request for sign-in, login or authentication is not a screen.** It is
+routed to the sign-in extension of the host shell's modal domain (the
+framework's popup domain), which the shell already mounts from its own actions
+chain: add no screen, no menu item and no domain for it, and work from the
+`sign-in` guideline in the template-shell bundle and from `demo-mfe`'s sign-in
+modal (`src/screens/signin/`). This skill covers only what a signed-in user
+opens from the menu.
+
 ## What template-mfe provides
 
 - A working, disposable MFE scaffold at `src-app/mfe_packages/_blank-mfe/`: Shadow DOM
