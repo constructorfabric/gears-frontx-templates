@@ -53,6 +53,7 @@ describe('the shell translation loader', () => {
     expect(word(en, 'menu.close')).toBe('Close menu');
     expect(word(en, 'header.user')).toBe('User');
     expect(word(en, 'header.language')).toBe('Language');
+    expect(word(en, 'modal.close')).toBe('Close');
   });
 
   it('serves the German words', async () => {
@@ -66,6 +67,7 @@ describe('the shell translation loader', () => {
     expect(word(de, 'menu.close')).toBe('Menü schließen');
     expect(word(de, 'header.user')).toBe('Nutzer');
     expect(word(de, 'header.language')).toBe('Sprache');
+    expect(word(de, 'modal.close')).toBe('Schließen');
   });
 
   it('carries the same keys in the German dictionary as in the English one', async () => {

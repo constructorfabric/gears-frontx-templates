@@ -18,9 +18,11 @@ import languageSchemaJson from './schemas/language.v1.json';
 import languageCodeSchemaJson from './schemas/language_code.v1.json';
 import screenLabelsSchemaJson from './schemas/screen_labels.v1.json';
 import extensionScreenSchemaJson from './schemas/extension_screen.v1.json';
+import extensionModalSchemaJson from './schemas/extension_modal.v1.json';
 
 export const themeSchema = themeSchemaJson as JSONSchema;
 export const languageSchema = languageSchemaJson as JSONSchema;
 export const languageCodeSchema = languageCodeSchemaJson as JSONSchema;
 export const screenLabelsSchema = screenLabelsSchemaJson as JSONSchema;
 export const extensionScreenSchema = extensionScreenSchemaJson as JSONSchema;
+export const extensionModalSchema = extensionModalSchemaJson as JSONSchema;

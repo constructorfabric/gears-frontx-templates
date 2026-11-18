@@ -1,4 +1,11 @@
-export { themeSchema, languageCodeSchema, languageSchema, extensionScreenSchema, screenLabelsSchema } from './gts';
+export {
+  themeSchema,
+  languageCodeSchema,
+  languageSchema,
+  extensionScreenSchema,
+  extensionModalSchema,
+  screenLabelsSchema,
+} from './gts';
 export { LayoutDomain } from './layout-domain';
 export { RestMockPlugin, type RestMockConfig } from './api/plugins/RestMockPlugin';
 export { SseMockPlugin, type SseMockConfig } from './api/plugins/SseMockPlugin';

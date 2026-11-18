@@ -5,6 +5,7 @@ import { FrontXProvider, apiRegistry, createFrontX, presets, microfrontends, Mfe
 import { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
 import { Toaster } from '@/app/components/ui/sonner';
 import { AccountsApiService } from '@/app/api';
+import { devAuthPlugins, wireDevSignInTriggers } from '@/app/auth/devAuth';
 import '@gears-frontx/ui-kit/theme.css'; // UI-kit design tokens (imported exactly once, at the app entry)
 import './font.css'; // Registers Inter, the face the kit's --font-sans and --font-heading name first
 import './globals.css'; // Global styles with CSS variables
@@ -43,13 +44,26 @@ apiRegistry.initialize({});
 
 // Create FrontX app instance
 // Register MfeHandlerMF to enable Module Federation MFE loading
+// The auth plugin rides with the preset's config in the framework docs, but the
+// exported `Presets` type declares `full` without arguments, so this template
+// adds `auth()` the way it adds `microfrontends()`: on the builder. The plugin
+// is the same one `full({ auth })` would append, dependencies included.
 const app = createFrontX()
   .useAll(presets.full())
+  // The development auth plugins (`app/auth/devAuth.ts`): that module passes
+  // no auth config outside development, so a production build carries neither
+  // the auth plugin nor the realm plugin.
+  .use(devAuthPlugins())
   .use(microfrontends({
     typeSystem: gtsPlugin,
     mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
   }))
   .build();
+
+// The sign-in triggers: a 401, or a start with no session, sends the chain that
+// opens the sign-in modal. Wired only where the development auth config exists;
+// in a production build nothing here runs.
+wireDevSignInTriggers(app);
 
 // The root registry is built eagerly: the shell is the root runtime, so its
 // registry is not tied to any mount window.

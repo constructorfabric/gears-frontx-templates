@@ -12,5 +12,8 @@
   "header": {
     "user": "Nutzer",
     "language": "Sprache"
+  },
+  "modal": {
+    "close": "Schließen"
   }
 }

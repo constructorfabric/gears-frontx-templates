@@ -6,8 +6,8 @@
  * ADR-0011), so it has no handle on the host app and no shared event bus to
  * emit on. The actions chain is the one declared upward channel, and it carries
  * a payload. These action types are what this shell chooses to expose over
- * it; the handlers live in `bootstrap.ts` and call the public `app.actions`
- * surface.
+ * it; the handlers live in the domain implementations that answer them
+ * (`screenDomain.ts`, `modalDomain.ts`).
  *
  * They are app-layer, not framework: `screenDomain` in
  * `@gears-frontx/framework` ships to every template, and a host that does not
@@ -20,6 +20,8 @@ import type { JSONSchema } from '@gears-frontx/react';
 import setLanguageActionSchema from './gts/frontx.screensets/schemas/chrome/set_language.v1.json';
 import setMenuCollapsedActionSchema from './gts/frontx.screensets/schemas/chrome/set_menu_collapsed.v1.json';
 import setThemeActionSchema from './gts/frontx.screensets/schemas/chrome/set_theme.v1.json';
+import refreshPageActionSchema from './gts/frontx.screensets/schemas/chrome/refresh_page.v1.json';
+import signInActionSchema from './gts/frontx.screensets/schemas/chrome/sign_in.v1.json';
 
 /** Applies a registered theme by id - the payload carries `themeId`. */
 export const CHROME_SET_THEME =
@@ -34,12 +36,34 @@ export const CHROME_SET_LANGUAGE =
   'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.set_language.v1~';
 
 /**
+ * Runs the shell's sign-in flow on the popup domain: the action resolves once
+ * a session exists and unmounts the sign-in modal. It carries no payload at
+ * all - the sign-in extension signs in through the shared auth runtime, never
+ * through the action - and its sender is expected to give it a long timeout,
+ * since it spans a user typing credentials.
+ */
+export const CHROME_SIGN_IN =
+  'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.sign_in.v1~';
+
+/**
+ * Reloads the page, so whatever ran under a session that is gone runs again:
+ * the tail of the sign-in chain, and the fallback of every stage of it.
+ */
+export const CHROME_REFRESH_PAGE =
+  'gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.refresh_page.v1~';
+
+/**
+ * The schemas of the chrome actions the screen domain answers, registered by
+ * `screenDomain.ts` together with the screen extension type, before the
+ * manifest walk. `sign_in` is answered by the popup domain, not this one, so
+ * its schema travels with `CHROME_MODAL_ACTION_SCHEMAS` below.
+ *
  * The schemas themselves are JSON, under
  * `gts/frontx.screensets/schemas/chrome/`, where the directory path spells the
  * GTS id the way `packages/gts-plugin/src/frontx.mfes/schemas/ext/` and the
  * framework's own `gts/frontx.screensets/instances/domains/` do. Each file
- * carries its own `$comment`s, including why its `target` names the screen
- * domain rather than any domain; this module only collects them.
+ * carries its own `$comment`s, including why its `target` names one domain
+ * rather than any domain; this module only collects them.
  *
  * The cast is the same one both of those loaders make: a JSON module's inferred
  * type is the literal shape of the file, which no `JSONSchema` signature can be
@@ -60,4 +84,14 @@ export const CHROME_ACTION_SCHEMAS: JSONSchema[] = [
   setThemeActionSchema as JSONSchema,
   setMenuCollapsedActionSchema as JSONSchema,
   setLanguageActionSchema as JSONSchema,
+  refreshPageActionSchema as JSONSchema,
+];
+
+/**
+ * The schemas of the chrome actions the popup domain - the modal extension
+ * domain - answers, registered by `modalDomain.ts` together with the modal
+ * extension type.
+ */
+export const CHROME_MODAL_ACTION_SCHEMAS: JSONSchema[] = [
+  signInActionSchema as JSONSchema,
 ];

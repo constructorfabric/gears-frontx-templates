@@ -94,6 +94,12 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   };
 });
 
+// The reload seam of the refresh_page handler, replaced wholesale: jsdom
+// implements no navigation, and the point of the cases below is that the
+// handler reaches the reload, not that the page navigates.
+const reloadPage = vi.hoisted(() => vi.fn());
+vi.mock('./pageReload', () => ({ reloadPage }));
+
 /** `bootstrapMFE` freshly imported, run with the screen domain the shell implements. */
 async function loadBootstrap(): Promise<{ bootstrapMFE: (app: never) => Promise<void> }> {
   const { bootstrapMFE } = await import('./bootstrap');
@@ -217,8 +223,13 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE, CHROME_SET_MENU_COLLAPSED, CHROME_SET_THEME } =
-      await import('./chrome-actions');
+    const {
+      CHROME_ACTION_SCHEMAS,
+      CHROME_REFRESH_PAGE,
+      CHROME_SET_LANGUAGE,
+      CHROME_SET_MENU_COLLAPSED,
+      CHROME_SET_THEME,
+    } = await import('./chrome-actions');
     const { languageCodeSchema } = await import('@gears-frontx/frontx-template-shell');
     await bootstrapMFE(mockApp as never);
 
@@ -227,13 +238,14 @@ describe('bootstrapMFE (host-app)', () => {
       CHROME_SET_THEME,
       CHROME_SET_MENU_COLLAPSED,
       CHROME_SET_LANGUAGE,
+      CHROME_REFRESH_PAGE,
     ]);
     // Making them domain actions must not make them mandatory for the
     // extensions that mount into the domain.
     expect(screenDeclaration.extensionsActions).toBeUndefined();
     // The screen extension type, the language code type the set_language
-    // schema references, and the three chrome action types.
-    expect(registerSchema).toHaveBeenCalledTimes(5);
+    // schema references, and the four chrome action types.
+    expect(registerSchema).toHaveBeenCalledTimes(6);
     expect(registerSchema).toHaveBeenCalledWith(languageCodeSchema);
     // The language code type has to precede the chrome schemas: registerSchema
     // resolves no $refs, and the set_language payload points at that type.
@@ -635,6 +647,18 @@ describe('bootstrapMFE (host-app)', () => {
         ).resolves.toBeUndefined();
       },
     );
+
+    it('reloads the page a refresh_page action asks for, through the reload seam', async () => {
+      const { CHROME_REFRESH_PAGE } = await import('./chrome-actions');
+
+      const handlers = await chromeHandlersFor({});
+      reloadPage.mockClear();
+
+      // No payload: whatever failed, the answer is the same page reloaded.
+      await handlerFor(handlers, CHROME_REFRESH_PAGE).handleAction(CHROME_REFRESH_PAGE, undefined);
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    });
 
     it('refuses a set_theme payload carrying no theme id rather than driving the plugin with it', async () => {
       const changeTheme = vi.fn();

@@ -17,8 +17,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import type { ChildMfeBridge, MfeEntryLifecycle, MfeEntryMF } from '@gears-frontx/react';
+import { SCREEN_DOMAIN, releaseRoutedDomains } from './__test-utils__/releaseRoutedDomains';
 
-const SCREEN_DOMAIN = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
 const MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.defaultscreen.mfe.manifest.v1';
 const THEME = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~';
 const LANGUAGE = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~';
@@ -134,10 +134,12 @@ describe('the default screen against a deep link', () => {
   });
 
   afterEach(async () => {
-    // Hands the page's routed `screen` route back: the routed-route registry
-    // is a realm slot, so it survives the module reset (this file runs one
-    // case, and the route must be free for the next file).
-    await registry?.unregisterDomain(SCREEN_DOMAIN);
+    // Hands the page's routed routes back: the container registers and starts
+    // both the screen and the popup domain, and the routed-route registry is a
+    // realm slot, so it survives the module reset (this file runs one case,
+    // and the routes must be free for the next file). The helper releases both
+    // even when one of them rejects.
+    if (registry) await releaseRoutedDomains(registry);
     cleanup();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');

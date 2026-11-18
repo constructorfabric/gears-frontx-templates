@@ -1,0 +1,28 @@
+{
+  "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.sign_in.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Schema for the shell chrome's sign_in action. Self-contained and closed: re-declares every property action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "x-gts-type-ref": "/$id",
+      "$comment": "Self-reference to this action's schema type ID"
+    },
+    "target": {
+      "x-gts-instance-ref": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1",
+      "$comment": "The popup domain, the modal extension domain this shell implements (mfe/modalDomain.ts): it registers the sign_in handler, so a chain aimed at the screen, sidebar or overlay is refused here instead of two layers later as a missing handler"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "Closed and empty: sign_in carries no credentials. The sign-in extension signs in through the shared auth runtime (authRealmShared), never through an action payload; the action only holds the chain open until a session exists"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 1,
+      "$comment": "Optional timeout override in milliseconds. sign_in is expected to carry its own long timeout (the chain builder in app/auth/signIn.ts decides it), since the action spans a user typing credentials"
+    }
+  },
+  "required": ["type", "target"]
+}

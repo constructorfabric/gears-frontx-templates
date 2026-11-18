@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FrontXProvider, apiRegistry, createFrontX, presets } from '@gears-frontx/react';
 import { AccountsApiService } from '@/app/api';
+import { devAuthPlugins, wireDevSignInTriggers } from '@/app/auth/devAuth';
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
 import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
@@ -22,7 +23,25 @@ apiRegistry.initialize({});
 
 // Create FrontX app instance (no theme support when using --uikit none)
 // No UI component library included
-const app = createFrontX().useAll(presets.full()).build();
+// The auth plugin rides with the preset's config in the framework docs, but the
+// exported `Presets` type declares `full` without arguments, so this template
+// adds `auth()` on the builder. The plugin is the same one `full({ auth })`
+// would append, dependencies included.
+const app = createFrontX()
+  .useAll(presets.full())
+  // The development auth plugins (`app/auth/devAuth.ts`): that module passes
+  // no auth config outside development, so a production build carries neither
+  // the auth plugin nor the realm plugin. The trigger only becomes observable
+  // once the project adds the microfrontends plugin, since the chain needs the
+  // domains it registers; until then both triggers are wired and simply send
+  // nothing.
+  .use(devAuthPlugins())
+  .build();
+
+// The sign-in triggers: a 401, or a start with no session, sends the chain that
+// opens the sign-in modal. Wired only where the development auth config exists;
+// in a production build nothing here runs.
+wireDevSignInTriggers(app);
 
 // Register app-level effects (pass store dispatch)
 registerBootstrapEffects(app.store.dispatch);

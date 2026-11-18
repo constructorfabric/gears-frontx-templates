@@ -31,3 +31,78 @@
 .slot {
   height: 100%;
 }
+
+/* The dialog layer of the popup domain (modalDomain.ts): a fixed layer above
+   the app that holds the domain's slot. While no modal is mounted it is
+   closed, drawing nothing. */
+.modalLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.modalLayerClosed {
+  display: none;
+}
+
+/* presentation size "full": the modal is the whole viewport, the app behind
+   it is covered. */
+.modalFull {
+  background-color: var(--background);
+}
+
+.modalPanelFull {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* presentation size "medium": a centred panel over a backdrop scrimming the
+   app behind it. */
+.modalMedium {
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+}
+
+.modalMedium::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--overlay-modal);
+}
+
+.modalPanelMedium {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(32rem, 100%);
+  max-height: 100%;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--foreground);
+}
+
+.modalSlot {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.modalClose {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+}

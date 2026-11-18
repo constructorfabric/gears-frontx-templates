@@ -1,0 +1,28 @@
+{
+  "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.screensets.chrome.refresh_page.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Schema for the shell chrome's refresh_page action. Self-contained and closed: re-declares every property action.v1 would otherwise provide and rejects any undeclared field, on itself and on its own payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "x-gts-type-ref": "/$id",
+      "$comment": "Self-reference to this action's schema type ID"
+    },
+    "target": {
+      "x-gts-instance-ref": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
+      "$comment": "The screen domain, whose implementation (mfe/screenDomain.ts) registers the handler, so a chain aimed at the popup, sidebar or overlay domain is refused here instead of two layers later as a missing handler"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "Closed and empty: the reload takes no payload. Whatever failed, the answer is the same page reloaded, so the requests that failed run again"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 1,
+      "$comment": "Optional timeout override in milliseconds"
+    }
+  },
+  "required": ["type", "target"]
+}

@@ -16,7 +16,6 @@ import {
   ExclusiveMountStrategy,
   ActionHandler,
   FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_THEME_HOST_ATTRIBUTE,
   screenDomain,
 } from '@gears-frontx/react';
 import type {
@@ -27,44 +26,19 @@ import type {
   MountStrategy,
 } from '@gears-frontx/react';
 import { extensionScreenSchema, languageCodeSchema } from '@gears-frontx/frontx-template-shell';
+import { claimAutomaticReload } from './automaticReload';
 import { isShellLanguage } from '@/app/i18n/shellLanguages';
 import {
   CHROME_ACTION_SCHEMAS,
+  CHROME_REFRESH_PAGE,
   CHROME_SET_LANGUAGE,
   CHROME_SET_MENU_COLLAPSED,
   CHROME_SET_THEME,
 } from './chrome-actions';
+import { createElementTrackingHooks } from './createElementTrackingHooks';
+import { reloadPage } from './pageReload';
 import { readHistoryIntent, screenLoadFailure } from './screenLoadFailure';
 import { screenState } from './screenState';
-
-/** The screen domain's hooks: the shell's mounted-screen state follows the container of the screen the strategy holds. */
-class ScreenContainerHooks implements ContainerHooks {
-  private readonly elements = new Map<string, HTMLElement>();
-
-  create(extensionId: string): Element {
-    const el = document.createElement('div');
-    el.dataset.extensionId = extensionId;
-    // The theme host attribute: the theme registry's managed rule names it as
-    // its second selector, so a shell theme value declared on the document
-    // root reaches the screen host. Inside the shadow root the kit's sheet is
-    // re-anchored to `:host`, and that declaration would beat one inherited
-    // from the document tree; an outer-tree rule beats a `:host` rule before
-    // specificity is compared, but only a rule that names this element can
-    // apply to it.
-    el.setAttribute(FRONTX_THEME_HOST_ATTRIBUTE, '');
-    el.style.height = '100%';
-    this.elements.set(extensionId, el);
-    screenState.set(extensionId);
-    return el;
-  }
-
-  destroy(extensionId: string, container?: Element): void {
-    if (!container || this.elements.get(extensionId) === container) {
-      this.elements.delete(extensionId);
-    }
-    if (screenState.getSnapshot() === extensionId) screenState.set(undefined);
-  }
-}
 
 // The readers below state, to TypeScript, an invariant the type system
 // already enforces at runtime: `chrome-actions.ts` closes each chrome payload
@@ -195,6 +169,24 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
         return Promise.resolve();
       }),
     );
+    // The reload the tail of the sign-in chain asks for (and the fallback of
+    // every stage of it): the same page, reloaded, so the requests that ran
+    // without a session run again. Unlike the chrome decoration above, this
+    // one has no plugin to be missing - it is the browser's own reload, behind
+    // the `pageReload` seam a test watches - so it always resolves. It is also
+    // bounded: the chain's fallbacks reload on every failure, so a failure
+    // that repeats on every load would reload forever (issue 112). The guard
+    // allows one automatic reload in a short window; the repeats it blocks are
+    // said on the console and the page is left as it is.
+    ctx.registerHandler(
+      CHROME_REFRESH_PAGE,
+      ActionHandler.fromFunction((_t, _p) => {
+        if (claimAutomaticReload()) {
+          reloadPage();
+        }
+        return Promise.resolve();
+      }),
+    );
   }
 
   protected getMountStrategies(): MountStrategy[] {
@@ -205,7 +197,7 @@ class ScreenDomainImpl extends ExtensionDomainImplementation {
 class ScreenDomainFactory extends ExtensionDomainImplementationFactory {
   constructor(private readonly app: FrontXApp) { super(); }
   build(ctx: DomainContext): ScreenDomainImpl {
-    return new ScreenDomainImpl(ctx, new ScreenContainerHooks(), this.app);
+    return new ScreenDomainImpl(ctx, createElementTrackingHooks(screenState), this.app);
   }
 }
 
@@ -242,7 +234,7 @@ export function registerScreenDomain(app: FrontXApp): void {
   registry.registerDomain(
     {
       ...screenDomain,
-      actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED, CHROME_SET_LANGUAGE],
+      actions: [...screenDomain.actions, CHROME_SET_THEME, CHROME_SET_MENU_COLLAPSED, CHROME_SET_LANGUAGE, CHROME_REFRESH_PAGE],
     },
     new ScreenDomainFactory(app),
   );

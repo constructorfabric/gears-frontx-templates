@@ -13,15 +13,16 @@
  * `bootstrapOnce` bootstraps one app per module instance and the page-load
  * record is a realm slot the module reset cannot clear, so a file simulates
  * one page load: the two cases here both load an address that names no screen,
- * and every case hands the screen domain's `screen` route back at the end,
- * since the routed-route registry is a realm slot too. The deep-link case,
- * whose page load does carry an entry, lives in `defaultScreenDeepLink.test.tsx`.
+ * and every case hands the screen and popup domains' `screen` and `popup`
+ * routes back at the end, since the routed-route registry is a realm slot
+ * too. The deep-link case, whose page load does carry an entry, lives in
+ * `defaultScreenDeepLink.test.tsx`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import type { ChildMfeBridge, MfeEntryLifecycle, MfeEntryMF } from '@gears-frontx/react';
+import { SCREEN_DOMAIN, releaseRoutedDomains } from './__test-utils__/releaseRoutedDomains';
 
-const SCREEN_DOMAIN = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
 const MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.defaultscreen.mfe.manifest.v1';
 const THEME = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~';
 const LANGUAGE = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~';
@@ -159,11 +160,11 @@ function mountedScreenText(root: ParentNode): string[] {
 describe('the default screen when the address names no screen', () => {
   // Set by every case that bootstraps: the routed-route registry is a realm
   // slot (`Symbol.for` on globalThis), so it survives the module reset and the
-  // screen domain's `screen` route must be handed back before the next case.
-  let releaseScreenRoute: (() => Promise<void>) | undefined;
+  // screen and popup domains' routes must be handed back before the next case.
+  let releaseRoutes: (() => Promise<void>) | undefined;
 
   beforeEach(() => {
-    releaseScreenRoute = undefined;
+    releaseRoutes = undefined;
     // One app per module instance: the framework refuses a second build in a
     // runtime, so every case starts from an empty module registry.
     vi.resetModules();
@@ -176,7 +177,7 @@ describe('the default screen when the address names no screen', () => {
   });
 
   afterEach(async () => {
-    await releaseScreenRoute?.();
+    await releaseRoutes?.();
     cleanup();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');
@@ -185,7 +186,10 @@ describe('the default screen when the address names no screen', () => {
   it('opens the lowest-order screen and writes it into the address without a new history entry', async () => {
     window.history.replaceState(null, '', '/');
     const { react, app, registry } = await buildApp();
-    releaseScreenRoute = () => registry.unregisterDomain(SCREEN_DOMAIN);
+    // The container registers both routed domains, so both routes are handed
+    // back for the next case (`releaseRoutedDomains` releases both even when
+    // one of them rejects).
+    releaseRoutes = () => releaseRoutedDomains(registry);
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
     const { screenState } = await import('./screenState');
     const historyEntries = window.history.length;
@@ -207,7 +211,10 @@ describe('the default screen when the address names no screen', () => {
     aggregate = aggregateWithoutScreens();
     window.history.replaceState(null, '', '/');
     const { react, app, registry, loadedEntries } = await buildApp();
-    releaseScreenRoute = () => registry.unregisterDomain(SCREEN_DOMAIN);
+    // The container registers both routed domains, so both routes are handed
+    // back for the next run (`releaseRoutedDomains` releases both even when one
+    // of them rejects).
+    releaseRoutes = () => releaseRoutedDomains(registry);
     const { MfeScreenContainer } = await import('./MfeScreenContainer');
     const { screenState } = await import('./screenState');
 
