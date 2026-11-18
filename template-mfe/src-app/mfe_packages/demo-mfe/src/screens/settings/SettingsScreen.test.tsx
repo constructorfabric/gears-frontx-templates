@@ -74,6 +74,35 @@ async function setupSettingsScreen({ initialLanguage = 'en' }: SetupOptions = {}
   };
 }
 
+/**
+ * Renders the screen while its very first dictionary is still loading. The
+ * setup helper above cannot be used for that: it waits for the heading, which
+ * the first load's skeletons do not have.
+ */
+async function renderDuringFirstLoad() {
+  useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading: true });
+  const { SettingsScreen } = await import('./SettingsScreen');
+  const bridgeFixture = createMfeBridgeFixture({
+    extDomainId: 'demo-domain',
+    extensionId: 'settings-screen',
+    executeActionsChain: vi.fn().mockReturnValue(undefined),
+    initialProperties: {
+      [FRONTX_SHARED_PROPERTY_THEME]: 'default',
+      [FRONTX_SHARED_PROPERTY_LANGUAGE]: 'en',
+    },
+  });
+  mockShadowHost(HTMLDivElement);
+  const { rerender } = render(<SettingsScreen bridge={bridgeFixture.bridge} />);
+
+  // Re-renders the same mounted screen with the hook reporting `loading`.
+  const renderWithLoading = (loading: boolean) => {
+    useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading });
+    rerender(<SettingsScreen bridge={bridgeFixture.bridge} />);
+  };
+
+  return { renderWithLoading };
+}
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading: false });
@@ -217,21 +246,7 @@ describe('SettingsScreen', () => {
   });
 
   it('opens on skeletons for the first load and brings the controls in once it lands', async () => {
-    // The screen mounts while its very first dictionary is still loading, so
-    // the setup helper cannot await a heading yet: render by hand instead.
-    useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading: true });
-    const { SettingsScreen } = await import('./SettingsScreen');
-    const bridgeFixture = createMfeBridgeFixture({
-      extDomainId: 'demo-domain',
-      extensionId: 'settings-screen',
-      executeActionsChain: vi.fn().mockReturnValue(undefined),
-      initialProperties: {
-        [FRONTX_SHARED_PROPERTY_THEME]: 'default',
-        [FRONTX_SHARED_PROPERTY_LANGUAGE]: 'en',
-      },
-    });
-    mockShadowHost(HTMLDivElement);
-    const { rerender } = render(<SettingsScreen bridge={bridgeFixture.bridge} />);
+    const { renderWithLoading } = await renderDuringFirstLoad();
 
     // First load: the skeletons stand in for a screen that has no words yet,
     // and no radio exists that a focus could be lost from.
@@ -239,10 +254,28 @@ describe('SettingsScreen', () => {
     expect(screen.queryByRole('radio')).toBeNull();
 
     // The dictionary lands and the controls arrive.
-    useScreenTranslationsMock.mockReturnValue({ t: (key: string) => key, loading: false });
-    rerender(<SettingsScreen bridge={bridgeFixture.bridge} />);
+    renderWithLoading(false);
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('keeps the controls of the screen the first load opened through a second load', async () => {
+    // The sequence the real hook produces on one mounted screen: the first
+    // dictionary loads, it lands, and a language change starts another load.
+    const { renderWithLoading } = await renderDuringFirstLoad();
+    expect(screen.getByRole('status')).toBeTruthy();
+
+    renderWithLoading(false);
+    const germanRadio = screen.getByRole('radio', { name: 'Deutsch' });
+
+    // The second load keeps the same radios in place and only marks the
+    // screen busy; the first load's skeletons do not come back.
+    renderWithLoading(true);
+
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(germanRadio.isConnected).toBe(true);
+    expect(screen.getByRole('radio', { name: 'Deutsch' })).toBe(germanRadio);
+    expect(germanRadio.closest('[aria-busy="true"]')).not.toBeNull();
   });
 });
