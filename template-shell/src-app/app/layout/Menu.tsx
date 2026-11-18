@@ -10,6 +10,7 @@ import {
   useAppSelector,
   useFrontX,
   eventBus,
+  Language,
   FRONTX_ACTION_MOUNT_EXT,
   FRONTX_SCREEN_DOMAIN,
   type MenuState,
@@ -80,7 +81,7 @@ export const Menu: React.FC<MenuProps> = ({ children }) => {
         unsubscribeRegistry?.();
       };
     }, [i18nRegistry]),
-    () => i18nRegistry?.getLanguage() ?? 'en',
+    () => i18nRegistry?.getLanguage() ?? Language.English,
   );
   const [translated, setTranslated] = useState<{ language: string; labels: Map<string, string> }>();
 
