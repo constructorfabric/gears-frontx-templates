@@ -1,0 +1,12 @@
+{
+  "title": "Sign in",
+  "description": "This session has ended or was never started. Sign in to open the workspace again. The modal cannot be dismissed: the shell closes it once a session exists.",
+  "username_label": "User name",
+  "username_placeholder": "Your user name",
+  "password_label": "Password",
+  "password_placeholder": "Your password",
+  "submit": "Sign in",
+  "submitting": "Signing in",
+  "error": "Signing in failed. Check the credentials and try again.",
+  "unavailable": "Signing in is unavailable here: this screen could not join the shell's auth runtime."
+}

@@ -126,6 +126,17 @@
       ],
       "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1",
       "exposedModule": "./lifecycle-settings"
+    },
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.signin.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1",
+      "exposedModule": "./lifecycle-signin"
     }
   ],
   "extensions": [
@@ -193,6 +204,17 @@
         "label": "Settings",
         "icon": "lucide:settings",
         "order": 50
+      }
+    },
+    {
+      "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.popup.v1~frontx.demo.modal.signin.v1",
+      "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1",
+      "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.demo.mfe.signin.v1",
+      "route": "/sign-in",
+      "presentation": {
+        "label": "Sign in",
+        "size": "full",
+        "cancelable": false
       }
     }
   ]

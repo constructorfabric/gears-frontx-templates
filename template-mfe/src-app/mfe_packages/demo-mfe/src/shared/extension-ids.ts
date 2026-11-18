@@ -9,6 +9,16 @@ export const THEME_EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.scree
 export const UIKIT_EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.uikit.v1';
 
 /**
+ * Extension ID of the example sign-in modal on the shell's popup domain, the
+ * modal extension domain the shell's dialog layer presents. The shell's own
+ * sign-in configuration (`template-shell/src-app/app/auth/signIn.ts`) names
+ * this exact id in its `SIGN_IN_EXTENSION_ID`, because its chain mounts the
+ * modal by subject; the two literals must stay in step by hand, the way a
+ * screen bundle redeclares any id it cannot import from the shell app.
+ */
+export const SIGNIN_MODAL_EXTENSION_ID = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.popup.v1~frontx.demo.modal.signin.v1';
+
+/**
  * Custom action type for requesting a profile data refresh.
  * Targeted at the Profile extension ID — routed by the mediator to its registered ActionHandler.
  */

@@ -1,0 +1,12 @@
+{
+  "title": "Anmelden",
+  "description": "Diese Sitzung ist beendet oder wurde nie gestartet. Melden Sie sich an, um den Arbeitsbereich wieder zu öffnen. Das Modal lässt sich nicht schließen: Die Shell schließt es, sobald eine Sitzung besteht.",
+  "username_label": "Benutzername",
+  "username_placeholder": "Ihr Benutzername",
+  "password_label": "Kennwort",
+  "password_placeholder": "Ihr Kennwort",
+  "submit": "Anmelden",
+  "submitting": "Anmeldung läuft",
+  "error": "Die Anmeldung ist fehlgeschlagen. Prüfen Sie die Zugangsdaten und versuchen Sie es erneut.",
+  "unavailable": "Die Anmeldung ist hier nicht verfügbar: Diese Ansicht konnte der Auth-Laufzeit der Shell nicht beitreten."
+}

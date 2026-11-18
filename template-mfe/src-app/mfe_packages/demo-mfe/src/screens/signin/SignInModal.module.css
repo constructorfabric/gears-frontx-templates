@@ -1,0 +1,69 @@
+/*
+ * Screen-local layout for the sign-in modal.
+ *
+ * The shell's dialog layer covers the viewport for a size "full" modal, so
+ * this screen fills what the layer gives it and centres its own card. Colour,
+ * spacing and type resolve through @gears-frontx/ui-kit tokens, which
+ * KitThemedLifecycle re-anchors onto this shadow root's host.
+ */
+
+.screen {
+  align-items: center;
+  background-color: var(--background);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--space-4);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  max-width: 24rem;
+  text-align: center;
+}
+
+.title {
+  font-size: var(--text-heading-1-size);
+  font-weight: var(--text-heading-1-weight);
+  letter-spacing: var(--text-heading-1-tracking);
+  line-height: var(--text-heading-1-line-height);
+  margin: 0;
+}
+
+.description {
+  color: var(--muted-foreground);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 24rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.error {
+  color: var(--destructive);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}

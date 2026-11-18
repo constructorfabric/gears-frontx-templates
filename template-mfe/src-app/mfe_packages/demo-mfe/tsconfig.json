@@ -33,6 +33,7 @@
     "src/screens/helloworld",
     "src/screens/profile",
     "src/screens/settings",
+    "src/screens/signin",
     "src/screens/theme",
     "src/screens/uikit"
   ],
