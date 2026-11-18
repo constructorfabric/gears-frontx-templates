@@ -28,6 +28,8 @@ const ORDER_WITHOUT_ONE = 999;
 export function screensInMenuOrder(extensions: readonly RegistryScreenExtension[]): RegistryScreenExtension[] {
   return extensions
     .filter((extension) => extension?.presentation)
+    // sort() runs on the new array filter() returns, so the caller's list (the registry's) is never
+    // reordered; on equal orders the comparator returns 0, so ties keep registration order (sort is stable).
     .sort(
       (a, b) => (a.presentation.order ?? ORDER_WITHOUT_ONE) - (b.presentation.order ?? ORDER_WITHOUT_ONE),
     );
