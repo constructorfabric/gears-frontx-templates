@@ -20,6 +20,11 @@ export {
 } from './auth';
 export { mock, type MockPluginConfig } from './mock';
 export {
+  authRealm,
+  authRealmShared,
+  type AuthRealmOptions,
+} from './authRealm';
+export {
   queryCache,
   queryCacheShared,
   subscribeQueryCacheRuntimeChanged,

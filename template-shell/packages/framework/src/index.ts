@@ -37,6 +37,11 @@ export {
   type Hai3ApiAuthTransportConfig,
   queryCache,
   queryCacheShared,
+  // The auth realm plugins share one auth runtime across the shell and the
+  // microfrontends of the same page (the queryCache / queryCacheShared pattern).
+  authRealm,
+  authRealmShared,
+  type AuthRealmOptions,
   subscribeQueryCacheRuntimeChanged,
   readQueryCacheScopeGeneration,
   recordQueryCacheScopeWriteDropped,
