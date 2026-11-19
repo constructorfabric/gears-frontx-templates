@@ -31,6 +31,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from 'react';
+import { createPortal } from 'react-dom';
 import {
   useFrontX,
   ExtensionDomainSlot,
@@ -167,6 +168,17 @@ function hostInDocument(node: Node): Node {
  * non-cancelable one renders neither. Focus that leaves the layer is brought
  * back into it, and Tab and Shift+Tab wrap between its first and last
  * controls, through the shadow root the modal renders into.
+ *
+ * The layer renders through a portal into `document.body`, not where the
+ * component tree puts it: the tree mounts the container inside the layout's
+ * content column, and that column is `inert` while the narrow menu overlays
+ * it (`layout/Layout.tsx`), which would keep a modal that opens beside the
+ * menu out of the accessibility tree, its panel off focus, and taps going
+ * through to the menu. The body is inside the theme scope: the tokens the
+ * layer paints with are declared on `:root` and `[data-theme]` (the kit's
+ * `theme.css`, and the registry's own sheet at `:root:root`), so they inherit
+ * into it, and every rule the layer's CSS module carries travels with the
+ * classes. The focus handling is document-level, so it needs no change.
  */
 function ModalExtensionLayer({ registry }: { registry: MfeRegistry }) {
   const layerRef = useRef<HTMLDivElement | null>(null);
@@ -261,7 +273,7 @@ function ModalExtensionLayer({ registry }: { registry: MfeRegistry }) {
   const sizeClassName = size === 'full' ? styles.modalFull : styles.modalMedium;
   const layerClassName = [styles.modalLayer, open ? sizeClassName : styles.modalLayerClosed].join(' ');
 
-  return (
+  return createPortal(
     <div
       ref={layerRef}
       className={layerClassName}
@@ -293,7 +305,10 @@ function ModalExtensionLayer({ registry }: { registry: MfeRegistry }) {
           onDetached={markModalSlotDetached}
         />
       </div>
-    </div>
+    </div>,
+    // Outside the layout's content column, which the narrow menu makes inert
+    // (the doc comment above); the body is inside the theme scope.
+    document.body,
   );
 }
 

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import styles from './MfeScreenContainer.module.css';
 
 const mockBootstrapMFE = vi.fn();
@@ -545,6 +545,41 @@ describe('MfeScreenContainer', () => {
 
       expect(executeActionsChain).not.toHaveBeenCalled();
       expect(screen.getByRole('dialog')).not.toBeNull();
+    });
+
+    it('a modal mounts outside the content the narrow menu makes inert, and takes focus there', async () => {
+      // Layout marks its content column inert while the narrow menu overlays
+      // it (layout/Layout.tsx), and the container renders inside that column.
+      // A 401 while the menu is open painted the modal on top, but an inert
+      // ancestor keeps it out of the accessibility tree and its panel off
+      // focus, and taps went through to the menu. The layer renders through a
+      // portal outside the inert subtree, and the focus handling works there.
+      stubRegistry({
+        id: MODAL_EXTENSION_ID,
+        presentation: { label: 'Sign in', size: 'full', cancelable: false },
+      });
+      const { MfeScreenContainer } = await import('./MfeScreenContainer');
+      const { modalState } = await import('./modalDomain');
+      // The state the narrow menu leaves the layout's content in: the whole
+      // subtree the container renders into is inert.
+      const inert = document.createElement('div');
+      inert.setAttribute('inert', '');
+      document.body.appendChild(inert);
+      try {
+        render(<MfeScreenContainer />, { container: inert, baseElement: document.body });
+        await settleBootstrap();
+        // What a 401 does to the popup domain: the sign-in modal mounts.
+        act(() => modalState.set(MODAL_EXTENSION_ID));
+
+        const dialog = screen.getByRole('dialog', { name: 'Sign in' });
+        // Not inside any [inert] ancestor: the layer left the inert subtree.
+        expect(dialog.closest('[inert]')).toBeNull();
+        // It takes focus: the panel it renders is the active element.
+        expect(dialog.contains(document.activeElement)).toBe(true);
+      } finally {
+        cleanup();
+        inert.remove();
+      }
     });
   });
 });
