@@ -705,4 +705,129 @@ describe('the sign-in chain through the real runtime', () => {
     expect(modalState.getSnapshot()).toBeUndefined();
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
+
+  it('a session read that is still out when the bound runs out closes nothing afterwards', async () => {
+    // The bound is the wait's deadline: once it is out the mediator has moved
+    // the chain on and the handler no longer owns the flow. The session reads
+    // are raced against that bound the way the announcements are, so a read
+    // that answers after it - even with a session - closes no modal and drops
+    // no reload stamp on a flow the handler no longer owns.
+    expect(claimAutomaticReload()).toBe(true);
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'live' };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { modalState } = await import('./modalDomain');
+    const { CHROME_SIGN_IN } = await import('./chrome-actions');
+    const { SIGN_IN_ACTION_TIMEOUT_MS } = await import('@/app/auth/signIn');
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    act(() => {
+      registry?.executeActionsChain({
+        action: {
+          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          target: POPUP_DOMAIN,
+          payload: { subject: SIGN_IN_EXTENSION_ID },
+        },
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The session read never answers while the wait runs: the runtime cannot
+    // say whether a sign-in landed.
+    let releaseRead: (() => void) | undefined;
+    provider.getSession = () =>
+      new Promise((resolve) => {
+        releaseRead = () => resolve(state.session);
+      });
+    // Whatever the handler still dispatches after the bound goes through the
+    // registry; the mount itself is already done.
+    const dispatch = vi.spyOn(registry, 'executeActionsChain');
+
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        registry?.executeActionsChain({
+          action: { type: CHROME_SIGN_IN, target: POPUP_DOMAIN, timeout: SIGN_IN_ACTION_TIMEOUT_MS },
+        });
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      // The sign_in dispatch itself is accounted for; only what the handler
+      // still sends after the bound matters here.
+      dispatch.mockClear();
+      // Past the bound: the wait gives up. This chain is the bare sign_in
+      // action, so nothing follows it.
+      await vi.advanceTimersByTimeAsync(SIGN_IN_ACTION_TIMEOUT_MS + 1_000);
+
+      // The read answers afterwards, with a session: it closes nothing - the
+      // handler no longer owns the flow, so no unmount goes out either.
+      state.session = { kind: 'bearer', token: 'fresh-sign-in' };
+      await act(async () => {
+        releaseRead?.();
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+      expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(reloadPage).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a session read that fails after an announcement keeps the wait alive', async () => {
+    // An announcement is a wake-up, not an answer, and the read that follows
+    // it can fail: the provider is mid-refresh, or cannot answer for a
+    // moment. Such a failure is "no session, keep waiting", not a failed
+    // action - failing the action would send the chain to its fallback reload
+    // while the person is still in the form. A real sign-in ends the wait as
+    // usual.
+    const { provider, state } = stubAuthProvider();
+    let failNextRead = false;
+    const baseGetSession = provider.getSession.bind(provider);
+    provider.getSession = async () => {
+      if (failNextRead) {
+        failNextRead = false;
+        throw new Error('session store unreachable');
+      }
+      return baseGetSession();
+    };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { modalState } = await import('./modalDomain');
+    const { buildSignInChain } = await import('@/app/auth/signIn');
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    act(() => {
+      registry?.executeActionsChain(buildSignInChain());
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The announcement lands, and the read that follows it fails.
+    failNextRead = true;
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    // The failed read kept the wait alive: the modal is still up, and the
+    // chain did not fall back to its reload.
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A real sign-in ends the wait, and the chain reloads once.
+    state.session = { kind: 'bearer', token: 'fresh-sign-in' };
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
 });

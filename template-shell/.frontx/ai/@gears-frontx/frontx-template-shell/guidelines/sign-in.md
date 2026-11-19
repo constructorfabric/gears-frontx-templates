@@ -110,7 +110,11 @@ sign-in (a refresh that resolves the rejected session after signed out, and a
 refresh that rejects while signed in, which clears for an unknown identity as
 a cache-scope signal), so `sign_in` follows each announcement with one fresh
 read of the session and keeps waiting until a session that is neither missing
-nor the rejected one answers. A project's sign-in extension follows
+nor the rejected one answers. The read is raced against the action's bound,
+so no read can close the modal after the bound has won, and a read that fails
+after an announcement counts as no session: the wait goes on for the next
+announcement or the bound, instead of failing the action. A project's
+sign-in extension follows
 that shape.
 
 The provider decides how the sign-in happens, and there are two kinds. A

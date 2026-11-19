@@ -166,7 +166,12 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
    * clears for an unknown identity as a cache-scope signal), so every
    * announcement is followed by one fresh read of the session, and only a
    * session that exists and is not the rejected one ends the wait. One read
-   * per announcement, no polling; the wait stays bounded by the bound below.
+   * per announcement, no polling; every read is raced against the bound
+   * below, so no read can close the modal or drop the stamp after the bound
+   * has won, and a read that fails after an announcement counts as "no
+   * session" - the wait goes on for the next announcement or the bound
+   * instead of failing the action. The first read is announced by nothing,
+   * so a failure of that one still fails the action.
    *
    * Without the auth plugin the action fails at once: there is no runtime that
    * could report a session, so waiting would only burn the sender's timeout.
@@ -206,6 +211,10 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
       new Promise<void>((resolve) => {
         wake = resolve;
       });
+    // Whether the read about to run follows an announcement. The first read
+    // does not: nothing has announced a session start yet, so a failure of
+    // that read is the action's own failure. Every later read follows one.
+    let announced = false;
     try {
       for (;;) {
         const announcement = nextAnnouncement();
@@ -221,8 +230,27 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // behind it and drop the reload guard's stamp below. So each
         // announcement is followed by one fresh read, and only a session
         // that is neither missing nor the rejected one ends the wait.
-        const session = await auth.getSession();
-        if (session && !isRejectedSession(session)) break;
+        //
+        // The read is raced against the bound like the announcement is: a
+        // read that answers after the bound has won must close nothing and
+        // clear no stamp, the mediator having moved the chain on already.
+        // A re-read that fails after an announcement is no answer either -
+        // the provider may be mid-refresh, or unable to answer for a
+        // moment - so it counts as "no session" and the wait goes on
+        // instead of failing the action the mediator would then fall back
+        // from. The first read is announced by nothing, so its failure
+        // stays the action's own failure.
+        const read = auth.getSession().then(
+          (session) => ({ session }),
+          (error: unknown) => {
+            if (!announced) throw error;
+            return { session: null };
+          },
+        );
+        const settled = await Promise.race([read, bound.then(() => null)]);
+        if (!settled) return;
+        announced = true;
+        if (settled.session && !isRejectedSession(settled.session)) break;
         const outcome = await Promise.race([
           announcement.then(() => 'announced' as const),
           bound.then(() => 'expired' as const),
