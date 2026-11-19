@@ -119,16 +119,19 @@ announcement counts as no session: the wait goes on for the next announcement
 or the bound, instead of failing the action. The failure spends the
 announcement: a real sign-in usually announces once, so the modal can then
 hold until the bound, and the bound's running out leaves the chain to its
-fallback reload. Whether the read ends the wait follows from the shape the
-session carries: a bearer session is compared by its token, and a cookie
-session that carries a CSRF token by that token. Every other shape asks the
-session check instead - a cookie session without a CSRF token, with or
-without an expiry, and a custom session - because no other field says that a
-sign-in happened: each announcement is followed by one
-`app.auth.checkAuth()`, raced against the bound like the read, and the wait
-ends only when it answers authenticated; a rejected check counts as not
-signed in and the wait goes on. A project's sign-in extension inherits
-whichever of these shapes its session takes.
+fallback reload. A session whose snapshot differs from the rejected one ends
+the wait at once, whatever its shape. A session that still matches the
+rejected snapshot is held to the comparison: a bearer session and a cookie
+session that carries a CSRF token are compared by that one credential, so a
+snapshot of either shape that still matches is the rejected session and the
+wait goes on. The session check is the fallback for the remaining shapes - a
+cookie session without a CSRF token, with or without an expiry, and a custom
+session - because for those an equal snapshot does not prove the same
+session: each announcement is followed by one `app.auth.checkAuth()`, raced
+against the bound like the read, and the wait ends only when it answers
+authenticated; a rejected check counts as not signed in and the wait goes
+on. A project's sign-in extension inherits whichever of these shapes its
+session takes.
 
 The provider decides how the sign-in happens, and there are two kinds. A
 provider like the development one completes the sign-in inside `login()`

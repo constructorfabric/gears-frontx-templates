@@ -220,14 +220,15 @@ export function isRejectedSession(session: AuthSession): boolean {
  * credential - a bearer session, and a cookie session that carries a CSRF
  * token - so their snapshots can tell sessions apart. Every other session
  * is serialized whole or by fields a new session of the same shape can
- * repeat, so the session the provider hands out after a real sign-in can
- * carry exactly the snapshot the chain was sent against, and no comparison
- * of that snapshot could see the sign-in.
+ * repeat, so for these shapes an equal snapshot does not prove the same
+ * session.
  *
- * Read beside `isRejectedSession` by the modal domain's `sign_in`: a
- * session whose snapshot does not discriminate is not held to the strict
- * comparison after an announcement - the wait is held instead until the one
- * `checkAuth()` the announcement is followed with answers authenticated.
+ * Read beside `isRejectedSession` by the modal domain's `sign_in`: this is
+ * the fallback for a session whose snapshot still equals the rejected one.
+ * The check replaces the strict comparison only then - a snapshot that
+ * differs ends the wait before a check is asked - and the wait is held
+ * until the one `checkAuth()` the announcement is followed with answers
+ * authenticated.
  */
 export function credentialSnapshotDiscriminates(session: AuthSession): boolean {
   if (session.kind === 'bearer') return true;
