@@ -269,9 +269,18 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
  * whatever the address asked to mount is unmounted again instead of racing it;
  * an entry that mounted nothing leaves the unmount a no-op. No reload follows:
  * the page's own requests ran with the session, so there is nothing to repeat.
+ *
+ * A chain that has already gone out changes the picture: its `mount_ext`
+ * mounted the modal its `sign_in` is waiting on, and an unmount here would
+ * close it with nothing to reopen it, the once-guard being up for the rest of
+ * the page. Such a chain owns the sign-in entry from the moment it is sent,
+ * so the removal is skipped (`chainSent`, read after the wait: a 401 of the
+ * same page can confirm and send while the start-up check that led here is
+ * still out).
  */
 async function removeSignInEntryAtStart(app: FrontXApp): Promise<void> {
   await modalSlotAttached();
+  if (chainSent) return;
   app.mfeRegistry?.executeActionsChain(buildSignInUnmountChain());
 }
 

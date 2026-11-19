@@ -363,6 +363,52 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
   });
 
+  it('a 401 that sent the chain while the start-up check was pending keeps the modal up when the check rejects', async () => {
+    // The start-up check and a 401 can run at once: the check hangs while the
+    // 401's own check answers signed out, and the chain goes out first. The
+    // unmount chain the rejected start-up check then sends would close the
+    // modal that chain's `sign_in` is waiting on, and `chainSent` never
+    // resets, so no later 401 could reopen it: once a chain has gone out, it
+    // owns the sign-in entry, and the start-up removal is skipped.
+    window.history.replaceState(null, '', '/?popup=sign-in');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = stubProvider(); // no refresh
+    let rejectStartupCheck: ((error: unknown) => void) | undefined;
+    const checkAuth = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectStartupCheck = reject;
+          }),
+      ) // the start-up check, still out
+      .mockResolvedValue({ authenticated: false }); // the 401's own check
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    wireSignInTriggers(app, provider);
+    // The bootstrap settles and the start-up check goes out, unanswered.
+    bootstrap.current.settle();
+    await flush();
+
+    // The 401 lands while the start-up check is still out: its own check
+    // answers signed out, and once the modal slot attaches, the chain goes
+    // out - mount, not unmount.
+    provider.onTransportError?.(transportError(401));
+    modalSlot.current.settle();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    const mount = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(mount.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+
+    // The start-up check then rejects: no unmount chain follows the mount.
+    rejectStartupCheck?.(new Error('accounts service down'));
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+  });
+
   it('a production build without dev auth removes the entry the page-load address named', async () => {
     // The production build wires no trigger: `wireDevSignInTriggers` has no
     // auth config to wire one with. An address that names the sign-in entry
