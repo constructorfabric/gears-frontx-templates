@@ -75,7 +75,7 @@ describe('the modal domain through the real runtime', () => {
     const built = await buildApp();
     registry = built.registry;
     const { modalState } = await import('./modalDomain');
-    const { container } = await renderContainer(built.react, built.app);
+    await renderContainer(built.react, built.app);
     // The layer is up, so the bootstrap has settled and the domain's slot has
     // attached its root in the same commit; a flush lets those effects land
     // before the host drives the domain.
@@ -94,7 +94,7 @@ describe('the modal domain through the real runtime', () => {
     // lands in the domain's slot.
     await screen.findByRole('dialog', { name: 'Terms of use' });
     expect(modalState.getSnapshot()).toBe(extensionId('terms'));
-    await waitFor(() => expect(mountedModalText(container)).toEqual(['modal ./terms']));
+    await waitFor(() => expect(mountedModalText(document.body)).toEqual(['modal ./terms']));
     // The routed domain owns its URL entries: the opened modal is addressable.
     expect(new URLSearchParams(window.location.search).get('popup')).toBe('terms');
 
@@ -110,14 +110,14 @@ describe('the modal domain through the real runtime', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(modalState.getSnapshot()).toBeUndefined();
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('popup')).toBeNull());
-    await waitFor(() => expect(mountedModalText(container)).toEqual([]));
+    await waitFor(() => expect(mountedModalText(document.body)).toEqual([]));
   });
 
   it('a non-cancelable modal has no close button and ignores Escape until the host unmounts it', async () => {
     const built = await buildApp();
     registry = built.registry;
     const { modalState } = await import('./modalDomain');
-    const { container } = await renderContainer(built.react, built.app);
+    await renderContainer(built.react, built.app);
     await act(async () => {});
 
     act(() => {
@@ -138,7 +138,7 @@ describe('the modal domain through the real runtime', () => {
     await act(async () => {});
     expect(screen.getByRole('dialog', { name: 'Session locked' })).not.toBeNull();
     expect(modalState.getSnapshot()).toBe(extensionId('locked'));
-    expect(mountedModalText(container)).toEqual(['modal ./locked']);
+    expect(mountedModalText(document.body)).toEqual(['modal ./locked']);
 
     act(() => {
       registry?.executeActionsChain({
@@ -150,6 +150,6 @@ describe('the modal domain through the real runtime', () => {
       });
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    await waitFor(() => expect(mountedModalText(container)).toEqual([]));
+    await waitFor(() => expect(mountedModalText(document.body)).toEqual([]));
   });
 });

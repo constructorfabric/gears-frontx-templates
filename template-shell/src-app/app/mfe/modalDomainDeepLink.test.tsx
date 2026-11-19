@@ -49,14 +49,14 @@ describe('a modal deep link through the real router', () => {
     const built = await buildApp();
     registry = built.registry;
     const { modalState } = await import('./modalDomain');
-    const { container } = await renderContainer(built.react, built.app);
+    await renderContainer(built.react, built.app);
 
     const dialog = await screen.findByRole('dialog', { name: 'Terms of use' });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     // size "full": the layer carries the covers-the-viewport presentation.
     expect(dialog.className).toContain(styles.modalFull);
     expect(modalState.getSnapshot()).toBe(extensionId('terms'));
-    await waitFor(() => expect(mountedModalText(container)).toEqual(['modal ./terms']));
+    await waitFor(() => expect(mountedModalText(document.body)).toEqual(['modal ./terms']));
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('popup')).toBe('terms'));
 
     // A cancelable modal names the way out and answers Escape with the
@@ -67,6 +67,6 @@ describe('a modal deep link through the real router', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(modalState.getSnapshot()).toBeUndefined();
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('popup')).toBeNull());
-    await waitFor(() => expect(mountedModalText(container)).toEqual([]));
+    await waitFor(() => expect(mountedModalText(document.body)).toEqual([]));
   });
 });

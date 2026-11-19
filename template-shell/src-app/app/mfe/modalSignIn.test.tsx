@@ -156,12 +156,20 @@ describe('the sign-in chain through the real runtime', () => {
     // server already rejected. It even rebuilds the session with its
     // properties in another order, so only the credentials say it is the same.
     const { provider, state } = stubAuthProvider();
-    state.session = { kind: 'bearer', token: 'revoked' };
+    state.session = { kind: 'bearer', token: 'live' };
     const logout = vi.fn(async () => {
       state.session = { token: 'revoked', kind: 'bearer' };
       return { type: 'none' as const };
     });
     provider.logout = logout;
+    // The provider is the authority the trigger asks after a 401 (there is
+    // no refresh to wait out): the session it holds at start is signed in;
+    // once the server has rejected the token, the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -170,7 +178,11 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
-    // A request fails with 401: the chain goes out against the revoked session.
+    // The server revokes the token, and the provider keeps handing the
+    // rejected one out: the request fails with 401 and the chain goes out
+    // against the rejected session.
+    state.session = { kind: 'bearer', token: 'revoked' };
+    serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
@@ -208,7 +220,7 @@ describe('the sign-in chain through the real runtime', () => {
     // still hands out for a finished sign-in. The modal holds until a real
     // sign-in, exactly as when the snapshot read succeeded.
     const { provider, state } = stubAuthProvider();
-    state.session = { kind: 'bearer', token: 'revoked' };
+    state.session = { kind: 'bearer', token: 'live' };
     // The read the 401's hook takes is the one that fails, exactly once.
     let failNextRead = false;
     provider.getSession = async () => {
@@ -218,6 +230,14 @@ describe('the sign-in chain through the real runtime', () => {
       }
       return state.session;
     };
+    // The provider is the authority the trigger asks after a 401: the session
+    // it holds at start is signed in; once the server has rejected the token,
+    // the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -226,8 +246,11 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
-    // The start-up check saw a session and sent nothing; the 401's own
-    // hook-time read is the one that fails, and the chain still goes out.
+    // The start-up check saw a session and sent nothing. The server revokes
+    // the token; the 401's own hook-time read is the one that fails, and the
+    // signed-out answer of the check that follows sends the chain.
+    state.session = { kind: 'bearer', token: 'revoked' };
+    serverRejected = true;
     failNextRead = true;
     act(() => {
       provider.onTransportError?.({
@@ -531,7 +554,15 @@ describe('the sign-in chain through the real runtime', () => {
     // session out closes the modal with no sign-in behind it and drops the
     // reload guard's stamp - exactly the loop the stamp exists to record.
     const { provider, state } = stubAuthProvider();
-    state.session = { kind: 'bearer', token: 'revoked' };
+    state.session = { kind: 'bearer', token: 'live' };
+    // The provider is the authority the trigger asks after a 401 (there is
+    // no refresh to wait out): the session it holds at start is signed in;
+    // once the server has rejected the token, the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -543,7 +574,11 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
-    // A request fails with 401: the chain goes out against the rejected session.
+    // The server revokes the token, and the provider keeps handing the
+    // rejected one out: the request fails with 401 and the chain goes out
+    // against the rejected session.
+    state.session = { kind: 'bearer', token: 'revoked' };
+    serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
@@ -620,7 +655,15 @@ describe('the sign-in chain through the real runtime', () => {
     // announcement beside a new one closes it and reloads, the way it did
     // when every announcement counted.
     const { provider, state } = stubAuthProvider();
-    state.session = { kind: 'bearer', token: 'revoked' };
+    state.session = { kind: 'bearer', token: 'live' };
+    // The provider is the authority the trigger asks after a 401 (there is
+    // no refresh to wait out): the session it holds at start is signed in;
+    // once the server has rejected the token, the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -629,6 +672,11 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
+    // The server revokes the token, and the provider keeps handing the
+    // rejected one out: the request fails with 401 and the chain goes out
+    // against the rejected session.
+    state.session = { kind: 'bearer', token: 'revoked' };
+    serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
