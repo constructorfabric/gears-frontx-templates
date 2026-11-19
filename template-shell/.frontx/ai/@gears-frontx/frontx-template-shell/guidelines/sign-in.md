@@ -106,6 +106,34 @@ and sends no credentials to the shell. The shell only sees the session appear,
 which is what ends the `sign_in` action. A project's sign-in extension follows
 that shape.
 
+The provider decides how the sign-in happens, and there are two kinds. A
+provider like the development one completes the sign-in inside `login()`
+itself, with no navigation. An
+OIDC provider's `login()` may leave the page on its own, or return
+`{ type: 'redirect', redirectUrl }` (`AuthTransitionRedirect` in
+`@gears-frontx/auth`). Nothing in the template follows a redirect result, so
+the extension has to: with such a provider the sign-in extension is a
+"Sign in" button that calls `app.auth.login()` and navigates to `redirectUrl`
+when that is the answer. The chain reaches `sign_in` before that click: it
+starts as soon as the extension is mounted, and the navigation abandons the
+running wait. `refresh_page` never runs on the departing page. The return
+needs no template code: the provider comes back to the address it left, which
+still carries
+`?popup=sign-in` (the chain's `mount_ext` wrote the popup entry there), and
+the start-up check removes that entry once a session exists
+(`checkSessionAtStart` in `signInTriggers.ts` sends the unmount chain); with
+no session, it sends the sign-in chain again.
+
+A provider whose sign-in service cannot be reached is not signed out:
+`checkAuth()` should reject in that case. The trigger sends nothing for a
+check that rejects - it warns the same way at start (`checkSessionAtStart`)
+and after a 401 (`confirmSessionGone`) - so a failed start never opens a
+modal whose button would send the user to the service that is down. A
+signed-out answer from `checkAuth()` is what opens the modal, and the trigger
+asks for it after 401s as well as at start (when no refresh flight ran, or
+the flight left no result to read), so `checkAuth()` has to be safe to call
+repeatedly.
+
 ## The development provider
 
 `src-app/app/auth/devMockAuthProvider.ts` is development only, like mock mode.
@@ -157,5 +185,27 @@ that writes the plugins out by hand must give both of them the same
 joins, so every MFE request, the sign-in MFE's included, goes out without the
 cookie credentials and CSRF header the shell's own requests carry, and nothing
 reports the problem.
+
+Refreshes are the provider's to dedupe. The realm does not dedupe them: a
+join's transport forwards each 401 to the shared runtime's `refresh()`
+(`trackedProvider()` in `authRealm.ts`), and the dedup that exists is per
+transport plugin instance, so the concurrent 401 refreshes of one app share
+one flight while two microfrontends that 401 at the same moment reach the
+host provider's `refresh()` twice. A provider that keeps one token request in
+flight and queues the rest makes that one request per page.
+
+The origin lists are the host's, and they are the lists for every joined MFE,
+because a join takes no options (`authRealmShared()` is parameterless): the
+cookie origins and the CSRF header the host publishes beside the runtime are
+what every MFE's requests carry. The same holds for bounding where bearer
+tokens go. The template's transport attaches a bearer token to every request
+whatever its origin - only cookie credentials are origin-checked
+(`AuthRestPlugin.onRequest`) - and `allowedBearerOrigins`, the list that
+bounds that, is not on this branch yet: it comes with
+constructorfabric/gears-frontx-templates#107. A project passes it to BOTH
+`auth({ frontxApi })` and `authRealm({ frontxApi })` on the host: `auth()`
+builds the shell's own transport from it, `authRealm()` publishes it for the
+joins, and a list that reaches only `authRealm()` bounds the MFEs while the
+shell's own requests stay unlimited.
 
 Everything else in this flow is the shell's and stays unedited.
