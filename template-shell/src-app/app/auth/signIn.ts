@@ -177,21 +177,21 @@ export function isRejectedSession(session: AuthSession): boolean {
 }
 
 /**
- * Ends the session a 401 or the start-up check rejected, before the chain
- * mounts the sign-in modal. A provider that keeps the rejected credentials
- * would otherwise still answer `getSession()` with them, so `sign_in` would
- * take them for a finished sign-in, close the modal and reload into the same
- * 401, page after page. The rejected session is remembered as well: a provider
- * whose logout fails or keeps the credentials still never satisfies `sign_in`
- * with them. The logout goes through the runtime, so the session tracker
- * emits `auth/loggedOut` and the caches of the rejected session are dropped.
- * A logout that rejects is reported and the chain still goes out.
+ * Sets aside the session a 401 or the start-up check rejected, before the
+ * chain mounts the sign-in modal: its credentials are remembered, so a
+ * provider that keeps handing them out never satisfies `sign_in` with them -
+ * the handler waits for a session that is not the rejected one
+ * (`isRejectedSession`, read by the modal domain's `sign_in`). The session is
+ * not ended here: `logout()` goes through the provider, and a redirect
+ * provider's logout navigates to the sign-in service's end-session endpoint,
+ * which would leave the page before the modal mounts (during an outage, onto
+ * an error page), and a logout that runs tells the user's other tabs to sign
+ * out. A rejected session is not a signed-out one the runtime reported: the
+ * chain ends in `refresh_page`, which resets the page and, with it, whatever
+ * still holds the rejected credentials.
  */
 export async function invalidateRejectedSession(auth: AuthRuntime): Promise<void> {
   const session = await auth.getSession().catch(() => null);
   if (!session) return;
   rejectedSession = credentialSnapshot(session);
-  await auth.logout().catch((error: unknown) => {
-    console.warn('[signIn] the rejected session could not be logged out', error);
-  });
 }

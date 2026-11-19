@@ -179,8 +179,10 @@ describe('the sign-in chain through the real runtime', () => {
       });
     });
     await screen.findByRole('dialog', { name: 'Sign in' });
-    // The rejected session was logged out through the runtime before the mount.
-    expect(logout).toHaveBeenCalledTimes(1);
+    // No provider logout runs on this path: a redirect provider's logout
+    // leaves the page before the modal mounts, so the rejected credentials
+    // are only set aside (`isRejectedSession`) and `sign_in` waits on its own.
+    expect(logout).not.toHaveBeenCalled();
 
     // The provider still hands out the revoked token: sign_in does not take it
     // for a sign-in, so the modal stays and nothing reloads.

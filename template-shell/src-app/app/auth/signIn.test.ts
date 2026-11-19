@@ -53,7 +53,8 @@ describe('buildSignInChain', () => {
 });
 
 describe('isRejectedSession', () => {
-  /** Rejects `session` the way a 401 does: the runtime reads it, then logs out. */
+  /** Rejects `session` the way a 401 does: the runtime reads it, and its
+   * credentials are set aside. */
   async function reject(session: AuthSession): Promise<void> {
     const auth = {
       getSession: vi.fn(async () => session),
@@ -88,5 +89,27 @@ describe('isRejectedSession', () => {
     await reject({ kind: 'cookie', csrfToken: 'c1', expiresAt: 1 });
     expect(isRejectedSession({ expiresAt: 2, csrfToken: 'c1', kind: 'cookie' })).toBe(true);
     expect(isRejectedSession({ kind: 'cookie', csrfToken: 'c2' })).toBe(false);
+  });
+
+  it('sets the rejected credentials aside without a provider logout', async () => {
+    // The old credentials are remembered, so the next `sign_in` cannot take
+    // them for a finished sign-in - and the session is not ended here: a
+    // redirect provider's `logout()` navigates to the sign-in service's
+    // end-session endpoint and the page leaves before the modal mounts. The
+    // double's logout throws, so a call would fail this case outright.
+    const auth = {
+      getSession: vi.fn(async () => ({ kind: 'bearer' as const, token: 'revoked' })),
+      logout: vi.fn(async () => {
+        throw new Error('a redirect provider leaves the page from logout()');
+      }),
+    } as unknown as AuthRuntime;
+    await invalidateRejectedSession(auth);
+
+    expect(auth.logout).not.toHaveBeenCalled();
+    // The rejected credentials cannot be reused by the next sign-in; other
+    // credentials still count as a new one.
+    expect(isRejectedSession({ kind: 'bearer', token: 'revoked' })).toBe(true);
+    expect(isRejectedSession({ token: 'revoked', kind: 'bearer', expiresAt: 9 })).toBe(true);
+    expect(isRejectedSession({ kind: 'bearer', token: 'fresh' })).toBe(false);
   });
 });
