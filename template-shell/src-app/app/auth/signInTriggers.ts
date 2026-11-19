@@ -211,7 +211,7 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
   try {
     await bootstrapSettled();
     // A host wired without an auth runtime checks nothing. The production
-    // build is not this branch - it wires no trigger at all, and
+    // build never reaches this check - it wires no trigger at all, and
     // `removeSignInEntryAtPageLoad` covers its page-load address. An address
     // that still names the sign-in entry would mount a modal whose
     // only closer is the `sign_in` no chain holds here, so the entry is
@@ -221,7 +221,15 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
       if (addressNamedSignIn) await removeSignInEntryAtStart(app);
       return;
     }
-    const result = await app.auth.checkAuth().catch((error: unknown) => {
+    // Wrapped in `Promise.resolve().then`, so a check that throws
+    // synchronously reaches this rejection handler too: the runtime's
+    // `checkAuth` is a plain pass-through, and an unwrapped call would throw
+    // out of this try and land in the bootstrap warning below, with the
+    // entry the address named left in place.
+    const auth = app.auth;
+    const result = await Promise.resolve()
+      .then(() => auth.checkAuth())
+      .catch((error: unknown) => {
       // A check that cannot answer says nothing about the session. Nothing
       // here sets the once-guard, so a later 401 can still send the chain.
       console.warn(

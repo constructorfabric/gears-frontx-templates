@@ -335,6 +335,48 @@ describe('wireSignInTriggers', () => {
     expect(mount.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
   });
 
+  it('a start-up check that throws synchronously removes the entry the address named, and warns the check did not answer', async () => {
+    // The runtime's `checkAuth` is a plain pass-through, so a provider whose
+    // `checkAuth` throws before any promise exists makes the call itself
+    // throw. Unwrapped, that throw would land in the bootstrap warning with
+    // the entry left in the address, as if the bootstrap had failed when it
+    // did not. Wrapped so the throw becomes a rejection, it reaches the same
+    // handler a rejecting check reaches: the entry is removed, and the
+    // warning says the check did not answer.
+    window.history.replaceState(null, '', '/?popup=sign-in');
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = stubProvider(); // no refresh
+    const checkAuth = vi.fn(() => {
+      throw new Error('accounts service down');
+    });
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+
+    // The warning is the check's own, not the bootstrap's.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('the start-up session check did not answer'),
+      expect.any(Error),
+    );
+    expect(
+      warn.mock.calls.filter((call) => String(call[0]).includes('bootstrap failed')),
+    ).toEqual([]);
+
+    // The unmount chain removed the entry, and no sign-in chain went out.
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    const unmount = executeActionsChain.mock.calls[0][0] as {
+      action: { type: string; target: string; payload: { subject: string; history: string } };
+    };
+    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+  });
+
   it('a host wired without an auth runtime removes the entry the address named', async () => {
     // The `!app.auth` branch of the start-up check. A caller reaches it only
     // by wiring the triggers without the auth plugin: the template's own
