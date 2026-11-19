@@ -813,14 +813,17 @@ describe('the sign-in chain through the real runtime', () => {
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
-  it('a cookie session without a CSRF token ends the wait on an announcement that carries a session', async () => {
+  it('a cookie session without a CSRF token ends the wait when the announcement is followed by an authenticated session check', async () => {
     // A cookie session that carries no CSRF token serializes to the same
     // credentials before and after a real sign-in: `credentialSnapshot` has
     // no field that could tell one such session from another, so the strict
     // comparison against the rejected session would hold the modal until the
-    // timeout even though the person signed in. For that shape an
-    // announcement that carries a session is the sign-in; every session the
-    // snapshot can tell apart keeps the strict comparison.
+    // timeout even though the person signed in. For that shape the
+    // announcement alone still ends nothing - the tracker announces
+    // refreshes that sign nobody in - so the announcement is followed by one
+    // `app.auth.checkAuth()`, and only an authenticated answer ends the
+    // wait; every session the snapshot can tell apart keeps the strict
+    // comparison.
     const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'cookie' };
     const built = await buildApp({ provider });
@@ -843,9 +846,20 @@ describe('the sign-in chain through the real runtime', () => {
     });
     await screen.findByRole('dialog', { name: 'Sign in' });
 
+    // The modal holds before anything announces: the rejected session the
+    // first read answers ends nothing, and the leniency below must not reach
+    // back over that first read.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(reloadPage).not.toHaveBeenCalled();
+
     // The sign-in lands, and the provider hands out the new cookie session -
-    // whose snapshot no field could tell from the rejected one. The
-    // announcement that carries it ends the wait, and the chain reloads once.
+    // whose snapshot no field could tell from the rejected one. The server
+    // accepts the session now, so the check the announcement is followed
+    // with answers authenticated: the wait ends, and the chain reloads once.
+    rejection.serverRejected = false;
     act(() => {
       built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
     });
@@ -895,6 +909,158 @@ describe('the sign-in chain through the real runtime', () => {
     state.session = { kind: 'cookie', csrfToken: 'csrf-2' };
     act(() => {
       built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refresh that rejects while signed in holds a cookie session the snapshot cannot discriminate, and a real sign-in ends the wait', async () => {
+    // For a cookie session without a CSRF token the announcement alone is no
+    // answer: the tracker also announces refreshes that sign nobody in, and
+    // a refresh that rejects while the tracker still says signed in is one
+    // of them (it clears for an unknown identity as a cache-scope signal).
+    // The announcement is followed by the session check the 401 itself
+    // asked, and that check still answers signed out here, so the modal and
+    // the reload stamp hold on one check per announcement. A real sign-in -
+    // the check answering authenticated - ends the wait with one reload.
+    const { provider, state, rejection } = stubRevocableProvider();
+    state.session = { kind: 'cookie' };
+    provider.refresh = vi.fn(async () => {
+      throw new Error('refresh endpoint down');
+    });
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    // A failure reload stamped the guard moments ago: the state a pass of
+    // the loop leaves behind, which a bogus sign-in end would clear.
+    expect(claimAutomaticReload()).toBe(true);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // The server rejects the cookie session, and the provider keeps handing
+    // it out: the 401 opens the modal against the rejected session.
+    rejection.serverRejected = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+    const checkAuth = vi.spyOn(provider, 'checkAuth');
+
+    // The refresh that rejects: the tracker still says signed in, so it
+    // clears for an unknown identity and announces a session start beside
+    // the same cookie session. The check answers signed out, so the wait
+    // holds.
+    await act(async () => {
+      await built.app.auth?.refresh?.().catch(() => undefined);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    // The stamp is still in place, so sign_in cleared nothing.
+    expect(claimAutomaticReload()).toBe(false);
+    expect(reloadPage).not.toHaveBeenCalled();
+    // One check per announcement: no polling behind the wait.
+    expect(checkAuth).toHaveBeenCalledTimes(1);
+
+    // The sign-in lands: the provider hands the same shape out, and the
+    // server accepts it now, so the check the announcement is followed with
+    // answers authenticated. The wait ends, the modal closes and the chain
+    // reloads once.
+    rejection.serverRejected = false;
+    provider.login = vi.fn(async () => {
+      state.session = { kind: 'cookie' };
+      return { type: 'none' as const };
+    });
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refresh that hands back the same cookie session keeps the modal until the session check answers authenticated', async () => {
+    // A refresh that resolves a session after the tracker went signed out
+    // announces a session start. For a cookie session without a CSRF token
+    // the session it resolves is the very one the chain was sent against -
+    // no field could tell it apart - so the announcement is not taken for
+    // the sign-in: the session check is asked once, it still answers signed
+    // out, and the modal and the reload stamp hold. A real sign-in, with the
+    // check answering authenticated, ends the wait with one reload.
+    const { provider, state, rejection } = stubRevocableProvider();
+    state.session = { kind: 'cookie' };
+    // One refresh stub for the whole case, dispatching on the flight the
+    // case wants next (the same shape the bearer case at the top of the
+    // cookie cases uses).
+    let flight: 'no-session' | 'same-session' = 'no-session';
+    provider.refresh = vi.fn(async () => (flight === 'no-session' ? null : state.session));
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    // A failure reload stamped the guard moments ago: the state a pass of
+    // the loop leaves behind, which a bogus sign-in end would clear.
+    expect(claimAutomaticReload()).toBe(true);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // The server rejects the cookie session: the 401 opens the modal against
+    // the rejected session, and the trigger's own flight resolves no
+    // session, which is answer enough for it.
+    rejection.serverRejected = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The flight that takes the tracker signed out: a refresh resolving no
+    // session. The modal holds either way.
+    await act(async () => {
+      await built.app.auth?.refresh?.();
+    });
+
+    // The flight that hands the same cookie session back: the tracker
+    // announces a session start beside it. The check still answers signed
+    // out, so the wait holds and the stamp survives.
+    flight = 'same-session';
+    await act(async () => {
+      await built.app.auth?.refresh?.();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    // The stamp is still in place, so sign_in cleared nothing.
+    expect(claimAutomaticReload()).toBe(false);
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // The sign-in lands: the provider hands the same shape out, and the
+    // server accepts it now, so the check answers authenticated. The wait
+    // ends, the modal closes and the chain reloads once.
+    rejection.serverRejected = false;
+    provider.login = vi.fn(async () => {
+      state.session = { kind: 'cookie' };
+      return { type: 'none' as const };
+    });
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(modalState.getSnapshot()).toBeUndefined();

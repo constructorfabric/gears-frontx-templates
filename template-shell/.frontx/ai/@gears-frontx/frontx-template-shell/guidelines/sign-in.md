@@ -117,11 +117,13 @@ announcement or the bound, instead of failing the action. One session shape
 cannot be compared at all: a cookie session without a CSRF token and without
 any other valued field serializes to the same credentials before and after a
 real sign-in, so nothing tells the new session from the rejected one. For
-such a session any announcement that carries a session ends the wait; every
-session the snapshot can tell apart is held to the comparison above. A
-project's
-sign-in extension follows
-that shape.
+such a session the announcement alone still ends nothing: the tracker
+announces refreshes that sign nobody in, so the announcement is followed by
+one `app.auth.checkAuth()`, raced against the bound like the read and asked
+once per announcement, and the wait ends only when it answers authenticated;
+a rejected check counts as not signed in and the wait goes on. Every session
+the snapshot can tell apart is held to the comparison above. A project's
+sign-in extension follows that shape.
 
 The provider decides how the sign-in happens, and there are two kinds. A
 provider like the development one completes the sign-in inside `login()`

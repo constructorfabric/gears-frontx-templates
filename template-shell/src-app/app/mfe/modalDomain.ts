@@ -166,8 +166,10 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
    * after signed out, and a refresh that rejects while signed in, which
    * clears for an unknown identity as a cache-scope signal), so every
    * announcement is followed by one fresh read of the session, and only a
-   * session that exists and is not the rejected one ends the wait. One read
-   * per announcement, no polling; every read is raced against the bound
+   * session that exists and is not the rejected one ends the wait - with
+   * one exception for a session the snapshot cannot discriminate, which
+   * must also answer the session check (`app.auth.checkAuth()`) below. One
+   * read per announcement, no polling; every read is raced against the bound
    * below, so no read can close the modal or drop the stamp after the bound
    * has won, and a read that fails after an announcement counts as "no
    * session" - the wait goes on for the next announcement or the bound
@@ -238,12 +240,15 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // credentials before and after a real sign-in
         // (`credentialSnapshotDiscriminates`), so the strict comparison
         // would never see that sign-in and the modal would hold until the
-        // bound. For a session that follows an announcement and carries no
-        // field that could tell it from the rejected one, the announcement
-        // is the sign-in. The first read keeps the strict comparison -
-        // nothing has announced anything yet, so the session the provider
-        // still hands out is the rejected one - and every session the
-        // snapshot can tell apart keeps it everywhere.
+        // bound. The announcement alone is still no answer for that shape -
+        // the tracker announces refreshes that sign nobody in - so the
+        // announcement is followed by one `app.auth.checkAuth()`, raced
+        // against the bound like the read, and the wait ends only when it
+        // answers authenticated; a rejection counts as "not signed in, keep
+        // waiting". One check per announcement, no polling. The first read
+        // keeps the strict comparison - nothing has announced anything yet,
+        // so the session the provider still hands out is the rejected one -
+        // and every session the snapshot can tell apart keeps it everywhere.
         //
         // The read is raced against the bound like the announcement is: a
         // read that answers after the bound has won must close nothing and
@@ -265,7 +270,24 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         if (!settled) return;
         if (settled.session) {
           const rejected = isRejectedSession(settled.session);
-          if (!rejected || (announced && !credentialSnapshotDiscriminates(settled.session))) break;
+          if (!rejected) break;
+          if (announced && !credentialSnapshotDiscriminates(settled.session)) {
+            // For a session no field could tell from the rejected one, the
+            // announcement is not the sign-in: the authority the 401 itself
+            // asked decides. One check per announcement, raced against the
+            // bound like the read; a rejection answers "not signed in".
+            const signedIn = await Promise.race([
+              Promise.resolve()
+                .then(() => auth.checkAuth())
+                .then(
+                  (result) => result.authenticated === true,
+                  () => false,
+                ),
+              bound.then(() => null),
+            ]);
+            if (signedIn === null) return;
+            if (signedIn) break;
+          }
         }
         const outcome = await Promise.race([
           announcement.then(() => 'announced' as const),
