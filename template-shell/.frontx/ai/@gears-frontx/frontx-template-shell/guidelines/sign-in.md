@@ -99,68 +99,66 @@ so a build without a provider sends nothing.
 
 ## Who performs the sign-in
 
-The shell does not. The auth plugin shares its runtime across the whole realm:
-`authRealm()` in the shell publishes `app.auth` into the
+The shell does not. The auth plugin shares its runtime across the whole
+realm: `authRealm()` in the shell publishes `app.auth` into the
 `frontx:auth:runtime` slot on `globalThis`, and the sign-in MFE joins that
-slot with `authRealmShared()`. The modal then signs in through `app.auth.login`
-and sends no credentials to the shell. The shell only sees the session appear,
-which is what ends the `sign_in` action. The `auth/loggedIn` announcement is
-the wake-up, not the answer: the tracker emits it for more than a finished
-sign-in (a refresh that resolves the rejected session after signed out, and a
-refresh that rejects while signed in, which clears for an unknown identity as
-a cache-scope signal), so `sign_in` follows each announcement with one fresh
-read of the session and keeps waiting until a session that is neither missing
-nor the rejected one answers. The read is raced against the action's bound,
-so no read can close the modal after the bound has won, and a read that fails
-after an announcement counts as no session: the wait goes on for the next
-announcement or the bound, instead of failing the action. The failure spends
-the announcement: a real sign-in usually announces once, so the modal can
-then hold until the bound, and the bound's running out leaves the chain to
-its fallback reload. One session shape
-cannot be compared at all: a cookie session without a CSRF token and without
-any other valued field serializes to the same credentials before and after a
-real sign-in, so nothing tells the new session from the rejected one. For
-such a session the announcement alone still ends nothing: the tracker
-announces refreshes that sign nobody in, so the announcement is followed by
-one `app.auth.checkAuth()`, raced against the bound like the read and asked
-once per announcement, and the wait ends only when it answers authenticated;
-a rejected check counts as not signed in and the wait goes on. Which
-sessions the snapshot can tell apart is read off the fields the session
-carries, and that read cannot see whether a field keeps its value across
-sign-ins: a session whose only valued fields never change (a fixed expiry, a
-custom field that never changes) is compared as if it could be told apart,
-and holds the modal until the bound. A project's
-sign-in extension follows that shape.
+slot with `authRealmShared()`. The modal then signs in through
+`app.auth.login` and sends no credentials to the shell. The shell only sees
+the session appear, which is what ends the `sign_in` action. The
+`auth/loggedIn` announcement is the wake-up, not the answer: the tracker
+emits it for more than a finished sign-in (a refresh that resolves the
+rejected session after signed out, and a refresh that rejects while signed
+in, which clears for an unknown identity as a cache-scope signal), so
+`sign_in` follows each announcement with one fresh read of the session and
+keeps waiting until a session that is neither missing nor the rejected one
+answers. The read is raced against the action's bound, so no read can close
+the modal after the bound has won, and a read that fails after an
+announcement counts as no session: the wait goes on for the next announcement
+or the bound, instead of failing the action. The failure spends the
+announcement: a real sign-in usually announces once, so the modal can then
+hold until the bound, and the bound's running out leaves the chain to its
+fallback reload. One session shape cannot be compared at all: a cookie
+session without a CSRF token and without any other valued field serializes to
+the same credentials before and after a real sign-in, so nothing tells the
+new session from the rejected one. For such a session the announcement alone
+still ends nothing: the tracker announces refreshes that sign nobody in, so
+the announcement is followed by one `app.auth.checkAuth()`, raced against the
+bound like the read and asked once per announcement, and the wait ends only
+when it answers authenticated; a rejected check counts as not signed in and
+the wait goes on. Which sessions the snapshot can tell apart is read off the
+fields the session carries, and that read cannot see whether a field keeps
+its value across sign-ins: a session whose only valued fields never change (a
+fixed expiry, a custom field that never changes) is compared as if it could
+be told apart, and holds the modal until the bound. A project's sign-in
+extension follows that shape.
 
 The provider decides how the sign-in happens, and there are two kinds. A
 provider like the development one completes the sign-in inside `login()`
-itself, with no navigation. An
-OIDC provider's `login()` may leave the page on its own, or return
-`{ type: 'redirect', redirectUrl }` (`AuthTransitionRedirect` in
-`@gears-frontx/auth`). Nothing in the template follows a redirect result, so
-the extension has to: with such a provider the sign-in extension is a
-"Sign in" button that calls `app.auth.login()` and navigates to `redirectUrl`
-when that is the answer. The chain reaches `sign_in` before that click: it
-starts as soon as the extension is mounted, and the navigation abandons the
-running wait. `refresh_page` never runs on the departing page. The return
-needs no template code: the provider comes back to the address it left, which
-still carries
-`?popup=sign-in` (the chain's `mount_ext` wrote the popup entry there), and
-the start-up check removes that entry once a session exists
-(`checkSessionAtStart` in `signInTriggers.ts` sends the unmount chain); with
-no session, it sends the sign-in chain again. The entry is removed when the
-check sends no chain either: a check that rejects, or a host wired without an
-auth runtime (only a wiring without the auth plugin reaches that branch).
-A bootstrap that fails is the one start that keeps the entry: the session
-check does not run, the start only warns, and the removal is skipped because
-the domains the unmount chain names may not exist, so the unmount could not
-be delivered. A
+itself, with no navigation. An OIDC provider's `login()` may leave the page
+on its own, or return `{ type: 'redirect', redirectUrl }`
+(`AuthTransitionRedirect` in `@gears-frontx/auth`). Nothing in the template
+follows a redirect result, so the extension has to: with such a provider the
+sign-in extension is a "Sign in" button that calls `app.auth.login()` and
+navigates to `redirectUrl` when that is the answer. The chain reaches
+`sign_in` before that click: it starts as soon as the extension is mounted,
+and the navigation abandons the running wait. `refresh_page` never runs on
+the departing page. The return needs no template code: the provider comes
+back to the address it left, which still carries `?popup=sign-in` (the
+chain's `mount_ext` wrote the popup entry there), and the start-up check
+removes that entry once a session exists (`checkSessionAtStart` in
+`signInTriggers.ts` sends the unmount chain); with no session, it sends the
+sign-in chain again. The entry is removed when the check sends no chain
+either: a check that rejects, or a host wired without an auth runtime (only a
+wiring without the auth plugin reaches that branch). A bootstrap that fails
+is the one start that keeps the entry: the session check does not run, the
+start only warns, and the removal is skipped because the domains the unmount
+chain names may not exist, so the unmount could not be delivered. A
 production build wires no trigger at all, and its removal happens without
 one: `wireDevSignInTriggers` (`devAuth.ts`) reads the page-load address
 before the first render and calls `removeSignInEntryAtPageLoad`
 (`signInTriggers.ts`), which sends the same unmount chain once the bootstrap
-has settled and the modal slot has attached. Nothing
-sets the once-guard on these paths, so a later 401 still opens sign-in.
+has settled and the modal slot has attached. Nothing sets the once-guard on
+these paths, so a later 401 still opens sign-in.
 
 A provider whose sign-in service cannot be reached is not signed out:
 `checkAuth()` should reject in that case. The trigger sends nothing for a
@@ -186,18 +184,19 @@ once, with nothing to ask.
 
 ## The development provider
 
-`src-app/app/auth/devMockAuthProvider.ts` is development only, like mock mode.
-`src-app/app/auth/devAuth.ts` holds it behind `import.meta.env.DEV` together
-with the plugin list and the trigger wiring, and both entries call that one
-module, so a production build carries no provider, no auth plugin and no
-realm plugin, and it wires no trigger; the one thing it still does there is
-remove a sign-in entry the page-load address named
+`src-app/app/auth/devMockAuthProvider.ts` is development only, like mock
+mode. `src-app/app/auth/devAuth.ts` holds it behind `import.meta.env.DEV`
+together with the plugin list and the trigger wiring, and both entries call
+that one module, so a production build carries no provider, no auth plugin
+and no realm plugin, and it wires no trigger; the one thing it still does
+there is remove a sign-in entry the page-load address named
 (`removeSignInEntryAtPageLoad`), since the modal that entry mounts has no
-`sign_in` behind it to close it. It accepts any non-empty credentials and keeps a bearer
-session in `sessionStorage`, enough to walk the flow without a backend. A
-project replaces it with its own `AuthProvider` in that module and drops the
-`import.meta.env.DEV` condition there, which is what also turns the triggers
-on in a production build: they are wired whenever an auth config exists.
+`sign_in` behind it to close it. It accepts any non-empty credentials and
+keeps a bearer session in `sessionStorage`, enough to walk the flow without a
+backend. A project replaces it with its own `AuthProvider` in that module and
+drops the `import.meta.env.DEV` condition there, which is what also turns the
+triggers on in a production build: they are wired whenever an auth config
+exists.
 
 The mock REST plugin answers 200 to every request its mock map matches, and a
 request no key matches passes through to the network, so in development the
