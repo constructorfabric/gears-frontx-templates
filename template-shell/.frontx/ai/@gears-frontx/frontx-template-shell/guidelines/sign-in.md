@@ -113,7 +113,10 @@ read of the session and keeps waiting until a session that is neither missing
 nor the rejected one answers. The read is raced against the action's bound,
 so no read can close the modal after the bound has won, and a read that fails
 after an announcement counts as no session: the wait goes on for the next
-announcement or the bound, instead of failing the action. One session shape
+announcement or the bound, instead of failing the action. The failure spends
+the announcement: a real sign-in usually announces once, so the modal can
+then hold until the bound, and the bound's running out leaves the chain to
+its fallback reload. One session shape
 cannot be compared at all: a cookie session without a CSRF token and without
 any other valued field serializes to the same credentials before and after a
 real sign-in, so nothing tells the new session from the rejected one. For
@@ -121,8 +124,12 @@ such a session the announcement alone still ends nothing: the tracker
 announces refreshes that sign nobody in, so the announcement is followed by
 one `app.auth.checkAuth()`, raced against the bound like the read and asked
 once per announcement, and the wait ends only when it answers authenticated;
-a rejected check counts as not signed in and the wait goes on. Every session
-the snapshot can tell apart is held to the comparison above. A project's
+a rejected check counts as not signed in and the wait goes on. Which
+sessions the snapshot can tell apart is read off the fields the session
+carries, and that read cannot see whether a field keeps its value across
+sign-ins: a session whose only valued fields never change (a fixed expiry, a
+custom field that never changes) is compared as if it could be told apart,
+and holds the modal until the bound. A project's
 sign-in extension follows that shape.
 
 The provider decides how the sign-in happens, and there are two kinds. A

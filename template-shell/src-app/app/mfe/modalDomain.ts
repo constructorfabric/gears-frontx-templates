@@ -173,8 +173,11 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
    * below, so no read can close the modal or drop the stamp after the bound
    * has won, and a read that fails after an announcement counts as "no
    * session" - the wait goes on for the next announcement or the bound
-   * instead of failing the action. The first read is announced by nothing,
-   * so a failure of that one still fails the action.
+   * instead of failing the action. The failure spends the announcement it
+   * followed: a real sign-in usually announces once, so the wait can then
+   * hold until the bound, whose running out leaves the chain to its fallback
+   * reload. The first read is announced by nothing, so a failure of that one
+   * still fails the action.
    *
    * Without the auth plugin the action fails at once: there is no runtime that
    * could report a session, so waiting would only burn the sender's timeout.

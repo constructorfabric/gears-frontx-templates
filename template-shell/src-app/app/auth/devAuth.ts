@@ -26,10 +26,11 @@ import { removeSignInEntryAtPageLoad, wireSignInTriggers } from './signInTrigger
 /**
  * The development auth provider: on in development, like mock mode, and the
  * only auth the template ships. A production build passes no auth config, so
- * the auth plugin, the realm sharing and the sign-in wiring are all absent
- * from it, and a project replaces the provider with its own. A project with a
- * cookie session adds `frontxApi` (cookie origins and the CSRF header name) to
- * this one config; both plugins below read it from here.
+ * the auth plugin, the realm sharing and the trigger wiring are all absent
+ * from it, and the one sign-in thing it still does is remove a sign-in entry
+ * the page-load address named (`removeSignInEntryAtPageLoad`). A project with
+ * a cookie session adds `frontxApi` (cookie origins and the CSRF header name)
+ * to this one config; both plugins below read it from here.
  */
 export const devAuthConfig: AuthPluginConfig | undefined = import.meta.env.DEV
   ? { provider: createDevMockAuthProvider() }

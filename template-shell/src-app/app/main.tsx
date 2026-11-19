@@ -62,7 +62,8 @@ const app = createFrontX()
 
 // The sign-in triggers: a 401, or a start with no session, sends the chain that
 // opens the sign-in modal. Wired only where the development auth config exists;
-// in a production build nothing here runs.
+// a production build wires no trigger here and only removes a sign-in entry
+// the page-load address named (`removeSignInEntryAtPageLoad`).
 wireDevSignInTriggers(app);
 
 // The root registry is built eagerly: the shell is the root runtime, so its

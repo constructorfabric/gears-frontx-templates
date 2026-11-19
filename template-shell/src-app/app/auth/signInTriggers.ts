@@ -9,8 +9,9 @@
  *
  * Both triggers exist only where the development auth provider is wired
  * (`main.tsx`, `main.no-uikit.tsx`, behind `import.meta.env.DEV`). A production
- * build passes no provider, wires nothing here, and the shell behaves exactly
- * as before.
+ * build passes no provider and wires no trigger; the one thing it still runs
+ * here is `removeSignInEntryAtPageLoad`, which removes a sign-in entry the
+ * page-load address named.
  */
 
 import type {
