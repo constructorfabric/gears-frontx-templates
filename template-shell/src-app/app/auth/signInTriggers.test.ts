@@ -79,24 +79,27 @@ function stubProvider(): AuthProvider {
 
 /**
  * The auth runtime slice the triggers actually read: `checkAuth` to decide,
- * `getSession` with `logout` to end a rejected session before the chain goes
- * out (no session here, so no logout), and `refresh` when a case drives a
- * flight through the shared runtime. The rest of the runtime is the
+ * `getSession` for the snapshot reads (the hook-time one, and the send's final
+ * one right before the chain), and `logout` to prove no provider logout runs
+ * on the set-aside path. The rest of the runtime is the
  * framework plugin's tested behaviour and stays out of these doubles.
  */
 type AuthRuntimeSlice = {
   checkAuth: () => Promise<{ authenticated: boolean }>;
   refresh?: () => Promise<unknown>;
+  getSession?: () => Promise<unknown>;
 };
 
 function stubApp(auth?: AuthRuntimeSlice): {
   app: FrontXApp;
   executeActionsChain: ReturnType<typeof vi.fn>;
+  logout: ReturnType<typeof vi.fn>;
 } {
   const executeActionsChain = vi.fn();
-  const runtime = auth && { getSession: async () => null, logout: vi.fn(), ...auth };
+  const logout = vi.fn();
+  const runtime = auth && { getSession: async () => null, logout, ...auth };
   const app = { mfeRegistry: { executeActionsChain }, auth: runtime } as unknown as FrontXApp;
-  return { app, executeActionsChain };
+  return { app, executeActionsChain, logout };
 }
 
 function transportError(status: number): TransportErrorEvent {
@@ -363,7 +366,8 @@ describe('wireSignInTriggers', () => {
     // The hook fires before the transport has refreshed: a read taken at hook
     // time would answer from the state the flight is about to replace and
     // open the modal for a session the flight recovers. The confirmation
-    // waits for the flight, and the session it left answers signed in.
+    // waits for the flight, and the session the flight resolved is the
+    // runtime's answer: signed in, so the provider is not asked again.
     const { wireSignInTriggers } = await import('./signInTriggers');
     let flightSettled = false;
     const refresh = vi.fn(async () => {
@@ -387,14 +391,17 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).not.toHaveBeenCalled();
 
     // The 401 and the transport's flight for it land in the same tick, before
-    // the confirmation's first tick; the read follows the settled flight.
+    // the confirmation's first tick; the flight's own result decides.
     provider.onTransportError?.(transportError(401));
     void provider.refresh?.();
-    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(flightSettled).toBe(true));
+    await flush();
     await flush();
 
     expect(flightSettled).toBe(true);
     expect(refresh).toHaveBeenCalledTimes(1);
+    // The flight answered, so the confirmation never asked the provider.
+    expect(checkAuth).toHaveBeenCalledTimes(1);
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
 
@@ -421,11 +428,15 @@ describe('wireSignInTriggers', () => {
 
     provider.onTransportError?.(transportError(401));
     void app.auth?.refresh?.();
-    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(flightSettled).toBe(true));
+    await flush();
     await flush();
 
     expect(flightSettled).toBe(true);
     expect(runtimeRefresh).toHaveBeenCalledTimes(1);
+    // The flight the join started answered on the runtime's own path, so the
+    // confirmation never asked the provider.
+    expect(checkAuth).toHaveBeenCalledTimes(1);
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
 
@@ -495,6 +506,77 @@ describe('wireSignInTriggers', () => {
     // The start-up read plus one confirmation for the whole burst.
     expect(checkAuth).toHaveBeenCalledTimes(2);
     expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
+  it('a burst of 401s reads the baseline session once', async () => {
+    // The baseline credentials only matter to the 401 that starts the
+    // confirmation: the ones a confirmation already running drops at once
+    // never compare anything, so they must not start a session read either.
+    // A provider that reads the session over the network (a cookie /me
+    // lookup) would otherwise pay for one read per failing request.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      refresh: vi.fn().mockResolvedValue({ kind: 'bearer', token: 'renewed' }),
+    };
+    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'the-401-one' });
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+
+    // Three 401s land in the same tick: the first starts the confirmation,
+    // the other two are dropped before anything is read.
+    provider.onTransportError?.(transportError(401));
+    provider.onTransportError?.(transportError(401));
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(2));
+    await flush();
+
+    // One baseline read for the whole burst: the start-up check reads nothing
+    // (the runtime slice here reads only when the triggers ask), and the
+    // confirmation read no second baseline.
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
+  it('a burst of 401s without a refresh reads the baseline session once and sends one chain', async () => {
+    // The no-refresh branch runs the same newer-session comparison the
+    // refresh branch runs, so it owes the same once-per-burst guard: without
+    // it, every 401 of a burst suspends on its own baseline read before the
+    // chain send sets the once-guard, and the burst pays two reads per
+    // request (one baseline, one comparison) instead of two per burst.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider(); // no refresh
+    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'the-401-one' });
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // Three 401s land in the same tick: the first starts the one open, the
+    // other two are dropped before anything is read.
+    provider.onTransportError?.(transportError(401));
+    provider.onTransportError?.(transportError(401));
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    await flush();
+
+    // One chain, and one baseline read for the whole burst: the baseline the
+    // first 401 read at hook time, and the send's final read right before the
+    // chain went out. The rejected credentials are the snapshot the first 401
+    // took, so the send reads nothing beyond that.
+    expect(getSession).toHaveBeenCalledTimes(2);
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
   });
 
   it('a 401 session check that rejects warns like the start-up path and sends nothing', async () => {
@@ -608,5 +690,547 @@ describe('wireSignInTriggers', () => {
     expect(ownReports).toEqual([401]);
     settleBootstrapAndSlot();
     await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+  });
+
+  it('a refresh that resolved no session opens sign-in even when checkAuth still sees one', async () => {
+    // The provider the review ran against keeps the old token when the token
+    // endpoint does not answer: `refresh()` resolves null (the runtime reports
+    // that as signed out) while `checkAuth()` still answers from the token it
+    // kept, so asking the provider after the flight holds the modal back for
+    // a session that is gone. The flight's own result decides instead, and
+    // `checkAuth()` is not asked at all when the flight answered.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+      refresh: vi.fn().mockResolvedValue(null),
+    };
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    // The start-up read sees the stale session and sends nothing.
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(1));
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // The 401 and the transport's flight for it land in the same tick, before
+    // the confirmation's first tick. The flight resolves to no session.
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    // The flight's null result sent the chain; the provider was never asked
+    // again, so its stale answer could not hold the modal back.
+    expect(provider.checkAuth).toHaveBeenCalledTimes(1);
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+  });
+
+  it('a session with other credentials since the 401 keeps the modal closed', async () => {
+    // The window between the 401 and the chain send is real: a sign-in can
+    // finish there (a callback the provider completed, a login from another
+    // surface the runtime heard of). Before it opens the dialog the trigger
+    // reads the runtime's session again and compares credentials with the
+    // session the 401 was against: a session with other credentials is a
+    // newer one, and the modal must not cover it.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi
+        .fn()
+        .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+        .mockResolvedValue({ authenticated: false }),
+      refresh: vi.fn(async () => {
+        await flush();
+        // The flight gives out while a newer session starts behind it.
+        return null;
+      }),
+    };
+    // The first read the trigger makes is the 401's own baseline; the second
+    // one, right before the dialog would open, finds the newer session.
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({ kind: 'bearer', token: 'the-401-one' })
+      .mockResolvedValue({ kind: 'bearer', token: 'newer-session' });
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(1));
+
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await flush();
+    await flush();
+
+    expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
+  it('a login that finishes while the modal slot is still pending is not set aside', async () => {
+    // The comparison of credentials used to run before the readiness waits:
+    // with the modal slot still pending, a sign-in could finish in between,
+    // and the send then read the NEW session and set its credentials aside as
+    // the rejected ones - the modal mounted over a session whose `sign_in`
+    // could never answer for it (its login event had already fired). The
+    // comparison runs after the waits now, right before the chain is sent,
+    // and what the chain sets aside is the session the 401 was against, taken
+    // at hook time.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    // The same module instance the trigger uses, so the rejected session it
+    // remembers is read here (the once-guard makes every case import afresh).
+    const { isRejectedSession } = await import('./signIn');
+    // The slot attaches on a later React commit; a sign-in that finishes
+    // behind the pending slot leaves other credentials in the runtime.
+    const slotAttached = { current: false };
+    const getSession = vi.fn(async () => ({
+      kind: 'bearer' as const,
+      token: slotAttached.current ? 'newer-session' : 'the-401-one',
+    }));
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi.fn().mockResolvedValueOnce({ authenticated: true }), // the start-up read
+      refresh: vi.fn(async () => {
+        await flush();
+        return null; // the flight resolves no session: the chain send starts
+      }),
+    };
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    // The bootstrap has settled, the modal slot has not: the send waits.
+    bootstrap.current.settle();
+
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await flush();
+    await flush();
+
+    // The sign-in finishes while the slot is still pending; then it attaches.
+    slotAttached.current = true;
+    modalSlot.current.settle();
+    await flush();
+    await flush();
+
+    // The newer session turned the comparison away: no modal opens over it,
+    // the chain was not sent, and neither its credentials nor the 401's own
+    // were set aside.
+    expect(executeActionsChain).not.toHaveBeenCalled();
+    expect(isRejectedSession({ kind: 'bearer', token: 'newer-session' })).toBe(false);
+    expect(isRejectedSession({ kind: 'bearer', token: 'the-401-one' })).toBe(false);
+  });
+
+  it('a 401 that arrives while the start-up send waits is the session the chain judges', async () => {
+    // A trigger that arrives while another send waits for the slot sends
+    // nothing of its own, and it is not dropped either. The start-up send
+    // (snapshot: no session) waits; a sign-in finishes; the 401 against that
+    // new session comes in and its refresh resolves null - its send met the
+    // latch and returned, and when the start-up send then saw the new session
+    // beside its own null snapshot and backed out, the only rejection of the
+    // session the page now held was lost: no modal opened until some later
+    // request happened to fail. The latest confirmed trigger wins instead:
+    // its snapshot is assigned while the send waits, the send reads it when
+    // it compares, right before the chain, and the chain goes out with the
+    // new session's credentials set aside.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const { isRejectedSession } = await import('./signIn');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: false }), // the start-up check
+      refresh: vi.fn().mockResolvedValue(null), // the flight resolves no session
+    };
+    // The runtime holds no session when the start-up check reads it; the
+    // sign-in that finishes while the send waits leaves other credentials.
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(null) // the start-up send's snapshot
+      .mockResolvedValue({ kind: 'bearer', token: 'newer-session' });
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    // The bootstrap has settled, the modal slot has not: the start-up send
+    // waits for the slot.
+    bootstrap.current.settle();
+    await flush();
+
+    // The sign-in has finished by now, and the 401 against its session
+    // arrives while the send still waits: its snapshot reaches the send.
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await flush();
+    await flush();
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // The slot attaches: the waiting send compares the newest trigger's
+    // snapshot with the session the runtime holds, they are the same rejected
+    // session, and the chain goes out for it.
+    modalSlot.current.settle();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+    // The credentials set aside are the new session's, the one the 401 was
+    // against - not nothing, and not a read taken at chain time.
+    expect(isRejectedSession({ kind: 'bearer', token: 'newer-session' })).toBe(true);
+  });
+
+  it('a 401 whose snapshot read rejects cannot jam the latch', async () => {
+    // The read the hook takes can fail so hard the read itself rejects (the
+    // runtime's `getSession` throwing, not resolving nothing).
+    // `readSessionCredentials` is total: the failure resolves `undefined`,
+    // which claims nothing, so neither the hook's snapshot nor the send's own
+    // read can reject with the latch up - the dialog still opens, and the
+    // session the send's final read returns is the one set aside, so the
+    // stale session the runtime still hands out cannot satisfy `sign_in`.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const { isRejectedSession } = await import('./signIn');
+    const provider = stubProvider(); // no refresh: the 401 opens without a check
+    // The start-up check says signed in (its one call sends nothing); the
+    // 401's own read at hook time fails, and the final read finds the
+    // runtime still holding the stale session.
+    let reads = 0;
+    const getSession = vi.fn(() => {
+      reads += 1;
+      // A synchronous throw inside the read is the hard case: `getSession()`
+      // throws before any `catch` could attach, which used to reject the
+      // snapshot promise instead of resolving `undefined`.
+      if (reads === 1) throw new Error('session read failed');
+      return Promise.resolve({ kind: 'bearer' as const, token: 'the-stale-one' });
+    });
+    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true }); // the start-up check
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+    expect(executeActionsChain).not.toHaveBeenCalled();
+    // The signed-in start-up answer reads no session: the first read is the
+    // 401's own.
+    expect(getSession).not.toHaveBeenCalled();
+
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+    // The rejected snapshot was normalized to `undefined`, which claims
+    // nothing: no comparison runs against it, and the session the final read
+    // returned is the one set aside - the stale session the runtime still
+    // hands out is not left for `sign_in` to take.
+    expect(isRejectedSession({ kind: 'bearer', token: 'the-stale-one' })).toBe(true);
+  });
+
+  it('a final read that throws sends the chain anyway and leaves nothing unhandled', async () => {
+    // The send's own read, right before the chain, can fail as hard as the
+    // hook-time one can (a synchronous `getSession` throw), and a snapshot
+    // read can fail on a path that never reaches `confirmSignIn` - the
+    // keep-closed paths, where no catch used to be attached. The helper is
+    // total, so a failed read resolves `undefined` wherever it happens: the
+    // keep-closed 401 stays closed with no unhandled rejection behind it, and
+    // the send whose final read failed still completes - the failed read
+    // claims nothing, the comparison is skipped, the chain goes out, and the
+    // latch is released with the chain sent instead of jammed by a rejection
+    // behind the fire-and-forget send.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const { isRejectedSession } = await import('./signIn');
+    // A refresh exists but none is started, so both 401s are decided by
+    // `checkAuth` and both take a hook-time snapshot.
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      refresh: vi.fn().mockResolvedValue({ kind: 'bearer', token: 'renewed' }),
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    let reads = 0;
+    const getSession = vi.fn(() => {
+      reads += 1;
+      // Read 1: the keep-closed 401's hook-time snapshot, thrown hard.
+      // Read 2: the opening 401's hook-time snapshot, a good read.
+      // Read 3: that send's own final read, thrown hard as well.
+      if (reads === 1 || reads === 3) throw new Error('session read failed');
+      return Promise.resolve({ kind: 'bearer' as const, token: 'the-401-one' });
+    });
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+      .mockResolvedValueOnce({ authenticated: true }) // the keep-closed 401
+      .mockResolvedValue({ authenticated: false }); // the 401 that opens
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      wireSignInTriggers(app, provider);
+      settleBootstrapAndSlot();
+      await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+      expect(getSession).not.toHaveBeenCalled();
+
+      // The keep-closed 401: its snapshot read fails, the check says signed
+      // in, and nothing goes out - and the failed read leaves no unhandled
+      // rejection behind on this path that never hands a snapshot over.
+      provider.onTransportError?.(transportError(401));
+      await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(2));
+      await flush();
+      expect(executeActionsChain).not.toHaveBeenCalled();
+      expect(unhandled).toEqual([]);
+
+      // The opening 401: its hook-time snapshot reads fine, and the send's
+      // final read is the one that throws. The failed read claims nothing, so
+      // the chain goes out and the snapshot the hook took is the session set
+      // aside; the send completed, so nothing rejected with the latch up.
+      provider.onTransportError?.(transportError(401));
+      await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+      await flush();
+      expect(unhandled).toEqual([]);
+      expect(isRejectedSession({ kind: 'bearer', token: 'the-401-one' })).toBe(true);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('a 401 confirmed while an earlier snapshot is still resolving sends the chain for the newer one', async () => {
+    // The send used to await the snapshot promise it saw first: while that
+    // read was still out, a second 401 could confirm and replace the
+    // snapshot, and the send still judged against the stale one - B's
+    // rejection read as a newer session and nothing went out. The send reads
+    // the plain value instead, so the latest settled assignment wins: the
+    // chain goes out for B, and B's credentials are the ones set aside.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const { isRejectedSession } = await import('./signIn');
+    const provider = stubProvider(); // no refresh: each 401 confirms at once
+    // A's snapshot read is held out until after B's has settled and the chain
+    // has gone, which is what makes the superseded-promise window real.
+    let resolveA!: (session: { kind: 'bearer'; token: string }) => void;
+    const snapshotA = new Promise<{ kind: 'bearer'; token: string }>((resolve) => {
+      resolveA = resolve;
+    });
+    const sessionB = { kind: 'bearer' as const, token: 'session-b' };
+    const getSession = vi
+      .fn()
+      .mockReturnValueOnce(snapshotA) // A's hook-time snapshot: still out
+      .mockResolvedValue(sessionB); // B's snapshot, and the send's final read
+    // The start-up check says signed in (its one call sends nothing); both
+    // 401s of this page confirm without a check.
+    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+    expect(getSession).not.toHaveBeenCalled();
+
+    // A's 401 confirms; its snapshot read is still out.
+    provider.onTransportError?.(transportError(401));
+    await flush();
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // B's 401 confirms while A's snapshot is still resolving: B's own read
+    // settles at once, lands in the one snapshot variable, and the send it
+    // starts reads that latest settled value when it compares - the session
+    // the runtime holds is the same rejected one, so the chain goes out with
+    // B's credentials set aside.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    expect(isRejectedSession(sessionB)).toBe(true);
+
+    // A's snapshot settles late: its own send meets the guard that is already
+    // up and sends nothing, and nothing of A was set aside.
+    resolveA({ kind: 'bearer', token: 'session-a' });
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+    expect(isRejectedSession({ kind: 'bearer', token: 'session-a' })).toBe(false);
+  });
+
+  it('a flight that rejects and a signed-out answer still send the chain', async () => {
+    // The main case the `checkAuth()` fallback exists for: the flight rejects
+    // and leaves no result to read, and the check that follows says signed
+    // out. Nothing here announces a session start, so the guard has nothing
+    // to hold the modal back with - and the credentials it compares are the
+    // same on both reads, so the dialog opens.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi
+        .fn()
+        .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+        .mockResolvedValue({ authenticated: false }),
+      refresh: vi.fn(async () => {
+        await flush();
+        throw new Error('token endpoint down');
+      }),
+    };
+    // The provider keeps the old token: the runtime holds the session the
+    // 401 was against, whatever the flight did with it.
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'the-rejected-one' });
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(1));
+
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+  });
+
+  it('a login announcement for an unknown identity does not hold the modal back', async () => {
+    // `auth/loggedIn` does not only mean a session started: the session
+    // tracker emits it for an unknown identity too, and `refreshFailed()`
+    // clears for one on every refresh that rejects while signed in. On the
+    // rejected flight the announcement is already in before `checkAuth()`
+    // runs, so the guard may not read it as a newer session: the runtime
+    // still holds the session the 401 was against, and the signed-out answer
+    // sends the chain.
+    const react = await import('@gears-frontx/react');
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi
+        .fn()
+        .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+        .mockResolvedValue({ authenticated: false }),
+      refresh: vi.fn(async () => {
+        await flush();
+        // What `refreshFailed()` does on a rejected flight while signed in:
+        // the tracker clears for an unknown identity and announces a start.
+        react.eventBus.emit(react.AuthEvents.LoggedIn, {});
+        throw new Error('token endpoint down');
+      }),
+    };
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'the-rejected-one' });
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(1));
+
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+  });
+
+  it('any 401 after a flight that resolved a session is not signed out', async () => {
+    // What the transport really does for one request (`auth.ts`, `onError`):
+    // the hook fires before the retry decisions, the refresh flight for the
+    // 401 runs, and the request is retried with what the flight resolved.
+    // When the retry meets 401 again, the transport exits (`retryCount` is
+    // not 0): the hook fires once more for the same request, with no flight
+    // behind it and no second refresh. The earlier flight does not answer
+    // the retry's 401 - `checkAuth()` is asked for it, and the provider is
+    // the authority: one that holds a session (a step-up challenge, RFC
+    // 9470) answers authenticated and no chain goes out, and a signed-out
+    // answer sends the chain.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const refresh = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'same-user' });
+    const provider: AuthProvider = {
+      ...stubProvider(),
+      checkAuth: vi
+        .fn()
+        .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+        .mockResolvedValueOnce({ authenticated: true }) // the retry's 401: a step-up challenge
+        .mockResolvedValue({ authenticated: false }), // a later 401: signed out
+      refresh,
+    };
+    const { app, executeActionsChain } = stubApp({ checkAuth: provider.checkAuth });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(1));
+
+    // The first 401: the transport starts one refresh flight for it, the
+    // flight resolves a session, and the retried request goes out with what
+    // the flight resolved. The flight's own result is the answer, so the
+    // runtime is not asked.
+    provider.onTransportError?.(transportError(401));
+    void provider.refresh?.();
+    await flush();
+    await flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(provider.checkAuth).toHaveBeenCalledTimes(1);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // The retry meets 401 again: the transport refreshes nothing for a retry
+    // (`retryCount` is 1), so this 401 arrives with no flight behind it, and
+    // `checkAuth()` is asked for it. The step-up answer is authenticated, so
+    // no chain goes out and no second refresh runs either.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(provider.checkAuth).toHaveBeenCalledTimes(2));
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // A later 401 that no flight ran for is still the provider's to decide,
+    // and its signed-out answer sends the chain: the provider is the
+    // authority once no flight answers.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    expect(provider.checkAuth).toHaveBeenCalledTimes(3);
+
+    const chain = executeActionsChain.mock.calls[0][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+  });
+
+  it('the 401 chain sets the rejected session aside without a provider logout', async () => {
+    // The session the chain was sent against is remembered, not ended: a
+    // redirect provider's `logout()` navigates to the sign-in service's
+    // end-session endpoint, and the page would leave before the modal mounts.
+    // `sign_in` waits for a session that is not the rejected one on its own
+    // (`isRejectedSession`).
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider();
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'revoked' });
+    const { app, executeActionsChain, logout } = stubApp({
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: false }),
+      getSession,
+    });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    // The chain went out, the rejected credentials were read to be remembered,
+    // and no provider logout ran on the way.
+    expect(getSession).toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it('a 401 no flight ran for still asks checkAuth to decide', async () => {
+    // The transport did not refresh for this 401 (its budget is spent, or the
+    // 401 rode a retried request), so there is no flight result to read and
+    // the provider's own check decides, as it did before the flight result
+    // was kept: a signed-out answer sends the chain, a signed-in one does not.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider(); // a refresh exists, but none is started
+    provider.refresh = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'renewed' });
+    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+
+    provider.onTransportError?.(transportError(401));
+    await flush();
+
+    expect(checkAuth).toHaveBeenCalledTimes(2);
+    expect(executeActionsChain).not.toHaveBeenCalled();
   });
 });

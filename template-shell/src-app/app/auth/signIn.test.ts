@@ -16,6 +16,7 @@ import {
   buildSignInChain,
   invalidateRejectedSession,
   isRejectedSession,
+  readSessionCredentials,
   SIGN_IN_ACTION_TIMEOUT_MS,
   SIGN_IN_EXTENSION_ID,
 } from './signIn';
@@ -54,13 +55,15 @@ describe('buildSignInChain', () => {
 
 describe('isRejectedSession', () => {
   /** Rejects `session` the way a 401 does: the runtime reads it, and its
-   * credentials are set aside. */
+   * credentials are set aside. The snapshot the trigger passes arrives in the
+   * shape `readSessionCredentials` writes, so the matching below is the
+   * matching the triggers rely on. */
   async function reject(session: AuthSession): Promise<void> {
     const auth = {
       getSession: vi.fn(async () => session),
       logout: vi.fn(async () => ({ type: 'none' as const })),
     } as unknown as AuthRuntime;
-    await invalidateRejectedSession(auth);
+    invalidateRejectedSession(await readSessionCredentials(auth));
   }
 
   it('matches a bearer session read back with its properties in another order', async () => {
@@ -103,7 +106,7 @@ describe('isRejectedSession', () => {
         throw new Error('a redirect provider leaves the page from logout()');
       }),
     } as unknown as AuthRuntime;
-    await invalidateRejectedSession(auth);
+    invalidateRejectedSession(await readSessionCredentials(auth));
 
     expect(auth.logout).not.toHaveBeenCalled();
     // The rejected credentials cannot be reused by the next sign-in; other

@@ -200,6 +200,61 @@ describe('the sign-in chain through the real runtime', () => {
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
+  it('a 401 whose snapshot read fails still sets the stale session aside for the real sign_in', async () => {
+    // The read the 401's hook takes can fail (the session store is unreachable
+    // for a moment): the snapshot then claims nothing, and the send judges
+    // nothing - but the session its final read returns is set aside, so the
+    // real `sign_in` handler does not take the stale session the provider
+    // still hands out for a finished sign-in. The modal holds until a real
+    // sign-in, exactly as when the snapshot read succeeded.
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'revoked' };
+    // The read the 401's hook takes is the one that fails, exactly once.
+    let failNextRead = false;
+    provider.getSession = async () => {
+      if (failNextRead) {
+        failNextRead = false;
+        throw new Error('session store unreachable');
+      }
+      return state.session;
+    };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // The start-up check saw a session and sent nothing; the 401's own
+    // hook-time read is the one that fails, and the chain still goes out.
+    failNextRead = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The stale session the send's final read returned was set aside: the
+    // real sign_in does not take it for a sign-in, so the modal stays and
+    // nothing reloads.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A real sign-in ends the wait, and the chain reloads once.
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
   it('an auth-less host cannot wait for a session: the modal stays and nothing reloads', async () => {
     const built = await buildApp();
     registry = built.registry;

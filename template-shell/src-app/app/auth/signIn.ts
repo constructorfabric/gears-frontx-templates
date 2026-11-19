@@ -152,6 +152,9 @@ let rejectedSession: string | undefined;
  * custom session is every field with a value, serialized with sorted keys: a
  * field the provider left undefined carries no credential, so it is skipped
  * rather than serialized as `null` and read as a changed session.
+ *
+ * Shared by the two readers of a session snapshot: `readSessionCredentials`
+ * below and `isRejectedSession`.
  */
 function credentialSnapshot(session: AuthSession): string {
   if (session.kind === 'bearer') return JSON.stringify(['bearer', session.token]);
@@ -167,6 +170,39 @@ function credentialSnapshot(session: AuthSession): string {
 }
 
 /**
+ * The credentials of the runtime's current session, in the one shape
+ * `credentialSnapshot` writes: the string when the runtime holds a session,
+ * `null` when it holds none, and `undefined` when the read failed or there is
+ * no runtime to read. The read is total: a `getSession` that throws
+ * (synchronously or as a rejection) and a session `credentialSnapshot` cannot
+ * serialize all come out as `undefined`, so no caller's `await` can reject and
+ * no promise the helper returns needs a catch of its own. One definition of
+ * the read; the two meanings of "no
+ * session to compare" stay with the callers, each keeping its own fallback:
+ * the 401 trigger (`signInTriggers.ts`) lets an unreadable session claim
+ * nothing, so it never holds the modal back, while `invalidateRejectedSession`
+ * below remembers nothing that is not a snapshot string.
+ */
+export async function readSessionCredentials(
+  auth?: AuthRuntime,
+): Promise<string | null | undefined> {
+  if (!auth) return undefined;
+  try {
+    const session = await auth.getSession();
+    // A resolved `undefined` claims nothing, where `null` is the runtime's
+    // own "no session".
+    if (session === undefined) return undefined;
+    return session ? credentialSnapshot(session) : null;
+  } catch {
+    // A read that throws (synchronously or as a rejection), or a session
+    // `credentialSnapshot` cannot serialize, claims nothing: it resolves
+    // `undefined` instead of rejecting, so a failed read can neither reject a
+    // caller's await nor jam anything behind it.
+    return undefined;
+  }
+}
+
+/**
  * Whether `session` carries the credentials the chain was sent against. A
  * provider that builds a fresh object on every read, in any property order,
  * is compared by those credentials, so a session it still hands out after the
@@ -177,21 +213,28 @@ export function isRejectedSession(session: AuthSession): boolean {
 }
 
 /**
- * Sets aside the session a 401 or the start-up check rejected, before the
- * chain mounts the sign-in modal: its credentials are remembered, so a
- * provider that keeps handing them out never satisfies `sign_in` with them -
- * the handler waits for a session that is not the rejected one
- * (`isRejectedSession`, read by the modal domain's `sign_in`). The session is
- * not ended here: `logout()` goes through the provider, and a redirect
- * provider's logout navigates to the sign-in service's end-session endpoint,
- * which would leave the page before the modal mounts (during an outage, onto
- * an error page), and a logout that runs tells the user's other tabs to sign
- * out. A rejected session is not a signed-out one the runtime reported: the
- * chain ends in `refresh_page`, which resets the page and, with it, whatever
- * still holds the rejected credentials.
+ * Sets aside the credentials the chain was sent against, before the chain
+ * mounts the sign-in modal: they are remembered, so a provider that keeps
+ * handing them out never satisfies `sign_in` with them - the handler waits
+ * for a session that is not the rejected one (`isRejectedSession`, read by
+ * the modal domain's `sign_in`). The credentials arrive as the snapshot a
+ * confirmed trigger took - the session the 401 was against, read at hook
+ * time, or the read the start-up check took beside its signed-out answer;
+ * when that snapshot could not be read (`undefined`), they are the session
+ * the send's final read returned, so the stale session a provider still
+ * hands out is set aside either way. The session is not ended here:
+ * `logout()` goes through the provider, and a redirect provider's logout
+ * navigates to the sign-in service's end-session endpoint, which would leave
+ * the page before the modal mounts (during an outage, onto an error page),
+ * and a logout that runs tells the user's other tabs to sign out. A rejected
+ * session is not a signed-out one the runtime reported: the chain ends in
+ * `refresh_page`, which resets the page and, with it, whatever still holds
+ * the rejected credentials.
  */
-export async function invalidateRejectedSession(auth: AuthRuntime): Promise<void> {
-  const session = await auth.getSession().catch(() => null);
-  if (!session) return;
-  rejectedSession = credentialSnapshot(session);
+export function invalidateRejectedSession(credentials: string | null | undefined): void {
+  // `null` (the runtime held no session when the trigger read) and
+  // `undefined` (the read failed, or there was no runtime) remember nothing -
+  // there is no session here to set aside.
+  if (typeof credentials !== 'string') return;
+  rejectedSession = credentials;
 }

@@ -25,6 +25,7 @@ import {
   buildSignInChain,
   buildSignInUnmountChain,
   invalidateRejectedSession,
+  readSessionCredentials,
 } from './signIn';
 
 /** The event type of the provider hook the 401 trigger wraps. */
@@ -41,8 +42,53 @@ type TransportErrorEvent = Parameters<NonNullable<AuthProvider['onTransportError
  * `mfe/automaticReload.ts` bounded the chain's repeats), the page is not reset
  * and this guard stays up with it, so the failed chain is not sent again on
  * the same page either.
+ *
+ * `chainPending` is the send's own latch, held while a send waits for the
+ * bootstrap and the modal slot. A trigger that arrives beside it sends
+ * nothing of its own: the running send has not compared yet, and it reads the
+ * snapshot of the last confirmed trigger when it does, so the latest
+ * confirmed trigger wins without a queue. The latch is released again when
+ * the send decides against the chain (a newer session signed in during the
+ * waits), so a 401 that may still follow can start a send of its own. A
+ * bootstrap that fails turns the latch into the guard instead: the guard
+ * burns, the latch does not release.
  */
 let chainSent = false;
+let chainPending = false;
+
+/**
+ * The credentials of the last confirmed 401, in the shape
+ * `readSessionCredentials` writes: what the trigger the flight or the session
+ * check confirmed read beside its 401, held as the plain value its read
+ * resolved to. Every confirmed trigger assigns it once its own read settles,
+ * and the latest settled assignment wins - a late 401 of a newer session
+ * overwrites the snapshot of the one before it, and the send reads the
+ * variable as the plain value when it compares, after the readiness waits.
+ * One variable, no queue: a trigger that lands beside a waiting send is
+ * judged by that send, which has not compared yet.
+ *
+ * The value is assigned where the read settles (`confirmSignIn`), never
+ * awaited by the send: a snapshot promise a newer confirmed trigger has
+ * already superseded is not the one the send judges against.
+ */
+let confirmed401: string | null | undefined;
+
+/**
+ * Hands the snapshot a confirmed trigger took to the send: the read is
+ * awaited here, the resolved value lands in the one snapshot variable (the
+ * latest settled assignment wins), and only then is the send started. The
+ * send reads the variable as the plain value when it compares, so it never
+ * awaits a snapshot promise a newer confirmed trigger has already
+ * superseded. `readSessionCredentials` is total (a failed read resolves
+ * `undefined`, which claims nothing), so the read cannot reject and needs no
+ * catch here.
+ */
+function confirmSignIn(app: FrontXApp, snapshot: Promise<string | null | undefined>): void {
+  void snapshot.then((value) => {
+    confirmed401 = value;
+    void sendSignInChainOnce(app);
+  });
+}
 
 /**
  * Sends the chain once, and only once the page can actually mount it.
@@ -56,6 +102,33 @@ let chainSent = false;
  * the modal slot's attachment signal (`modalSlotAttached`, resolved by
  * `MfeScreenContainer`'s dialog layer) before the chain goes.
  *
+ * The comparison runs here, after the readiness waits and right before the
+ * chain is sent, not where the send was decided: the modal slot can stay
+ * pending for a commit or two, and a sign-in that finishes in between must
+ * not be covered by the modal. The runtime's session is read once, and the
+ * comparison is against the snapshot of the last confirmed trigger
+ * (`confirmed401`), which every confirmed trigger assigns once its own read
+ * settles, the latest settled assignment winning: a trigger that landed
+ * while the waits ran, beside this send, is the snapshot the send judges
+ * against, without a queue. A session with other
+ * credentials than the snapshot is a newer one, the chain stays out, and the
+ * latch releases so a 401 that may still follow can send against the state
+ * that holds then. The same credentials, no session at all, or a snapshot
+ * that could not be read (`undefined`, which claims nothing, so there is
+ * nothing to compare against) is the state the chain was sent against, and
+ * the dialog opens.
+ *
+ * The one accepted window: a confirmed 401 of a newer session that lands
+ * inside this single read is judged against the snapshot read before it, so
+ * the dialog can open over that newer session - the dialog then opens for it
+ * on the next failed request.
+ *
+ * What the chain sets aside: the snapshot the confirmed trigger took, or -
+ * when that snapshot could not be read (`undefined`) - the session this final
+ * read returned, so the stale session a provider still hands out is set
+ * aside either way and `sign_in` never takes it for a fresh sign-in
+ * (`invalidateRejectedSession`).
+ *
  * A bootstrap that fails burns the guard: `bootstrapOnce` deliberately never
  * resets a failed bootstrap, so a released guard could only buy one more pass
  * through the same rejection. The guard stays up, and each path warns at most
@@ -64,16 +137,48 @@ let chainSent = false;
  */
 async function sendSignInChainOnce(app: FrontXApp): Promise<void> {
   if (chainSent) return;
-  chainSent = true;
+  // A send already waits for the readiness waits, so this trigger sends
+  // nothing of its own: the running send has not compared yet, and it reads
+  // the latest confirmed snapshot (`confirmed401`) when it does - the latest
+  // confirmed trigger wins without a queue.
+  if (chainPending) return;
+  chainPending = true;
   try {
     await Promise.all([bootstrapSettled(), modalSlotAttached()]);
   } catch (error) {
+    chainSent = true;
+    chainPending = false;
     console.warn('[signInTriggers] the bootstrap failed, so no sign-in chain was sent', error);
     return;
   }
-  // The session that led here is rejected: end it before the modal mounts, so
-  // `sign_in` waits for a new sign-in instead of taking it for one.
-  if (app.auth) await invalidateRejectedSession(app.auth);
+  // The snapshot of the last confirmed trigger, read where the comparison
+  // needs it: whatever trigger was confirmed last by now is the one judged.
+  // It is the plain value `confirmSignIn` assigned once its own read settled,
+  // so nothing here awaits a snapshot promise that a newer confirmed trigger
+  // has already superseded - the latest settled assignment is what is read.
+  const snapshot = confirmed401;
+  // The current session is read once, here, as late as the readiness waits
+  // allow. The one accepted window is a confirmed 401 of a newer session
+  // landing inside this single read: it is judged against the snapshot read
+  // before it, and the dialog then opens for it on the next failed request.
+  const current = await readSessionCredentials(app.auth);
+  if (snapshot !== undefined && typeof current === 'string' && current !== snapshot) {
+    // A newer session signed in while the waits ran: the modal must not
+    // cover it, and the guard is not burned - the latch releases, so the
+    // chain stays out for a 401 that may still follow.
+    chainPending = false;
+    return;
+  }
+  chainSent = true;
+  chainPending = false;
+  // The session that led here is rejected: its credentials are set aside
+  // before the modal mounts, so `sign_in` waits for a new sign-in instead of
+  // taking them for one. That is the snapshot the confirmed trigger took;
+  // when it could not be read (`undefined`), it is the session this final
+  // read returned. A sign-in that finished during the waits was turned away
+  // by the comparison above, and one that finishes after this line is a
+  // session the modal waits for, not one it rejects.
+  invalidateRejectedSession(snapshot === undefined ? current : snapshot);
   app.mfeRegistry?.executeActionsChain(buildSignInChain());
 }
 
@@ -108,8 +213,13 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
       return undefined;
     });
     if (!result) return;
-    if (!result.authenticated) await sendSignInChainOnce(app);
-    else if (addressNamedSignIn) await removeSignInEntryAtStart(app);
+    if (!result.authenticated) {
+      // The credentials the chain is sent against are read here, when the
+      // signed-out answer arrived - the send takes this snapshot as the
+      // rejected session instead of reading again, where a sign-in that
+      // finished in between would be the one it set aside.
+      confirmSignIn(app, readSessionCredentials(app.auth));
+    } else if (addressNamedSignIn) await removeSignInEntryAtStart(app);
   } catch (error) {
     // The bootstrap failed, so the domains the chain names may not exist and
     // the session check did not run. Nothing here sets the once-guard either,
@@ -148,17 +258,45 @@ async function removeSignInEntryAtStart(app: FrontXApp): Promise<void> {
  * unless the transport can still recover the request. The hook runs as an
  * informational call before the transport plugin's refresh decision (`auth.ts`
  * calls it "before retry decisions"), so a 401 here does not yet mean the
- * session is gone. When the provider carries a `refresh`, the trigger first
- * lets the transport's refresh flight for that 401 settle and then asks the
- * runtime whether a session really remains (`app.auth.checkAuth()`), sending
- * the chain only for a signed-out answer: a check started at hook time would
- * run alongside the flight and answer from the state the flight is about to
- * replace, so a stale read held the modal back for a session whose refresh
- * then failed, or opened it for one the flight recovered. A check that
- * rejects or never answers sends nothing, since it says as little about the
- * session as the hook does, and says so with the warning the start-up path
- * gives. Without a refresh there is nothing that could recover the request,
- * so the 401 is the answer and the chain goes out at once. Once the guard is
+ * session is gone. When the provider carries a `refresh`, the trigger lets the
+ * transport's refresh flight for that 401 settle and reads what it resolved
+ * to, and the flight's own result decides: the runtime reports the flight's
+ * outcome, so a flight that resolved no session is signed out and the chain
+ * goes out, while a flight that resolved a session is signed in and the
+ * question stays closed for the 401 the flight ran for: the transport
+ * reissues that request with what the flight resolved. The 401 the retried
+ * request meets afterwards is not answered by the flight - the transport
+ * refreshes nothing for a retry (`auth.ts` exits before the refresh decision
+ * when the retry count is not 0), so the hook fires for it with no flight
+ * behind it, and `app.auth.checkAuth()` answers it: the provider is the
+ * authority, and one that holds a session (a step-up challenge, RFC 9470, or
+ * a server that ended the session while the token is still valid) says
+ * authenticated, so no modal opens over it, while a signed-out answer sends
+ * the chain. `app.auth.checkAuth()` is asked only when no
+ * flight ran, or when the flight rejected and left no result to read: a
+ * provider that keeps the old token would answer from it, and a check started
+ * at hook time would run alongside the flight and answer from the state the
+ * flight is about to replace. A check that rejects or never answers sends
+ * nothing, since it says as little about the session as the hook does, and
+ * says so with the warning the start-up path gives. Whatever the decision, the
+ * confirmation is not held while the send waits for the bootstrap
+ * and the modal slot, so a late 401 of a newer session is confirmed on its
+ * own and its snapshot overwrites the one the waiting send will judge
+ * against. That comparison the send runs (`sendSignInChainOnce`) uses the
+ * same shape the chain remembers a rejected session in (`credentialSnapshot`,
+ * `signIn.ts`), and its measure is credentials, not
+ * the count of announced session starts (`AuthEvents.LoggedIn`): the session
+ * tracker emits that event for an unknown identity too - a rejected refresh,
+ * an unchecked one, a `getIdentity()` that fails - so a rejected flight would
+ * be counted as a session start while `checkAuth` says signed out, exactly
+ * the case the fallback exists for. Without a
+ * refresh there is nothing that could recover the request, so the trigger is
+ * confirmed at once and the chain goes out without waiting for one - through
+ * the same `confirmSignIn` hand-off and the same guard, which dedupes within
+ * one tick only: a burst that lands in one tick pays one snapshot read
+ * instead of one per request, while a 401 of a longer burst takes its own
+ * snapshot, which the latest-wins overwrite of the one snapshot variable
+ * needs. Once the guard is
  * up (`chainSent`) neither happens: the chain cannot go out again, so the 401
  * has nothing left to confirm or send. The hook is wrapped rather than
  * replaced, so a provider that reports transport errors itself keeps doing
@@ -183,21 +321,37 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   // `refresh` (`auth.ts` reads it off the provider at error time), so a wrap
   // installed here, after the app is built, is what every later flight goes
   // through. The wrap only observes: the call and its result reach the
-  // provider untouched, and the flight in progress is remembered so the 401
-  // confirmation below can wait it out instead of racing it. The auth
+  // provider untouched, the flight in progress is remembered so the 401
+  // confirmation below can wait it out instead of racing it, and what the
+  // flight resolved to is kept with it, so the confirmation reads the
+  // runtime's own answer instead of asking the provider again. The auth
   // runtime's own `refresh` is wrapped the same way: the microfrontends that
   // join the runtime (`authRealmShared`) refresh through it, so the host's
   // session tracker hears of their flights, and it calls the original the
   // auth plugin captured at build time, so no flight is seen twice.
-  let refreshFlight: Promise<unknown> | null = null;
+  type TrackedFlight = {
+    promise: Promise<unknown>;
+    /** Set once the flight settles: the session it resolved to, or its failure. */
+    outcome: { session: unknown } | { failed: true } | undefined;
+  };
+  let refreshFlight: TrackedFlight | null = null;
   const observeFlights = <T>(refresh: (ctx?: AuthContext) => Promise<T>) =>
     (ctx?: AuthContext): Promise<T> => {
       const flight = refresh(ctx);
-      refreshFlight = flight;
-      const forget = (): void => {
-        if (refreshFlight === flight) refreshFlight = null;
-      };
-      void flight.then(forget, forget);
+      const tracked: TrackedFlight = { promise: flight, outcome: undefined };
+      refreshFlight = tracked;
+      // The outcome is recorded by the handler attached first, so a caller
+      // that awaits the promise reads it after it is set.
+      void flight.then(
+        (session) => {
+          tracked.outcome = { session };
+          if (refreshFlight === tracked) refreshFlight = null;
+        },
+        () => {
+          tracked.outcome = { failed: true };
+          if (refreshFlight === tracked) refreshFlight = null;
+        },
+      );
       return flight;
     };
   const refresh = provider.refresh?.bind(provider);
@@ -205,15 +359,39 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   const runtimeRefresh = app.auth?.refresh;
   if (app.auth && runtimeRefresh) app.auth.refresh = observeFlights(runtimeRefresh);
 
-  // One confirmation at a time. The check can travel the same REST transport
-  // the 401 came from, so its own 401 fires this hook again while the first
-  // check is still out, and a burst of failing requests fires the hook once
-  // per request; the confirmation already running answers them all, and no
-  // second check starts behind it.
+  /**
+   * The credentials of the runtime's current session, read through the one
+   * helper beside `credentialSnapshot` (`signIn.ts`): `null` when the runtime
+   * holds no session, `undefined` when the read failed or there is no runtime
+   * to read. The helper is total, so the promise never rejects and no path
+   * that takes a snapshot needs a catch of its own - not even the ones that
+   * never reach `confirmSignIn`, the only place a catch used to be attached.
+   * A provider that builds a fresh object on every read is compared
+   * by credentials, never by object identity.
+   */
+  const readSessionSnapshot = (): Promise<string | null | undefined> =>
+    readSessionCredentials(app.auth);
+
+  // One confirmation at a time, whichever branch the hook takes: the check
+  // can travel the same REST transport the 401 came from, so its own 401
+  // fires this hook again while the first check is still out, and a burst of
+  // failing requests fires the hook once per request; the confirmation
+  // already running answers them all, and no second check starts behind it.
+  // The confirmation glues the 401s of one burst of one flight and ends when
+  // it hands its snapshot to the send: the send's own waits for the bootstrap
+  // and the modal slot hold no confirmation, so a later 401 of a newer
+  // session is confirmed on its own and overwrites the snapshot.
   let confirmation: Promise<void> | null = null;
 
-  /** Asks the runtime once the transport's refresh for the 401 has settled. */
-  const confirmSessionGone = (): void => {
+  /**
+   * Reads the settled refresh flight's outcome, and asks the runtime
+   * (`checkAuth`) only when no flight ran or the flight rejected: a flight
+   * that resolved anything (a session or null) is the runtime's own answer.
+   * When the answer is signed out, the confirmation ends by handing the
+   * snapshot the hook took to the send (`confirmSignIn`); it is not held
+   * while the send waits.
+   */
+  const confirmSessionGone = (sessionAt401: Promise<string | null | undefined>): void => {
     if (confirmation) return;
     const settled = (): void => {
       confirmation = null;
@@ -223,10 +401,27 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
       // flight in the same tick the hook returns in, before its first await,
       // so the flight the 401 will get is tracked by then. No flight tracked
       // means the transport did not refresh (its budget is spent, or this 401
-      // rode a retried request), and the state the last flight left is the
-      // one to ask about the session.
+      // rode a retried request), and there is no flight result to read.
       await Promise.resolve();
-      if (refreshFlight) await refreshFlight.catch(() => undefined);
+      const flight = refreshFlight;
+      if (flight) {
+        await flight.promise.catch(() => undefined);
+        const outcome = flight.outcome;
+        if (outcome && 'session' in outcome) {
+          // The flight's own result is the runtime's answer, so the provider
+          // is not asked again: a provider that keeps the old token would
+          // answer from it. A session means signed in for the 401 the flight
+          // ran for - the retried request goes out with what the flight
+          // resolved, and its own 401 arrives with no flight behind it and
+          // is asked of `checkAuth` below; no session is signed out.
+          if (outcome.session) return;
+          confirmSignIn(app, sessionAt401);
+          return;
+        }
+        // The flight rejected, so it left no result to read: the state the
+        // last settled flight left is the one to ask about, as when no
+        // flight ran at all.
+      }
       const result = await app.auth?.checkAuth().catch((error: unknown) => {
         console.warn(
           '[signInTriggers] the 401 session check did not answer; no sign-in chain sent',
@@ -235,7 +430,7 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
         return undefined;
       });
       if (!result) return;
-      if (!result.authenticated) await sendSignInChainOnce(app);
+      if (!result.authenticated) confirmSignIn(app, sessionAt401);
     })();
     void confirmation.then(settled, settled);
   };
@@ -249,11 +444,33 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
     // The hook runs before the transport's refresh-and-retry; with a refresh
     // available, confirm the session is really gone before opening the modal,
     // once the transport's refresh flight has settled.
+    // The 401s a confirmation already running answers are dropped whole, so
+    // they read no snapshot of their own: the session read starts only for
+    // the 401 that will actually hand one over, and both branches keep this
+    // one guard. The guard dedupes within one tick only: 401s of the same
+    // burst that land in later ticks each take their own snapshot, on
+    // purpose - the latest-wins overwrite of the one snapshot variable needs
+    // every confirmed 401 to hand its own snapshot over.
+    if (confirmation) return;
     if (refresh && app.auth) {
-      confirmSessionGone();
+      // The credentials the 401 was against, read as the hook runs: whatever
+      // the flight or a parallel sign-in does to the session afterwards, the
+      // comparison before the dialog opens has this to compare against.
+      confirmSessionGone(readSessionSnapshot());
       return;
     }
-    void sendSignInChainOnce(app);
+    // No refresh to wait out, so nothing could recover the request: the
+    // trigger is confirmed at once and hands its snapshot to the send. The
+    // confirmation ends there - it does not hold across the send's own waits
+    // for the bootstrap and the modal slot - and the guard above dedupes
+    // within one tick only: a 401 of the same burst that lands in a later
+    // tick takes its own snapshot, which the latest-wins overwrite needs.
+    const sessionAt401 = readSessionSnapshot();
+    const settled = (): void => {
+      confirmation = null;
+    };
+    confirmation = Promise.resolve(confirmSignIn(app, sessionAt401));
+    void confirmation.then(settled, settled);
   };
   void checkSessionAtStart(app, addressNamedSignIn);
 }
