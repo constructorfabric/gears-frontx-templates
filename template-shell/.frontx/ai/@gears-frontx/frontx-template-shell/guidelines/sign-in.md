@@ -142,13 +142,17 @@ modal whose button would send the user to the service that is down. A failed
 start also removes the entry the page-load address named, so the modal that
 nothing could close never mounts at all. A
 signed-out answer from `checkAuth()` is what opens the modal, and the trigger
-asks for it after 401s as well as at start (when no refresh flight ran, or
-the flight left no result to read), so `checkAuth()` has to be safe to call
-repeatedly. The same holds for `refresh()`: when the sign-in service cannot be
-reached it should reject, not resolve `null`. After a 401, a refresh flight
+asks for it after 401s as well as at start (when no refresh flight ran, when
+the flight left no result to read, or when the provider carries no refresh at
+all - without one nothing on the transport could recover the request, but the
+401 still says nothing about the session by itself), so `checkAuth()` has to
+be safe to call repeatedly. The same holds for `refresh()`: when the sign-in
+service cannot be reached it should reject, not resolve `null`. After a 401, a refresh flight
 that resolves `null` is the answer and opens the modal without asking
 `checkAuth()`, while a flight that rejects leaves no answer and the trigger
-asks `checkAuth()` instead (`confirmSessionGone`).
+asks `checkAuth()` instead (`confirmSessionGone`). On a host without a
+refresh the same confirmation asks `checkAuth()` on every 401; only a host
+without an auth runtime confirms at once, with nothing to ask.
 
 ## The development provider
 

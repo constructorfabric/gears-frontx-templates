@@ -291,7 +291,8 @@ async function removeSignInEntryAtStart(app: FrontXApp): Promise<void> {
  * a server that ended the session while the token is still valid) says
  * authenticated, so no modal opens over it, while a signed-out answer sends
  * the chain. `app.auth.checkAuth()` is asked only when no
- * flight ran, or when the flight rejected and left no result to read: a
+ * flight ran, when the flight rejected and left no result to read, or when
+ * the provider carries no refresh at all: a
  * provider that keeps the old token would answer from it, and a check started
  * at hook time would run alongside the flight and answer from the state the
  * flight is about to replace. A check that rejects or never answers sends
@@ -307,14 +308,14 @@ async function removeSignInEntryAtStart(app: FrontXApp): Promise<void> {
  * tracker emits that event for an unknown identity too - a rejected refresh,
  * an unchecked one, a `getIdentity()` that fails - so a rejected flight would
  * be counted as a session start while `checkAuth` says signed out, exactly
- * the case the fallback exists for. Without a
- * refresh there is nothing that could recover the request, so the trigger is
- * confirmed at once and the chain goes out without waiting for one - through
- * the same `confirmSignIn` hand-off and the same guard, which dedupes within
- * one tick only: a burst that lands in one tick pays one snapshot read
- * instead of one per request, while a 401 of a longer burst takes its own
- * snapshot, which the latest-wins overwrite of the one snapshot variable
- * needs. Once the guard is
+ * the case the fallback exists for. Without a refresh there is nothing on the
+ * transport that could recover the request, but the 401 still says nothing
+ * about the session by itself, so the same confirmation asks `checkAuth()`:
+ * a signed-out answer sends the chain, a signed-in one closes the question,
+ * and a check that cannot answer says nothing and sends nothing. A host
+ * without an auth runtime has nothing to ask, so the trigger is confirmed at
+ * once and the chain goes out without a check - through
+ * the same `confirmSignIn` hand-off and the same guard. Once the guard is
  * up (`chainSent`) neither happens: the chain cannot go out again, so the 401
  * has nothing left to confirm or send. The hook is wrapped rather than
  * replaced, so a provider that reports transport errors itself keeps doing
@@ -470,19 +471,32 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
     // purpose - the latest-wins overwrite of the one snapshot variable needs
     // every confirmed 401 to hand its own snapshot over.
     if (confirmation) return;
-    if (refresh && app.auth) {
+    if (app.auth) {
       // The credentials the 401 was against, read as the hook runs: whatever
       // the flight or a parallel sign-in does to the session afterwards, the
       // comparison before the dialog opens has this to compare against.
+      // With a refresh the confirmation waits the flight out and reads what
+      // it resolved to. Without one, nothing on the transport could recover
+      // the request, but the 401 still says nothing about the session by
+      // itself - a step-up challenge (RFC 9470) or a gateway 401 during an
+      // outage lands on a live session, and a cookie provider has no refresh
+      // to wait out - so the same confirmation asks `checkAuth()`: a
+      // signed-out answer sends the chain, a signed-in one closes the
+      // question, and a check that cannot answer says nothing and sends
+      // nothing. The confirmation running is the guard the 401s of one burst
+      // share, its own 401s included: they are dropped whole, and a 401 that
+      // lands after it settled takes its own snapshot, which the latest-wins
+      // overwrite needs.
       confirmSessionGone(readSessionSnapshot());
       return;
     }
-    // No refresh to wait out, so nothing could recover the request: the
-    // trigger is confirmed at once and hands its snapshot to the send. The
-    // confirmation ends there - it does not hold across the send's own waits
-    // for the bootstrap and the modal slot - and the guard above dedupes
-    // within one tick only: a 401 of the same burst that lands in a later
-    // tick takes its own snapshot, which the latest-wins overwrite needs.
+    // No auth runtime to ask, and no refresh to wait out: nothing could
+    // answer for the session, so the trigger is confirmed at once and hands
+    // its snapshot to the send. The confirmation ends there - it does not
+    // hold across the send's own waits for the bootstrap and the modal slot
+    // - and the guard above dedupes within one tick only: a 401 of the same
+    // burst that lands in a later tick takes its own snapshot, which the
+    // latest-wins overwrite needs.
     const sessionAt401 = readSessionSnapshot();
     const settled = (): void => {
       confirmation = null;

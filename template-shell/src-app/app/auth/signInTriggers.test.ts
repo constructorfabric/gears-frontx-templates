@@ -615,7 +615,12 @@ describe('wireSignInTriggers', () => {
     // request (one baseline, one comparison) instead of two per burst.
     const { wireSignInTriggers } = await import('./signInTriggers');
     const provider = stubProvider(); // no refresh
-    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    // The start-up read says signed in, so nothing is sent before the burst;
+    // the burst's own check is what sends the chain.
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true })
+      .mockResolvedValue({ authenticated: false });
     const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'the-401-one' });
     const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
 
@@ -635,7 +640,8 @@ describe('wireSignInTriggers', () => {
     // One chain, and one baseline read for the whole burst: the baseline the
     // first 401 read at hook time, and the send's final read right before the
     // chain went out. The rejected credentials are the snapshot the first 401
-    // took, so the send reads nothing beyond that.
+    // took, so the send reads nothing beyond that. The signed-out answer of
+    // the burst's one check is what opened the modal.
     expect(getSession).toHaveBeenCalledTimes(2);
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
     const chain = executeActionsChain.mock.calls[0][0] as {
@@ -698,13 +704,23 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
   });
 
-  it('a 401 on a host without a refresh goes out without a confirmation', async () => {
-    // Without a refresh nothing can recover the request, so the 401 is the
-    // answer and the chain is not held back for a check the session tracker
-    // would only echo.
+  it('a 401 on a host without a refresh asks checkAuth: sign-in on signed out, nothing on signed in or a check that rejects', async () => {
+    // Without a refresh nothing on the transport could recover the request,
+    // but the 401 still says nothing about the session by itself: a step-up
+    // challenge (RFC 9470) or a gateway 401 during an outage lands on a live
+    // session, and a cookie provider has no refresh to wait out. The provider
+    // is the authority, as on a host with a refresh: its signed-out answer
+    // sends the chain, a signed-in one closes the question, and a check that
+    // cannot answer says nothing and sends nothing.
     const { wireSignInTriggers } = await import('./signInTriggers');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const provider = stubProvider(); // no refresh
-    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+      .mockResolvedValueOnce({ authenticated: true }) // a step-up challenge: signed in
+      .mockRejectedValueOnce(new Error('accounts service down')) // the check says nothing
+      .mockResolvedValue({ authenticated: false }); // really signed out
     const { app, executeActionsChain } = stubApp({ checkAuth });
 
     wireSignInTriggers(app, provider);
@@ -712,15 +728,28 @@ describe('wireSignInTriggers', () => {
     await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
     expect(executeActionsChain).not.toHaveBeenCalled();
 
+    // Signed in: no modal opens over the live session.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(2));
+    await flush();
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // The check cannot answer: it says nothing about the session, and warns
+    // the way the start-up path and the refresh branch do.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+    expect(warn.mock.calls[0]?.[0]).toBe(
+      '[signInTriggers] the 401 session check did not answer; no sign-in chain sent',
+    );
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // Signed out: the modal opens, the page's one chain.
     provider.onTransportError?.(transportError(401));
     await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
     const chain = executeActionsChain.mock.calls[0][0] as {
       action: { payload: { subject: string } };
     };
     expect(chain.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
-
-    // The 401 went straight out: no second session check.
-    expect(checkAuth).toHaveBeenCalledTimes(1);
   });
 
   it('the startup chain and a later 401 share the one chain a page gets', async () => {
@@ -952,10 +981,10 @@ describe('wireSignInTriggers', () => {
     // stale session the runtime still hands out cannot satisfy `sign_in`.
     const { wireSignInTriggers } = await import('./signInTriggers');
     const { isRejectedSession } = await import('./signIn');
-    const provider = stubProvider(); // no refresh: the 401 opens without a check
+    const provider = stubProvider(); // no refresh: nothing could recover the request
     // The start-up check says signed in (its one call sends nothing); the
-    // 401's own read at hook time fails, and the final read finds the
-    // runtime still holding the stale session.
+    // 401's own read at hook time fails, its check answers signed out, and
+    // the final read finds the runtime still holding the stale session.
     let reads = 0;
     const getSession = vi.fn(() => {
       reads += 1;
@@ -965,7 +994,10 @@ describe('wireSignInTriggers', () => {
       if (reads === 1) throw new Error('session read failed');
       return Promise.resolve({ kind: 'bearer' as const, token: 'the-stale-one' });
     });
-    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true }); // the start-up check
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true }) // the start-up check
+      .mockResolvedValue({ authenticated: false }); // the 401's own check
     const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
 
     wireSignInTriggers(app, provider);
@@ -1080,9 +1112,12 @@ describe('wireSignInTriggers', () => {
       .fn()
       .mockReturnValueOnce(snapshotA) // A's hook-time snapshot: still out
       .mockResolvedValue(sessionB); // B's snapshot, and the send's final read
-    // The start-up check says signed in (its one call sends nothing); both
-    // 401s of this page confirm without a check.
-    const checkAuth = vi.fn().mockResolvedValue({ authenticated: true });
+    // The start-up check says signed in (its one call sends nothing); each
+    // 401's own check answers signed out, so both confirm.
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true })
+      .mockResolvedValue({ authenticated: false });
     const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
 
     wireSignInTriggers(app, provider);
