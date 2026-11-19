@@ -1594,6 +1594,98 @@ describe('auth plugin', () => {
   });
 
   // -------------------------------------------------------------------------
+  // 11b. A scheme inside the path (an absolute path on a service with a baseURL)
+  // -------------------------------------------------------------------------
+  describe('a scheme inside the path', () => {
+    // What `@gears-frontx/api` shows plugins for `get('https://evil.example/x')`: the service's
+    // `baseURL` joined with the path, every `//` collapsed, `://` put back for the first scheme.
+    const ABSOLUTE_PATH_URLS = [
+      ["a relative baseURL ('/api')", '/apihttps://evil.example/x'],
+      ["a relative baseURL ending in / ('/api/')", '/api/https://evil.example/x'],
+      ["a listed baseURL ending in / ('https://api.example.com/')", 'https://api.example.com/https:/evil.example/x'],
+    ];
+
+    it.each(ABSOLUTE_PATH_URLS)('sends no Authorization header for an absolute path under %s', async (_name, url) => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'), {
+        allowedBearerOrigins: ['https://api.example.com'],
+      });
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBeUndefined();
+    });
+
+    it.each(ABSOLUTE_PATH_URLS)('sends no cookie credentials or CSRF header for an absolute path under %s', async (_name, url) => {
+      const provider: AuthProvider = {
+        getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-abc' } satisfies AuthSession),
+        checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+        logout: vi.fn().mockResolvedValue({ type: 'none' }),
+      };
+      const plugin = capturePlugin(provider, {
+        allowedCookieOrigins: ['https://api.example.com'],
+        csrfHeaderName: 'X-CSRF-Token',
+      });
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.withCredentials).toBeUndefined();
+      expect(result.headers['X-CSRF-Token']).toBeUndefined();
+    });
+
+    it('neither refreshes nor retries on a 401 for an absolute path', async () => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn));
+
+      const errCtx = {
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('/apihttps://evil.example/x'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+      };
+
+      const result = await plugin.onError?.(errCtx);
+
+      expect(refreshFn).not.toHaveBeenCalled();
+      expect(errCtx.retry).not.toHaveBeenCalled();
+      expect(result).toBe(errCtx.error);
+    });
+
+    it('keeps the header when the scheme is only in the query', async () => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'));
+
+      const result = (await plugin.onRequest?.(
+        makeReqCtx('/api/items?next=https://evil.example/x'),
+      )) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBe('Bearer tok-abc');
+    });
+
+    it('sends no Authorization header to the origin axios sends an absolute path to', async () => {
+      const { BaseApiService } = await import('@gears-frontx/api');
+      class ApiService extends BaseApiService {}
+      const app = createFrontX().use(auth({ provider: makeBearerProvider('tok-abc') })).build();
+      const rest = new RestProtocol();
+      new ApiService({ baseURL: '/api' }, rest);
+      const sent: Array<{ url?: string; headers?: Record<string, unknown> }> = [];
+      rest.setRequestDispatcherForTest(async (config) => {
+        sent.push({ url: config.url, headers: config.headers as Record<string, unknown> });
+        return { status: 200, headers: {}, data: {} };
+      });
+
+      await rest.get('/me');
+      await rest.get('https://evil.example/x');
+
+      // A relative path still gets the token, so the plugin ran on both requests.
+      expect(sent[0]).toEqual({ url: '/me', headers: expect.objectContaining({ Authorization: 'Bearer tok-abc' }) });
+      // Axios skips the baseURL for this path and sends the request to evil.example.
+      expect(sent[1].url).toBe('https://evil.example/x');
+      expect(sent[1].headers?.['Authorization']).toBeUndefined();
+      app.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // 12. Opaque origin "null" (sandboxed iframe / file://)
   // -------------------------------------------------------------------------
   describe('opaque origin', () => {

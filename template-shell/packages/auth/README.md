@@ -54,7 +54,12 @@ auth({
 
 A provider that returns `{ kind: 'bearer', token }` lists the origin in `frontxApi.allowedBearerOrigins` instead. The two lists are separate: a cookie origin gets no token, and a bearer origin gets no cookies. A 401 from an origin in neither list does not refresh the session.
 
-One limit holds until [constructorfabric/gears-frontx#770](https://github.com/constructorfabric/gears-frontx/issues/770) is fixed. The plugin checks the URL that `@gears-frontx/api` shows it, which joins the service's `baseURL` and the path. Axios skips the `baseURL` when the path is absolute (`https://…`) or protocol-relative (`//…`). So on a service with a `baseURL`, `get('https://other.example/x')` is checked as a path under the `baseURL`, but it goes to `other.example`, with the credentials. Pass only relative paths to a service with a `baseURL`. To call another origin, give it a service whose `baseURL` is that origin.
+The plugin checks the URL that `@gears-frontx/api` shows it, which joins the service's `baseURL` and the path. Axios skips the `baseURL` when the path is absolute (`https://…`) or protocol-relative (`//…`), so the request goes somewhere other than the URL the plugin checked.
+
+- **An absolute path gets no credentials.** Its scheme stays in the joined URL: on a service with `baseURL: '/api'`, `get('https://other.example/x')` shows up as `/apihttps://other.example/x`. The plugin sends no credentials to a URL with a scheme in its path, `/proxy/https://…` included. A scheme in the query, such as `?next=https://…`, doesn't count.
+- **A protocol-relative path still gets them** until [constructorfabric/gears-frontx#770](https://github.com/constructorfabric/gears-frontx/issues/770) is fixed. The join collapses its `//`, so `get('//other.example/x')` is checked as `/api/other.example/x` but goes to `other.example`, with the credentials.
+
+Pass only relative paths to a service with a `baseURL`. To call another origin, give it a service whose `baseURL` is that origin.
 
 ## Local Development (Using A Local Gears FrontX Checkout)
 

@@ -181,8 +181,10 @@ export type AuthTransportBinder = (args: {
  * trailing slash, such as `'https://api.example.com'`.
  *
  * The check reads the URL plugins get, the service's `baseURL` joined with the path, but
- * axios skips the `baseURL` for an absolute or `//` path. Until constructorfabric/gears-frontx#770 is fixed,
- * pass only relative paths to a service with a `baseURL`.
+ * axios skips the `baseURL` for an absolute or `//` path. An absolute path keeps its scheme in
+ * the joined URL, and a URL with a scheme in its path gets no credentials. A `//` path does
+ * not show in the join, so until constructorfabric/gears-frontx#770 is fixed, pass only
+ * relative paths to a service with a `baseURL`.
  */
 export type Hai3ApiAuthTransportConfig = {
   /** Other origins where a cookie session's requests go with `withCredentials` and the CSRF header. */
@@ -546,21 +548,37 @@ function getRuntimeOrigin(): string | null {
 }
 
 /**
+ * A scheme inside a URL's path, such as the `https:/` in `/apihttps://evil.example/x`. One
+ * slash is enough: the join that builds the URL plugins see collapses every `//` and puts
+ * back `://` only for the first scheme in the URL.
+ */
+const SCHEME_IN_PATH = /[a-z][a-z\d+.-]*:\//i;
+
+/**
  * Whether a request to `url` may carry the session's credentials: it goes to the app's own
  * origin, or to an origin listed in `allowedOrigins`.
  *
  * The URL is resolved the way the browser resolves it, not read by its prefix. Browsers read
  * `\` as `/` and drop tabs and newlines, so `/\evil.example/x` goes to `evil.example`, just
  * like `//evil.example/x`.
+ *
+ * A URL with a scheme inside its path gets no credentials. `@gears-frontx/api` shows plugins
+ * the service's `baseURL` joined with the path, but axios sends an absolute path as it is, so
+ * `get('https://evil.example/x')` on a service with `baseURL: '/api'` reaches this check as
+ * `/apihttps://evil.example/x` and goes to `evil.example`. The query is not read, so
+ * `?next=https://...` keeps its credentials. A `//` path loses its slashes in the join and
+ * cannot be told apart until constructorfabric/gears-frontx#770 is fixed.
  */
 function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[] | undefined): boolean {
   const ownOrigin = getRuntimeOrigin() ?? NO_RUNTIME_ORIGIN;
-  let origin: string;
+  let resolved: URL;
   try {
-    origin = new URL(url, ownOrigin).origin;
+    resolved = new URL(url, ownOrigin);
   } catch {
     return false;
   }
+  if (SCHEME_IN_PATH.test(resolved.pathname)) return false;
+  const { origin } = resolved;
   if (origin === ownOrigin) return true;
   // A URL without an origin of its own, such as `data:`, reports the opaque origin 'null'.
   if (origin === 'null') return false;
