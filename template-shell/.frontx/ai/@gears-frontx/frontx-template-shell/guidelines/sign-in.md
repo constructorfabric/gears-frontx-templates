@@ -197,15 +197,11 @@ flight and queues the rest makes that one request per page.
 The origin lists are the host's, and they are the lists for every joined MFE,
 because a join takes no options (`authRealmShared()` is parameterless): the
 cookie origins and the CSRF header the host publishes beside the runtime are
-what every MFE's requests carry. The same holds for bounding where bearer
-tokens go. The template's transport attaches a bearer token to every request
-whatever its origin - only cookie credentials are origin-checked
-(`AuthRestPlugin.onRequest`) - and `allowedBearerOrigins`, the list that
-bounds that, is not on this branch yet: it comes with
-constructorfabric/gears-frontx-templates#107. A project passes it to BOTH
-`auth({ frontxApi })` and `authRealm({ frontxApi })` on the host: `auth()`
-builds the shell's own transport from it, `authRealm()` publishes it for the
-joins, and a list that reaches only `authRealm()` bounds the MFEs while the
-shell's own requests stay unlimited.
+what every MFE's requests carry; the host's published `frontxApi` config is
+forwarded whole to every joined MFE. Today only cookie credentials are
+origin-checked (`AuthRestPlugin.onRequest`); a bearer token goes to every
+origin. A project passes the same `frontxApi` to BOTH `auth({ frontxApi })`
+and `authRealm({ frontxApi })` on the host: a config that reaches only
+`authRealm()` applies to the MFEs and not to the shell's own requests.
 
 Everything else in this flow is the shell's and stays unedited.

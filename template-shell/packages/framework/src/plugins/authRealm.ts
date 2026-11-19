@@ -550,9 +550,8 @@ export function authRealmShared(): FrontXPlugin {
       // can never replace the provider or one of the plugin hooks, while a
       // field of
       // `Hai3ApiAuthTransportConfig` this copy of the framework does not know
-      // yet (allowedBearerOrigins,
-      // constructorfabric/gears-frontx-templates#107 (a pull request)) rides
-      // along untouched and reaches the binder the day the host sends it.
+      // yet rides along untouched and reaches the binder the day the host
+      // sends it.
       // `trackRefresh` is set after the spread for the same reason: it is the
       // one hook of the binder args a stray key could land on, and a refresh
       // report it carried would reach the host binder unwired to this

@@ -417,8 +417,8 @@ describe('authRealmShared() - joining side', () => {
   });
 
   it('binds the joining transport with the whole frontxApi config the host publishes, unknown fields included', async () => {
-    // allowedBearerOrigins is the field issue 107 adds to
-    // `Hai3ApiAuthTransportConfig`; the join must forward it before this copy
+    // `allowedBearerOrigins` stands in for a field the type does not declare
+    // yet; the join must forward it before this copy
     // of the type declares it, so the test publishes it through a cast. Only
     // the test casts: the production join spreads the config as it is. The
     // cast also carries a stray `provider` key and a stray `trackRefresh`
