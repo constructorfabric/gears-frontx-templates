@@ -214,29 +214,24 @@ export function isRejectedSession(session: AuthSession): boolean {
 
 /**
  * Whether `credentialSnapshot` can tell one session of this shape from
- * another: the snapshot discriminates only when it is built from a field a
- * new session of the same shape can carry with a different value. A bearer
- * token, a CSRF token, an expiry, any custom field - each is a field a new
- * session can carry with a different value, so their snapshots can tell
- * sessions apart. A cookie session with neither a CSRF token nor any other
- * valued field serializes to the same snapshot before and after a real
- * sign-in, so for that shape nothing could tell the session the provider
- * hands out afterwards from the rejected one.
+ * another: the snapshot discriminates only when it is built from the one
+ * credential a new session of the same shape must carry with a different
+ * value. Those are the shapes `credentialSnapshot` compares by one
+ * credential - a bearer session, and a cookie session that carries a CSRF
+ * token - so their snapshots can tell sessions apart. Every other session
+ * is serialized whole or by fields a new session of the same shape can
+ * repeat, so the session the provider hands out after a real sign-in can
+ * carry exactly the snapshot the chain was sent against, and no comparison
+ * of that snapshot could see the sign-in.
  *
- * The limit the check cannot close: it sees fields, not their lifetimes, so
- * a field that keeps its value across sign-ins (a fixed expiry on a session
- * the snapshot serializes whole, a custom field that never changes) counts
- * as telling sessions apart although no comparison of that snapshot could
- * see a sign-in. A session of that shape stays held to the strict
- * comparison, and the modal waits for the bound.
- *
- * Read beside `isRejectedSession` by the modal domain's `sign_in`: a session
- * the snapshot cannot discriminate is not held against an announcement, since
- * no comparison of it could ever see a sign-in.
+ * Read beside `isRejectedSession` by the modal domain's `sign_in`: a
+ * session whose snapshot does not discriminate is not held to the strict
+ * comparison after an announcement - the wait is held instead until the one
+ * `checkAuth()` the announcement is followed with answers authenticated.
  */
 export function credentialSnapshotDiscriminates(session: AuthSession): boolean {
-  const fields = session as Record<string, unknown>;
-  return Object.keys(fields).some((key) => key !== 'kind' && fields[key] !== undefined);
+  if (session.kind === 'bearer') return true;
+  return session.kind === 'cookie' && session.csrfToken !== undefined;
 }
 
 /**

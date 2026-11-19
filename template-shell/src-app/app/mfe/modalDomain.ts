@@ -239,11 +239,11 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // that is neither missing nor the rejected one ends the wait.
         //
         // The one exception is a session the snapshot cannot discriminate:
-        // a cookie session without a CSRF token serializes to the same
-        // credentials before and after a real sign-in
-        // (`credentialSnapshotDiscriminates`), so the strict comparison
-        // would never see that sign-in and the modal would hold until the
-        // bound. The announcement alone is still no answer for that shape -
+        // every session but a bearer token or a cookie session with a CSRF
+        // token serializes to the same credentials before and after a real
+        // sign-in (`credentialSnapshotDiscriminates`), so the strict
+        // comparison would never see that sign-in and the modal would hold
+        // until the bound. The announcement alone is still no answer for that shape -
         // the tracker announces refreshes that sign nobody in - so the
         // announcement is followed by one `app.auth.checkAuth()`, raced
         // against the bound like the read, and the wait ends only when it
