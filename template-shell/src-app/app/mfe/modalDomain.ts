@@ -209,7 +209,7 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
     try {
       for (;;) {
         const announcement = nextAnnouncement();
-        // What the runtime holds right now decides, not the announcement
+        // The session the runtime holds decides, not the announcement
         // alone: the tracker emits `auth/loggedIn` for more than a finished
         // sign-in. A refresh that resolves a session after the session went
         // signed out emits it too, and the session it resolves can be the
