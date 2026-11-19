@@ -132,7 +132,11 @@ modal whose button would send the user to the service that is down. A
 signed-out answer from `checkAuth()` is what opens the modal, and the trigger
 asks for it after 401s as well as at start (when no refresh flight ran, or
 the flight left no result to read), so `checkAuth()` has to be safe to call
-repeatedly.
+repeatedly. The same holds for `refresh()`: when the sign-in service cannot be
+reached it should reject, not resolve `null`. After a 401, a refresh flight
+that resolves `null` is the answer and opens the modal without asking
+`checkAuth()`, while a flight that rejects leaves no answer and the trigger
+asks `checkAuth()` instead (`confirmSessionGone`).
 
 ## The development provider
 
