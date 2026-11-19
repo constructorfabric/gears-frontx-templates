@@ -547,13 +547,13 @@ describe('MfeScreenContainer', () => {
       expect(screen.getByRole('dialog')).not.toBeNull();
     });
 
-    it('a modal mounts outside the content the narrow menu makes inert, and takes focus there', async () => {
+    it('a modal mounts outside the content the narrow menu makes inert', async () => {
       // Layout marks its content column inert while the narrow menu overlays
       // it (layout/Layout.tsx), and the container renders inside that column.
       // A 401 while the menu is open painted the modal on top, but an inert
-      // ancestor keeps it out of the accessibility tree and its panel off
-      // focus, and taps went through to the menu. The layer renders through a
-      // portal outside the inert subtree, and the focus handling works there.
+      // ancestor keeps it out of the accessibility tree, and taps went
+      // through to the menu. The layer renders through a portal into
+      // document.body, outside the inert subtree.
       stubRegistry({
         id: MODAL_EXTENSION_ID,
         presentation: { label: 'Sign in', size: 'full', cancelable: false },
@@ -572,10 +572,10 @@ describe('MfeScreenContainer', () => {
         act(() => modalState.set(MODAL_EXTENSION_ID));
 
         const dialog = screen.getByRole('dialog', { name: 'Sign in' });
-        // Not inside any [inert] ancestor: the layer left the inert subtree.
+        // Not inside any [inert] ancestor: the layer left the inert subtree,
+        // and hangs straight off the body the portal renders into.
         expect(dialog.closest('[inert]')).toBeNull();
-        // It takes focus: the panel it renders is the active element.
-        expect(dialog.contains(document.activeElement)).toBe(true);
+        expect(dialog.parentElement).toBe(document.body);
       } finally {
         cleanup();
         inert.remove();

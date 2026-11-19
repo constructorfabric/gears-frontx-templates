@@ -76,6 +76,22 @@ function makeSignInAggregateWithSecondModal() {
   ];
 }
 
+/**
+ * The auth provider the 401 cases drive: the session it holds at start is
+ * signed in, and once `rejection.serverRejected` is set the same check says
+ * signed out. The provider is the authority the trigger asks after a 401, and
+ * there is no refresh to wait out unless the case adds one.
+ */
+function stubRevocableProvider() {
+  const stub = stubAuthProvider();
+  const rejection: { serverRejected: boolean } = { serverRejected: false };
+  stub.provider.checkAuth = async () =>
+    stub.state.session && !rejection.serverRejected
+      ? { authenticated: true, session: stub.state.session }
+      : { authenticated: false };
+  return { ...stub, rejection };
+}
+
 describe('the sign-in chain through the real runtime', () => {
   let registry: Awaited<ReturnType<typeof buildApp>>['registry'] | undefined;
 
@@ -155,21 +171,13 @@ describe('the sign-in chain through the real runtime', () => {
     // of a provider that keeps answering getSession() with the session the
     // server already rejected. It even rebuilds the session with its
     // properties in another order, so only the credentials say it is the same.
-    const { provider, state } = stubAuthProvider();
+    const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'bearer', token: 'live' };
     const logout = vi.fn(async () => {
       state.session = { token: 'revoked', kind: 'bearer' };
       return { type: 'none' as const };
     });
     provider.logout = logout;
-    // The provider is the authority the trigger asks after a 401 (there is
-    // no refresh to wait out): the session it holds at start is signed in;
-    // once the server has rejected the token, the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -182,7 +190,7 @@ describe('the sign-in chain through the real runtime', () => {
     // rejected one out: the request fails with 401 and the chain goes out
     // against the rejected session.
     state.session = { kind: 'bearer', token: 'revoked' };
-    serverRejected = true;
+    rejection.serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
@@ -219,7 +227,7 @@ describe('the sign-in chain through the real runtime', () => {
     // real `sign_in` handler does not take the stale session the provider
     // still hands out for a finished sign-in. The modal holds until a real
     // sign-in, exactly as when the snapshot read succeeded.
-    const { provider, state } = stubAuthProvider();
+    const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'bearer', token: 'live' };
     // The read the 401's hook takes is the one that fails, exactly once.
     let failNextRead = false;
@@ -230,14 +238,6 @@ describe('the sign-in chain through the real runtime', () => {
       }
       return state.session;
     };
-    // The provider is the authority the trigger asks after a 401: the session
-    // it holds at start is signed in; once the server has rejected the token,
-    // the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -250,7 +250,7 @@ describe('the sign-in chain through the real runtime', () => {
     // the token; the 401's own hook-time read is the one that fails, and the
     // signed-out answer of the check that follows sends the chain.
     state.session = { kind: 'bearer', token: 'revoked' };
-    serverRejected = true;
+    rejection.serverRejected = true;
     failNextRead = true;
     act(() => {
       provider.onTransportError?.({
@@ -545,7 +545,7 @@ describe('the sign-in chain through the real runtime', () => {
     }
   });
 
-  it('an auth/loggedIn that still answers the rejected session keeps the modal and the reload stamp', async () => {
+  it('a refresh that resolves the rejected session after signed out keeps the modal and the reload stamp; a refresh that lands a new session ends the wait', async () => {
     // The tracker emits `auth/loggedIn` for more than a finished sign-in: a
     // refresh that resolves a session after the session went signed out
     // emits it too, and the session it resolves counts (the rejected one
@@ -553,16 +553,17 @@ describe('the sign-in chain through the real runtime', () => {
     // one: an announcement beside a provider that still hands the rejected
     // session out closes the modal with no sign-in behind it and drops the
     // reload guard's stamp - exactly the loop the stamp exists to record.
-    const { provider, state } = stubAuthProvider();
+    // The announcements are the tracker's own here: every refresh runs
+    // through the runtime, so the signed-out report, the announcement beside
+    // the rejected session and the one beside a new session all come from the
+    // tracker's refresh paths - the last one with no login call anywhere.
+    const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'bearer', token: 'live' };
-    // The provider is the authority the trigger asks after a 401 (there is
-    // no refresh to wait out): the session it holds at start is signed in;
-    // once the server has rejected the token, the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
+    // One refresh stub for the whole case, dispatching on the flight the case
+    // wants next: the plugin and the trigger wrap captured it at build time,
+    // so it reads the mutable plan instead of being replaced per step.
+    let flight: 'session' | 'no-session' = 'session';
+    provider.refresh = vi.fn(async () => (flight === 'no-session' ? null : state.session));
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -578,7 +579,7 @@ describe('the sign-in chain through the real runtime', () => {
     // rejected one out: the request fails with 401 and the chain goes out
     // against the rejected session.
     state.session = { kind: 'bearer', token: 'revoked' };
-    serverRejected = true;
+    rejection.serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
@@ -588,11 +589,19 @@ describe('the sign-in chain through the real runtime', () => {
     });
     await screen.findByRole('dialog', { name: 'Sign in' });
 
+    // The report that takes the tracker signed out: a refresh flight that
+    // resolves no session. The modal holds either way.
+    flight = 'no-session';
+    await act(async () => {
+      await built.app.auth?.refresh?.();
+    });
+
     // What a refresh resolving the rejected session after signed out does:
     // the tracker announces a session start, and the provider still hands
     // the rejected one out.
-    act(() => {
-      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    flight = 'session';
+    await act(async () => {
+      await built.app.auth?.refresh?.();
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -604,21 +613,36 @@ describe('the sign-in chain through the real runtime', () => {
     expect(claimAutomaticReload()).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
 
-    // A real sign-in ends the wait, and the chain reloads once.
+    // The server keeps rejecting for a while longer: the tracker is signed
+    // out again. Then the sign-in lands - the provider hands out a new
+    // session, the refresh the tracker announces it with involves no login -
+    // and the wait ends: the modal closes and the chain reloads once.
+    flight = 'no-session';
     await act(async () => {
-      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+      await built.app.auth?.refresh?.();
+    });
+    state.session = { kind: 'bearer', token: 'fresh-sign-in' };
+    flight = 'session';
+    await act(async () => {
+      await built.app.auth?.refresh?.();
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
-  it('an auth/loggedIn while the runtime answers no session keeps the modal', async () => {
+  it('a refresh that rejects while signed in announces without a session and keeps the modal', async () => {
     // A refresh that rejects while the tracker still says signed in clears
     // for an unknown identity and announces a session start: a cache-scope
-    // signal, not a sign-in. The runtime answers no session beside it (the
-    // refreshFailed case), so the wait must hold.
-    const { provider, state } = stubAuthProvider();
-    state.session = null;
+    // signal, not a sign-in. The announcement here is the tracker's own
+    // clear path, and the runtime answers no session beside it (the
+    // refreshFailed case), so the wait must hold. A real sign-in ends the
+    // wait as usual.
+    const { provider, state, rejection } = stubRevocableProvider();
+    state.session = { kind: 'bearer', token: 'live' };
+    provider.refresh = vi.fn(async () => {
+      throw new Error('refresh endpoint down');
+    });
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -627,12 +651,26 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
-    // The signed-out start-up answer sent the chain; the modal is up.
+    // The start-up check saw a session and sent nothing. The server revokes
+    // the token, and the provider keeps handing the rejected one out: the
+    // request fails with 401 and the chain goes out against the rejected
+    // session.
+    state.session = { kind: 'bearer', token: 'revoked' };
+    rejection.serverRejected = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
     await screen.findByRole('dialog', { name: 'Sign in' });
 
-    // The refreshFailed announcement, beside a runtime that holds no session.
-    act(() => {
-      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    // The refresh that rejects: the tracker still says signed in, so it
+    // clears for an unknown identity and announces a session start with no
+    // session behind it.
+    await act(async () => {
+      await built.app.auth?.refresh?.().catch(() => undefined);
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -647,62 +685,6 @@ describe('the sign-in chain through the real runtime', () => {
       await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(reloadPage).toHaveBeenCalledTimes(1);
-  });
-
-  it('a later auth/loggedIn with a new session ends the wait as before', async () => {
-    // The announcement beside the rejected session holds the modal; the
-    // announcement beside a new one closes it and reloads, the way it did
-    // when every announcement counted.
-    const { provider, state } = stubAuthProvider();
-    state.session = { kind: 'bearer', token: 'live' };
-    // The provider is the authority the trigger asks after a 401 (there is
-    // no refresh to wait out): the session it holds at start is signed in;
-    // once the server has rejected the token, the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
-    const built = await buildApp({ provider });
-    registry = built.registry;
-    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
-    const { modalState } = await import('./modalDomain');
-    wireSignInTriggers(built.app, provider);
-    await renderContainer(built.react, built.app);
-    await act(async () => {});
-
-    // The server revokes the token, and the provider keeps handing the
-    // rejected one out: the request fails with 401 and the chain goes out
-    // against the rejected session.
-    state.session = { kind: 'bearer', token: 'revoked' };
-    serverRejected = true;
-    act(() => {
-      provider.onTransportError?.({
-        request: { url: '/api/data', method: 'GET', headers: {} },
-        error: new Error('401'),
-        status: 401,
-      });
-    });
-    await screen.findByRole('dialog', { name: 'Sign in' });
-
-    // The rejected session again: the modal holds.
-    act(() => {
-      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    });
-    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
-
-    // A new session the provider hands out, announced the same way: the wait
-    // ends, the modal closes and the chain reloads the page.
-    state.session = { kind: 'bearer', token: 'fresh-sign-in' };
-    act(() => {
-      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
-    });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(modalState.getSnapshot()).toBeUndefined();
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
@@ -839,16 +821,8 @@ describe('the sign-in chain through the real runtime', () => {
     // timeout even though the person signed in. For that shape an
     // announcement that carries a session is the sign-in; every session the
     // snapshot can tell apart keeps the strict comparison.
-    const { provider, state } = stubAuthProvider();
+    const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'cookie' };
-    // The provider is the authority the trigger asks after a 401 (there is
-    // no refresh to wait out): the session it holds at start is signed in;
-    // once the server has rejected it, the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -859,7 +833,7 @@ describe('the sign-in chain through the real runtime', () => {
 
     // The server rejects the cookie session, and the provider keeps handing
     // it out: the 401 opens the modal against the rejected session.
-    serverRejected = true;
+    rejection.serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
@@ -885,16 +859,8 @@ describe('the sign-in chain through the real runtime', () => {
     // another, so the per-announcement comparison holds for it in full: an
     // announcement beside a session with the rejected CSRF token keeps the
     // modal, and a session with a new CSRF token ends it.
-    const { provider, state } = stubAuthProvider();
+    const { provider, state, rejection } = stubRevocableProvider();
     state.session = { kind: 'cookie', csrfToken: 'csrf-1' };
-    // The provider is the authority the trigger asks after a 401 (there is
-    // no refresh to wait out): the session it holds at start is signed in;
-    // once the server has rejected it, the same check says signed out.
-    let serverRejected = false;
-    provider.checkAuth = async () =>
-      state.session && !serverRejected
-        ? { authenticated: true, session: state.session }
-        : { authenticated: false };
     const built = await buildApp({ provider });
     registry = built.registry;
     const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
@@ -903,7 +869,7 @@ describe('the sign-in chain through the real runtime', () => {
     await renderContainer(built.react, built.app);
     await act(async () => {});
 
-    serverRejected = true;
+    rejection.serverRejected = true;
     act(() => {
       provider.onTransportError?.({
         request: { url: '/api/data', method: 'GET', headers: {} },
