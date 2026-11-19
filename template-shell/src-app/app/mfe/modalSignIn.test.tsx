@@ -690,10 +690,10 @@ describe('the sign-in chain through the real runtime', () => {
 
   it('a session read that is still out when the bound runs out closes nothing afterwards', async () => {
     // The bound is the wait's deadline: once it is out the mediator has moved
-    // the chain on and the handler no longer owns the flow. The session reads
+    // the chain on and the handler has given the flow up. The session reads
     // are raced against that bound the way the announcements are, so a read
     // that answers after it - even with a session - closes no modal and drops
-    // no reload stamp on a flow the handler no longer owns.
+    // no reload stamp on a flow the handler has given up.
     expect(claimAutomaticReload()).toBe(true);
     const { provider, state } = stubAuthProvider();
     state.session = { kind: 'bearer', token: 'live' };
@@ -743,7 +743,7 @@ describe('the sign-in chain through the real runtime', () => {
       await vi.advanceTimersByTimeAsync(SIGN_IN_ACTION_TIMEOUT_MS + 1_000);
 
       // The read answers afterwards, with a session: it closes nothing - the
-      // handler no longer owns the flow, so no unmount goes out either.
+      // handler has given the flow up, so no unmount goes out either.
       state.session = { kind: 'bearer', token: 'fresh-sign-in' };
       await act(async () => {
         releaseRead?.();
