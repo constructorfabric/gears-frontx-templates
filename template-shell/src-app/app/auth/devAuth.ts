@@ -21,7 +21,7 @@ import {
   type FrontXPlugin,
 } from '@gears-frontx/react';
 import { createDevMockAuthProvider } from './devMockAuthProvider';
-import { wireSignInTriggers } from './signInTriggers';
+import { removeSignInEntryAtPageLoad, wireSignInTriggers } from './signInTriggers';
 
 /**
  * The development auth provider: on in development, like mock mode, and the
@@ -54,9 +54,16 @@ export function devAuthPlugins(): FrontXPlugin[] {
 /**
  * Wires the sign-in triggers: a 401, or a start with no session, sends the
  * chain that opens the sign-in modal (`signInTriggers.ts`). Wired only where
- * the development auth config exists; in a production build nothing here runs.
+ * the development auth config exists. A build without one wires no trigger -
+ * there is no provider to wire one with - but an address that names the
+ * sign-in entry mounts a modal whose only closer is the `sign_in` of a chain
+ * nothing sends on such a host, so `removeSignInEntryAtPageLoad` removes that
+ * entry.
  */
 export function wireDevSignInTriggers(app: FrontXApp): void {
-  if (!devAuthConfig) return;
+  if (!devAuthConfig) {
+    removeSignInEntryAtPageLoad(app);
+    return;
+  }
   wireSignInTriggers(app, devAuthConfig.provider);
 }

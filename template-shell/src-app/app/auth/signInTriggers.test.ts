@@ -131,6 +131,9 @@ afterEach(() => {
   // One case reads the address as a page load would carry it; the rest must
   // not see its entry.
   window.history.replaceState(null, '', '/');
+  // One case reads the wiring as a production build carries it (no dev auth
+  // config); the rest must not inherit that env.
+  vi.unstubAllEnvs();
 });
 
 describe('wireSignInTriggers', () => {
@@ -332,16 +335,48 @@ describe('wireSignInTriggers', () => {
     expect(mount.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
   });
 
-  it('a start without an auth runtime removes the entry the address named', async () => {
-    // A production build wires no auth runtime: no check runs, no chain is
-    // ever sent, and an address that names the sign-in entry would mount a
-    // modal no one closes. The unmount chain removes the entry instead.
+  it('a host wired without an auth runtime removes the entry the address named', async () => {
+    // The `!app.auth` branch of the start-up check. A caller reaches it only
+    // by wiring the triggers without the auth plugin: the template's own
+    // wiring always builds the runtime (`devAuthPlugins` adds `auth()` beside
+    // the triggers), and a production build wires no trigger at all - the
+    // `wireDevSignInTriggers` case below covers its page-load address. On
+    // this host no check runs and no chain is ever sent, so an address that
+    // names the sign-in entry would mount a modal no one closes; the unmount
+    // chain removes the entry instead.
     window.history.replaceState(null, '', '/?popup=sign-in');
     const { wireSignInTriggers } = await import('./signInTriggers');
     const provider = stubProvider();
     const { app, executeActionsChain } = stubApp(undefined);
 
     wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const unmount = executeActionsChain.mock.calls[0][0] as {
+      action: { type: string; target: string; payload: { subject: string; history: string } };
+    };
+    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+  });
+
+  it('a production build without dev auth removes the entry the page-load address named', async () => {
+    // The production build wires no trigger: `wireDevSignInTriggers` has no
+    // auth config to wire one with. An address that names the sign-in entry
+    // still mounts a modal whose only closer is the `sign_in` of a chain
+    // nothing sends, so the removal runs without a trigger: the address is
+    // read before the first render, and the unmount chain goes out once the
+    // bootstrap has settled and the modal slot has attached. No sign-in chain
+    // goes out beside it, and no 401 hook is wired.
+    window.history.replaceState(null, '', '/?popup=sign-in');
+    vi.stubEnv('DEV', false);
+    const { wireDevSignInTriggers } = await import('./devAuth');
+    const { app, executeActionsChain } = stubApp(undefined); // a production app has no auth runtime
+
+    wireDevSignInTriggers(app);
     settleBootstrapAndSlot();
     await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
 

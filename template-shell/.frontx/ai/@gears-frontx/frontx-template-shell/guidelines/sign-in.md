@@ -130,8 +130,13 @@ still carries
 the start-up check removes that entry once a session exists
 (`checkSessionAtStart` in `signInTriggers.ts` sends the unmount chain); with
 no session, it sends the sign-in chain again. The entry is removed when the
-check sends no chain either, in both cases where that happens: a host without
-an auth runtime (the production build), and a check that rejects. Nothing
+check sends no chain either: a check that rejects, or a host wired without an
+auth runtime (only a wiring without the auth plugin reaches that branch). A
+production build wires no trigger at all, and its removal happens without
+one: `wireDevSignInTriggers` (`devAuth.ts`) reads the page-load address
+before the first render and calls `removeSignInEntryAtPageLoad`
+(`signInTriggers.ts`), which sends the same unmount chain once the bootstrap
+has settled and the modal slot has attached. Nothing
 sets the once-guard on these paths, so a later 401 still opens sign-in.
 
 A provider whose sign-in service cannot be reached is not signed out:
@@ -159,8 +164,11 @@ without an auth runtime confirms at once, with nothing to ask.
 `src-app/app/auth/devMockAuthProvider.ts` is development only, like mock mode.
 `src-app/app/auth/devAuth.ts` holds it behind `import.meta.env.DEV` together
 with the plugin list and the trigger wiring, and both entries call that one
-module, so a production build carries no provider, no auth plugin, no realm
-plugin and no trigger. It accepts any non-empty credentials and keeps a bearer
+module, so a production build carries no provider, no auth plugin and no
+realm plugin, and it wires no trigger; the one thing it still does there is
+remove a sign-in entry the page-load address named
+(`removeSignInEntryAtPageLoad`), since the modal that entry mounts has no
+`sign_in` behind it to close it. It accepts any non-empty credentials and keeps a bearer
 session in `sessionStorage`, enough to walk the flow without a backend. A
 project replaces it with its own `AuthProvider` in that module and drops the
 `import.meta.env.DEV` condition there, which is what also turns the triggers

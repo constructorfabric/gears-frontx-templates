@@ -190,12 +190,14 @@ async function sendSignInChainOnce(app: FrontXApp): Promise<void> {
  * so the same chain answers it. Signed in with the sign-in extension still
  * named in the address - a deep link, or an address an earlier sign-in left
  * behind - has the entry removed instead (`removeSignInEntryAtStart`), so no
- * modal opens over a session that exists. A host without an auth runtime -
- * the production build - and a check that cannot answer send nothing either,
- * and an address that names the sign-in entry has it removed there as well:
- * the modal it mounts is closed only by the `sign_in` of a chain this start
- * never sends, so it would stay up with nothing behind it. Nothing on these
- * paths sets the once-guard, so a later 401 still opens sign-in.
+ * modal opens over a session that exists. A host wired without an auth runtime
+ * and a check that cannot answer send nothing either, and an address that
+ * names the sign-in entry has it removed there as well: the modal it mounts is
+ * closed only by the `sign_in` of a chain this start never sends, so it would
+ * stay up with nothing behind it. The production build runs none of this, for
+ * no trigger is wired there; its page-load removal is
+ * `removeSignInEntryAtPageLoad`. Nothing on these paths sets the once-guard,
+ * so a later 401 still opens sign-in.
  *
  * @param app - The FrontX application whose registry the chain is sent to
  * @param addressNamedSignIn - Whether the page-load address named the sign-in
@@ -204,8 +206,10 @@ async function sendSignInChainOnce(app: FrontXApp): Promise<void> {
 async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean): Promise<void> {
   try {
     await bootstrapSettled();
-    // A host without an auth runtime - the production build - checks nothing.
-    // An address that still names the sign-in entry would mount a modal whose
+    // A host wired without an auth runtime checks nothing. The production
+    // build is not this branch - it wires no trigger at all, and
+    // `removeSignInEntryAtPageLoad` covers its page-load address. An address
+    // that still names the sign-in entry would mount a modal whose
     // only closer is the `sign_in` no chain holds here, so the entry is
     // removed instead; nothing below sets the once-guard, so a later 401 can
     // still send the chain.
@@ -269,6 +273,38 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
 async function removeSignInEntryAtStart(app: FrontXApp): Promise<void> {
   await modalSlotAttached();
   app.mfeRegistry?.executeActionsChain(buildSignInUnmountChain());
+}
+
+/**
+ * Removes the sign-in entry the page-load address named, on a host that wires
+ * no trigger: the production build, whose `wireDevSignInTriggers` has no auth
+ * config to wire the triggers with. The address is read here, before the
+ * first render, the same reading `wireSignInTriggers` does - the router clears
+ * every entry from the address once the first routed domain starts. The
+ * removal itself is the one `removeSignInEntryAtStart` performs, once the
+ * bootstrap has settled and the modal slot has attached: an address that names
+ * the sign-in entry mounts a modal whose only closer is the `sign_in` of a
+ * chain nothing sends on such a host, so the entry is taken out instead. No
+ * trigger is wired: no 401 hook runs, and nothing here sets the once-guard.
+ *
+ * A bootstrap that fails keeps the entry, with a warning: the domains the
+ * unmount chain names may not exist, so the unmount could not be delivered
+ * (the start-up check of a wired host keeps it for the same reason).
+ */
+export function removeSignInEntryAtPageLoad(app: FrontXApp): void {
+  const addressNamedSignIn = addressSignInEntry() !== undefined;
+  if (!addressNamedSignIn) return;
+  void (async () => {
+    try {
+      await bootstrapSettled();
+      await removeSignInEntryAtStart(app);
+    } catch (error) {
+      console.warn(
+        '[signInTriggers] the bootstrap failed, so the sign-in entry the page-load address named stayed',
+        error,
+      );
+    }
+  })();
 }
 
 /**
