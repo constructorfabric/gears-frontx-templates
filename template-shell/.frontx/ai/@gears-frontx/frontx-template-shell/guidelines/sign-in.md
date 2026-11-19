@@ -122,13 +122,18 @@ still carries
 `?popup=sign-in` (the chain's `mount_ext` wrote the popup entry there), and
 the start-up check removes that entry once a session exists
 (`checkSessionAtStart` in `signInTriggers.ts` sends the unmount chain); with
-no session, it sends the sign-in chain again.
+no session, it sends the sign-in chain again. The entry is removed when the
+check sends no chain either, in both cases where that happens: a host without
+an auth runtime (the production build), and a check that rejects. Nothing
+sets the once-guard on these paths, so a later 401 still opens sign-in.
 
 A provider whose sign-in service cannot be reached is not signed out:
 `checkAuth()` should reject in that case. The trigger sends nothing for a
 check that rejects - it warns the same way at start (`checkSessionAtStart`)
 and after a 401 (`confirmSessionGone`) - so a failed start never opens a
-modal whose button would send the user to the service that is down. A
+modal whose button would send the user to the service that is down. A failed
+start also removes the entry the page-load address named, so the modal that
+nothing could close never mounts at all. A
 signed-out answer from `checkAuth()` is what opens the modal, and the trigger
 asks for it after 401s as well as at start (when no refresh flight ran, or
 the flight left no result to read), so `checkAuth()` has to be safe to call

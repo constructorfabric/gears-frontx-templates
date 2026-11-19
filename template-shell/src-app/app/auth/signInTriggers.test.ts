@@ -290,6 +290,71 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
 
+  it('a start-up check that rejects removes the entry the address named, and a later 401 still opens sign-in', async () => {
+    // The entry the address names mounts a modal whose only closer is the
+    // sign_in the chain holds. When the check rejects it sends no chain, so
+    // the modal would sit there with nothing behind it: the sign-in service
+    // is down, and a redirect provider coming back to the address it left
+    // lands on exactly this state. The unmount chain removes the entry
+    // instead, and nothing here sets the once-guard, so a later 401 still
+    // sends the chain.
+    window.history.replaceState(null, '', '/?popup=sign-in');
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = stubProvider(); // no refresh
+    const checkAuth = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('accounts service down')) // the start-up check
+      .mockResolvedValue({ authenticated: false }); // a later 401's check
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+
+    // The unmount chain removed the entry, and no sign-in chain went out.
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    const unmount = executeActionsChain.mock.calls[0][0] as {
+      action: { type: string; target: string; payload: { subject: string; history: string } };
+    };
+    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+
+    // A later 401 still opens sign-in: the once-guard was never set.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(2));
+    const mount = executeActionsChain.mock.calls[1][0] as {
+      action: { payload: { subject: string } };
+    };
+    expect(mount.action.payload.subject).toBe(SIGN_IN_EXTENSION_ID);
+  });
+
+  it('a start without an auth runtime removes the entry the address named', async () => {
+    // A production build wires no auth runtime: no check runs, no chain is
+    // ever sent, and an address that names the sign-in entry would mount a
+    // modal no one closes. The unmount chain removes the entry instead.
+    window.history.replaceState(null, '', '/?popup=sign-in');
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider();
+    const { app, executeActionsChain } = stubApp(undefined);
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+
+    const unmount = executeActionsChain.mock.calls[0][0] as {
+      action: { type: string; target: string; payload: { subject: string; history: string } };
+    };
+    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
+    await flush();
+    expect(executeActionsChain).toHaveBeenCalledTimes(1);
+  });
+
   it('one 401 among several failing requests sends one chain', async () => {
     const { wireSignInTriggers } = await import('./signInTriggers');
     const provider = stubProvider();

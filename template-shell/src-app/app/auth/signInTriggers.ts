@@ -190,8 +190,12 @@ async function sendSignInChainOnce(app: FrontXApp): Promise<void> {
  * so the same chain answers it. Signed in with the sign-in extension still
  * named in the address - a deep link, or an address an earlier sign-in left
  * behind - has the entry removed instead (`removeSignInEntryAtStart`), so no
- * modal opens over a session that exists. A host without an auth runtime - the
- * production build - sends nothing.
+ * modal opens over a session that exists. A host without an auth runtime -
+ * the production build - and a check that cannot answer send nothing either,
+ * and an address that names the sign-in entry has it removed there as well:
+ * the modal it mounts is closed only by the `sign_in` of a chain this start
+ * never sends, so it would stay up with nothing behind it. Nothing on these
+ * paths sets the once-guard, so a later 401 still opens sign-in.
  *
  * @param app - The FrontX application whose registry the chain is sent to
  * @param addressNamedSignIn - Whether the page-load address named the sign-in
@@ -201,9 +205,15 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
   try {
     await bootstrapSettled();
     // A host without an auth runtime - the production build - checks nothing.
-    const auth = app.auth;
-    if (!auth) return;
-    const result = await auth.checkAuth().catch((error: unknown) => {
+    // An address that still names the sign-in entry would mount a modal whose
+    // only closer is the `sign_in` no chain holds here, so the entry is
+    // removed instead; nothing below sets the once-guard, so a later 401 can
+    // still send the chain.
+    if (!app.auth) {
+      if (addressNamedSignIn) await removeSignInEntryAtStart(app);
+      return;
+    }
+    const result = await app.auth.checkAuth().catch((error: unknown) => {
       // A check that cannot answer says nothing about the session. Nothing
       // here sets the once-guard, so a later 401 can still send the chain.
       console.warn(
@@ -212,7 +222,15 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
       );
       return undefined;
     });
-    if (!result) return;
+    if (!result) {
+      // A failed start sends no chain, and the entry the address names would
+      // mount a modal nothing closes: the sign-in service is down, and a
+      // redirect provider coming back to the address it left lands on exactly
+      // this state. The entry is removed here too, with the once-guard left
+      // unset for a later 401.
+      if (addressNamedSignIn) await removeSignInEntryAtStart(app);
+      return;
+    }
     if (!result.authenticated) {
       // The credentials the chain is sent against are read here, when the
       // signed-out answer arrived - the send takes this snapshot as the
