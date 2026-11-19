@@ -141,7 +141,11 @@ the start-up check removes that entry once a session exists
 (`checkSessionAtStart` in `signInTriggers.ts` sends the unmount chain); with
 no session, it sends the sign-in chain again. The entry is removed when the
 check sends no chain either: a check that rejects, or a host wired without an
-auth runtime (only a wiring without the auth plugin reaches that branch). A
+auth runtime (only a wiring without the auth plugin reaches that branch).
+A bootstrap that fails is the one start that keeps the entry: the session
+check does not run, the start only warns, and the removal is skipped because
+the domains the unmount chain names may not exist, so the unmount could not
+be delivered. A
 production build wires no trigger at all, and its removal happens without
 one: `wireDevSignInTriggers` (`devAuth.ts`) reads the page-load address
 before the first render and calls `removeSignInEntryAtPageLoad`
@@ -166,8 +170,10 @@ service cannot be reached it should reject, not resolve `null`. After a 401, a r
 that resolves `null` is the answer and opens the modal without asking
 `checkAuth()`, while a flight that rejects leaves no answer and the trigger
 asks `checkAuth()` instead (`confirmSessionGone`). On a host without a
-refresh the same confirmation asks `checkAuth()` on every 401; only a host
-without an auth runtime confirms at once, with nothing to ask.
+refresh the same confirmation asks `checkAuth()` once per confirmation: a 401
+that lands while a confirmation is running is dropped whole, and so is any
+401 after the chain went out; only a host without an auth runtime confirms at
+once, with nothing to ask.
 
 ## The development provider
 

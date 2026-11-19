@@ -196,8 +196,11 @@ async function sendSignInChainOnce(app: FrontXApp): Promise<void> {
  * closed only by the `sign_in` of a chain this start never sends, so it would
  * stay up with nothing behind it. The production build runs none of this, for
  * no trigger is wired there; its page-load removal is
- * `removeSignInEntryAtPageLoad`. Nothing on these paths sets the once-guard,
- * so a later 401 still opens sign-in.
+ * `removeSignInEntryAtPageLoad`. A bootstrap that fails is the one start that
+ * keeps the entry: the session check does not run, this function only warns,
+ * and the removal is skipped because the domains the unmount chain names may
+ * not exist, so the unmount could not be delivered. Nothing on these paths
+ * sets the once-guard, so a later 401 still opens sign-in.
  *
  * @param app - The FrontX application whose registry the chain is sent to
  * @param addressNamedSignIn - Whether the page-load address named the sign-in
@@ -449,7 +452,8 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
 
   /**
    * Reads the settled refresh flight's outcome, and asks the runtime
-   * (`checkAuth`) only when no flight ran or the flight rejected: a flight
+   * (`checkAuth`) when no flight ran, when the flight rejected, or when the
+   * provider carries no refresh and no flight could run at all: a flight
    * that resolved anything (a session or null) is the runtime's own answer.
    * When the answer is signed out, the confirmation ends by handing the
    * snapshot the hook took to the send (`confirmSignIn`); it is not held
@@ -505,9 +509,14 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
     // The guard is up: the chain cannot go out again, so there is nothing
     // left to confirm and nothing to send.
     if (chainSent) return;
-    // The hook runs before the transport's refresh-and-retry; with a refresh
-    // available, confirm the session is really gone before opening the modal,
-    // once the transport's refresh flight has settled.
+    // The hook runs before the transport's refresh-and-retry, so the session
+    // is confirmed before the modal opens: on a host with an auth runtime the
+    // confirmation reads what the transport's refresh flight resolved, and
+    // asks `checkAuth()` when no flight ran or the flight rejected. The two
+    // branches below split on the auth runtime, not on the refresh: a
+    // provider that carries a refresh but built no runtime asks nothing, and
+    // a refresh-less provider on a runtime asks the same check as a
+    // refreshing one.
     // The 401s a confirmation already running answers are dropped whole, so
     // they read no snapshot of their own: the session read starts only for
     // the 401 that will actually hand one over, and both branches keep this
@@ -535,13 +544,13 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
       confirmSessionGone(readSessionSnapshot());
       return;
     }
-    // No auth runtime to ask, and no refresh to wait out: nothing could
-    // answer for the session, so the trigger is confirmed at once and hands
-    // its snapshot to the send. The confirmation ends there - it does not
-    // hold across the send's own waits for the bootstrap and the modal slot
-    // - and the guard above dedupes within one tick only: a 401 of the same
-    // burst that lands in a later tick takes its own snapshot, which the
-    // latest-wins overwrite needs.
+    // No auth runtime to ask: nothing could answer for the session, whatever
+    // refresh the provider itself carries, so the trigger is confirmed at
+    // once and hands its snapshot to the send. The confirmation ends there -
+    // it does not hold across the send's own waits for the bootstrap and the
+    // modal slot - and the guard above dedupes within one tick only: a 401 of
+    // the same burst that lands in a later tick takes its own snapshot, which
+    // the latest-wins overwrite needs.
     const sessionAt401 = readSessionSnapshot();
     const settled = (): void => {
       confirmation = null;
