@@ -259,13 +259,20 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // instead of failing the action the mediator would then fall back
         // from. The first read is announced by nothing, so its failure
         // stays the action's own failure.
-        const read = auth.getSession().then(
-          (session) => ({ session }),
-          (error: unknown) => {
-            if (!announced) throw error;
-            return { session: null };
-          },
-        );
+        // Wrapped in `Promise.resolve().then`, so a provider whose
+        // `getSession` throws synchronously reaches the same rejection
+        // handler a rejected read reaches: the runtime's `getSession` is a
+        // plain passthrough, and an unwrapped call would throw out of the
+        // loop and fail the action where a rejection would keep waiting.
+        const read = Promise.resolve()
+          .then(() => auth.getSession())
+          .then(
+            (session) => ({ session }),
+            (error: unknown) => {
+              if (!announced) throw error;
+              return { session: null };
+            },
+          );
         const settled = await Promise.race([read, bound.then(() => null)]);
         if (!settled) return;
         if (settled.session) {

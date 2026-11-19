@@ -813,6 +813,60 @@ describe('the sign-in chain through the real runtime', () => {
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
+  it('a session read that throws synchronously after an announcement keeps the wait alive', async () => {
+    // `app.auth.getSession` passes through to the provider, and a provider
+    // whose `getSession` throws synchronously must reach the same handler
+    // the rejections reach: a read that fails after an announcement counts
+    // as "no session", not as a failed action that sends the chain to its
+    // fallback reload while the person is still in the form. A real sign-in
+    // ends the wait as usual.
+    const { provider, state } = stubAuthProvider();
+    let throwNextRead = false;
+    const baseGetSession = provider.getSession.bind(provider);
+    provider.getSession = () => {
+      if (throwNextRead) {
+        throwNextRead = false;
+        throw new Error('session store unreachable');
+      }
+      return baseGetSession();
+    };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { modalState } = await import('./modalDomain');
+    const { buildSignInChain } = await import('@/app/auth/signIn');
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    act(() => {
+      registry?.executeActionsChain(buildSignInChain());
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The announcement lands, and the read that follows it throws before any
+    // promise exists.
+    throwNextRead = true;
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    // The synchronous throw took the failed-read path: the modal is still
+    // up, and the chain did not fall back to its reload.
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A real sign-in ends the wait, and the chain reloads once.
+    state.session = { kind: 'bearer', token: 'fresh-sign-in' };
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
   it('a cookie session without a CSRF token ends the wait when the announcement is followed by an authenticated session check', async () => {
     // A cookie session that carries no CSRF token serializes to the same
     // credentials before and after a real sign-in: `credentialSnapshot` has
