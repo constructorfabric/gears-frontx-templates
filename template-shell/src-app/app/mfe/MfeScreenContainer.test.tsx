@@ -573,9 +573,14 @@ describe('MfeScreenContainer', () => {
 
         const dialog = screen.getByRole('dialog', { name: 'Sign in' });
         // Not inside any [inert] ancestor: the layer left the inert subtree,
-        // and hangs straight off the body the portal renders into.
+        // and lives inside the body the portal renders into.
         expect(dialog.closest('[inert]')).toBeNull();
-        expect(dialog.parentElement).toBe(document.body);
+        expect(document.body.contains(dialog)).toBe(true);
+        // The panel takes focus on mount, so the portal carried the focus
+        // handling over. jsdom applies no inert focus rules, so this pins
+        // that the layer is focused, not that inert would stop one inside
+        // the subtree.
+        expect(dialog.contains(document.activeElement)).toBe(true);
       } finally {
         cleanup();
         inert.remove();

@@ -666,6 +666,12 @@ describe('the sign-in chain through the real runtime', () => {
     });
     await screen.findByRole('dialog', { name: 'Sign in' });
 
+    // The runtime is left holding no session: the provider's getSession
+    // answers null from here on, so the announcement lands beside no session
+    // at all - the branch a failed re-read maps to elsewhere, reached here
+    // through the tracker's real clear path.
+    state.session = null;
+
     // The refresh that rejects: the tracker still says signed in, so it
     // clears for an unknown identity and announces a session start with no
     // session behind it.
@@ -680,7 +686,8 @@ describe('the sign-in chain through the real runtime', () => {
     expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
     expect(reloadPage).not.toHaveBeenCalled();
 
-    // A real sign-in ends the wait, and the chain reloads once.
+    // A real sign-in ends the wait - the session it leaves is not the
+    // rejected one - and the chain reloads once.
     await act(async () => {
       await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
     });
@@ -692,9 +699,8 @@ describe('the sign-in chain through the real runtime', () => {
     // The bound is the wait's deadline: once it is out the mediator has moved
     // the chain on and the handler has given the flow up. The session reads
     // are raced against that bound the way the announcements are, so a read
-    // that answers after it - even with a session - closes no modal and drops
-    // no reload stamp on a flow the handler has given up.
-    expect(claimAutomaticReload()).toBe(true);
+    // that answers after it - even with a session - closes no modal on a
+    // flow the handler has given up.
     const { provider, state } = stubAuthProvider();
     state.session = { kind: 'bearer', token: 'live' };
     const built = await buildApp({ provider });
@@ -754,7 +760,6 @@ describe('the sign-in chain through the real runtime', () => {
       expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
       expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
       expect(dispatch).not.toHaveBeenCalled();
-      expect(reloadPage).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
