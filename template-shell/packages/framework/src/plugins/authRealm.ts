@@ -26,8 +26,11 @@
  * with (`authRealm({ frontxApi })`) into a second slot, and its custom
  * transport binder, when it has one (`authRealm({ transport })`), into a
  * third. A join binds the host's binder (`frontxApiTransport()` when there is
- * none) with the same cookie credentials and CSRF header; without them, every
- * request of a joining app would go out without the session the host's carry.
+ * none) with the host's published config whole, spread into the binder args
+ * as it is, so a field of `Hai3ApiAuthTransportConfig` a joining copy of the
+ * framework does not know yet still reaches the binder; without the config,
+ * every request of a joining app would go out without the session the host's
+ * carry.
  *
  * A second host is refused in `onRegister`, before the `auth()` plugin of its
  * build starts its transport, session tracker and provider subscription.
@@ -71,8 +74,10 @@ const SHARED_AUTH_RUNTIME_SYMBOL = Symbol.for('frontx:auth:runtime');
 /**
  * The slot the shell publishes its `frontxApi` transport config into. The
  * shared `AuthRuntime` carries the provider only, so a join would bind its
- * REST transport without the host's cookie credentials and CSRF header; this
- * slot carries the config the host `auth()` plugin was built with.
+ * REST transport without the host's transport config; this slot carries the
+ * whole `frontxApi` config the host `auth()` plugin was built with, and a
+ * join forwards it into its binder args whole, so a field the joining copy
+ * of the type does not declare yet rides along untouched.
  */
 const SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL = Symbol.for('frontx:auth:transport-config');
 /**
@@ -275,17 +280,25 @@ function releaseHostSharedAuthRuntime(runtime: AuthRuntime): ReleaseResult {
 
 /**
  * Publishes the host's `frontxApi` transport config beside the runtime, so a
- * join can bind its own transport with the same cookie credentials and CSRF
- * header the host uses. A host built without the options clears the slot, so
- * a config of a previous host never serves the joins of the next one.
+ * join can bind its own transport with the same transport config the host
+ * uses, forwarded whole into its binder args. The config is published as a
+ * copy one level deep: every field passes through as it is, and an array
+ * field - the origin lists - is copied into its own array, so the slot
+ * outlives the host's `onInit` and an edit the host makes to its own object
+ * or lists afterwards must not reach a join that binds then. A host built
+ * without the options clears the slot, so a config of a previous host never
+ * serves the joins of the next one.
  */
 function publishSharedAuthTransportConfig(
   config: Hai3ApiAuthTransportConfig | undefined,
   binder: AuthTransportBinder | undefined,
 ): void {
   const host = globalThis as SharedAuthRuntimeHost;
-  if (config) host[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL] = config;
-  else delete host[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL];
+  if (config) {
+    host[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL] = Object.fromEntries(
+      Object.entries(config).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+    ) as Hai3ApiAuthTransportConfig;
+  } else delete host[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL];
   if (binder) host[SHARED_AUTH_TRANSPORT_BINDER_SYMBOL] = binder;
   else delete host[SHARED_AUTH_TRANSPORT_BINDER_SYMBOL];
 }
@@ -305,8 +318,8 @@ export type AuthRealmOptions = {
   /**
    * The same `frontxApi` options the `auth()` plugin takes. Published beside
    * the shared runtime, so every `authRealmShared()` join binds its own
-   * transport with the same cookie credentials and CSRF header. Pass what the
-   * host `auth()` plugin was built with.
+   * transport with the same config, forwarded whole into its binder args.
+   * Pass what the host `auth()` plugin was built with.
    */
   frontxApi?: Hai3ApiAuthTransportConfig;
   /**
@@ -457,8 +470,9 @@ const REPLACES_AUTH_ERROR =
  * this app's `app.auth`, and binds `frontxApiTransport()` to the shared
  * runtime's provider, so this app's own apiRegistry decorates its REST
  * requests with the realm's session. The transport is bound with the
- * `frontxApi` config the host published (cookie credentials and CSRF
- * header), when it published one. It replaces `auth()` for this app and
+ * `frontxApi` config the host published, forwarded whole into the binder
+ * args (every field of it, one the joining copy of the type does not declare
+ * yet included), when it published one. It replaces `auth()` for this app and
  * refuses to build when the app registered an `auth()` plugin of its own,
  * before any plugin's `onInit` runs, so the refused build leaves nothing of
  * that `auth()` behind (its REST transport, its session tracker, its provider
@@ -530,7 +544,23 @@ export function authRealmShared(): FrontXPlugin {
       app.auth = runtime;
       // The host publishes the transport config its auth() plugin was built
       // with: without it, a cookie session would go out with neither the
-      // credentials nor the CSRF header the host's own requests carry.
+      // credentials nor the CSRF header the host's own requests carry. The
+      // config is spread into the binder args whole, not picked field by
+      // field, and as the first entry: a stray key in the published config
+      // can never replace the provider or one of the plugin hooks, while a
+      // field of
+      // `Hai3ApiAuthTransportConfig` this copy of the framework does not know
+      // yet (allowedBearerOrigins,
+      // constructorfabric/gears-frontx-templates#107 (a pull request)) rides
+      // along untouched and reaches the binder the day the host sends it.
+      // `trackRefresh` is set after the spread for the same reason: it is the
+      // one hook of the binder args a stray key could land on, and a refresh
+      // report it carried would reach the host binder unwired to this
+      // runtime's session tracking. The provider and both plugin callbacks
+      // are written after the spread unconditionally.
+      // The spread needs no cast: spreading a typed value never triggers the
+      // excess-property check, while a known field that drifts away from the
+      // binder args type still fails type-check.
       // The binder is the host's own when it published one (a custom
       // `AuthPluginConfig.transport`), so a joining request carries the
       // session the same way a host request does.
@@ -538,9 +568,9 @@ export function authRealmShared(): FrontXPlugin {
       const transport = readSharedAuthTransportBinder() ?? frontxApiTransport();
       try {
         binding = transport({
+          ...transportConfig,
           provider: trackedProvider(runtime),
-          allowedCookieOrigins: transportConfig?.allowedCookieOrigins,
-          csrfHeaderName: transportConfig?.csrfHeaderName,
+          trackRefresh: undefined,
           addRestPlugin: (plugin) => app.apiRegistry.plugins.add(RestProtocol, plugin),
           removeRestPlugin: (pluginClass) => app.apiRegistry.plugins.remove(RestProtocol, pluginClass),
         });

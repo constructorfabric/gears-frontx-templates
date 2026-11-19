@@ -9,7 +9,8 @@
  * 4. The joined runtime's REST requests carry the bearer token through the
  *    joining app's own apiRegistry.
  * 5. The join binds its transport with the frontxApi config the host realm
- *    publishes (cookie credentials and CSRF header).
+ *    publishes, forwarded whole (a field the joining copy of the type does
+ *    not declare yet included).
  * 6. Teardown: releases are counted, the host release marks the runtime
  *    destroyed while a join still holds it (its auth() plugin destroys the
  *    provider right after), and the last release deletes the slot.
@@ -413,6 +414,150 @@ describe('authRealmShared() - joining side', () => {
 
     expect(ctx.withCredentials).toBe(true);
     expect(ctx.headers['x-csrf-token']).toBe('csrf-1');
+  });
+
+  it('binds the joining transport with the whole frontxApi config the host publishes, unknown fields included', async () => {
+    // allowedBearerOrigins is the field issue 107 adds to
+    // `Hai3ApiAuthTransportConfig`; the join must forward it before this copy
+    // of the type declares it, so the test publishes it through a cast. Only
+    // the test casts: the production join spreads the config as it is. The
+    // cast also carries a stray `provider` key and a stray `trackRefresh`
+    // hook, the kind of keys a config field added one day could collide
+    // with: `trackRefresh` is the one hook of the binder args the spread
+    // could hand a stray value to.
+    const frontxApi = {
+      allowedCookieOrigins: ['https://a.example'],
+      csrfHeaderName: 'X-CSRF',
+      allowedBearerOrigins: ['https://api.example'],
+      provider: 'stray-provider-key',
+      trackRefresh: () => async () => undefined,
+    } as Hai3ApiAuthTransportConfig;
+    // The captured args are read back with the same test-only extra field.
+    type CapturedBinderArgs = Parameters<AuthTransportBinder>[0] & { allowedBearerOrigins?: string[] };
+    const binderArgs: CapturedBinderArgs[] = [];
+    const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
+      binderArgs.push(args);
+      return { destroy: () => undefined };
+    });
+    const hostGraph = await loadGraph();
+    hostGraph
+      .createFrontX()
+      .use(hostGraph.auth({ provider: makeBearerProvider('token-1'), frontxApi, transport }))
+      .use(hostGraph.authRealm({ frontxApi, transport }))
+      .build();
+    expect(transport).toHaveBeenCalledTimes(1);
+
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+
+    // The join bound the host's binder with the host's config whole: all
+    // three fields, the one the type does not know included, unchanged.
+    expect(transport).toHaveBeenCalledTimes(2);
+    const joinArgs = binderArgs[1];
+    expect(joinArgs?.allowedCookieOrigins).toEqual(['https://a.example']);
+    expect(joinArgs?.csrfHeaderName).toBe('X-CSRF');
+    expect(joinArgs?.allowedBearerOrigins).toEqual(['https://api.example']);
+    // The stray `provider` key of the published config must not replace the
+    // provider the join binds: the binder receives the tracked provider of
+    // the shared runtime, not the stray value, so the session it resolves is
+    // the host provider's one.
+    expect(joinArgs?.provider).not.toBe('stray-provider-key');
+    const joinedSession = await joinArgs?.provider.getSession?.();
+    expect(joinedSession).toEqual({ kind: 'bearer', token: 'token-1' } satisfies AuthSession);
+    // The stray `trackRefresh` hook must not reach the binder either: the
+    // join sets that hook itself, and a stray one would report refreshes to
+    // nothing wired to this runtime's session tracking.
+    expect(joinArgs?.trackRefresh).toBeUndefined();
+  });
+
+  it('binds a copy of the host config: an edit the host makes afterwards reaches no join', async () => {
+    // The published slot outlives the host's onInit, and the host object is
+    // the caller's own: a field the host changes after publishing (a late
+    // origin added, a header renamed) must not reach a join that binds then,
+    // or the join would run on a config its host no longer has.
+    const frontxApi: Hai3ApiAuthTransportConfig = {
+      allowedCookieOrigins: ['https://api.example'],
+      csrfHeaderName: 'X-CSRF',
+    };
+    const provider: AuthProvider = {
+      getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-1' } satisfies AuthSession),
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+      logout: vi.fn().mockResolvedValue({ type: 'none' }),
+    };
+    const hostGraph = await loadGraph();
+    hostGraph
+      .createFrontX()
+      .use(hostGraph.auth({ provider, frontxApi }))
+      .use(hostGraph.authRealm({ frontxApi }))
+      .build();
+
+    // The host edits its own object after the publish.
+    frontxApi.allowedCookieOrigins = ['https://late.example'];
+    frontxApi.csrfHeaderName = 'X-LATE';
+
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+
+    // The join bound the config as it stood when it was published: its
+    // request to the published origin carries the published CSRF header.
+    const ctx = (await (apiRegistry.plugins.getAll(RestProtocol).at(-1) as AuthTransportPlugin).onRequest?.(
+      makeReqCtx('https://api.example/accounts/me'),
+    )) as RestRequestContext;
+    expect(ctx.withCredentials).toBe(true);
+    expect(ctx.headers['X-CSRF']).toBe('csrf-1');
+    expect(peekPublishedTransportConfig()).toEqual({
+      allowedCookieOrigins: ['https://api.example'],
+      csrfHeaderName: 'X-CSRF',
+    });
+  });
+
+  it('binds a copy of the origin lists: an origin the host pushes in after the publish reaches no join', async () => {
+    // The origin lists decide which origins get credentials and the CSRF
+    // header, so editing a list in place is editing the config. A shallow
+    // copy of the host object still shares the arrays, so
+    // `allowedCookieOrigins.push('https://late.example')` on the host's own
+    // list would arm every join that binds afterwards with the late origin.
+    // The published config therefore copies its array values one level deep,
+    // the way the replaced-field case above already copies the object.
+    const hostOrigins = ['https://api.example'];
+    const frontxApi: Hai3ApiAuthTransportConfig = {
+      allowedCookieOrigins: hostOrigins,
+      csrfHeaderName: 'X-CSRF',
+    };
+    const provider: AuthProvider = {
+      getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-1' } satisfies AuthSession),
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+      logout: vi.fn().mockResolvedValue({ type: 'none' }),
+    };
+    const hostGraph = await loadGraph();
+    hostGraph
+      .createFrontX()
+      .use(hostGraph.auth({ provider, frontxApi }))
+      .use(hostGraph.authRealm({ frontxApi }))
+      .build();
+
+    // The host pushes into its own list after the publish. The list lives in
+    // its own variable because `allowedCookieOrigins` is optional on the
+    // config type, so the push reads the array directly instead of through
+    // the optional field.
+    hostOrigins.push('https://late.example');
+
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+
+    const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).at(-1) as AuthTransportPlugin;
+    // The join bound the list as it stood when it was published: the late
+    // origin is not on it, the published one is.
+    const late = (await joinPlugin.onRequest?.(
+      makeReqCtx('https://late.example/accounts/me'),
+    )) as RestRequestContext;
+    expect(late.withCredentials).toBeUndefined();
+    const published = (await joinPlugin.onRequest?.(
+      makeReqCtx('https://api.example/accounts/me'),
+    )) as RestRequestContext;
+    expect(published.withCredentials).toBe(true);
+    expect(published.headers['X-CSRF']).toBe('csrf-1');
+    expect(peekPublishedTransportConfig()?.allowedCookieOrigins).toEqual(['https://api.example']);
   });
 
   it('removes its transport plugin from the joining app registry on destroy', async () => {
