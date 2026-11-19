@@ -1172,7 +1172,7 @@ describe('the sign-in chain through the real runtime', () => {
 
     // The real sign-in leaves the same custom session shape: the provider
     // hands out exactly the credentials the chain was sent against, but the
-    // server accepts the session now, so the check answers authenticated.
+    // server accepts the session again, so the check answers authenticated.
     // The wait ends, the modal closes and the chain reloads once.
     rejection.serverRejected = false;
     provider.login = vi.fn(async () => {
@@ -1230,7 +1230,7 @@ describe('the sign-in chain through the real runtime', () => {
     expect(checkAuth).toHaveBeenCalledTimes(1);
 
     // The real sign-in leaves the same cookie session shape: the expiry
-    // never changes, but the server accepts the session now, so the check
+    // never changes, but the server accepts the session again, so the check
     // answers authenticated. The wait ends, the modal closes, one reload.
     rejection.serverRejected = false;
     provider.login = vi.fn(async () => {
