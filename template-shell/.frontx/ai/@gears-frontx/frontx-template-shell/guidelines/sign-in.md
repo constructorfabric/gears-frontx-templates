@@ -59,7 +59,8 @@ fallback:
 ```
 
 `mount_ext` opens the sign-in extension in the modal domain. `sign_in` holds
-the chain until a session exists and then unmounts the extension. It carries
+the chain until a session that is not the rejected one exists and then
+unmounts the extension. It carries
 no payload at all, so no credential travels in an action. `refresh_page`
 reloads the page, so every request that ran without a session runs again; it
 is the last step and the fallback of every step. One guard bounds it
@@ -103,7 +104,13 @@ The shell does not. The auth plugin shares its runtime across the whole realm:
 `frontx:auth:runtime` slot on `globalThis`, and the sign-in MFE joins that
 slot with `authRealmShared()`. The modal then signs in through `app.auth.login`
 and sends no credentials to the shell. The shell only sees the session appear,
-which is what ends the `sign_in` action. A project's sign-in extension follows
+which is what ends the `sign_in` action. The `auth/loggedIn` announcement is
+the wake-up, not the answer: the tracker emits it for more than a finished
+sign-in (a refresh that resolves the rejected session after signed out, and a
+refresh that rejects while signed in, which clears for an unknown identity as
+a cache-scope signal), so `sign_in` follows each announcement with one fresh
+read of the session and keeps waiting until a session that is neither missing
+nor the rejected one answers. A project's sign-in extension follows
 that shape.
 
 The provider decides how the sign-in happens, and there are two kinds. A

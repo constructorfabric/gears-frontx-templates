@@ -521,4 +521,140 @@ describe('the sign-in chain through the real runtime', () => {
       vi.useRealTimers();
     }
   });
+
+  it('an auth/loggedIn that still answers the rejected session keeps the modal and the reload stamp', async () => {
+    // The tracker emits `auth/loggedIn` for more than a finished sign-in: a
+    // refresh that resolves a session after the session went signed out
+    // emits it too, and the session it resolves counts (the rejected one
+    // does). The wait must end only on a session that is not the rejected
+    // one: an announcement beside a provider that still hands the rejected
+    // session out closes the modal with no sign-in behind it and drops the
+    // reload guard's stamp - exactly the loop the stamp exists to record.
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'revoked' };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    // A failure reload stamped the guard moments ago: the state a pass of the
+    // loop leaves behind, which a bogus sign-in end would clear.
+    expect(claimAutomaticReload()).toBe(true);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // A request fails with 401: the chain goes out against the rejected session.
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // What a refresh resolving the rejected session after signed out does:
+    // the tracker announces a session start, and the provider still hands
+    // the rejected one out.
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    // The stamp is still in place, so sign_in cleared nothing.
+    expect(claimAutomaticReload()).toBe(false);
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A real sign-in ends the wait, and the chain reloads once.
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('an auth/loggedIn while the runtime answers no session keeps the modal', async () => {
+    // A refresh that rejects while the tracker still says signed in clears
+    // for an unknown identity and announces a session start: a cache-scope
+    // signal, not a sign-in. The runtime answers no session beside it (the
+    // refreshFailed case), so the wait must hold.
+    const { provider, state } = stubAuthProvider();
+    state.session = null;
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // The signed-out start-up answer sent the chain; the modal is up.
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The refreshFailed announcement, beside a runtime that holds no session.
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(screen.getByRole('dialog', { name: 'Sign in' })).not.toBeNull();
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A real sign-in ends the wait, and the chain reloads once.
+    await act(async () => {
+      await built.app.auth?.login?.({ type: 'password', payload: { username: 'dev', password: 'secret' } });
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later auth/loggedIn with a new session ends the wait as before', async () => {
+    // The announcement beside the rejected session holds the modal; the
+    // announcement beside a new one closes it and reloads, the way it did
+    // when every announcement counted.
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'revoked' };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The rejected session again: the modal holds.
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+
+    // A new session the provider hands out, announced the same way: the wait
+    // ends, the modal closes and the chain reloads the page.
+    state.session = { kind: 'bearer', token: 'fresh-sign-in' };
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
 });

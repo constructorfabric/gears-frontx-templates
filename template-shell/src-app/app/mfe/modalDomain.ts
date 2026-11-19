@@ -160,6 +160,14 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
    * lands between the read and the subscription cannot fall through the gap.
    * A session that already exists resolves at once.
    *
+   * The event is the wake-up, not the answer: the tracker emits it for more
+   * than a finished sign-in (a refresh that resolves the rejected session
+   * after signed out, and a refresh that rejects while signed in, which
+   * clears for an unknown identity as a cache-scope signal), so every
+   * announcement is followed by one fresh read of the session, and only a
+   * session that exists and is not the rejected one ends the wait. One read
+   * per announcement, no polling; the wait stays bounded by the bound below.
+   *
    * Without the auth plugin the action fails at once: there is no runtime that
    * could report a session, so waiting would only burn the sender's timeout.
    * A modal that is already gone is not an error - the dispatched `unmount_ext`
@@ -183,24 +191,40 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
           'the sign-in extension creates through app.auth, and no auth runtime exists to report one.',
       );
     }
-    let notifySignedIn!: () => void;
-    const signedIn = new Promise<void>((resolve) => {
-      notifySignedIn = resolve;
-    });
     let giveUp!: () => void;
     const bound = new Promise<void>((resolve) => {
       giveUp = resolve;
     });
     const boundTimer = setTimeout(giveUp, SIGN_IN_ACTION_TIMEOUT_MS);
-    const subscription = eventBus.on(AuthEvents.LoggedIn, () => notifySignedIn());
+    // One waiter at a time, registered before each session read so an
+    // announcement that lands beside the read cannot fall through the gap:
+    // the subscription is up before the first read, and the next waiter is
+    // registered synchronously after each round.
+    let wake: (() => void) | null = null;
+    const subscription = eventBus.on(AuthEvents.LoggedIn, () => wake?.());
+    const nextAnnouncement = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        wake = resolve;
+      });
     try {
-      // The session the chain was sent against is not a sign-in: a provider
-      // that still hands it out would otherwise close the modal at once and
-      // reload into the same 401 (`invalidateRejectedSession`, `signIn.ts`).
-      const session = await auth.getSession();
-      if (!session || isRejectedSession(session)) {
+      for (;;) {
+        const announcement = nextAnnouncement();
+        // What the runtime holds right now decides, not the announcement
+        // alone: the tracker emits `auth/loggedIn` for more than a finished
+        // sign-in. A refresh that resolves a session after the session went
+        // signed out emits it too, and the session it resolves can be the
+        // rejected one (`invalidateRejectedSession`), and a refresh that
+        // rejects while the tracker still says signed in clears for an
+        // unknown identity and emits it as a cache-scope signal with no
+        // session behind it at all (`clearForUnknownIdentity`). Taking any
+        // announcement for a sign-in would close the modal with no sign-in
+        // behind it and drop the reload guard's stamp below. So each
+        // announcement is followed by one fresh read, and only a session
+        // that is neither missing nor the rejected one ends the wait.
+        const session = await auth.getSession();
+        if (session && !isRejectedSession(session)) break;
         const outcome = await Promise.race([
-          signedIn.then(() => 'signed-in' as const),
+          announcement.then(() => 'announced' as const),
           bound.then(() => 'expired' as const),
         ]);
         if (outcome === 'expired') return;
