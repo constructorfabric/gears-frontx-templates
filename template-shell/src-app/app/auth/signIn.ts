@@ -213,6 +213,25 @@ export function isRejectedSession(session: AuthSession): boolean {
 }
 
 /**
+ * Whether `credentialSnapshot` can tell one session of this shape from
+ * another: the snapshot discriminates only when it is built from a field a
+ * new session of the same shape can carry with a different value. A bearer
+ * token, a CSRF token, an expiry, any custom field - each can change across
+ * sessions, so their snapshots tell sessions apart. A cookie session with
+ * neither a CSRF token nor any other valued field serializes to the same
+ * snapshot before and after a real sign-in, so for that shape nothing could
+ * tell the session the provider hands out afterwards from the rejected one.
+ *
+ * Read beside `isRejectedSession` by the modal domain's `sign_in`: a session
+ * the snapshot cannot discriminate is not held against an announcement, since
+ * no comparison of it could ever see a sign-in.
+ */
+export function credentialSnapshotDiscriminates(session: AuthSession): boolean {
+  const fields = session as Record<string, unknown>;
+  return Object.keys(fields).some((key) => key !== 'kind' && fields[key] !== undefined);
+}
+
+/**
  * Sets aside the credentials the chain was sent against, before the chain
  * mounts the sign-in modal: they are remembered, so a provider that keeps
  * handing them out never satisfies `sign_in` with them - the handler waits

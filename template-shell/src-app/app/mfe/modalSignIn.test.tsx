@@ -830,4 +830,108 @@ describe('the sign-in chain through the real runtime', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
+
+  it('a cookie session without a CSRF token ends the wait on an announcement that carries a session', async () => {
+    // A cookie session that carries no CSRF token serializes to the same
+    // credentials before and after a real sign-in: `credentialSnapshot` has
+    // no field that could tell one such session from another, so the strict
+    // comparison against the rejected session would hold the modal until the
+    // timeout even though the person signed in. For that shape an
+    // announcement that carries a session is the sign-in; every session the
+    // snapshot can tell apart keeps the strict comparison.
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'cookie' };
+    // The provider is the authority the trigger asks after a 401 (there is
+    // no refresh to wait out): the session it holds at start is signed in;
+    // once the server has rejected it, the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    // The server rejects the cookie session, and the provider keeps handing
+    // it out: the 401 opens the modal against the rejected session.
+    serverRejected = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // The sign-in lands, and the provider hands out the new cookie session -
+    // whose snapshot no field could tell from the rejected one. The
+    // announcement that carries it ends the wait, and the chain reloads once.
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a cookie session with a CSRF token keeps the strict comparison: the rejected token holds the modal, a new one ends the wait', async () => {
+    // The CSRF token is the field that tells one cookie session from
+    // another, so the per-announcement comparison holds for it in full: an
+    // announcement beside a session with the rejected CSRF token keeps the
+    // modal, and a session with a new CSRF token ends it.
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'cookie', csrfToken: 'csrf-1' };
+    // The provider is the authority the trigger asks after a 401 (there is
+    // no refresh to wait out): the session it holds at start is signed in;
+    // once the server has rejected it, the same check says signed out.
+    let serverRejected = false;
+    provider.checkAuth = async () =>
+      state.session && !serverRejected
+        ? { authenticated: true, session: state.session }
+        : { authenticated: false };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { modalState } = await import('./modalDomain');
+    wireSignInTriggers(built.app, provider);
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    serverRejected = true;
+    act(() => {
+      provider.onTransportError?.({
+        request: { url: '/api/data', method: 'GET', headers: {} },
+        error: new Error('401'),
+        status: 401,
+      });
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+
+    // An announcement beside a session with the rejected CSRF token: the
+    // modal holds, nothing reloads.
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    expect(modalState.getSnapshot()).toBe(SIGN_IN_EXTENSION_ID);
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    // A session the CSRF token tells apart from the rejected one, announced
+    // the same way: the wait ends, the modal closes and the chain reloads.
+    state.session = { kind: 'cookie', csrfToken: 'csrf-2' };
+    act(() => {
+      built.react.eventBus.emit(built.react.AuthEvents.LoggedIn, {});
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(modalState.getSnapshot()).toBeUndefined();
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
 });

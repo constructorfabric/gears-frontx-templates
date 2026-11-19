@@ -113,7 +113,13 @@ read of the session and keeps waiting until a session that is neither missing
 nor the rejected one answers. The read is raced against the action's bound,
 so no read can close the modal after the bound has won, and a read that fails
 after an announcement counts as no session: the wait goes on for the next
-announcement or the bound, instead of failing the action. A project's
+announcement or the bound, instead of failing the action. One session shape
+cannot be compared at all: a cookie session without a CSRF token and without
+any other valued field serializes to the same credentials before and after a
+real sign-in, so nothing tells the new session from the rejected one. For
+such a session any announcement that carries a session ends the wait; every
+session the snapshot can tell apart is held to the comparison above. A
+project's
 sign-in extension follows
 that shape.
 

@@ -39,6 +39,7 @@ import { extensionModalSchema } from '@gears-frontx/frontx-template-shell';
 import { clearAutomaticReload } from './automaticReload';
 import {
   buildSignInUnmountChain,
+  credentialSnapshotDiscriminates,
   isRejectedSession,
   SIGN_IN_ACTION_TIMEOUT_MS,
   SIGN_IN_EXTENSION_ID,
@@ -213,7 +214,8 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
       });
     // Whether the read about to run follows an announcement. The first read
     // does not: nothing has announced a session start yet, so a failure of
-    // that read is the action's own failure. Every later read follows one.
+    // that read is the action's own failure, and the session it answers is
+    // held to the strict comparison below. Every later read follows one.
     let announced = false;
     try {
       for (;;) {
@@ -230,6 +232,18 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // behind it and drop the reload guard's stamp below. So each
         // announcement is followed by one fresh read, and only a session
         // that is neither missing nor the rejected one ends the wait.
+        //
+        // The one exception is a session the snapshot cannot discriminate:
+        // a cookie session without a CSRF token serializes to the same
+        // credentials before and after a real sign-in
+        // (`credentialSnapshotDiscriminates`), so the strict comparison
+        // would never see that sign-in and the modal would hold until the
+        // bound. For a session that follows an announcement and carries no
+        // field that could tell it from the rejected one, the announcement
+        // is the sign-in. The first read keeps the strict comparison -
+        // nothing has announced anything yet, so the session the provider
+        // still hands out is the rejected one - and every session the
+        // snapshot can tell apart keeps it everywhere.
         //
         // The read is raced against the bound like the announcement is: a
         // read that answers after the bound has won must close nothing and
@@ -249,13 +263,16 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         );
         const settled = await Promise.race([read, bound.then(() => null)]);
         if (!settled) return;
-        announced = true;
-        if (settled.session && !isRejectedSession(settled.session)) break;
+        if (settled.session) {
+          const rejected = isRejectedSession(settled.session);
+          if (!rejected || (announced && !credentialSnapshotDiscriminates(settled.session))) break;
+        }
         const outcome = await Promise.race([
           announcement.then(() => 'announced' as const),
           bound.then(() => 'expired' as const),
         ]);
         if (outcome === 'expired') return;
+        announced = true;
       }
     } finally {
       clearTimeout(boundTimer);
