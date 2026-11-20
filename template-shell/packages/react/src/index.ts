@@ -277,6 +277,7 @@ export type {
   SetLanguagePayload,
   AuthPluginConfig,
   AuthRuntime,
+  FrameworkTransportErrorEvent,
   AuthLoggedInPayload,
   AuthLoggedOutPayload,
 

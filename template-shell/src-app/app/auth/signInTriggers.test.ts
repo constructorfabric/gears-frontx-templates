@@ -15,7 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as react from '@gears-frontx/react';
-import type { AuthProvider, FrontXApp } from '@gears-frontx/react';
+import type { AuthProvider, FrameworkTransportErrorEvent, FrontXApp } from '@gears-frontx/react';
 import { SIGN_IN_EXTENSION_ID } from './signIn';
 
 /** The event shape of the provider hook the 401 trigger wraps; the package
@@ -111,16 +111,15 @@ function transportError(status: number): TransportErrorEvent {
 }
 
 /**
- * A 401 the transport marks as sent without credentials: the request went to
- * an origin outside the app's own and its origin lists.
+ * A 401 the transport marks `credentialed: false`: the request's origin is not
+ * the app's own and is in neither origin list.
  */
-function uncredentialed401(): TransportErrorEvent {
-  const event: TransportErrorEvent & { credentialed?: boolean } = {
+function uncredentialed401(): FrameworkTransportErrorEvent {
+  return {
     ...transportError(401),
     request: { url: 'https://foreign.example.com/x', method: 'GET' },
     credentialed: false,
   };
-  return event;
 }
 
 /** Lets the promises the trigger chains after the settles run to their end. */
@@ -525,8 +524,8 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
 
-  it('a 401 on a request that carried no credentials opens no modal and asks no checkAuth', async () => {
-    // The transport marks a request to an origin that gets no credentials:
+  it('a 401 from an origin outside the own origin and both lists opens no modal and asks no checkAuth', async () => {
+    // The transport marks a request to an origin outside the app's own and both lists:
     // its 401 says nothing about this session, so the trigger neither
     // confirms nor reads a snapshot. A credentialed 401 after it still asks
     // checkAuth and opens the modal on a signed-out answer.
@@ -557,7 +556,7 @@ describe('wireSignInTriggers', () => {
     expect(checkAuth).toHaveBeenCalledTimes(2);
   });
 
-  it('a 401 on a request that carried no credentials opens no modal on a host without an auth runtime', async () => {
+  it('a 401 from an origin outside the own origin and both lists opens no modal on a host without an auth runtime', async () => {
     const { wireSignInTriggers } = await import('./signInTriggers');
     const provider = stubProvider();
     const { app, executeActionsChain } = stubApp(undefined);

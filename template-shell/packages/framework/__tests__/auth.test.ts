@@ -1546,33 +1546,60 @@ describe('auth plugin', () => {
       expect(result).toBe(errCtx.error);
     });
 
-    it('marks the event credentialed only for a request to an origin that gets credentials', async () => {
+    /** The `credentialed` flag of each event `provider` gets for a 401 from each of `urls`, in order. */
+    async function credentialedFlags(provider: AuthProvider, urls: readonly string[]): Promise<unknown[]> {
       const onTransportError = vi.fn();
-      const provider: AuthProvider = { ...makeBearerProvider('tok'), onTransportError };
-      const plugin = capturePlugin(provider, {
-        allowedBearerOrigins: ['https://api.example.com'],
-        allowedCookieOrigins: ['https://cookies.example.com'],
-      });
-      const fail = (url: string) =>
-        plugin.onError?.({
+      const plugin = capturePlugin(
+        { ...provider, onTransportError },
+        {
+          allowedBearerOrigins: ['https://api.example.com'],
+          allowedCookieOrigins: ['https://cookies.example.com'],
+        },
+      );
+      for (const url of urls) {
+        await plugin.onError?.({
           error: new Error('HTTP 401'),
           request: makeReqCtx(url),
           response: { status: 401, headers: {}, data: null },
           retryCount: 0,
           retry: vi.fn(),
         });
+      }
+      return onTransportError.mock.calls.map(([event]) => (event as { credentialed?: boolean }).credentialed);
+    }
 
-      await fail('https://foreign.example.com/x');
-      await fail('https://api.example.com/x');
-      await fail('https://cookies.example.com/x');
-      await fail('/api/x');
+    const flagUrls = [
+      'https://foreign.example.com/x',
+      'https://api.example.com/x',
+      'https://cookies.example.com/x',
+      '/api/x',
+    ];
 
-      expect(onTransportError.mock.calls.map(([event]) => (event as { credentialed?: boolean }).credentialed)).toEqual([
-        false,
-        true,
-        true,
-        true,
-      ]);
+    it('marks an event credentialed by the origin alone: false only outside the own origin and both lists, for a bearer and a cookie session alike', async () => {
+      // An origin listed for the other session kind counts as credentialed by design: its 401
+      // reaches the hook, and the sign-in trigger confirms it with checkAuth().
+      expect(await credentialedFlags(makeBearerProvider('tok'), flagUrls)).toEqual([false, true, true, true]);
+      expect(await credentialedFlags(makeCookieProvider(), flagUrls)).toEqual([false, true, true, true]);
+    });
+
+    it('calls onTransportError with no further getSession call', async () => {
+      const provider = makeBearerProvider('tok');
+      const onTransportError = vi.fn();
+      const plugin = capturePlugin(
+        { ...provider, onTransportError },
+        { allowedBearerOrigins: ['https://api.example.com'] },
+      );
+      const getSession = vi.mocked(provider.getSession);
+      const readsBefore = getSession.mock.calls.length;
+      await plugin.onError?.({
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('https://api.example.com/x'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn(),
+      });
+      expect(onTransportError).toHaveBeenCalledTimes(1);
+      expect(getSession.mock.calls.length).toBe(readsBefore);
     });
   });
 

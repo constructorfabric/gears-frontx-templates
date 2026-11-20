@@ -591,12 +591,13 @@ function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[]
 }
 
 /**
- * The event the transport passes to `AuthProvider.onTransportError`. `credentialed` is false
- * when the request went to an origin that gets no credentials under either origin list, the
- * same check that keeps such a 401 from starting a refresh. An emitter that does not set it
- * leaves the request counted as credentialed.
+ * The event the framework transport passes to `AuthProvider.onTransportError`. `credentialed`
+ * checks the request's origin, not the session: it is false when the origin is not the app's
+ * own and is in neither `allowedCookieOrigins` nor `allowedBearerOrigins`, the check that keeps
+ * such a 401 from starting a refresh. An emitter that does not set it leaves the request
+ * counted as credentialed.
  */
-type TransportErrorEvent = AuthTransportErrorEvent & { credentialed?: boolean };
+export type FrameworkTransportErrorEvent = AuthTransportErrorEvent & { credentialed?: boolean };
 
 type RefreshFlight = {
   refresh: Promise<AuthSession | null>;
@@ -679,8 +680,8 @@ class AuthRestPlugin extends RestPlugin {
   }
 
   /**
-   * Whether a request to `url` goes to an origin that gets credentials under either list. A
-   * 401 from any other origin says nothing about this session.
+   * Whether a request to `url` goes to the app's own origin or to one in either origin list.
+   * A 401 from any other origin says nothing about this session.
    */
   private reachesCredentialedOrigin(url: string): boolean {
     const { allowedCookieOrigins = [], allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
@@ -690,11 +691,11 @@ class AuthRestPlugin extends RestPlugin {
   async onError(ctx: ApiPluginErrorContext): Promise<Error | RestResponseContext> {
     const credentialed = this.reachesCredentialedOrigin(ctx.request.url);
     // Notify provider of every transport error (informational; called before retry decisions).
-    // `credentialed` is false for a request to an origin that gets no credentials, so a hook
-    // can tell a 401 that says nothing about this session from one that does.
+    // `credentialed` is false for a request to an origin outside the app's own and both lists,
+    // so a hook can tell a 401 that says nothing about this session from one that may.
     const requestForHook = toAuthTransportRequest(ctx.request);
     if (requestForHook) {
-      const event: TransportErrorEvent = {
+      const event: FrameworkTransportErrorEvent = {
         request: requestForHook,
         error: ctx.error,
         status: ctx.response?.status,
@@ -707,7 +708,8 @@ class AuthRestPlugin extends RestPlugin {
     if (ctx.retryCount !== 0) return ctx.error;
     if (!this.config.provider.refresh) return ctx.error;
     // A 401 from an origin that gets no credentials under either list says nothing about this
-    // session: it neither refreshes the session nor counts toward the refresh limit.
+    // session: it neither refreshes the session nor counts toward the refresh limit. The gate
+    // takes either list, not the session's kind, since a refresh may change the kind.
     if (!credentialed) return ctx.error;
     const { allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
 

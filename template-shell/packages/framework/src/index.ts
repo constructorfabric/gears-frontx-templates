@@ -34,6 +34,7 @@ export {
   type AuthRuntime,
   type AuthTransportBinding,
   type AuthTransportBinder,
+  type FrameworkTransportErrorEvent,
   type Hai3ApiAuthTransportConfig,
   queryCache,
   queryCacheShared,

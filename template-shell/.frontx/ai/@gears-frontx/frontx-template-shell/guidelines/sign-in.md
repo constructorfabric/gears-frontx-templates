@@ -84,12 +84,14 @@ The shell sends the chain on two triggers, both in
   reload;
 - on a 401, through the provider's `onTransportError` hook, which the shell
   wraps rather than replaces, so a provider that reports its own transport
-  errors keeps doing so. A 401 on a request that carried no credentials does
-  not reach the trigger: the framework transport sets `credentialed: false`
-  on the event for a request to an origin outside the app's own and its
-  origin lists, by the same check that keeps such a 401 from starting a
-  refresh, and the trigger returns at once, with no `checkAuth()` and no
-  session snapshot. An event without the flag counts as credentialed.
+  errors keeps doing so. A 401 from an origin outside the app's own and both
+  origin lists does not reach the trigger: the framework transport sets
+  `credentialed: false` on the event for such an origin, by the same origin
+  check that keeps such a 401 from starting a refresh, and the trigger
+  returns at once, with no `checkAuth()` and no session snapshot. The flag
+  checks the origin only, not the session: a 401 from an origin listed for
+  the other session kind still reaches the trigger, and `checkAuth()`
+  confirms it. An event without the flag counts as credentialed.
 
 One page-lifetime guard keeps it to one chain per page, and the reload resets
 it. A bootstrap that fails inside a send burns the guard instead of releasing
@@ -262,8 +264,13 @@ go only to the app's own origin and to the listed ones
 (`AuthRestPlugin.onRequest`): a cookie session's `withCredentials` and CSRF
 header to `allowedCookieOrigins`, a bearer session's `Authorization` header
 to `allowedBearerOrigins`, the retry after a 401 refresh included. A request
-to any other origin goes without them, and its 401 starts no refresh and does
-not reach the sign-in trigger. A project whose API is on another origin lists
+to an origin in neither list, and not the app's own, goes without them, and
+its 401 starts no refresh and does not reach the sign-in trigger. A request
+to an origin listed only for the other session kind goes without them too,
+but its 401 may start a refresh, since the session's kind can change with it,
+and it still reaches the trigger, which confirms it with `checkAuth()`; the
+bearer retry still keeps the token from an origin outside
+`allowedBearerOrigins`. A project whose API is on another origin lists
 it, and passes the same list to BOTH `auth({ frontxApi })` and
 `authRealm({ frontxApi })` on the host: `auth()` builds the shell's own
 transport from it, and `authRealm()` publishes it for the joins. A list that

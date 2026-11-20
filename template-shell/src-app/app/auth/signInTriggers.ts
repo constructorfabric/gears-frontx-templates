@@ -17,6 +17,7 @@
 import type {
   AuthContext,
   AuthProvider,
+  FrameworkTransportErrorEvent,
   FrontXApp,
 } from '@gears-frontx/react';
 import { bootstrapSettled } from '@/app/mfe/bootstrapOnce';
@@ -28,15 +29,6 @@ import {
   invalidateRejectedSession,
   readSessionCredentials,
 } from './signIn';
-
-/**
- * The event type of the provider hook the 401 trigger wraps. The framework
- * transport sets `credentialed` to false for a request to an origin that gets
- * no credentials; an emitter that does not set it counts as credentialed.
- */
-type TransportErrorEvent = Parameters<NonNullable<AuthProvider['onTransportError']>>[0] & {
-  credentialed?: boolean;
-};
 
 /**
  * The page-lifetime guard of the chain. One sign-in flow per page: the chain
@@ -518,12 +510,13 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
     void confirmation.then(settled, settled);
   };
 
-  provider.onTransportError = (event: TransportErrorEvent): void => {
+  provider.onTransportError = (event: FrameworkTransportErrorEvent): void => {
     previous?.(event);
     if (event.status !== 401) return;
-    // A request that carried no credentials, to an origin outside the app's
-    // own and its origin lists, says nothing about this session: no
-    // confirmation, no `checkAuth()`, no snapshot.
+    // A 401 from an origin outside the app's own and both origin lists says
+    // nothing about this session: no confirmation, no `checkAuth()`, no
+    // snapshot. One from an origin listed for the other session kind still
+    // comes through, and `checkAuth()` confirms it.
     if (event.credentialed === false) return;
     // The guard is up: the chain cannot go out again, so there is nothing
     // left to confirm and nothing to send.
