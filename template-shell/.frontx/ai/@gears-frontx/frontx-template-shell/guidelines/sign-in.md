@@ -90,8 +90,11 @@ The shell sends the chain on two triggers, both in
   check that keeps such a 401 from starting a refresh, and the trigger
   returns at once, with no `checkAuth()` and no session snapshot. The flag
   checks the origin only, not the session: a 401 from an origin listed for
-  the other session kind still reaches the trigger, and `checkAuth()`
-  confirms it. An event without the flag counts as credentialed.
+  the other session kind still reaches the trigger, which confirms it like any
+  other 401: on a host with an auth runtime it reads what the refresh flight
+  resolved, and asks `checkAuth()` only when no flight ran or the flight
+  rejected; on a host without one it is confirmed at once. An event without the
+  flag counts as credentialed.
 
 One page-lifetime guard keeps it to one chain per page, and the reload resets
 it. A bootstrap that fails inside a send burns the guard instead of releasing
@@ -268,11 +271,12 @@ to an origin in neither list, and not the app's own, goes without them, and
 its 401 starts no refresh and does not reach the sign-in trigger. A request
 to an origin listed only for the other session kind goes without them too,
 but its 401 may start a refresh, since the session's kind can change with it,
-and it still reaches the trigger, which confirms it with `checkAuth()`; the
-bearer retry still keeps the token from an origin outside
-`allowedBearerOrigins`. A project whose API is on another origin lists
-it, and passes the same list to BOTH `auth({ frontxApi })` and
-`authRealm({ frontxApi })` on the host: `auth()` builds the shell's own
+and it still reaches the trigger, which confirms it like any other 401 (it
+reads what the refresh flight resolved, and asks `checkAuth()` only when no
+flight ran or the flight rejected); the bearer retry still keeps the token
+from an origin outside `allowedBearerOrigins`. A project whose API is on
+another origin lists it, and passes the same list to BOTH `auth({ frontxApi })`
+and `authRealm({ frontxApi })` on the host: `auth()` builds the shell's own
 transport from it, and `authRealm()` publishes it for the joins. A list that
 reaches only `authRealm()` lets the MFEs send credentials to the listed
 origins while the shell's own requests to them go without; a list that

@@ -527,8 +527,9 @@ describe('wireSignInTriggers', () => {
   it('a 401 from an origin outside the own origin and both lists opens no modal and asks no checkAuth', async () => {
     // The transport marks a request to an origin outside the app's own and both lists:
     // its 401 says nothing about this session, so the trigger neither
-    // confirms nor reads a snapshot. A credentialed 401 after it still asks
-    // checkAuth and opens the modal on a signed-out answer.
+    // confirms nor reads a snapshot. A credentialed 401 after it is confirmed
+    // as usual: no refresh flight runs here, so it asks checkAuth and opens
+    // the modal on a signed-out answer.
     const { wireSignInTriggers } = await import('./signInTriggers');
     const provider = stubProvider();
     const checkAuth = vi

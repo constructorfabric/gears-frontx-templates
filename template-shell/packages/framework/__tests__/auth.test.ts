@@ -1577,7 +1577,7 @@ describe('auth plugin', () => {
 
     it('marks an event credentialed by the origin alone: false only outside the own origin and both lists, for a bearer and a cookie session alike', async () => {
       // An origin listed for the other session kind counts as credentialed by design: its 401
-      // reaches the hook, and the sign-in trigger confirms it with checkAuth().
+      // reaches the hook, and the sign-in trigger confirms it like any other 401.
       expect(await credentialedFlags(makeBearerProvider('tok'), flagUrls)).toEqual([false, true, true, true]);
       expect(await credentialedFlags(makeCookieProvider(), flagUrls)).toEqual([false, true, true, true]);
     });

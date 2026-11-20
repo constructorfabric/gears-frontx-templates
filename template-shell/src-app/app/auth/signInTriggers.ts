@@ -516,7 +516,7 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
     // A 401 from an origin outside the app's own and both origin lists says
     // nothing about this session: no confirmation, no `checkAuth()`, no
     // snapshot. One from an origin listed for the other session kind still
-    // comes through, and `checkAuth()` confirms it.
+    // comes through and is confirmed like any other 401, below.
     if (event.credentialed === false) return;
     // The guard is up: the chain cannot go out again, so there is nothing
     // left to confirm and nothing to send.
