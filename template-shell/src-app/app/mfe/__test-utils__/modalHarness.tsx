@@ -17,6 +17,8 @@ import type {
   AuthProvider,
   AuthSession,
   ChildMfeBridge,
+  FrontXApp,
+  FrontXPlugin,
   MfeEntryLifecycle,
   MfeEntryMF,
 } from '@gears-frontx/react';
@@ -165,6 +167,14 @@ export function stubAuthProvider() {
  * load reject, the deterministic mount failure the reload guard's cases drive
  * the chain's fallback with.
  */
+/**
+ * The auth plugin of the case's app and the app it was built into. The plugin
+ * publishes its provider into the page-wide auth realm, which outlives the
+ * module reset between cases, so the teardown releases it: otherwise the next
+ * case's provider would be refused as a second one.
+ */
+let heldAuth: { plugin: FrontXPlugin; app: FrontXApp } | undefined;
+
 export async function buildApp(options?: { provider?: AuthProvider; failSignInLoad?: () => boolean }) {
   const react = await import('@gears-frontx/react');
   const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
@@ -194,10 +204,11 @@ export async function buildApp(options?: { provider?: AuthProvider; failSignInLo
     }
   }
 
+  const authPlugin = options?.provider ? react.auth({ provider: options.provider }) : undefined;
   const app = react
     .createFrontX()
     .useAll(react.presets.full())
-    .use(options?.provider ? [react.auth({ provider: options.provider })] : [])
+    .use(authPlugin ? [authPlugin] : [])
     .use(
       react.microfrontends({
         typeSystem: react.gtsPlugin,
@@ -205,6 +216,7 @@ export async function buildApp(options?: { provider?: AuthProvider; failSignInLo
       }),
     )
     .build();
+  if (authPlugin) heldAuth = { plugin: authPlugin, app };
   const registry = app.mfeRegistry;
   if (!registry) throw new Error('the microfrontends plugin built no registry');
   return { react, app, registry };
@@ -265,5 +277,7 @@ export async function teardownModalSuite(
     cleanup();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');
+    heldAuth?.plugin.onDestroy?.(heldAuth.app);
+    heldAuth = undefined;
   }
 }
