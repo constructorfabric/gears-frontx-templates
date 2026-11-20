@@ -50,10 +50,10 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
  * modal and reloads the page; the modal cannot be dismissed by the user
  * (`cancelable: false` in `mfe.json`), so it stays until then.
  *
- * The runtime is the one `authRealmShared()` joins on the sign-in runtime's
- * own app (`init-signin.ts`), handed in as `auth`: signing in through it is
- * signing in through the host's own provider, so `AuthEvents.LoggedIn` fires
- * where the shell's handler listens. When the join failed there is no
+ * The runtime is the one `auth()` joins on the sign-in runtime's own app
+ * (`init-signin.ts`), handed in as `auth`: signing in through it is signing
+ * in through the page's one provider, and `AuthEvents.LoggedIn` reaches the
+ * eventBus of every app that holds the runtime, the shell's included. When the join failed there is no
  * runtime, the modal renders its error line instead of a form, and the
  * shell's own timeout with the chain's reload fallback ends the flow.
  *

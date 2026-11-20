@@ -11,24 +11,25 @@
  * The app carries what the sign-in screen needs and nothing else:
  * - `effects()` and `queryCacheShared()`, the same base the other screens get
  *   from `init.ts`; a mounted MFE needs the shared QueryClient.
- * - `authRealmShared()`, which joins the host shell's auth runtime (published
- *   by the shell's `authRealm()`) and exposes it as `app.auth`. Signing in
- *   through it is signing in through the host's own provider, so the session
- *   is one the whole realm sees. No credentials travel over the bridge.
+ * - `auth()` with no provider, which joins the page's auth runtime (published
+ *   by whichever app passed `auth({ provider })`, the shell in this template)
+ *   and exposes it as `app.auth`. Signing in through it is signing in through
+ *   the page's one provider, so the session is one the whole page sees. No
+ *   credentials travel over the bridge.
  *
  * The screen makes no API calls, so it registers no services and needs no
  * `mock()`.
  *
- * The join runs in the plugin's `onInit`, after the framework has already
- * marked the runtime as built. A join that throws there would leave this
- * runtime with no app and no way to build one, and the lifecycle would have
- * nothing to mount. So the join is guarded: the build always yields the app,
- * a failed join leaves `app.auth` unset, and the warning keeps the
- * framework's own error. The modal then renders its error line.
+ * The join refuses in the plugin's `onRegister` when no app of the page has
+ * passed a provider, and can still fail in `onInit` while it binds its
+ * transport. Either throw would leave the lifecycle with nothing to mount, so
+ * the join is guarded: the build always yields the app, a failed join leaves
+ * `app.auth` unset, and the warning keeps the framework's own error. The
+ * modal then renders its error line.
  */
 
 import {
-  authRealmShared,
+  auth,
   createFrontX,
   effects,
   queryCacheShared,
@@ -42,24 +43,41 @@ import type { AuthRuntime, FrontXApp, FrontXPlugin } from '@gears-frontx/react';
  */
 type SignInApp = FrontXApp & { auth?: AuthRuntime };
 
+/** Logs a failed join with the framework's own error. */
+function warnJoinFailed(error: unknown): void {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[init-signin] joining the page's auth runtime failed, so the sign-in modal cannot sign in: ${reason}`,
+    error,
+  );
+}
+
 /**
- * `authRealmShared()` with its join made non-fatal. The plugin object is kept
- * whole (name, teardown, duplicate cleanup); only `onInit` is wrapped.
+ * `auth()` with its join made non-fatal. The plugin object is kept whole
+ * (name, teardown); `onRegister` and `onInit` are wrapped, and a join refused
+ * in `onRegister` skips `onInit`.
  */
-function joinAuthRealmGuarded(): FrontXPlugin {
-  const plugin = authRealmShared();
+function joinAuthGuarded(): FrontXPlugin {
+  const plugin = auth();
+  const joinOnRegister = plugin.onRegister;
   const joinOnInit = plugin.onInit;
+  let refused = false;
   return {
     ...plugin,
+    onRegister(...args) {
+      try {
+        joinOnRegister?.apply(plugin, args);
+      } catch (error) {
+        refused = true;
+        warnJoinFailed(error);
+      }
+    },
     onInit(app) {
+      if (refused) return undefined;
       try {
         return joinOnInit?.call(plugin, app);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[init-signin] joining the host shell's auth runtime failed, so the sign-in modal cannot sign in: ${reason}`,
-          error,
-        );
+        warnJoinFailed(error);
         return undefined;
       }
     },
@@ -69,7 +87,7 @@ function joinAuthRealmGuarded(): FrontXPlugin {
 const signInApp: SignInApp = createFrontX()
   .use(effects())
   .use(queryCacheShared())
-  .use(joinAuthRealmGuarded())
+  .use(joinAuthGuarded())
   .build();
 
 export { signInApp };

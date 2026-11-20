@@ -12,8 +12,9 @@ import { SIGNIN_MODAL_EXTENSION_ID } from './shared/extension-ids';
  * exactly one app (its own, joined to the host's auth runtime) and must not
  * pull in `./init`, which builds the other screens' app.
  *
- * The framework double counts builds and runs each plugin's `onInit` on the
- * built app, as the real `build()` does; the join is the plugin's `onInit`.
+ * The framework double counts builds and runs every plugin's `onRegister`,
+ * then every plugin's `onInit` on the built app, as the real `build()` does.
+ * The join refuses in `onRegister` when no app passed a provider.
  */
 const { builds, initLoaded, join, useScreenTranslationsMock } = vi.hoisted(() => ({
   builds: [] as string[][],
@@ -22,7 +23,11 @@ const { builds, initLoaded, join, useScreenTranslationsMock } = vi.hoisted(() =>
   useScreenTranslationsMock: (() => ({ t: (key: string) => key, loading: false })) as () => unknown,
 }));
 
-type TestPlugin = { name: string; onInit?: (app: Record<string, unknown>) => void };
+type TestPlugin = {
+  name: string;
+  onRegister?: (builder: unknown) => void;
+  onInit?: (app: Record<string, unknown>) => void;
+};
 
 vi.mock('@gears-frontx/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@gears-frontx/react')>();
@@ -37,6 +42,7 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
         },
         build() {
           builds.push(plugins.map((plugin) => plugin.name));
+          plugins.forEach((plugin) => plugin.onRegister?.(builder));
           const app: Record<string, unknown> = {};
           plugins.forEach((plugin) => plugin.onInit?.(app));
           return app;
@@ -47,10 +53,12 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
     effects: () => ({ name: 'effects' }),
     queryCacheShared: () => ({ name: 'queryCacheShared' }),
     mock: () => ({ name: 'mock' }),
-    authRealmShared: () => ({
-      name: 'authRealmShared',
-      onInit(app: Record<string, unknown>) {
+    auth: () => ({
+      name: 'auth',
+      onRegister() {
         if (join.error) throw join.error;
+      },
+      onInit(app: Record<string, unknown>) {
         app.auth = { login: join.login };
       },
     }),
@@ -107,7 +115,7 @@ describe('lifecycle-signin module graph', () => {
     await loadAndRenderSignIn();
 
     expect(initLoaded.value).toBe(false);
-    expect(builds).toEqual([['effects', 'queryCacheShared', 'authRealmShared']]);
+    expect(builds).toEqual([['effects', 'queryCacheShared', 'auth']]);
     // The join reached the modal: it renders the form, not the error line.
     expect(screen.getByRole('button', { name: 'submit' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -115,7 +123,7 @@ describe('lifecycle-signin module graph', () => {
 
   it('shows the error line and logs the framework error when the join throws', async () => {
     join.error = new Error(
-      '[Gears FrontX] authRealmShared() requires an existing host authRealm() runtime.',
+      '[Gears FrontX] auth() with no provider joins the session of the realm, but no app of the realm has passed one yet.',
     );
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -129,7 +137,7 @@ describe('lifecycle-signin module graph', () => {
     // The warning carries the real cause: the framework's own message.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
-      'authRealmShared() requires an existing host authRealm() runtime',
+      'no app of the realm has passed one yet',
     );
     expect(warnSpy.mock.calls[0]?.[1]).toBe(join.error);
   });
