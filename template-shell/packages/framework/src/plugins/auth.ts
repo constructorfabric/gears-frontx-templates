@@ -1433,6 +1433,8 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
     }
   }
   committed = true;
+  // What a provider that a nested swap retired meanwhile held back is never delivered.
+  if (record.current !== next) return;
   // The swap is committed: a listener that throws must not undo the replacing app's hold.
   for (const deliver of held) guarded('An app.auth.subscribe listener', deliver);
 }

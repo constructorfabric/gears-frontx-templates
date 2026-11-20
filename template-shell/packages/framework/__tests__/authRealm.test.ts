@@ -1032,14 +1032,23 @@ describe('auth() - a replaced provider retires at once, with the settings that a
   });
 
   /** Builds A, then B; `onSwap` runs inside B's replacement, from a synchronous SessionCheck listener. */
-  async function replaceFromSwapCallback(onSwap: () => void) {
+  async function replaceFromSwapCallback(onSwap: () => void, listener: (event: unknown) => void = () => undefined) {
     const graphA = await loadGraph();
-    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a') })).build();
+    const appA = graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('token-a', { subscribe: vi.fn(() => () => undefined) }),
+    })).build();
+    appA.auth!.subscribe!(listener);
     await joinAndFindTransport();
     graphA.eventBus.on('auth/sessionCheck', () => {
       if (peekRealm()?.current.provider === providerB) onSwap();
     });
-    const providerB = makeBearerProvider('token-b');
+    // B tells the moved listener its state at once, inside subscribe, so the report is held until the commit.
+    const providerB = makeBearerProvider('token-b', {
+      subscribe: vi.fn((relay) => {
+        (relay as (event: { state: 'authenticated' }) => void)({ state: 'authenticated' });
+        return () => undefined;
+      }),
+    });
     const graphB = await loadGraph();
     graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
     return providerB;
@@ -1080,14 +1089,17 @@ describe('auth() - a replaced provider retires at once, with the settings that a
   it('binds no holder back to a provider that a replacement started meanwhile has retired', async () => {
     // A copy that ignores the flag (a mismatched build) starts the nested swap anyway.
     const graphC = await loadGraph();
-    const providerC = makeBearerProvider('token-c');
+    const providerC = makeBearerProvider('token-c', { subscribe: vi.fn(() => () => undefined) });
+    const listener = vi.fn();
 
     await replaceFromSwapCallback(() => {
       peekRealm()!.replacing = false;
       graphC.createFrontX().use(graphC.auth({ provider: providerC })).build();
-    });
+    }, listener);
 
     expect(peekRealm()?.current.provider).toBe(providerC);
+    // B's report, held until B's commit, is dropped: C retired B before that commit finished.
+    expect(listener).not.toHaveBeenCalled();
     expect(registered()).toHaveLength(4);
     await expectEveryTransportSends('token-c');
   });
