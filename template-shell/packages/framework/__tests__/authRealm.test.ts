@@ -45,6 +45,7 @@ type RealmRecordView = {
   runtime: unknown;
   current: { provider: AuthProvider; transportConfig?: Hai3ApiAuthTransportConfig };
   holders: Set<unknown>;
+  replacing?: boolean;
 };
 
 /** The auth transport plugins registered now; each app's binding changes at a replacement. */
@@ -943,6 +944,67 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     expect(listed.headers.Authorization).toBe('Bearer token-b');
     const old = (await late?.onRequest?.(makeReqCtx(`${OLD_ONLY}/x`))) as RestRequestContext;
     expect(old.headers.Authorization).toBeUndefined();
+  });
+
+  /** Builds A, then B; `onSwap` runs inside B's replacement, from a synchronous SessionCheck listener. */
+  async function replaceFromSwapCallback(onSwap: () => void) {
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a') })).build();
+    await joinAndFindTransport();
+    graphA.eventBus.on('auth/sessionCheck', () => {
+      if (peekRealm()?.current.provider === providerB) onSwap();
+    });
+    const providerB = makeBearerProvider('token-b');
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+    return providerB;
+  }
+
+  /** Every registered transport sends `token` to the app's own origin. */
+  async function expectEveryTransportSends(token: string) {
+    for (const plugin of registered()) {
+      const ctx = (await plugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+      expect(ctx.headers.Authorization).toBe(`Bearer ${token}`);
+    }
+  }
+
+  it('refuses a replacement started from a callback of a running one, and leaves the realm as the outer swap makes it', async () => {
+    const graphC = await loadGraph();
+    const providerC = makeBearerProvider('token-c');
+    let nested: unknown;
+
+    const providerB = await replaceFromSwapCallback(() => {
+      try {
+        graphC.createFrontX().use(graphC.auth({ provider: providerC })).build();
+      } catch (error) {
+        nested = error;
+      }
+    });
+
+    expect((nested as Error).message).toMatch(/another provider replacement was still running/);
+    expect(providerC.checkAuth).not.toHaveBeenCalled();
+    expect(peekRealm()?.current.provider).toBe(providerB);
+    expect(peekRealm()?.replacing).toBe(false);
+    expect(peekRealm()?.holders.size).toBe(3);
+    await expectEveryTransportSends('token-b');
+    // Refused in onRegister, so that framework copy builds once the replacement has returned.
+    graphC.createFrontX().use(graphC.auth({ provider: providerC })).build();
+    expect(peekRealm()?.current.provider).toBe(providerC);
+  });
+
+  it('binds no holder back to a provider that a replacement started meanwhile has retired', async () => {
+    // A copy that ignores the flag (a mismatched build) starts the nested swap anyway.
+    const graphC = await loadGraph();
+    const providerC = makeBearerProvider('token-c');
+
+    await replaceFromSwapCallback(() => {
+      peekRealm()!.replacing = false;
+      graphC.createFrontX().use(graphC.auth({ provider: providerC })).build();
+    });
+
+    expect(peekRealm()?.current.provider).toBe(providerC);
+    expect(registered()).toHaveLength(4);
+    await expectEveryTransportSends('token-c');
   });
 });
 

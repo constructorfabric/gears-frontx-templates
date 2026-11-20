@@ -1136,6 +1136,8 @@ type AuthRealmRecord = {
   listeners: Set<AuthRealmListener>;
   /** The providers replaced in this realm, all destroyed; one passed again is refused. */
   retired: WeakSet<AuthProvider>;
+  /** Set while a replacement runs, so one started from its callbacks is refused. */
+  replacing?: boolean;
 };
 
 /** A listener added with the realm runtime's `subscribe`, and its subscription on the provider in use. */
@@ -1169,6 +1171,10 @@ const REPLACED_PROVIDER_ERROR =
 const RETIRED_PROVIDER_ERROR =
   '[Gears FrontX] auth({ provider }) got a provider that another provider replaced in this realm, ' +
   'so it was destroyed. Pass a new provider object, or auth() to join the provider in use.';
+
+const NESTED_REPLACEMENT_ERROR =
+  '[Gears FrontX] auth({ provider }) was built while another provider replacement was still running, ' +
+  'from one of its callbacks, so it was refused. Build the app once that replacement has returned.';
 
 /** The members of `AuthRuntime` that call the provider. */
 const RUNTIME_CALLS = [
@@ -1407,7 +1413,7 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
   });
   for (const holder of record.holders) holder.emit(AuthEvents.SessionCheck);
   for (const holder of record.holders) {
-    if (holder === bound) continue;
+    if (holder === bound || record.current !== next) continue;
     try {
       holder.bind(next);
     } catch (error) {
@@ -1577,6 +1583,7 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  * no transport, tracker or subscription and the runtime may build again:
  * - a join when no app has passed a provider;
  * - a provider that another provider replaced in this realm (it is destroyed);
+ * - a new provider passed from a callback of a replacement still running;
  * - a realm record of another contract version.
  * A failure in `onInit` (a binder that throws, or a new provider that throws
  * on `subscribe`) leaves the realm as it was, but the builder has already
@@ -1614,7 +1621,9 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
       );
     },
     onRegister() {
-      if (readAuthRealm()?.retired.has(config.provider)) throw new Error(RETIRED_PROVIDER_ERROR);
+      const found = readAuthRealm();
+      if (found?.retired.has(config.provider)) throw new Error(RETIRED_PROVIDER_ERROR);
+      if (found?.replacing && found.current.provider !== config.provider) throw new Error(NESTED_REPLACEMENT_ERROR);
     },
     onInit(app) {
       const found = readAuthRealm();
@@ -1625,17 +1634,22 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
         return;
       }
       if (found) {
-        // This app binds first, so a binder that throws leaves the provider in use untouched.
-        const held = holdAuthRealm(app, found, generation);
+        found.replacing = true;
         try {
-          replaceAuthProvider(found, generation, held);
-        } catch (error) {
-          delete app.auth;
-          releaseAuthRealm(found, held);
-          throw error;
+          // This app binds first, so a binder that throws leaves the provider in use untouched.
+          const held = holdAuthRealm(app, found, generation);
+          try {
+            replaceAuthProvider(found, generation, held);
+          } catch (error) {
+            delete app.auth;
+            releaseAuthRealm(found, held);
+            throw error;
+          }
+          holder = held;
+          record = found;
+        } finally {
+          found.replacing = false;
         }
-        holder = held;
-        record = found;
         return;
       }
       const published: AuthRealmRecord = {
