@@ -1252,12 +1252,19 @@ function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'
         // Reached only through a wrap assigned for an earlier provider that had this member.
         return Promise.reject(new Error(`[Gears FrontX] The session provider in use has no ${key}().`));
       }
-      return Promise.resolve(member(...args)).then((value) => {
-        if (realm.current === generation) return value;
-        const replaced = REPLACED_ACCESS[key];
-        if (replaced) return replaced(args[0]);
+      // A replaced provider's outcome, a value or an error, is never passed on.
+      const replaced = () => {
+        const access = REPLACED_ACCESS[key];
+        if (access) return access(args[0]);
         throw new Error(REPLACED_PROVIDER_ERROR);
-      });
+      };
+      return Promise.resolve(member(...args)).then(
+        (value) => (realm.current === generation ? value : replaced()),
+        (error: unknown) => {
+          if (realm.current === generation) throw error;
+          return replaced();
+        },
+      );
     };
     define(key, () => (realm.current.runtime[key] ? call : undefined));
   }

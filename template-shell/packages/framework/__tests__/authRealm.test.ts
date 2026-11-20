@@ -938,6 +938,28 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     expect(heard).toEqual(['sessionCheck', 'loggedOut']);
   });
 
+  it('rejects a call that fails after the swap with the replaced-provider error, not the old provider\'s own', async () => {
+    const failures: Array<(error: Error) => void> = [];
+    const pending = () => new Promise<never>((_, reject) => { failures.push(reject); });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('a', { login: vi.fn(pending), getSession: vi.fn(pending) }),
+    })).build();
+    const signingIn = appA.auth!.login!({ type: 'password', payload: {} });
+    const reading = appA.auth!.getSession();
+    const failedBefore = appA.auth!.getSession();
+    failures[2](new Error('A failed on its own'));
+    await expect(failedBefore).rejects.toThrow('A failed on its own');
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b') })).build();
+    failures[0](new Error('A login failed'));
+    failures[1](new Error('A read failed'));
+
+    await expect(signingIn).rejects.toThrow(/was replaced before the call ended/);
+    await expect(reading).rejects.toThrow(/was replaced before the call ended/);
+  });
+
   it('releases only its own hold when the replaced app leaves: the new provider lives on', async () => {
     const destroyA = vi.fn();
     const destroyB = vi.fn();
