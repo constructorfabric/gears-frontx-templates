@@ -111,7 +111,7 @@ describe('lifecycle-signin module graph', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds exactly one app, joined to the host auth runtime, and does not load init.ts', async () => {
+  it('builds exactly one app, joined to the session runtime of the page with auth(), and does not load init.ts', async () => {
     await loadAndRenderSignIn();
 
     expect(initLoaded.value).toBe(false);

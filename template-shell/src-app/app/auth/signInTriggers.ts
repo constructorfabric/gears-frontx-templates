@@ -393,9 +393,10 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
 
   // The transport of every app of the realm, the microfrontends that join
   // with `auth()` included, starts each 401 refresh flight by calling the
-  // provider's `refresh` (`auth.ts` reads it off the provider in use at error
-  // time), so a wrap installed here, after the app is built, is what every
-  // later flight goes through. The wrap only observes: the call and its
+  // provider's `refresh` (`auth.ts` reads it, at error time, off the provider
+  // the transport is bound for, which is this provider while it is in use),
+  // so a wrap installed here, after the app is built, is what every later
+  // flight goes through. The wrap only observes: the call and its
   // result reach the provider untouched, the flight in progress is
   // remembered so the 401 confirmation below can wait it out instead of
   // racing it, and what the flight resolved to is kept with it, so the

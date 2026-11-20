@@ -29,9 +29,9 @@ apiRegistry.initialize({});
 // would append, dependencies included.
 const app = createFrontX()
   .useAll(presets.full())
-  // The development auth plugins (`app/auth/devAuth.ts`): that module passes
-  // no auth config outside development, so a production build carries neither
-  // the auth plugin nor the realm plugin. The trigger only becomes observable
+  // The development auth plugin (`app/auth/devAuth.ts`): that module passes
+  // no auth config outside development, so a production build carries no
+  // auth() plugin. The trigger only becomes observable
   // once the project adds the microfrontends plugin, since the chain needs the
   // domains it registers; until then both triggers are wired and simply send
   // nothing.

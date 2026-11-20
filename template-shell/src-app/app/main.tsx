@@ -50,9 +50,9 @@ apiRegistry.initialize({});
 // is the same one `full({ auth })` would append, dependencies included.
 const app = createFrontX()
   .useAll(presets.full())
-  // The development auth plugins (`app/auth/devAuth.ts`): that module passes
-  // no auth config outside development, so a production build carries neither
-  // the auth plugin nor the realm plugin.
+  // The development auth plugin (`app/auth/devAuth.ts`): that module passes
+  // no auth config outside development, so a production build carries no
+  // auth() plugin.
   .use(devAuthPlugins())
   .use(microfrontends({
     typeSystem: gtsPlugin,

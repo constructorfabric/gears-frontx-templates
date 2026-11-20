@@ -118,21 +118,41 @@ sign-in MFE joins it with `auth()`, no provider. Any app could pass the
 provider instead: the plugin does not know which app is the shell, the
 `AuthEvents` reach the eventBus of every app that holds the runtime, and the
 provider lives until the last of them is destroyed. A join with no provider
-in the page fails in the join's `onRegister`, so its build rolls back, and
-the sign-in MFE shows its error line.
+in the page fails in the join's `onRegister`, before any side effect: the
+builder resets only its build state, so that framework copy may build again
+once a provider exists, and `init-signin.ts` catches the error, so the
+sign-in MFE shows its error line.
 
-A provider passed while another is in use replaces it. No app keeps a
-provider of its own: `app.auth` and every app's REST transport read the
-provider in use at call time, so all of them follow at once. Every app's bus
-hears `auth/sessionCheck` at the swap and then `auth/loggedIn` (the new
+A provider passed while another is in use replaces it for every app of the
+page, the shell included. Credentials and the policy that authorises them
+belong to one provider: the new provider brings its own `frontxApi` and
+binder, every app's REST transport is bound again for it alone, and the old
+provider retires at once with its settings. Every app's bus hears
+`auth/sessionCheck` at the swap and then `auth/loggedIn` (the new
 provider has a session) or `auth/loggedOut` (it has none, or its read
 failed); the old provider's session checks are cancelled and its reports go
-nowhere; it is destroyed once the last call started against it settles; a
-login, callback or refresh that ends after the swap rejects, so a 401 is
-not retried with the old provider's session. The sign-in triggers wrap the
-provider the shell passed (`wireSignInTriggers`), so a provider another app
-passes later carries no 401 trigger until that app wires its own. A second
-`auth({ provider })` inside one app is not a replacement: `use()` throws.
+nowhere; it is destroyed at the swap. An old binding attaches no credentials
+and retries nothing, a request already running included, and a call on the
+old provider that ends after the swap rejects (an access check resolves to
+deny), so the default transport never retries a 401 with the old
+provider's session and never sends the new provider's credentials under the
+old origin lists (a custom binder stops in its own `destroy()`). The old
+provider object passed again is refused; the provider in use passed again
+joins it. The sign-in triggers wrap the provider the shell passed
+(`wireSignInTriggers`), so a provider another app passes later carries no
+401 trigger until that app wires its own. A second `auth({ provider })`
+inside one app is not a replacement: `use()` throws.
+
+So exactly one app of the page passes the provider, the shell in this
+template, and every other app, the sign-in MFE included, joins with
+`auth()`. An MFE that copies the shell's `auth({ provider })` does not get
+a session of its own: it takes over the credential routing of every app,
+the shell's included. A development build (`process.env.NODE_ENV` is
+`development`, as under the Vite dev server) logs a `console.warn` at every
+replacement that names the replaced and the new provider and their origin
+lists (never a session or a token); a production build logs nothing. An MFE
+that needs the page's session writes `auth()`, never a copy of the shell's
+config.
 
 The modal then signs in through
 `app.auth.login` and sends no credentials to the shell. The shell only sees
@@ -268,16 +288,19 @@ credentials. A provider that replaces it brings its own config, and every
 app's transport is bound again with that one.
 
 Refreshes are the provider's to dedupe. The realm does not dedupe them: each
-app's transport calls the `refresh()` of the provider in use
-(`realmProvider()` in `auth.ts`), and the dedup that exists is per
+app's transport calls the `refresh()` of the provider it is bound for, the
+provider in use, and the dedup that exists is per
 transport plugin instance, so the concurrent 401 refreshes of one app share
 one flight while two microfrontends that 401 at the same moment reach the
 provider's `refresh()` twice. A provider that keeps one token request in
 flight and queues the rest makes that one request per page.
 
-The origin lists are those of the app that passed the provider, and they are
-the lists for every joined MFE, because a join takes no options (`auth()`
-with no provider): the published `frontxApi` config is forwarded whole to
+The origin lists are those of the provider in use, the `frontxApi` of the
+`auth({ provider })` that passed it, and they are the lists for every app,
+joined MFEs included, because a join takes no options (`auth()` with no
+provider). At a replacement the new provider's lists take over for every
+app, and no request under the old lists carries the new provider's
+credentials. The published `frontxApi` config is forwarded whole to
 every joined MFE, so the cookie origins, the CSRF header and the bearer
 origins published beside the runtime are what every MFE's requests carry. Credentials
 go only to the app's own origin and to the listed ones
