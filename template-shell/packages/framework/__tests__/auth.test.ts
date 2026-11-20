@@ -1601,6 +1601,42 @@ describe('auth plugin', () => {
       expect(onTransportError).toHaveBeenCalledTimes(1);
       expect(getSession.mock.calls.length).toBe(readsBefore);
     });
+
+    it('calls onTransportError before the refresh and before any getSession call in onError when the provider has refresh()', async () => {
+      // The refresh reads the session, as a provider that rotates its token from the stored
+      // one does, so a getSession call made for the error shows up in the same count as the
+      // refresh's own read: the hook must see neither.
+      const refresh = vi.fn(async (): Promise<AuthSession | null> => {
+        await provider.getSession();
+        return { kind: 'bearer', token: 'new-tok' };
+      });
+      const provider = makeBearerProvider('old-tok', refresh);
+      const getSession = vi.mocked(provider.getSession);
+      const seenByHook: { getSessionCalls: number; refreshCalls: number }[] = [];
+      const onTransportError = vi.fn(() => {
+        seenByHook.push({ getSessionCalls: getSession.mock.calls.length, refreshCalls: refresh.mock.calls.length });
+      });
+      const plugin = capturePlugin(
+        { ...provider, onTransportError },
+        { allowedBearerOrigins: ['https://api.example.com'] },
+      );
+      const retry = vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} });
+
+      await plugin.onError?.({
+        error: new Error('HTTP 401'),
+        request: makeReqCtx('https://api.example.com/x'),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry,
+      });
+
+      expect(seenByHook).toEqual([{ getSessionCalls: 0, refreshCalls: 0 }]);
+      // After the hook: one refresh, and the retry with the token it resolved. getSession is
+      // checked only to show the counter sees the refresh's own read, so the 0 above is live.
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(getSession).toHaveBeenCalled();
+      expect(retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
+    });
   });
 
   // -------------------------------------------------------------------------
