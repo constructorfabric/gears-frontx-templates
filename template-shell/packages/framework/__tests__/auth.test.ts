@@ -1603,6 +1603,15 @@ describe('auth plugin', () => {
       ["a relative baseURL ('/api')", '/apihttps://evil.example/x'],
       ["a relative baseURL ending in / ('/api/')", '/api/https://evil.example/x'],
       ["a listed baseURL ending in / ('https://api.example.com/')", 'https://api.example.com/https:/evil.example/x'],
+      ["a relative baseURL, with http ('/api')", '/apihttp://evil.example/x'],
+      ["a relative baseURL, in capitals ('/api')", '/apiHTTPS://evil.example/x'],
+    ];
+
+    // Ordinary same-origin paths that hold a `word:/` segment: no scheme axios would send
+    // to another host, so they are the app's own requests.
+    const WORD_COLON_PATHS = [
+      ['a key with a colon', '/api/kv/key:/v'],
+      ['a drive letter', '/files/c:/x'],
     ];
 
     it.each(ABSOLUTE_PATH_URLS)('sends no Authorization header for an absolute path under %s', async (_name, url) => {
@@ -1649,6 +1658,46 @@ describe('auth plugin', () => {
       expect(refreshFn).not.toHaveBeenCalled();
       expect(errCtx.retry).not.toHaveBeenCalled();
       expect(result).toBe(errCtx.error);
+    });
+
+    it.each(WORD_COLON_PATHS)('keeps the Authorization header for a same-origin path with %s', async (_name, url) => {
+      const plugin = capturePlugin(makeBearerProvider('tok-abc'));
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.headers['Authorization']).toBe('Bearer tok-abc');
+    });
+
+    it.each(WORD_COLON_PATHS)('keeps cookie credentials and the CSRF header for a same-origin path with %s', async (_name, url) => {
+      const provider: AuthProvider = {
+        getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-abc' } satisfies AuthSession),
+        checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+        logout: vi.fn().mockResolvedValue({ type: 'none' }),
+      };
+      const plugin = capturePlugin(provider, { csrfHeaderName: 'X-CSRF-Token' });
+
+      const result = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+
+      expect(result.withCredentials).toBe(true);
+      expect(result.headers['X-CSRF-Token']).toBe('csrf-abc');
+    });
+
+    it.each(WORD_COLON_PATHS)('refreshes and retries on a 401 for a same-origin path with %s', async (_name, url) => {
+      const refreshFn = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'new-tok' } satisfies AuthSession);
+      const plugin = capturePlugin(makeBearerProvider('old-tok', refreshFn));
+
+      const errCtx = {
+        error: new Error('HTTP 401'),
+        request: makeReqCtx(url),
+        response: { status: 401, headers: {}, data: null },
+        retryCount: 0,
+        retry: vi.fn().mockResolvedValue({ status: 200, headers: {}, data: {} }),
+      };
+
+      await plugin.onError?.(errCtx);
+
+      expect(refreshFn).toHaveBeenCalledTimes(1);
+      expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer new-tok' } });
     });
 
     it('keeps the header when the scheme is only in the query', async () => {

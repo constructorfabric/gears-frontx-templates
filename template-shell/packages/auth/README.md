@@ -56,7 +56,7 @@ A provider that returns `{ kind: 'bearer', token }` lists the origin in `frontxA
 
 The plugin checks the URL that `@gears-frontx/api` shows it, which joins the service's `baseURL` and the path. Axios skips the `baseURL` when the path is absolute (`https://…`) or protocol-relative (`//…`), so the request goes somewhere other than the URL the plugin checked.
 
-- **An absolute path gets no credentials.** Its scheme stays in the joined URL: on a service with `baseURL: '/api'`, `get('https://other.example/x')` shows up as `/apihttps://other.example/x`. The plugin sends no credentials to a URL with a scheme in its path, `/proxy/https://…` included. A scheme in the query, such as `?next=https://…`, doesn't count.
+- **An absolute path gets no credentials.** Its scheme stays in the joined URL: on a service with `baseURL: '/api'`, `get('https://other.example/x')` shows up as `/apihttps://other.example/x`. The plugin sends no credentials to a URL with `http:` or `https:` in its path, `/proxy/https://…` included. Those are the only schemes axios sends to another host, so other `word:/` segments, such as `/kv/key:/v` or `/files/c:/x`, keep their credentials. A scheme in the query, such as `?next=https://…`, doesn't count.
 - **A protocol-relative path still gets them** until [constructorfabric/gears-frontx#770](https://github.com/constructorfabric/gears-frontx/issues/770) is fixed. The join collapses its `//`, so `get('//other.example/x')` is checked as `/api/other.example/x` but goes to `other.example`, with the credentials.
 
 Pass only relative paths to a service with a `baseURL`. To call another origin, give it a service whose `baseURL` is that origin.
