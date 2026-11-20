@@ -391,18 +391,20 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   const addressNamedSignIn = addressSignInEntry() !== undefined;
   const previous = provider.onTransportError?.bind(provider);
 
-  // The transport starts every 401 refresh flight by calling the provider's
-  // `refresh` (`auth.ts` reads it off the provider at error time), so a wrap
-  // installed here, after the app is built, is what every later flight goes
-  // through. The wrap only observes: the call and its result reach the
-  // provider untouched, the flight in progress is remembered so the 401
-  // confirmation below can wait it out instead of racing it, and what the
-  // flight resolved to is kept with it, so the confirmation reads the
-  // runtime's own answer instead of asking the provider again. The auth
-  // runtime's own `refresh` is wrapped the same way: the microfrontends that
-  // join the runtime (`auth()` with no provider) refresh through it, so the
-  // session tracker hears of their flights, and it calls the original the
-  // auth plugin captured at build time, so no flight is seen twice.
+  // The transport of every app of the realm, the microfrontends that join
+  // with `auth()` included, starts each 401 refresh flight by calling the
+  // provider's `refresh` (`auth.ts` reads it off the provider in use at error
+  // time), so a wrap installed here, after the app is built, is what every
+  // later flight goes through. The wrap only observes: the call and its
+  // result reach the provider untouched, the flight in progress is
+  // remembered so the 401 confirmation below can wait it out instead of
+  // racing it, and what the flight resolved to is kept with it, so the
+  // confirmation reads the runtime's own answer instead of asking the
+  // provider again. The auth runtime's own `refresh` is wrapped the same
+  // way, for code that calls `app.auth.refresh()` itself; it calls the
+  // original the auth plugin captured at build time, so no flight is seen
+  // twice. Both wraps sit on the provider this app passed: a provider that
+  // another app passes later, replacing it, carries neither.
   type TrackedFlight = {
     promise: Promise<unknown>;
     /** Set once the flight settles: the session it resolved to, or its failure. */

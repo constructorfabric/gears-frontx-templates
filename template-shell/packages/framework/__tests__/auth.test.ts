@@ -35,6 +35,9 @@ let auth: typeof import('../src/plugins/auth').auth;
 let frontxApiTransport: typeof import('../src/plugins/auth').frontxApiTransport;
 
 beforeEach(async () => {
+  // The realm record lives on globalThis and outlives the module reset; a case
+  // that failed before its app.destroy() must not hand its provider to the next.
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('frontx:auth:realm')];
   vi.resetModules();
   ({ apiRegistry, RestProtocol } = await import('@gears-frontx/api'));
   ({ createStore } = await import('@gears-frontx/state'));
@@ -546,14 +549,17 @@ describe('auth plugin', () => {
   // 4. Custom transport binder
   // -------------------------------------------------------------------------
   describe('custom transport binder', () => {
-    it('invokes the custom binder on app init instead of default', () => {
+    it('invokes the custom binder on app init instead of default', async () => {
       const customBinder: AuthTransportBinder = vi.fn().mockReturnValue({ destroy: vi.fn() });
       const provider = makeBearerProvider('tok');
 
       const app = createFrontX().use(auth({ provider, transport: customBinder })).build();
 
       expect(customBinder).toHaveBeenCalledTimes(1);
-      expect(customBinder).toHaveBeenCalledWith(expect.objectContaining({ provider }));
+      // The binder gets the realm's view of the provider in use, which forwards to it.
+      const [{ provider: bound }] = vi.mocked(customBinder).mock.calls[0];
+      await bound.getSession();
+      expect(provider.getSession).toHaveBeenCalledTimes(1);
 
       app.destroy();
     });
@@ -757,8 +763,9 @@ describe('auth plugin', () => {
 
       const listener = () => undefined;
       const unsub = app.auth?.subscribe?.(listener);
-      expect(unsub).toBe(unsubscribe);
       expect(provider.subscribe).toHaveBeenCalledWith(listener);
+      unsub?.();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
 
       app.destroy();
     });

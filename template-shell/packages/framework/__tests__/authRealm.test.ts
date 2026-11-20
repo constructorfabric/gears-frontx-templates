@@ -9,12 +9,14 @@
  * Covers:
  * 1. Symmetry: the app that passed the provider and the apps that joined hold
  *    the same runtime the same way, whichever of them is the shell.
- * 2. A second provider is refused before any side effect, across apps and
- *    inside one app.
+ * 2. A second provider replaces the one in use: every app follows, the swap
+ *    events, the old provider's end, in-flight calls and the session tracker.
+ *    Inside one app, a second auth() with a provider throws from use().
  * 3. A join with no provider in the realm is an error, raised before any side
  *    effect.
  * 4. AuthEvents reach the eventBus of every app that holds the runtime.
- * 5. The provider lives while any app holds it: the last release destroys it.
+ * 5. The provider lives while any app holds it: the last release destroys it;
+ *    the departed app's code keeps running for the holders; a late join works.
  * 6. A realm record of another contract version is refused.
  * 7. A joined app's REST transport: the session, the published frontxApi
  *    config and binder, the origin lists, the 401 refresh through the session
@@ -37,9 +39,8 @@ const AUTH_REALM_SYMBOL = Symbol.for('frontx:auth:realm');
 type RealmRecordView = {
   version: number;
   runtime: unknown;
-  transportConfig?: Hai3ApiAuthTransportConfig;
-  retainers: number;
-  emitters: Set<unknown>;
+  current: { provider: AuthProvider; transportConfig?: Hai3ApiAuthTransportConfig };
+  holders: Set<unknown>;
 };
 
 type RealmHost = typeof globalThis & { [AUTH_REALM_SYMBOL]?: unknown };
@@ -82,6 +83,7 @@ function listen(graph: FrameworkGraph): string[] {
   const heard: string[] = [];
   graph.eventBus.on('auth/loggedIn', () => heard.push('loggedIn'));
   graph.eventBus.on('auth/loggedOut', () => heard.push('loggedOut'));
+  graph.eventBus.on('auth/sessionCheck', () => heard.push('sessionCheck'));
   return heard;
 }
 
@@ -115,6 +117,17 @@ async function joinAndFindTransport(): Promise<AuthTransportPlugin & Pick<RestPl
   return joinPlugin as AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
 }
 
+/** A 401 error context for the transport's onError. */
+function make401(url: string) {
+  return {
+    error: new Error('HTTP 401'),
+    request: makeReqCtx(url),
+    response: { status: 401, headers: {}, data: null },
+    retryCount: 0,
+    retry: vi.fn(async () => ({ status: 200, headers: {}, data: {} })),
+  };
+}
+
 /** Lets the session tracker's init baseline land. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -145,7 +158,7 @@ describe('auth() - one runtime per realm, whichever app passes the provider', ()
 
     expect(app.auth?.provider).toBe(provider);
     expect(peekRealm()?.runtime).toBe(app.auth);
-    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.holders.size).toBe(1);
     expect(peekRealm()?.version).toBe(1);
   });
 
@@ -159,7 +172,7 @@ describe('auth() - one runtime per realm, whichever app passes the provider', ()
     const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
 
     expect(joinApp.auth).toBe(ownerApp.auth);
-    expect(peekRealm()?.retainers).toBe(2);
+    expect(peekRealm()?.holders.size).toBe(2);
     await joinApp.auth?.login?.({ type: 'password', payload: { username: 'ada', password: 'secret' } });
     expect(login).toHaveBeenCalledWith({ type: 'password', payload: { username: 'ada', password: 'secret' } }, undefined);
   });
@@ -188,7 +201,7 @@ describe('auth() - one runtime per realm, whichever app passes the provider', ()
 
     expect(appA.auth).toBe(ownerApp.auth);
     expect(appB.auth).toBe(ownerApp.auth);
-    expect(peekRealm()?.retainers).toBe(3);
+    expect(peekRealm()?.holders.size).toBe(3);
   });
 
   it('throws on a config without a provider instead of joining silently', async () => {
@@ -197,31 +210,268 @@ describe('auth() - one runtime per realm, whichever app passes the provider', ()
   });
 });
 
-describe('auth() - a second provider is refused before any side effect', () => {
-  it('refuses a provider in another app while the realm holds one', async () => {
-    const first = await loadGraph();
-    const firstApp = first.createFrontX().use(first.auth({ provider: makeBearerProvider('token-1') })).build();
-    const transportsBefore = apiRegistry.plugins.getAll(RestProtocol).length;
+describe('auth() - a second provider replaces the one in use', () => {
+  it('puts the new provider in place for every app: the same runtime, the new provider behind it', async () => {
+    const unsubscribeA = vi.fn();
+    const destroyA = vi.fn();
+    const providerA = makeBearerProvider('token-a', { subscribe: vi.fn(() => unsubscribeA), destroy: destroyA });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const joinPlugin = await joinAndFindTransport();
+    const record = peekRealm();
 
-    const second = await loadGraph();
-    const subscribe = vi.fn(() => () => undefined);
-    const secondProvider = makeBearerProvider('token-2', { subscribe });
-    expect(() => second.createFrontX().use(second.auth({ provider: secondProvider })).build()).toThrow(
-      /found another provider already in this realm/,
-    );
+    const subscribeB = vi.fn(() => () => undefined);
+    const providerB = makeBearerProvider('token-b', { subscribe: subscribeB });
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
 
-    // No transport, no baseline read, no subscription: refused in onRegister.
-    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(transportsBefore);
-    expect(secondProvider.checkAuth).not.toHaveBeenCalled();
-    expect(subscribe).not.toHaveBeenCalled();
-    expect(peekRealm()?.runtime).toBe(firstApp.auth);
-    expect(peekRealm()?.retainers).toBe(1);
-
-    // The refused build left the runtime buildable: the same graph joins.
-    const joined = second.createFrontX().use(second.auth()).build();
-    expect(joined.auth).toBe(firstApp.auth);
+    // One record, one runtime object, every app on it; the provider behind it is B.
+    expect(peekRealm()).toBe(record);
+    expect(appB.auth).toBe(appA.auth);
+    expect(appA.auth?.provider).toBe(providerB);
+    expect(peekRealm()?.current.provider).toBe(providerB);
+    expect(peekRealm()?.holders.size).toBe(3);
+    // A's tracking stopped and, with no call of its own still running, A is destroyed at the swap.
+    expect(unsubscribeA).toHaveBeenCalledTimes(1);
+    expect(destroyA).toHaveBeenCalledTimes(1);
+    expect(subscribeB).toHaveBeenCalledTimes(1);
+    // The join's transport follows without a step of its own.
+    const ctx = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+    expect(ctx.headers.Authorization).toBe('Bearer token-b');
+    expect(providerA.getSession).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a session', { authenticated: true }, ['sessionCheck', 'loggedIn']],
+    ['no session', { authenticated: false }, ['sessionCheck', 'loggedOut']],
+  ] as const)(
+    'tells every app at the swap: SessionCheck at once, then the new baseline (%s)',
+    async (_label, checkResult, expected) => {
+      const graphA = await loadGraph();
+      graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a') })).build();
+      const joinGraph = await loadGraph();
+      joinGraph.createFrontX().use(joinGraph.auth()).build();
+      await settle();
+      const heardA = listen(graphA);
+      const heardJoin = listen(joinGraph);
+
+      let answer!: (result: { authenticated: boolean }) => void;
+      const checkAuth = vi.fn(() => new Promise<{ authenticated: boolean }>((resolve) => { answer = resolve; }));
+      const graphB = await loadGraph();
+      graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b', { checkAuth }) })).build();
+
+      expect(heardA).toEqual(['sessionCheck']);
+      expect(heardJoin).toEqual(['sessionCheck']);
+      await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+      expect(heardA).toEqual(['sessionCheck']);
+      answer(checkResult);
+      await settle();
+      expect(heardA).toEqual(expected);
+      expect(heardJoin).toEqual(expected);
+    },
+  );
+
+  it('clears with LoggedOut when the new provider cannot read its session', async () => {
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a') })).build();
+    await settle();
+    const heard = listen(graphA);
+
+    const checkAuth = vi.fn().mockRejectedValue(new Error('session service down'));
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b', { checkAuth }) })).build();
+    await settle();
+
+    expect(heard).toEqual(['sessionCheck', 'loggedOut']);
+  });
+
+  it('destroys the old provider only once the last call started against it has settled', async () => {
+    const destroyA = vi.fn();
+    let answerA!: (session: AuthSession) => void;
+    const providerA = makeBearerProvider('token-a', {
+      destroy: destroyA,
+      getSession: vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; })),
+    });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const reading = appA.auth!.getSession();
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+    expect(destroyA).not.toHaveBeenCalled();
+
+    // A read settles against the provider it started on.
+    answerA({ kind: 'bearer', token: 'token-a' });
+    await expect(reading).resolves.toEqual({ kind: 'bearer', token: 'token-a' });
+    expect(destroyA).toHaveBeenCalledTimes(1);
+    // A call started after the swap goes to the new provider.
+    await expect(appA.auth!.getSession()).resolves.toEqual({ kind: 'bearer', token: 'token-b' });
+  });
+
+  it('rejects a refresh that ends after its provider was replaced, and its tracker emits nothing', async () => {
+    let answerA!: (session: AuthSession) => void;
+    const refreshA = vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; }));
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a', { refresh: refreshA }) })).build();
+    await settle();
+    const heard = listen(graphA);
+    const refreshing = appA.auth!.refresh!();
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+    answerA({ kind: 'bearer', token: 'token-a2' });
+
+    await expect(refreshing).rejects.toThrow(/was replaced before the call ended/);
+    await settle();
+    // Only the swap speaks: A's session tracking stopped with the swap.
+    expect(heard).toEqual(['sessionCheck', 'loggedOut']);
+  });
+
+  it('does not retry a 401 with a refresh that ended after the swap', async () => {
+    let answerA!: (session: AuthSession) => void;
+    const refreshA = vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; }));
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a', { refresh: refreshA }) })).build();
+    const joinPlugin = await joinAndFindTransport();
+    const errCtx = make401('/accounts/me');
+    const failing = joinPlugin.onError?.(errCtx);
+    await vi.waitFor(() => expect(refreshA).toHaveBeenCalledTimes(1));
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+    answerA({ kind: 'bearer', token: 'token-a2' });
+
+    expect(await failing).toBe(errCtx.error);
+    expect(errCtx.retry).not.toHaveBeenCalled();
+  });
+
+  it('serves a 401 that arrives after the swap with the new provider, also for a request sent before it', async () => {
+    const refreshA = vi.fn(async () => ({ kind: 'bearer', token: 'token-a2' }) satisfies AuthSession);
+    const refreshB = vi.fn(async () => ({ kind: 'bearer', token: 'token-b2' }) satisfies AuthSession);
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a', { refresh: refreshA }) })).build();
+    const joinPlugin = await joinAndFindTransport();
+    // The request went out with A's credentials before the swap ...
+    const sent = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+    expect(sent.headers.Authorization).toBe('Bearer token-a');
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b', { refresh: refreshB }) })).build();
+
+    // ... and its 401 lands after it: the refresh and the retry are B's.
+    const errCtx = make401('/accounts/me');
+    await joinPlugin.onError?.(errCtx);
+    expect(refreshA).not.toHaveBeenCalled();
+    expect(refreshB).toHaveBeenCalledTimes(1);
+    expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-b2' } });
+  });
+
+  it('cancels the old provider\'s running session check and stops listening to its reports', async () => {
+    let report!: (event: { state: 'authenticated' | 'unauthenticated' }) => void;
+    const getIdentity = vi.fn()
+      .mockResolvedValueOnce({ sub: 'user-a' })
+      .mockReturnValue(new Promise(() => undefined));
+    const providerA = makeBearerProvider('token-a', {
+      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+      getIdentity,
+      subscribe: vi.fn((listener) => {
+        report = listener as typeof report;
+        return () => undefined;
+      }),
+    });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    await settle();
+    const heard = listen(graphA);
+    // A session that goes on: A's tracker checks its identity, and the lookup hangs.
+    report({ state: 'authenticated' });
+    await vi.waitFor(() => expect(getIdentity).toHaveBeenCalledTimes(2));
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+    await settle();
+    report({ state: 'unauthenticated' });
+    await settle();
+
+    // A's check was cancelled without a clear, and A's later report reached nobody.
+    expect(heard).toEqual(['sessionCheck', 'sessionCheck', 'loggedOut']);
+  });
+
+  it('moves the listeners added with app.auth.subscribe to the new provider', async () => {
+    const unsubscribeA = vi.fn();
+    const unsubscribeB = vi.fn();
+    const subscribeA = vi.fn(() => unsubscribeA);
+    const subscribeB = vi.fn(() => unsubscribeB);
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('a', { subscribe: subscribeA }) })).build();
+    const listener = vi.fn();
+    const stop = appA.auth!.subscribe!(listener);
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b', { subscribe: subscribeB }) })).build();
+
+    expect(subscribeB).toHaveBeenCalledWith(listener);
+    stop();
+    expect(unsubscribeB).toHaveBeenCalledTimes(1);
+    // A's own tracker subscription and the moved listener were both taken off A.
+    expect(unsubscribeA).toHaveBeenCalledTimes(2);
+  });
+
+  it('binds every app again with the transport settings the new provider came with', async () => {
+    const destroyFirst = vi.fn();
+    const first = vi.fn(() => ({ destroy: destroyFirst }));
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('a'), transport: first })).build();
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
+    expect(first).toHaveBeenCalledTimes(2);
+
+    const second = vi.fn((_args: Parameters<AuthTransportBinder>[0]) => ({ destroy: () => undefined }));
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({
+      provider: makeBearerProvider('b'),
+      transport: second,
+      frontxApi: { csrfHeaderName: 'X-B' },
+    })).build();
+
+    // Both earlier apps dropped the first binding and took the second, as did the new app.
+    expect(destroyFirst).toHaveBeenCalledTimes(2);
+    expect(second).toHaveBeenCalledTimes(3);
+    expect(second.mock.calls.every(([args]) => args.csrfHeaderName === 'X-B')).toBe(true);
+    expect(peekRealm()?.current.transportConfig).toEqual({ csrfHeaderName: 'X-B' });
+  });
+
+  it('keeps a provider passed again by another app: it goes on, not destroyed', async () => {
+    const destroy = vi.fn();
+    const provider = makeBearerProvider('t', { destroy });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider })).build();
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth({ provider })).build();
+
+    expect(destroy).not.toHaveBeenCalled();
+    expect(appB.auth?.provider).toBe(provider);
+  });
+
+  it('leaves the provider in use when a binder of the replacing app throws', async () => {
+    const providerA = makeBearerProvider('a');
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const providerB = makeBearerProvider('b');
+    const graphB = await loadGraph();
+    const failing = () => {
+      throw new Error('binder refused');
+    };
+
+    expect(() => graphB.createFrontX().use(graphB.auth({ provider: providerB, transport: failing })).build())
+      .toThrow('binder refused');
+    expect(appA.auth?.provider).toBe(providerA);
+    expect(peekRealm()?.holders.size).toBe(1);
+    expect(providerB.checkAuth).not.toHaveBeenCalled();
+  });
+});
+
+describe('auth() - one app takes one auth() plugin', () => {
   it('refuses a provider added to an app that already has auth(), from use()', async () => {
     const { createFrontX, auth } = await loadGraph();
     const provider = makeBearerProvider('token-1');
@@ -241,7 +491,7 @@ describe('auth() - a second provider is refused before any side effect', () => {
     const app = createFrontX().use(auth({ provider })).use(auth()).build();
 
     expect(app.auth?.provider).toBe(provider);
-    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.holders.size).toBe(1);
   });
 });
 
@@ -329,18 +579,15 @@ describe('auth() - the provider lives while any app holds it', () => {
     expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(ownerTransports);
     expect(destroy).not.toHaveBeenCalled();
     expect(unsubscribe).not.toHaveBeenCalled();
-    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.holders.size).toBe(1);
     await joinApp.auth?.login?.({ type: 'password', payload: {} });
     expect(login).toHaveBeenCalledTimes(1);
     expect(joinHeard).toEqual(['loggedIn']);
 
-    // A late join still finds the provider, and a second provider is still refused.
+    // A late join after the app that passed the provider left still finds it.
     const lateGraph = await loadGraph();
     const lateApp = lateGraph.createFrontX().use(lateGraph.auth()).build();
     expect(lateApp.auth).toBe(joinApp.auth);
-    const rivalGraph = await loadGraph();
-    expect(() => rivalGraph.createFrontX().use(rivalGraph.auth({ provider: makeBearerProvider('x') })).build())
-      .toThrow(/found another provider already in this realm/);
 
     lateApp.destroy();
     expect(destroy).not.toHaveBeenCalled();
@@ -350,10 +597,55 @@ describe('auth() - the provider lives while any app holds it', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(peekRealm()).toBeUndefined();
 
-    // With the slot free, a new provider can be passed.
+    // With the slot free, a new provider publishes a new record.
     const nextGraph = await loadGraph();
     const nextApp = nextGraph.createFrontX().use(nextGraph.auth({ provider: makeBearerProvider('y') })).build();
     expect(peekRealm()?.runtime).toBe(nextApp.auth);
+  });
+
+  it('runs the code of the departed app for the apps that still hold the runtime', async () => {
+    // The app that passed the provider is destroyed; the session tracker, the
+    // runtime and the provider it built go on serving the join from that app's
+    // own module copy (its bundle, on a page).
+    const report: { listener?: (event: { state: 'authenticated' | 'unauthenticated' }) => void } = {};
+    const provider = makeBearerProvider('t', {
+      subscribe: vi.fn((listener) => {
+        report.listener = listener as typeof report.listener;
+        return () => undefined;
+      }),
+    });
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
+    await settle();
+    const ownerHeard = listen(ownerGraph);
+    const joinHeard = listen(joinGraph);
+
+    ownerApp.destroy();
+    report.listener?.({ state: 'authenticated' });
+    await settle();
+
+    expect(joinHeard).toEqual(['loggedIn']);
+    expect(ownerHeard).toEqual([]);
+  });
+
+  it('lets a new provider replace one that the apps of a departed owner still hold', async () => {
+    const destroyA = vi.fn();
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('a', { destroy: destroyA }) })).build();
+    const joinGraph = await loadGraph();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    ownerApp.destroy();
+
+    const providerB = makeBearerProvider('b');
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+
+    expect(destroyA).toHaveBeenCalledTimes(1);
+    expect(joinApp.auth?.provider).toBe(providerB);
+    expect(appB.auth).toBe(joinApp.auth);
+    expect(peekRealm()?.holders.size).toBe(2);
   });
 
   it('destroys the provider with its only holder', async () => {
@@ -379,7 +671,7 @@ describe('auth() - the provider lives while any app holds it', () => {
     expect(joinApp.auth).toBeUndefined();
     expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(joined - 1);
     expect(peekRealm()?.runtime).toBe(ownerApp.auth);
-    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.holders.size).toBe(1);
   });
 
   it('gives the hold back when the transport binding of a join throws', async () => {
@@ -395,8 +687,7 @@ describe('auth() - the provider lives while any app holds it', () => {
     );
     add.mockRestore();
 
-    expect(peekRealm()?.retainers).toBe(1);
-    expect(peekRealm()?.emitters.size).toBe(1);
+    expect(peekRealm()?.holders.size).toBe(1);
     expect(peekRealm()?.runtime).toBe(ownerApp.auth);
   });
 });
@@ -441,7 +732,7 @@ describe('auth() - the REST transport of a joining app', () => {
     });
     const ownerGraph = await loadGraph();
     ownerGraph.createFrontX().use(ownerGraph.auth({ provider, frontxApi })).build();
-    expect(peekRealm()?.transportConfig).toEqual(frontxApi);
+    expect(peekRealm()?.current.transportConfig).toEqual(frontxApi);
 
     const joinPlugin = await joinAndFindTransport();
     const ctx = (await joinPlugin.onRequest?.(
@@ -484,7 +775,9 @@ describe('auth() - the REST transport of a joining app', () => {
     expect(joinArgs?.allowedExtraOrigins).toEqual(['https://extra.example']);
     expect(joinArgs?.provider).not.toBe('stray-provider-key');
     expect(await joinArgs?.provider.getSession?.()).toEqual({ kind: 'bearer', token: 'token-1' });
-    expect(joinArgs?.trackRefresh).toBeUndefined();
+    // The stray hook is kept out: the join reports its refreshes to the provider in use.
+    expect(typeof joinArgs?.trackRefresh).toBe('function');
+    expect(joinArgs?.trackRefresh).not.toBe((frontxApi as { trackRefresh?: unknown }).trackRefresh);
   });
 
   it('binds a copy of the config: an edit or a push the provider app makes afterwards reaches no join', async () => {
@@ -614,13 +907,6 @@ describe('auth() - the origin lists on a joined app', () => {
   it('starts no refresh for a 401 from an origin that gets no credentials', async () => {
     const refresh = vi.fn(async () => ({ kind: 'bearer', token: 'token-2' }) satisfies AuthSession);
     const joinPlugin = await joinBearerOwner(makeBearerProvider('token-1', { refresh }));
-    const make401 = (url: string) => ({
-      error: new Error('HTTP 401'),
-      request: makeReqCtx(url),
-      response: { status: 401, headers: {}, data: null },
-      retryCount: 0,
-      retry: vi.fn(async () => ({ status: 200, headers: {}, data: {} })),
-    });
 
     const foreign = make401(`${FOREIGN_ORIGIN}/x`);
     expect(await joinPlugin.onError?.(foreign)).toBe(foreign.error);
