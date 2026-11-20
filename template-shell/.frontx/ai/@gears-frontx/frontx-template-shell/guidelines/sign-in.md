@@ -131,14 +131,20 @@ provider retires at once with its settings. Every app's bus hears
 `auth/sessionCheck` at the swap and then `auth/loggedIn` (the new
 provider has a session) or `auth/loggedOut` (it has none, or its read
 failed); the old provider's session checks are cancelled and its reports go
-nowhere; it is destroyed at the swap. An old binding attaches no credentials
-and retries nothing, a request already running included, and a call on the
-old provider that ends after the swap rejects (an access check resolves to
-deny), so the default transport never retries a 401 with the old
-provider's session and never sends the new provider's credentials under the
-old origin lists (a custom binder stops in its own `destroy()`). The old
-provider object passed again is refused; the provider in use passed again
-joins it. The sign-in triggers wrap the provider the shell passed
+nowhere; it is destroyed at the swap. An old binding of the default
+transport attaches no credentials and retries nothing, a request already
+running included, so it never retries a 401 with the old provider's session
+and never sends the new provider's credentials under the old origin lists. A
+custom binder has this only from its own `destroy()`: it must stop its
+pending work there, since the framework cannot stop a binder's own hooks. A
+call on the old provider that ends after the swap rejects (an access check
+resolves to deny). The old provider object passed again is refused while the
+realm record exists, that is while any app holds the runtime: after the last
+app leaves, the record and its list of replaced providers are gone. The
+provider in use passed again joins it. A new provider passed from a callback
+of a replacement still running (an `auth/sessionCheck` listener, the
+provider's `subscribe`, a binder) is refused as well; that app builds once
+the replacement has returned. The sign-in triggers wrap the provider the shell passed
 (`wireSignInTriggers`), so a provider another app passes later carries no
 401 trigger until that app wires its own. A second `auth({ provider })`
 inside one app is not a replacement: `use()` throws.

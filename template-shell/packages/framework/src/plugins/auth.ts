@@ -164,10 +164,13 @@ export type AuthTransportBinding = {
 export type AuthTransportBinder = (args: {
   /**
    * The provider of the `auth({ provider })` this binding serves, the object
-   * itself. A binding serves one provider: when another provider replaces it,
-   * or the app leaves, `destroy()` runs and the provider is destroyed, so from
-   * then on the binding attaches no credentials and retries nothing, a request
-   * already running included. Each app is bound again for the new provider.
+   * itself. A binding serves one provider: `destroy()` runs when another
+   * provider replaces it (that provider is destroyed then) or when the app
+   * leaves (the provider lives until the last app holding it leaves). From
+   * `destroy()` on, the binding attaches no credentials and retries nothing, a
+   * request already running included: the default transport does so, a custom
+   * binder stops its own pending work in `destroy()`. Each app is bound again
+   * for the new provider.
    */
   provider: AuthProvider;
   csrfHeaderName?: string;
@@ -1134,7 +1137,7 @@ type AuthRealmRecord = {
   holders: Set<AuthRealmHolder>;
   /** The listeners added with `runtime.subscribe`, moved to each new provider. */
   listeners: Set<AuthRealmListener>;
-  /** The providers replaced in this realm, all destroyed; one passed again is refused. */
+  /** The providers replaced in this realm, all destroyed; one passed again is refused while this record exists. */
   retired: WeakSet<AuthProvider>;
   /** Set while a replacement runs, so one started from its callbacks is refused. */
   replacing?: boolean;
@@ -1594,8 +1597,9 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  * - a new provider passed from a callback of a replacement still running;
  * - a realm record of another contract version.
  * A failure in `onInit` (a binder that throws, or a new provider that throws
- * on `subscribe`) leaves the realm as it was, but the builder has already
- * counted the app as built, so that framework copy cannot build another app.
+ * on `subscribe`) leaves the realm state as it was (a hook a binder registered
+ * before it threw is not undone), but the builder has already counted the app
+ * as built, so that framework copy cannot build another app.
  * A second `auth(...)` in the same app is skipped by the builder like any
  * duplicate plugin, unless it carries a provider: that one throws from
  * `use()`, since skipping it would drop a provider without a word.
