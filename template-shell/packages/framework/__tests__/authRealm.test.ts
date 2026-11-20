@@ -15,6 +15,9 @@
  *    destroyed while a join still holds it (its auth() plugin destroys the
  *    provider right after), and the last release deletes the slot.
  * 7. The join removes its transport plugin on destroy.
+ * 8. A joined MFE follows the origin lists the host passes to auth() and
+ *    authRealm(): a bearer token goes only to allowedBearerOrigins, and a 401
+ *    from an origin that gets no credentials starts no refresh.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -417,23 +420,23 @@ describe('authRealmShared() - joining side', () => {
   });
 
   it('binds the joining transport with the whole frontxApi config the host publishes, unknown fields included', async () => {
-    // `allowedBearerOrigins` stands in for a field the type does not declare
-    // yet; the join must forward it before this copy
-    // of the type declares it, so the test publishes it through a cast. Only
-    // the test casts: the production join spreads the config as it is. The
-    // cast also carries a stray `provider` key and a stray `trackRefresh`
-    // hook, the kind of keys a config field added one day could collide
-    // with: `trackRefresh` is the one hook of the binder args the spread
-    // could hand a stray value to.
+    // `allowedExtraOrigins` stands in for a field the type does not declare:
+    // the join must forward a field the joining copy of the type does not
+    // know, so the test publishes it through a cast. Only the test casts: the
+    // production join spreads the config as it is. The cast also carries a
+    // stray `provider` key and a stray `trackRefresh` hook, the kind of keys a
+    // config field added one day could collide with: `trackRefresh` is the
+    // one hook of the binder args the spread could hand a stray value to.
     const frontxApi = {
       allowedCookieOrigins: ['https://a.example'],
       csrfHeaderName: 'X-CSRF',
       allowedBearerOrigins: ['https://api.example'],
+      allowedExtraOrigins: ['https://extra.example'],
       provider: 'stray-provider-key',
       trackRefresh: () => async () => undefined,
     } as Hai3ApiAuthTransportConfig;
     // The captured args are read back with the same test-only extra field.
-    type CapturedBinderArgs = Parameters<AuthTransportBinder>[0] & { allowedBearerOrigins?: string[] };
+    type CapturedBinderArgs = Parameters<AuthTransportBinder>[0] & { allowedExtraOrigins?: string[] };
     const binderArgs: CapturedBinderArgs[] = [];
     const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
       binderArgs.push(args);
@@ -451,12 +454,13 @@ describe('authRealmShared() - joining side', () => {
     joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
 
     // The join bound the host's binder with the host's config whole: all
-    // three fields, the one the type does not know included, unchanged.
+    // four fields, the one the type does not know included, unchanged.
     expect(transport).toHaveBeenCalledTimes(2);
     const joinArgs = binderArgs[1];
     expect(joinArgs?.allowedCookieOrigins).toEqual(['https://a.example']);
     expect(joinArgs?.csrfHeaderName).toBe('X-CSRF');
     expect(joinArgs?.allowedBearerOrigins).toEqual(['https://api.example']);
+    expect(joinArgs?.allowedExtraOrigins).toEqual(['https://extra.example']);
     // The stray `provider` key of the published config must not replace the
     // provider the join binds: the binder receives the tracked provider of
     // the shared runtime, not the stray value, so the session it resolves is
@@ -712,6 +716,84 @@ describe('authRealmShared() - joining side', () => {
     // provider answers with the host's session.
     expect(transport).toHaveBeenCalledTimes(2);
     expect(await bound[1]?.getSession()).toBe(custom);
+  });
+});
+
+describe('authRealmShared() - the host origin lists on a joined MFE', () => {
+  const API_ORIGIN = 'https://api.example.com';
+  const COOKIE_ONLY_ORIGIN = 'https://cookies.example.com';
+  const FOREIGN_ORIGIN = 'https://foreign.example.com';
+
+  /**
+   * Builds the host the way a project does, with the same `frontxApi` passed
+   * to `auth()` and to `authRealm()`, joins it with `authRealmShared()`, and
+   * returns the transport plugin the join registered. The host lists the API
+   * origin for bearer tokens and a second origin for cookies only.
+   */
+  async function joinBearerHost(provider: AuthProvider): Promise<AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>> {
+    const frontxApi: Hai3ApiAuthTransportConfig = {
+      allowedBearerOrigins: [API_ORIGIN],
+      allowedCookieOrigins: [COOKIE_ONLY_ORIGIN],
+    };
+    const hostGraph = await loadGraph();
+    hostGraph
+      .createFrontX()
+      .use(hostGraph.auth({ provider, frontxApi }))
+      .use(hostGraph.authRealm({ frontxApi }))
+      .build();
+
+    // The api singleton is shared by every graph of this file, so the host
+    // auth() transport is registered here too. Diff the list around the join
+    // to pin down the plugin the join added.
+    const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+    const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeJoin.includes(plugin));
+    expect(joinPlugin).toBeDefined();
+    return joinPlugin as AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
+  }
+
+  it('sends no bearer token to an origin outside allowedBearerOrigins', async () => {
+    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1'));
+
+    for (const url of [`${FOREIGN_ORIGIN}/accounts/me`, `${COOKIE_ONLY_ORIGIN}/accounts/me`]) {
+      const ctx = (await joinPlugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+      expect(ctx.headers.Authorization).toBeUndefined();
+    }
+  });
+
+  it('sends the bearer token to an origin listed in allowedBearerOrigins', async () => {
+    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1'));
+
+    const ctx = (await joinPlugin.onRequest?.(makeReqCtx(`${API_ORIGIN}/accounts/me`))) as RestRequestContext;
+
+    expect(ctx.headers.Authorization).toBe('Bearer token-1');
+  });
+
+  it('starts no refresh for a 401 from an origin that gets no credentials', async () => {
+    const refresh = vi.fn(async () => ({ kind: 'bearer', token: 'token-2' }) satisfies AuthSession);
+    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1', { refresh }));
+    const make401 = (url: string) => ({
+      error: new Error('HTTP 401'),
+      request: makeReqCtx(url),
+      response: { status: 401, headers: {}, data: null },
+      retryCount: 0,
+      retry: vi.fn(async () => ({ status: 200, headers: {}, data: {} })),
+    });
+
+    const foreign = make401(`${FOREIGN_ORIGIN}/accounts/me`);
+    const result = await joinPlugin.onError?.(foreign);
+
+    expect(result).toBe(foreign.error);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(foreign.retry).not.toHaveBeenCalled();
+
+    // The same 401 from the listed API origin does refresh, so the join's
+    // error hook is live and only the origin kept the foreign one out.
+    const listed = make401(`${API_ORIGIN}/accounts/me`);
+    await joinPlugin.onError?.(listed);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(listed.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-2' } });
   });
 });
 
