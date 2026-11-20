@@ -27,6 +27,7 @@ import {
   buildSignInChain,
   buildSignInUnmountChain,
   invalidateRejectedSession,
+  readOnProviderInUse,
   readSessionCredentials,
 } from './signIn';
 
@@ -219,14 +220,15 @@ async function checkSessionAtStart(app: FrontXApp, addressNamedSignIn: boolean):
       if (addressNamedSignIn) await removeSignInEntryAtStart(app);
       return;
     }
-    // Wrapped in `Promise.resolve().then`, so a check that throws
+    // Run through `readOnProviderInUse`, so a check that throws
     // synchronously reaches this rejection handler too: the runtime's
     // `checkAuth` is a plain pass-through, and an unwrapped call would throw
     // out of this try and land in the bootstrap warning below, with the
-    // entry the address named left in place.
+    // entry the address named left in place. A check that crossed a
+    // provider replacement is asked once more of the provider in use, since
+    // the replaced one's answer belongs to no current session.
     const auth = app.auth;
-    const result = await Promise.resolve()
-      .then(() => auth.checkAuth())
+    const result = await readOnProviderInUse(auth, () => auth.checkAuth())
       .catch((error: unknown) => {
       // A check that cannot answer says nothing about the session. Nothing
       // here sets the once-guard, so a later 401 can still send the chain.

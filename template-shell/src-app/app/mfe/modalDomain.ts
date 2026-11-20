@@ -41,6 +41,7 @@ import {
   buildSignInUnmountChain,
   credentialSnapshotDiscriminates,
   isRejectedSession,
+  readOnProviderInUse,
   SIGN_IN_ACTION_TIMEOUT_MS,
   SIGN_IN_EXTENSION_ID,
 } from '@/app/auth/signIn';
@@ -262,13 +263,16 @@ class ModalDomainImpl extends ExtensionDomainImplementation {
         // instead of failing the action the mediator would then fall back
         // from. The first read is announced by nothing, so its failure
         // stays the action's own failure.
-        // Wrapped in `Promise.resolve().then`, so a provider whose
+        // Run through `readOnProviderInUse`, so a provider whose
         // `getSession` throws synchronously reaches the same rejection
         // handler a rejected read reaches: the runtime's `getSession` is a
         // plain passthrough, and an unwrapped call would throw out of the
-        // loop and fail the action where a rejection would keep waiting.
-        const read = Promise.resolve()
-          .then(() => auth.getSession())
+        // loop and fail the action where a rejection would keep waiting. A
+        // read that crossed a provider replacement is made once more on the
+        // provider in use, inside the same race with the bound, so the
+        // first read's failure is the action's own only when the provider
+        // in use failed it.
+        const read = readOnProviderInUse(auth, () => auth.getSession())
           .then(
             (session) => ({ session }),
             (error: unknown) => {

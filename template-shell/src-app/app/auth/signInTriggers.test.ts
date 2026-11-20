@@ -305,6 +305,30 @@ describe('wireSignInTriggers', () => {
     expect(executeActionsChain).not.toHaveBeenCalled();
   });
 
+  it('a start-up check that crossed a provider replacement is asked once more of the provider in use', async () => {
+    // The realm runtime rejects every outcome of a replaced provider, and
+    // `app.auth.provider` names the provider in use; the double plays both.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const providerA = stubProvider();
+    let failOnA!: (error: unknown) => void;
+    const checkAuth = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { failOnA = reject; }))
+      .mockResolvedValue({ authenticated: false });
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+    const auth = app.auth as unknown as { provider: AuthProvider };
+    auth.provider = providerA;
+
+    wireSignInTriggers(app, providerA);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+    auth.provider = stubProvider();
+    failOnA(new Error('the provider this call started on was replaced'));
+
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    expect(checkAuth).toHaveBeenCalledTimes(2);
+  });
+
   it('a start-up check that rejects removes the entry the address named, and a later 401 still opens sign-in', async () => {
     // The entry the address names mounts a modal whose only closer is the
     // sign_in the chain holds. When the check rejects it sends no chain, so

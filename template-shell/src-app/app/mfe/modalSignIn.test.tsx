@@ -818,6 +818,49 @@ describe('the sign-in chain through the real runtime', () => {
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
 
+  it('a first session read that crossed a provider replacement reads the provider in use and ends the wait', async () => {
+    // The first read starts on A and ends after B replaced it: the realm
+    // rejects A's answer, and the wait asks B once, inside the same bound,
+    // instead of failing the action.
+    const { provider } = stubAuthProvider();
+    let finishOnA: (() => void) | undefined;
+    const baseGetSession = provider.getSession.bind(provider);
+    provider.getSession = () => {
+      if (finishOnA) return baseGetSession();
+      return new Promise((resolve) => {
+        finishOnA = () => resolve(null);
+      });
+    };
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { buildSignInChain } = await import('@/app/auth/signIn');
+    await renderContainer(built.react, built.app);
+    await act(async () => {});
+
+    act(() => {
+      registry?.executeActionsChain(buildSignInChain());
+    });
+    await screen.findByRole('dialog', { name: 'Sign in' });
+    await waitFor(() => expect(finishOnA).toBeDefined());
+
+    // B comes from another app with its own framework copy, as a microfrontend's would.
+    const providerB = stubAuthProvider();
+    providerB.state.session = { kind: 'bearer', token: 'signed-in-on-b' };
+    vi.resetModules();
+    const reactB = await import('@gears-frontx/react');
+    const appB = reactB.createFrontX().use(reactB.auth({ provider: providerB.provider })).build();
+    try {
+      await act(async () => {
+        finishOnA?.();
+      });
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    } finally {
+      appB.destroy();
+    }
+  });
+
   it('a session read that throws synchronously after an announcement keeps the wait alive', async () => {
     // `app.auth.getSession` passes through to the provider, and a provider
     // whose `getSession` throws synchronously must reach the same handler

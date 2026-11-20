@@ -261,3 +261,20 @@ export function invalidateRejectedSession(credentials: string | null | undefined
   if (typeof credentials !== 'string') return;
   rejectedSession = credentials;
 }
+
+/**
+ * Runs one session read through `auth`; when it fails because the session
+ * provider was replaced while it ran (the realm rejects every outcome of a
+ * replaced provider, and `auth.provider` is then another object than when the
+ * read started), runs it once more against the provider in use. A read that
+ * throws synchronously is handled as a rejection.
+ */
+export function readOnProviderInUse<T>(auth: AuthRuntime, read: () => Promise<T>): Promise<T> {
+  const provider = auth.provider;
+  return Promise.resolve()
+    .then(read)
+    .catch((error: unknown) => {
+      if (auth.provider === provider) throw error;
+      return read();
+    });
+}
