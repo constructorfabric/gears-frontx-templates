@@ -556,10 +556,9 @@ describe('auth plugin', () => {
       const app = createFrontX().use(auth({ provider, transport: customBinder })).build();
 
       expect(customBinder).toHaveBeenCalledTimes(1);
-      // The binder gets the realm's view of the provider in use, which forwards to it.
+      // The binder gets the provider itself.
       const [{ provider: bound }] = vi.mocked(customBinder).mock.calls[0];
-      await bound.getSession();
-      expect(provider.getSession).toHaveBeenCalledTimes(1);
+      expect(bound).toBe(provider);
 
       app.destroy();
     });

@@ -163,9 +163,11 @@ export type AuthTransportBinding = {
 
 export type AuthTransportBinder = (args: {
   /**
-   * The realm's view of the provider in use, not the object passed to
-   * `auth({ provider })`: each member is read off the provider in use when it
-   * is read, so the binding follows a replacement. Compare members, not identity.
+   * The provider of the `auth({ provider })` this binding serves, the object
+   * itself. A binding serves one provider: when another provider replaces it,
+   * or the app leaves, `destroy()` runs and the provider is destroyed, so from
+   * then on the binding attaches no credentials and retries nothing, a request
+   * already running included. Each app is bound again for the new provider.
    */
   provider: AuthProvider;
   csrfHeaderName?: string;
@@ -628,6 +630,8 @@ class AuthRestPlugin extends RestPlugin {
   /** Refreshes started since the last 2xx response, and when the last one started. */
   private refreshesWithoutSuccess = 0;
   private lastRefreshAt = 0;
+  /** Set when the binding is destroyed: from then on, a request already running included, no credentials and no retry. */
+  private retired = false;
 
   constructor(
     private readonly config: AuthPluginConfig,
@@ -636,9 +640,14 @@ class AuthRestPlugin extends RestPlugin {
     super();
   }
 
+  retire(): void {
+    this.retired = true;
+  }
+
   async onRequest(ctx: RestRequestContext): Promise<RestRequestContext> {
+    if (this.retired) return ctx;
     const session = await this.config.provider.getSession({ signal: ctx.signal });
-    if (!session) return ctx;
+    if (!session || this.retired) return ctx;
 
     if (session.kind === 'cookie') {
       if (!shouldIncludeCredentials(ctx.url, this.config.frontxApi?.allowedCookieOrigins)) return ctx;
@@ -701,6 +710,7 @@ class AuthRestPlugin extends RestPlugin {
   }
 
   async onError(ctx: ApiPluginErrorContext): Promise<Error | RestResponseContext> {
+    if (this.retired) return ctx.error;
     const credentialed = this.reachesCredentialedOrigin(ctx.request.url);
     // Notify provider of every transport error (informational; called before retry decisions).
     // `credentialed` is false for a request to an origin outside the app's own and both lists,
@@ -745,7 +755,8 @@ class AuthRestPlugin extends RestPlugin {
       return ctx.error;
     }
     await flight.reported;
-    if (!refreshed) return ctx.error;
+    // The provider may have been replaced while the refresh or its report ran: its session is no one's now.
+    if (!refreshed || this.retired) return ctx.error;
 
     if (refreshed.kind === 'bearer') {
       if (!refreshed.token) return ctx.error;
@@ -807,6 +818,7 @@ export function frontxApiTransport(): AuthTransportBinder {
     args.addRestPlugin(restPlugin);
     return {
       destroy: () => {
+        restPlugin.retire();
         args.removeRestPlugin(AuthRestPlugin);
       },
     };
@@ -1070,15 +1082,17 @@ const DUPLICATE_PLUGIN_CLEANUP_SYMBOL = Symbol.for('frontx:plugin:duplicate-clea
 type AuthRealmHolder = {
   /** Re-emits an `AuthEvents` name on the app's own eventBus. */
   emit: (event: AuthEventName) => void;
-  /** Binds the app's REST transport with the transport settings of `generation`, replacing its earlier binding. */
+  /** Binds the app's REST transport for `generation` alone, replacing its earlier binding. */
   bind: (generation: AuthGeneration) => void;
   /** Removes the app's REST transport. */
   unbind: () => void;
 };
 
 /**
- * One provider's time in the realm: from the app that passed it until another
- * provider replaces it or the last holder leaves.
+ * One provider's lifetime in the realm: the provider and everything that
+ * authorises its credentials (its `frontxApi` config and custom binder), from
+ * the app that passed it until another provider replaces it or the last
+ * holder leaves. They are retired together, at once.
  */
 type AuthGeneration = {
   provider: AuthProvider;
@@ -1094,14 +1108,9 @@ type AuthGeneration = {
    * `announce`, the baseline itself emits.
    */
   start: (holders: ReadonlySet<AuthRealmHolder>, announce: boolean) => void;
-  /** Runs one call against the provider; the provider is not destroyed while a call runs. */
-  run: <T>(call: () => T) => T;
   /** The `trackRefresh` of `AuthTransportBinder`, reporting to this provider's session tracker. */
   trackRefresh: () => RefreshReport;
-  /**
-   * Stops the session tracking and, with `destroyProvider`, destroys the
-   * provider once no call started against it is still running.
-   */
+  /** Stops the session tracking and, with `destroyProvider`, destroys the provider at once. */
   retire: (destroyProvider: boolean) => void;
 };
 
@@ -1110,7 +1119,7 @@ type AuthGeneration = {
  * realm. Nothing in it says which app that was: the shell and a
  * microfrontend publish the same record, and every app, the publishing one
  * included, holds it the same way. A later provider replaces `current` in
- * the same record, so the apps that hold it follow without a step of their own.
+ * the same record, and every holder is bound again for it.
  */
 type AuthRealmRecord = {
   version: number;
@@ -1125,6 +1134,8 @@ type AuthRealmRecord = {
   holders: Set<AuthRealmHolder>;
   /** The listeners added with `runtime.subscribe`, moved to each new provider. */
   listeners: Set<AuthRealmListener>;
+  /** The providers replaced in this realm, all destroyed; one passed again is refused. */
+  retired: WeakSet<AuthProvider>;
 };
 
 /** A listener added with the realm runtime's `subscribe`, and its subscription on the provider in use. */
@@ -1155,6 +1166,10 @@ const REPLACED_PROVIDER_ERROR =
   '[Gears FrontX] The session provider this call started on was replaced before the call ended, ' +
   'so its result belongs to no current session. Call again: app.auth uses the new provider.';
 
+const RETIRED_PROVIDER_ERROR =
+  '[Gears FrontX] auth({ provider }) got a provider that another provider replaced in this realm, ' +
+  'so it was destroyed. Pass a new provider object, or auth() to join the provider in use.';
+
 /** The members of `AuthRuntime` that call the provider. */
 const RUNTIME_CALLS = [
   'getSession',
@@ -1171,20 +1186,42 @@ const RUNTIME_CALLS = [
   'evaluateMany',
 ] as const;
 
+const REPLACED_EVALUATION: AccessEvaluation = { decision: 'deny', reason: 'provider_error' };
+
+/** What an access check that ends after its provider was replaced resolves to: they never reject. */
+const REPLACED_ACCESS: Partial<Record<string, (input: unknown) => unknown>> = {
+  canAccess: () => 'deny',
+  canAccessMany: (queries) => (queries as unknown[]).map(() => 'deny'),
+  evaluateAccess: () => REPLACED_EVALUATION,
+  evaluateMany: (queries) => (queries as unknown[]).map(() => REPLACED_EVALUATION),
+};
+
 /**
- * The calls whose result is a session. One that ends after its provider was
- * replaced rejects instead: the old provider's session must not reach a
- * retry or a caller as if it were the realm's.
+ * Runs one step of a replacement or a teardown that must not stop the steps
+ * after it (a provider's `unsubscribe` or `destroy()`, an app's listener); a
+ * throw is logged.
  */
-const SESSION_RESULT_CALLS: ReadonlySet<string> = new Set(['login', 'handleCallback', 'refresh']);
+function guarded(step: string, run: () => unknown): void {
+  try {
+    const result = run();
+    if (result && typeof result === 'object' && 'catch' in result) {
+      void (result as Promise<unknown>).catch(() => undefined);
+    }
+  } catch (error) {
+    console.error(`[Gears FrontX] ${step} threw`, error);
+  }
+}
 
 /**
  * The runtime of the realm: one object every app provides as `app.auth`. Each
  * member reads the provider in use when it is read or called, so an app keeps
- * no reference to a provider and follows a replacement at once. A member the
- * provider lacks reads as `undefined`, as on a runtime built around that
- * provider alone. A member may be assigned, as a wrap installed after the
- * build; the assigned value then stays for every provider that follows.
+ * no reference to a provider and follows a replacement at once. A call that
+ * ends after its provider was replaced rejects with `REPLACED_PROVIDER_ERROR`
+ * (an access check resolves to deny), since its provider is destroyed and its
+ * result belongs to no current session. A member the provider lacks reads as
+ * `undefined`, as on a runtime built around that provider alone. A member may
+ * be assigned, as a wrap installed after the build; the assigned value then
+ * stays for every provider that follows.
  */
 function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'>): AuthRuntime {
   const runtime = {} as AuthRuntime;
@@ -1202,18 +1239,18 @@ function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'
   define('provider', () => realm.current.provider);
   define('capabilities', () => realm.current.runtime.capabilities);
   for (const key of RUNTIME_CALLS) {
-    const call = (...args: unknown[]): unknown => {
+    const call = (...args: unknown[]): Promise<unknown> => {
       const generation = realm.current;
       const member = generation.runtime[key] as ((...callArgs: unknown[]) => unknown) | undefined;
       if (!member) {
         // Reached only through a wrap assigned for an earlier provider that had this member.
         return Promise.reject(new Error(`[Gears FrontX] The session provider in use has no ${key}().`));
       }
-      const result = generation.run(() => member(...args));
-      if (!SESSION_RESULT_CALLS.has(key)) return result;
-      return (result as Promise<unknown>).then((value) => {
-        if (realm.current !== generation) throw new Error(REPLACED_PROVIDER_ERROR);
-        return value;
+      return Promise.resolve(member(...args)).then((value) => {
+        if (realm.current === generation) return value;
+        const replaced = REPLACED_ACCESS[key];
+        if (replaced) return replaced(args[0]);
+        throw new Error(REPLACED_PROVIDER_ERROR);
       });
     };
     define(key, () => (realm.current.runtime[key] ? call : undefined));
@@ -1231,47 +1268,6 @@ function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'
   return runtime;
 }
 
-/**
- * The provider an app binds its transport to. It keeps no provider of its
- * own: each member is read off the provider in use when the transport reads
- * it, bound to it and counted as a call against it, so hooks installed on the
- * provider after its build (`onTransportError`, a wrapped `refresh`) keep
- * working and a replacement reaches the transport at once. A refresh that
- * ends after its provider was replaced rejects, so the transport never
- * retries with the old provider's session.
- *
- * The Proxy wraps a separate, empty facade object, never the provider itself:
- * a Proxy must report a non-configurable, non-writable property of its target
- * unchanged, so wrapping a frozen provider would throw on every member this
- * handler replaces with a bound function.
- */
-function realmProvider(record: AuthRealmRecord): AuthProvider {
-  const read = (key: PropertyKey): unknown => {
-    const generation = record.current;
-    const provider = generation.provider;
-    const value: unknown = Reflect.get(provider, key, provider);
-    if (typeof value !== 'function') return value;
-    return (...args: unknown[]) => {
-      const result = generation.run(() => (value as (...a: unknown[]) => unknown).apply(provider, args));
-      if (key !== 'refresh') return result;
-      return (result as Promise<unknown>).then((session) => {
-        if (record.current !== generation) throw new Error(REPLACED_PROVIDER_ERROR);
-        return session;
-      });
-    };
-  };
-  return new Proxy({} as AuthProvider, {
-    get: (_facade, key) => read(key),
-    has: (_facade, key) => Reflect.has(record.current.provider, key),
-    // A binder that spreads, copies or lists the provider sees the members of the provider in use.
-    ownKeys: () => Reflect.ownKeys(record.current.provider),
-    getOwnPropertyDescriptor: (_facade, key) =>
-      Reflect.has(record.current.provider, key)
-        ? { configurable: true, enumerable: true, writable: false, value: read(key) }
-        : undefined,
-  });
-}
-
 /** A copy of the `frontxApi` config one level deep, so a later edit by the caller reaches no app. */
 function copyTransportConfig(
   config: Hai3ApiAuthTransportConfig | undefined,
@@ -1282,9 +1278,8 @@ function copyTransportConfig(
   ) as Hai3ApiAuthTransportConfig;
 }
 
-/** The hold of `app` on `record`, with this framework copy's eventBus and REST transport. */
-function createHolder(app: FrontXApp, record: AuthRealmRecord): AuthRealmHolder {
-  const provider = realmProvider(record);
+/** The hold of `app` on the realm, with this framework copy's eventBus and REST transport. */
+function createHolder(app: FrontXApp): AuthRealmHolder {
   let binding: AuthTransportBinding | null = null;
   const unbind = () => {
     binding?.destroy();
@@ -1295,16 +1290,16 @@ function createHolder(app: FrontXApp, record: AuthRealmRecord): AuthRealmHolder 
     unbind,
     bind(generation) {
       unbind();
-      // The published config is spread whole and first, so a field this copy
-      // of the framework does not know yet still reaches the binder, while a
-      // stray key can never replace the provider or one of the hooks written
-      // after it. A refresh reports to the tracker of the provider in use when
-      // it starts.
+      // The binding serves this provider alone: its provider, its config and
+      // its tracker. The published config is spread whole and first, so a field
+      // this copy of the framework does not know yet still reaches the binder,
+      // while a stray key can never replace the provider or one of the hooks
+      // written after it.
       const transport = generation.transport ?? frontxApiTransport();
       binding = transport({
         ...generation.transportConfig,
-        provider,
-        trackRefresh: () => record.current.trackRefresh(),
+        provider: generation.provider,
+        trackRefresh: generation.trackRefresh,
         addRestPlugin: (restPlugin) => app.apiRegistry.plugins.add(RestProtocol, restPlugin),
         removeRestPlugin: (pluginClass) => app.apiRegistry.plugins.remove(RestProtocol, pluginClass),
       });
@@ -1314,12 +1309,12 @@ function createHolder(app: FrontXApp, record: AuthRealmRecord): AuthRealmHolder 
 
 /**
  * Takes the hold of `app` on `record`: `app.auth` becomes the realm's runtime
- * and the app's transport is bound with the settings of `generation`. A
- * build that throws returns no app anyone could destroy, so a binding that
- * throws gives the hold back before the error goes on.
+ * and the app's transport is bound for `generation`. A build that throws
+ * returns no app anyone could destroy, so a binding that throws gives the
+ * hold back before the error goes on.
  */
 function holdAuthRealm(app: FrontXApp, record: AuthRealmRecord, generation: AuthGeneration): AuthRealmHolder {
-  const holder = createHolder(app, record);
+  const holder = createHolder(app);
   record.holders.add(holder);
   app.auth = record.runtime;
   try {
@@ -1343,30 +1338,42 @@ function releaseAuthRealm(record: AuthRealmRecord, holder: AuthRealmHolder): voi
 
 /**
  * Puts `next` in place of the provider in use; `bound` is the app that passed
- * it, already bound to it. Every holder follows at once,
- * since none keeps a provider of its own: its listeners move, its transport
- * is bound again with the new settings, its bus hears `SessionCheck` at once and
- * `LoggedIn` or `LoggedOut` once the new provider's baseline lands. The old
- * provider's tracking stops here, which cancels its running session checks;
- * the old provider itself is destroyed once the last call started against it
- * has settled.
+ * it, already bound to it. The old provider and everything that authorised its
+ * credentials retire at once: its tracking stops, which cancels its running
+ * session checks, it is destroyed, and every other holder's transport is bound
+ * again for `next` alone, so an old binding attaches nothing and retries
+ * nothing. Every bus hears `SessionCheck` at once and `LoggedIn` or
+ * `LoggedOut` once the new provider's baseline lands.
  */
 function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, bound: AuthRealmHolder): void {
   // The steps that call the new provider and may throw run first: a throw
   // leaves the provider in use, its listeners and its tracking as they were.
+  // What the new provider tells a moved listener before the commit waits for
+  // it, so a rollback leaves nothing an app has heard.
+  let committed = false;
+  const held: Array<() => void> = [];
   const moved: Array<[AuthRealmListener, AuthUnsubscribe | null]> = [];
   try {
-    for (const entry of record.listeners) moved.push([entry, next.provider.subscribe?.(entry.listener) ?? null]);
+    for (const entry of record.listeners) {
+      const { listener } = entry;
+      const relay: AuthStateListener = (event) => {
+        if (committed) listener(event);
+        else held.push(() => listener(event));
+      };
+      moved.push([entry, next.provider.subscribe?.(relay) ?? null]);
+    }
     next.start(record.holders, true);
   } catch (error) {
-    for (const [, unsubscribe] of moved) unsubscribe?.();
+    for (const [, unsubscribe] of moved) guarded("The new session provider's unsubscribe", () => unsubscribe?.());
     next.retire(false);
     throw error;
   }
   const previous = record.current;
   record.current = next;
+  record.retired.add(previous.provider);
   for (const [entry, unsubscribe] of moved) {
-    entry.unsubscribe?.();
+    const earlier = entry.unsubscribe;
+    guarded("The replaced session provider's unsubscribe", () => earlier?.());
     entry.unsubscribe = unsubscribe;
   }
   previous.retire(true);
@@ -1380,6 +1387,9 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
       console.error('[Gears FrontX] An app of the realm could not bind its transport to the new session provider', error);
     }
   }
+  committed = true;
+  // The swap is committed: a listener that throws must not undo the replacing app's hold.
+  for (const deliver of held) guarded('An app.auth.subscribe listener', deliver);
 }
 
 /** Builds the generation of one provider: its runtime and its session tracking. */
@@ -1391,23 +1401,7 @@ function createGeneration(config: AuthPluginConfig): AuthGeneration {
   });
   let unsubscribe: AuthUnsubscribe | null = null;
   const refresh = config.provider.refresh?.bind(config.provider);
-  let pending = 0;
   let retired = false;
-  let destroyProvider = false;
-  let destroyed = false;
-
-  const destroyIfIdle = () => {
-    if (!destroyProvider || destroyed || pending > 0) return;
-    destroyed = true;
-    const providerDestroyResult = config.provider.destroy?.();
-    if (providerDestroyResult && typeof providerDestroyResult === 'object' && 'catch' in providerDestroyResult) {
-      void providerDestroyResult.catch(() => undefined);
-    }
-  };
-  const settle = () => {
-    pending -= 1;
-    destroyIfIdle();
-  };
 
   const runtime: AuthRuntime = {
     provider: config.provider,
@@ -1496,30 +1490,6 @@ function createGeneration(config: AuthPluginConfig): AuthGeneration {
         }
       }) ?? null;
     },
-    run<T>(call: () => T): T {
-      pending += 1;
-      let result: T;
-      try {
-        result = call();
-      } catch (error) {
-        settle();
-        throw error;
-      }
-      if (result && typeof (result as { then?: unknown }).then === 'function') {
-        return (result as unknown as Promise<unknown>).then(
-          (value) => {
-            settle();
-            return value;
-          },
-          (error: unknown) => {
-            settle();
-            throw error;
-          },
-        ) as T;
-      }
-      settle();
-      return result;
-    },
     trackRefresh() {
       const current = session.ticket();
       return async (outcome) => {
@@ -1530,11 +1500,11 @@ function createGeneration(config: AuthPluginConfig): AuthGeneration {
     retire(destroy) {
       if (retired) return;
       retired = true;
-      unsubscribe?.();
+      const cancel = unsubscribe;
       unsubscribe = null;
+      guarded("The session provider's unsubscribe", () => cancel?.());
       session.stop();
-      destroyProvider = destroy;
-      destroyIfIdle();
+      if (destroy) guarded("The session provider's destroy()", () => config.provider.destroy?.());
     },
   };
 }
@@ -1561,19 +1531,27 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  *   it is destroyed, not until the app that passed it is.
  *
  * The provider in use passed again by another app is a join, not a
- * replacement. A provider passed while another is in use replaces it. No app keeps a
- * provider of its own, so every app follows: its bus hears
+ * replacement. A provider passed while another is in use replaces it for
+ * every app of the page, the shell included, with its own `frontxApi` and
+ * binder: credentials and the policy that authorises them belong to one
+ * provider. Every app follows: its bus hears
  * `AuthEvents.SessionCheck` at once and `LoggedIn` (a session) or
  * `LoggedOut` (none, or the read failed) once the new provider's baseline
- * read lands. The old provider's session tracking stops, which cancels its
- * running session checks, and the old provider is destroyed once the last
- * call started against it has settled. A login, callback or refresh that
- * ends after the swap rejects instead of returning the old provider's session.
+ * read lands. The old provider retires at once: its session tracking stops,
+ * which cancels its running session checks, it is destroyed, and every app's
+ * transport is bound again for the new provider, so an old binding attaches
+ * no credentials and retries nothing, a request already running included. A
+ * call on the old provider that ends after the swap rejects (an access check
+ * resolves to deny).
  *
  * Refusals, all before any plugin's `onInit` runs, so a refused build starts
- * no transport, tracker or subscription:
+ * no transport, tracker or subscription and the runtime may build again:
  * - a join when no app has passed a provider;
+ * - a provider that another provider replaced in this realm (it is destroyed);
  * - a realm record of another contract version.
+ * A failure in `onInit` (a binder that throws, or a new provider that throws
+ * on `subscribe`) leaves the realm as it was, but the builder has already
+ * counted the app as built, so that framework copy cannot build another app.
  * A second `auth(...)` in the same app is skipped by the builder like any
  * duplicate plugin, unless it carries a provider: that one throws from
  * `use()`, since skipping it would drop a provider without a word.
@@ -1607,7 +1585,7 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
       );
     },
     onRegister() {
-      readAuthRealm();
+      if (readAuthRealm()?.retired.has(config.provider)) throw new Error(RETIRED_PROVIDER_ERROR);
     },
     onInit(app) {
       const found = readAuthRealm();
@@ -1637,6 +1615,7 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
         current: generation,
         holders: new Set(),
         listeners: new Set(),
+        retired: new WeakSet(),
       };
       published.runtime = createRealmRuntime(published);
       const held = holdAuthRealm(app, published, generation);

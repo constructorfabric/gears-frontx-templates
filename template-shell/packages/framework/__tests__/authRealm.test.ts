@@ -47,6 +47,11 @@ type RealmRecordView = {
   holders: Set<unknown>;
 };
 
+/** The auth transport plugins registered now; each app's binding changes at a replacement. */
+function registered(): Array<AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>> {
+  return apiRegistry.plugins.getAll(RestProtocol) as Array<AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>>;
+}
+
 type RealmHost = typeof globalThis & { [AUTH_REALM_SYMBOL]?: unknown };
 
 function peekRealm(): RealmRecordView | undefined {
@@ -235,13 +240,19 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(appA.auth?.provider).toBe(providerB);
     expect(peekRealm()?.current.provider).toBe(providerB);
     expect(peekRealm()?.holders.size).toBe(3);
-    // A's tracking stopped and, with no call of its own still running, A is destroyed at the swap.
+    // A's tracking stopped and A is destroyed at the swap.
     expect(unsubscribeA).toHaveBeenCalledTimes(1);
     expect(destroyA).toHaveBeenCalledTimes(1);
     expect(subscribeB).toHaveBeenCalledTimes(1);
-    // The join's transport follows without a step of its own.
-    const ctx = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
-    expect(ctx.headers.Authorization).toBe('Bearer token-b');
+    // The join's old binding attaches nothing; every app is bound again for B.
+    const old = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+    expect(old.headers.Authorization).toBeUndefined();
+    expect(registered()).toHaveLength(3);
+    expect(registered()).not.toContain(joinPlugin);
+    for (const plugin of registered()) {
+      const ctx = (await plugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+      expect(ctx.headers.Authorization).toBe('Bearer token-b');
+    }
     expect(providerA.getSession).not.toHaveBeenCalled();
   });
 
@@ -289,25 +300,29 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(heard).toEqual(['sessionCheck', 'loggedOut']);
   });
 
-  it('destroys the old provider only once the last call started against it has settled', async () => {
+  it('destroys the old provider at the swap; a call still running on it rejects, an access check denies', async () => {
     const destroyA = vi.fn();
-    let answerA!: (session: AuthSession) => void;
+    const answersA: Array<(session: AuthSession) => void> = [];
     const providerA = makeBearerProvider('token-a', {
       destroy: destroyA,
-      getSession: vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; })),
+      getSession: vi.fn(() => new Promise<AuthSession>((resolve) => { answersA.push(resolve); })),
+      canAccess: vi.fn().mockResolvedValue('allow'),
     });
     const graphA = await loadGraph();
     const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
     const reading = appA.auth!.getSession();
+    // The access check reads the session first, so it is still running at the swap.
+    const checking = appA.auth!.canAccess({ action: 'read', resource: 'doc' });
+    await vi.waitFor(() => expect(answersA).toHaveLength(2));
 
     const graphB = await loadGraph();
     graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
-    expect(destroyA).not.toHaveBeenCalled();
-
-    // A read settles against the provider it started on.
-    answerA({ kind: 'bearer', token: 'token-a' });
-    await expect(reading).resolves.toEqual({ kind: 'bearer', token: 'token-a' });
     expect(destroyA).toHaveBeenCalledTimes(1);
+
+    // A's answers land after the swap: they belong to no current session.
+    for (const answer of answersA) answer({ kind: 'bearer', token: 'token-a' });
+    await expect(reading).rejects.toThrow(/was replaced before the call ended/);
+    await expect(checking).resolves.toBe('deny');
     // A call started after the swap goes to the new provider.
     await expect(appA.auth!.getSession()).resolves.toEqual({ kind: 'bearer', token: 'token-b' });
   });
@@ -331,25 +346,35 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(heard).toEqual(['sessionCheck', 'loggedOut']);
   });
 
-  it('does not retry a 401 with a refresh that ended after the swap', async () => {
+  it('does not retry a 401 under the old origin list with a refresh that ended after the swap', async () => {
+    // A lists the origin of the 401 for bearer tokens, B does not.
+    const oldOnly = 'https://old-only.example.com';
     let answerA!: (session: AuthSession) => void;
     const refreshA = vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; }));
+    const refreshB = vi.fn(async () => ({ kind: 'bearer', token: 'token-b2' }) satisfies AuthSession);
     const graphA = await loadGraph();
-    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a', { refresh: refreshA }) })).build();
+    graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('token-a', { refresh: refreshA }),
+      frontxApi: { allowedBearerOrigins: [oldOnly] },
+    })).build();
     const joinPlugin = await joinAndFindTransport();
-    const errCtx = make401('/accounts/me');
+    const errCtx = make401(`${oldOnly}/x`);
     const failing = joinPlugin.onError?.(errCtx);
     await vi.waitFor(() => expect(refreshA).toHaveBeenCalledTimes(1));
 
     const graphB = await loadGraph();
-    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+    graphB.createFrontX().use(graphB.auth({
+      provider: makeBearerProvider('token-b', { refresh: refreshB }),
+      frontxApi: { allowedBearerOrigins: ['https://new-only.example.com'] },
+    })).build();
     answerA({ kind: 'bearer', token: 'token-a2' });
 
     expect(await failing).toBe(errCtx.error);
     expect(errCtx.retry).not.toHaveBeenCalled();
+    expect(refreshB).not.toHaveBeenCalled();
   });
 
-  it('serves a 401 that arrives after the swap with the new provider, also for a request sent before it', async () => {
+  it('retries nothing on an old binding: a 401 after the swap for a request sent before it', async () => {
     const refreshA = vi.fn(async () => ({ kind: 'bearer', token: 'token-a2' }) satisfies AuthSession);
     const refreshB = vi.fn(async () => ({ kind: 'bearer', token: 'token-b2' }) satisfies AuthSession);
     const graphA = await loadGraph();
@@ -362,12 +387,12 @@ describe('auth() - a second provider replaces the one in use', () => {
     const graphB = await loadGraph();
     graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b', { refresh: refreshB }) })).build();
 
-    // ... and its 401 lands after it: the refresh and the retry are B's.
+    // ... and its 401 lands after it on the binding A authorised: no refresh, no retry.
     const errCtx = make401('/accounts/me');
-    await joinPlugin.onError?.(errCtx);
+    expect(await joinPlugin.onError?.(errCtx)).toBe(errCtx.error);
     expect(refreshA).not.toHaveBeenCalled();
-    expect(refreshB).toHaveBeenCalledTimes(1);
-    expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-b2' } });
+    expect(refreshB).not.toHaveBeenCalled();
+    expect(errCtx.retry).not.toHaveBeenCalled();
   });
 
   it('cancels the old provider\'s running session check and stops listening to its reports', async () => {
@@ -414,7 +439,12 @@ describe('auth() - a second provider replaces the one in use', () => {
     const graphB = await loadGraph();
     graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b', { subscribe: subscribeB }) })).build();
 
-    expect(subscribeB).toHaveBeenCalledWith(listener);
+    // B gets a relay of the listener (its first subscription; the second is its tracker's),
+    // which reaches the listener once the swap is committed.
+    expect(subscribeB).toHaveBeenCalledTimes(2);
+    const relay = (subscribeB.mock.calls[0] as unknown as [(event: { state: 'authenticated' }) => void])[0];
+    relay({ state: 'authenticated' });
+    expect(listener).toHaveBeenCalledWith({ state: 'authenticated' });
     stop();
     expect(unsubscribeB).toHaveBeenCalledTimes(1);
     // A's own tracker subscription and the moved listener were both taken off A.
@@ -507,7 +537,7 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(0);
   });
 
-  it('shows a binder that copies the provider the members of the provider in use', async () => {
+  it('hands a binder the provider itself, so a copy of it has the provider\'s members', async () => {
     const copies: Record<string, unknown>[] = [];
     const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
       copies.push({ ...args.provider });
@@ -537,6 +567,327 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(appA.auth?.provider).toBe(providerA);
     expect(peekRealm()?.holders.size).toBe(1);
     expect(providerB.checkAuth).not.toHaveBeenCalled();
+  });
+});
+
+describe('auth() - a replaced provider retires at once, with the settings that authorised it', () => {
+  const OLD_ONLY = 'https://old-only.example.com';
+  const OLD_COOKIES = 'https://old-cookies.example.com';
+  const NEW_ONLY = 'https://new-only.example.com';
+
+  /** The transports registered since `before`, in the order the apps were bound. */
+  function addedSince(before: unknown[]) {
+    return registered().filter((plugin) => !before.includes(plugin));
+  }
+
+  it('sends no bearer token of either provider under the old origin list, for a request already running', async () => {
+    // A lists OLD_ONLY for bearer tokens, B lists only NEW_ONLY.
+    const answersA: Array<(session: AuthSession) => void> = [];
+    const providerA = makeBearerProvider('token-a', {
+      getSession: vi.fn(() => new Promise<AuthSession>((resolve) => { answersA.push(resolve); })),
+    });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: providerA, frontxApi: { allowedBearerOrigins: [OLD_ONLY] } })).build();
+    const providerTransport = registered()[0]!;
+    const joinTransport = await joinAndFindTransport();
+    const running = [providerTransport, joinTransport].map((plugin) => plugin.onRequest?.(makeReqCtx(`${OLD_ONLY}/x`)));
+    await vi.waitFor(() => expect(providerA.getSession).toHaveBeenCalledTimes(2));
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({
+      provider: makeBearerProvider('token-b'),
+      frontxApi: { allowedBearerOrigins: [NEW_ONLY] },
+    })).build();
+    for (const answer of answersA) answer({ kind: 'bearer', token: 'token-a' });
+
+    for (const ctx of (await Promise.all(running)) as RestRequestContext[]) {
+      expect(ctx.headers.Authorization).toBeUndefined();
+    }
+    // The apps' new bindings follow B's list alone, the app that passed A included.
+    expect(registered()).toHaveLength(3);
+    for (const plugin of registered()) {
+      const old = (await plugin.onRequest?.(makeReqCtx(`${OLD_ONLY}/x`))) as RestRequestContext;
+      expect(old.headers.Authorization).toBeUndefined();
+      const listed = (await plugin.onRequest?.(makeReqCtx(`${NEW_ONLY}/x`))) as RestRequestContext;
+      expect(listed.headers.Authorization).toBe('Bearer token-b');
+    }
+  });
+
+  it('sends no cookie or CSRF header of either provider under the old cookie list, for a request already running', async () => {
+    let answerA!: (session: AuthSession) => void;
+    const providerA = makeBearerProvider('a', {
+      getSession: vi.fn(() => new Promise<AuthSession>((resolve) => { answerA = resolve; })),
+    });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({
+      provider: providerA,
+      frontxApi: { allowedCookieOrigins: [OLD_COOKIES], csrfHeaderName: 'X-CSRF-A' },
+    })).build();
+    const joinTransport = await joinAndFindTransport();
+    const running = joinTransport.onRequest?.(makeReqCtx(`${OLD_COOKIES}/x`));
+    await vi.waitFor(() => expect(providerA.getSession).toHaveBeenCalledTimes(1));
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({
+      provider: makeBearerProvider('b', {
+        getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-b' } satisfies AuthSession),
+      }),
+      frontxApi: { csrfHeaderName: 'X-CSRF-B' },
+    })).build();
+    answerA({ kind: 'cookie', csrfToken: 'csrf-a' });
+
+    const ctx = (await running) as RestRequestContext;
+    expect(ctx.withCredentials).toBeUndefined();
+    expect(ctx.headers).toEqual({});
+    for (const plugin of registered()) {
+      const now = (await plugin.onRequest?.(makeReqCtx(`${OLD_COOKIES}/x`))) as RestRequestContext;
+      expect(now.withCredentials).toBeUndefined();
+      expect(now.headers).toEqual({});
+    }
+  });
+
+  it('retries nothing when the provider is replaced while the refresh report waits for the identity lookup', async () => {
+    let lookups = 0;
+    const getIdentity = vi.fn(() => {
+      lookups += 1;
+      // The baseline lookup lands; the one for the refresh hangs until the swap cancels it.
+      return lookups === 1 ? Promise.resolve({ sub: 'user-a' }) : new Promise<never>(() => undefined);
+    });
+    const refresh = vi.fn(async () => ({ kind: 'bearer', token: 'token-a2' }) satisfies AuthSession);
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('token-a', {
+        checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+        getIdentity,
+        refresh,
+      }),
+    })).build();
+    await settle();
+    const joinTransport = await joinAndFindTransport();
+    const errCtx = make401('/accounts/me');
+    const failing = joinTransport.onError?.(errCtx);
+    await vi.waitFor(() => expect(getIdentity).toHaveBeenCalledTimes(2));
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+
+    expect(await failing).toBe(errCtx.error);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(errCtx.retry).not.toHaveBeenCalled();
+  });
+
+  it('binds the replacing app for its own provider, so a binder that keeps provider members keeps the new ones', async () => {
+    const graphA = await loadGraph();
+    const providerA = makeBearerProvider('a');
+    graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
+
+    const kept: Array<Parameters<AuthTransportBinder>[0]['provider']['getSession']> = [];
+    const bound: AuthProvider[] = [];
+    const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
+      bound.push(args.provider);
+      kept.push(args.provider.getSession);
+      return { destroy: () => undefined };
+    });
+    const providerB = makeBearerProvider('b');
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: providerB, transport })).build();
+
+    // The replacing app and both earlier apps, each with B itself.
+    expect(bound).toEqual([providerB, providerB, providerB]);
+    for (const getSession of kept) await getSession();
+    expect(providerB.getSession).toHaveBeenCalledTimes(3);
+    expect(providerA.getSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses a replaced provider passed again, from another framework copy; the provider in use still joins', async () => {
+    const destroyA = vi.fn();
+    const providerA = makeBearerProvider('a', { destroy: destroyA });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const providerB = makeBearerProvider('b');
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+    const before = registered().length;
+
+    const graphA2 = await loadGraph();
+    expect(() => graphA2.createFrontX().use(graphA2.auth({ provider: providerA })).build())
+      .toThrow(/another provider replaced in this realm/);
+    expect(peekRealm()?.current.provider).toBe(providerB);
+    expect(registered()).toHaveLength(before);
+    expect(destroyA).toHaveBeenCalledTimes(1);
+    // Refused in onRegister, so that framework copy builds again, here as a join of B.
+    const again = graphA2.createFrontX().use(graphA2.auth({ provider: providerB })).build();
+    expect(again.auth).toBe(appB.auth);
+    expect(peekRealm()?.holders.size).toBe(3);
+  });
+
+  it('holds back what the new provider tells a moved listener until the swap commits, and drops it on a rollback', async () => {
+    let reportA!: (event: { state: 'authenticated' | 'unauthenticated' }) => void;
+    const unsubscribeA = vi.fn();
+    const providerA = makeBearerProvider('a', {
+      subscribe: vi.fn((listener) => {
+        reportA = listener as typeof reportA;
+        return unsubscribeA;
+      }),
+    });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const listener = vi.fn();
+    appA.auth!.subscribe!(listener);
+    await settle();
+
+    // B tells the moved listener its state at once, then refuses the tracker's subscription.
+    const unsubscribeMoved = vi.fn();
+    let calls = 0;
+    const failing = makeBearerProvider('b', {
+      subscribe: vi.fn((relay) => {
+        calls += 1;
+        if (calls > 1) throw new Error('subscribe refused');
+        (relay as (event: { state: 'authenticated' }) => void)({ state: 'authenticated' });
+        return unsubscribeMoved;
+      }),
+    });
+    const graphB = await loadGraph();
+    expect(() => graphB.createFrontX().use(graphB.auth({ provider: failing })).build()).toThrow('subscribe refused');
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(unsubscribeMoved).toHaveBeenCalledTimes(1);
+    expect(unsubscribeA).not.toHaveBeenCalled();
+    // A's subscription of the listener is still live.
+    reportA({ state: 'unauthenticated' });
+    expect(listener).toHaveBeenCalledWith({ state: 'unauthenticated' });
+
+    // A B that succeeds: the listener hears B's synchronous report after the commit, once.
+    listener.mockClear();
+    const working = makeBearerProvider('c', {
+      subscribe: vi.fn((relay) => {
+        (relay as (event: { state: 'authenticated' }) => void)({ state: 'authenticated' });
+        return () => undefined;
+      }),
+    });
+    const graphC = await loadGraph();
+    graphC.createFrontX().use(graphC.auth({ provider: working })).build();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({ state: 'authenticated' });
+    expect(peekRealm()?.current.provider).toBe(working);
+  });
+
+  it('completes a replacement whose moved listener throws on the held report, and keeps the replacing app\'s hold', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('a', { subscribe: vi.fn(() => () => undefined) }),
+    })).build();
+    appA.auth!.subscribe!(() => {
+      throw new Error('listener failed');
+    });
+    const providerB = makeBearerProvider('b', {
+      subscribe: vi.fn((relay) => {
+        (relay as (event: { state: 'authenticated' }) => void)({ state: 'authenticated' });
+        return () => undefined;
+      }),
+    });
+    const graphB = await loadGraph();
+
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+
+    expect(appB.auth?.provider).toBe(providerB);
+    expect(peekRealm()?.holders.size).toBe(2);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/subscribe listener threw/), expect.any(Error));
+  });
+
+  it('completes a replacement whose old provider throws on destroy(), and keeps the replacing app\'s hold', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const providerA = makeBearerProvider('a', {
+      destroy: vi.fn(() => {
+        throw new Error('destroy failed');
+      }),
+    });
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const providerB = makeBearerProvider('b');
+    const graphB = await loadGraph();
+
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+
+    expect(appB.auth?.provider).toBe(providerB);
+    expect(peekRealm()?.holders.size).toBe(2);
+    expect(registered()).toHaveLength(2);
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/destroy\(\) threw/), expect.any(Error));
+  });
+
+  it('rejects a login and a callback that end after the swap; the old tracker emits nothing', async () => {
+    let finishLogin!: (transition: AuthTransition) => void;
+    let finishCallback!: (transition: AuthTransition) => void;
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('a', {
+        login: vi.fn(() => new Promise<AuthTransition>((resolve) => { finishLogin = resolve; })),
+        handleCallback: vi.fn(() => new Promise<AuthTransition>((resolve) => { finishCallback = resolve; })),
+      }),
+    })).build();
+    await settle();
+    const heard = listen(graphA);
+    const signingIn = appA.auth!.login!({ type: 'password', payload: {} });
+    const calledBack = appA.auth!.handleCallback!({ type: 'oauth', payload: {} } as never);
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b') })).build();
+    finishLogin({ type: 'none' });
+    finishCallback({ type: 'none' });
+
+    await expect(signingIn).rejects.toThrow(/was replaced before the call ended/);
+    await expect(calledBack).rejects.toThrow(/was replaced before the call ended/);
+    await settle();
+    expect(heard).toEqual(['sessionCheck', 'loggedOut']);
+  });
+
+  it('releases only its own hold when the replaced app leaves: the new provider lives on', async () => {
+    const destroyA = vi.fn();
+    const destroyB = vi.fn();
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('a', { destroy: destroyA }) })).build();
+    const joinGraph = await loadGraph();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    const providerB = makeBearerProvider('token-b', { destroy: destroyB });
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+    const beforeLeave = registered().length;
+
+    appA.destroy();
+
+    expect(appA.auth).toBeUndefined();
+    expect(destroyA).toHaveBeenCalledTimes(1);
+    expect(destroyB).not.toHaveBeenCalled();
+    expect(peekRealm()?.holders.size).toBe(2);
+    expect(registered()).toHaveLength(beforeLeave - 1);
+    expect(joinApp.auth?.provider).toBe(providerB);
+    await expect(joinApp.auth!.getSession()).resolves.toEqual({ kind: 'bearer', token: 'token-b' });
+  });
+
+  it('binds a join that comes after the replacement for the new provider and its config', async () => {
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({
+      provider: makeBearerProvider('token-a'),
+      frontxApi: { allowedBearerOrigins: [OLD_ONLY] },
+    })).build();
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({
+      provider: makeBearerProvider('token-b'),
+      frontxApi: { allowedBearerOrigins: [NEW_ONLY] },
+    })).build();
+    const before = [...registered()];
+
+    const lateGraph = await loadGraph();
+    lateGraph.createFrontX().use(lateGraph.auth()).build();
+    const [late] = addedSince(before);
+
+    const listed = (await late?.onRequest?.(makeReqCtx(`${NEW_ONLY}/x`))) as RestRequestContext;
+    expect(listed.headers.Authorization).toBe('Bearer token-b');
+    const old = (await late?.onRequest?.(makeReqCtx(`${OLD_ONLY}/x`))) as RestRequestContext;
+    expect(old.headers.Authorization).toBeUndefined();
   });
 });
 
