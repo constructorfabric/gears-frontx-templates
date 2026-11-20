@@ -538,6 +538,86 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(0);
   });
 
+  it('publishes nothing when the binder of the first provider throws', async () => {
+    const graph = await loadGraph();
+    const transport = vi.fn((): never => {
+      throw new Error('binder refused');
+    });
+
+    expect(() => graph.createFrontX().use(graph.auth({ provider: makeBearerProvider('a'), transport })).build())
+      .toThrow('binder refused');
+    expect(peekRealm()).toBeUndefined();
+  });
+
+  /** Builds the first app with A; `nested` runs from A's binder or from A's synchronous subscribe. */
+  async function publishWithNestedBuild(from: 'binder' | 'subscribe', nested: () => void) {
+    const providerA = makeBearerProvider('token-a', {
+      subscribe: vi.fn(() => {
+        if (from === 'subscribe') nested();
+        return () => undefined;
+      }),
+    });
+    const transport: AuthTransportBinder = () => {
+      if (from === 'binder') nested();
+      return { destroy: () => undefined };
+    };
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: providerA, transport })).build();
+    return providerA;
+  }
+
+  it.each(['binder', 'subscribe'] as const)(
+    'refuses a provider build started from the first provider\'s %s, and that runtime builds again afterwards',
+    async (from) => {
+      const graphB = await loadGraph();
+      const providerB = makeBearerProvider('token-b');
+      const refused: unknown[] = [];
+      const build = (provider: AuthProvider) => () => {
+        try {
+          graphB.createFrontX().use(graphB.auth({ provider })).build();
+        } catch (error) {
+          refused.push(error);
+        }
+      };
+      const providerA = await publishWithNestedBuild(from, () => {
+        build(providerB)();
+        // A passed again from another copy while its own publish runs.
+        build(peekRealm()!.current.provider)();
+      });
+
+      expect(refused.map((error) => (error as Error).message)).toEqual([
+        expect.stringMatching(/another provider replacement was still running/),
+        expect.stringMatching(/another provider replacement was still running/),
+      ]);
+      expect(providerB.checkAuth).not.toHaveBeenCalled();
+      expect(peekRealm()?.current.provider).toBe(providerA);
+      expect(peekRealm()?.holders.size).toBe(1);
+      expect(peekRealm()?.replacing).toBe(false);
+      graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+      expect(peekRealm()?.current.provider).toBe(providerB);
+    },
+  );
+
+  it.each(['binder', 'subscribe'] as const)(
+    'refuses a join started from the first provider\'s %s as a join with no provider yet',
+    async (from) => {
+      const joinGraph = await loadGraph();
+      let refused: unknown;
+      const providerA = await publishWithNestedBuild(from, () => {
+        try {
+          joinGraph.createFrontX().use(joinGraph.auth()).build();
+        } catch (error) {
+          refused = error;
+        }
+      });
+
+      expect((refused as Error).message).toMatch(/no app of the realm has passed one yet/);
+      expect(peekRealm()?.holders.size).toBe(1);
+      const joined = joinGraph.createFrontX().use(joinGraph.auth()).build();
+      expect(joined.auth?.provider).toBe(providerA);
+    },
+  );
+
   it('hands a binder the provider itself, so a copy of it has the provider\'s members', async () => {
     const copies: Record<string, unknown>[] = [];
     const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {

@@ -1597,6 +1597,7 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  * - a join when no app has passed a provider;
  * - a provider that another provider replaced in this realm (it is destroyed);
  * - a new provider passed from a callback of a replacement still running;
+ * - any build, a join included, from a callback of the first provider's publish;
  * - a realm record of another contract version.
  * A failure in `onInit` (a binder that throws, or a new provider that throws
  * on `subscribe`) leaves the realm state as it was (a hook a binder registered
@@ -1619,6 +1620,11 @@ export function auth(config?: AuthPluginConfig): FrontXPlugin {
   return config ? providerAuth(config) : joinAuth();
 }
 
+/** A first publish still running: a running replacement holds its own app and at least one more. */
+function isFirstPublish(record: AuthRealmRecord): boolean {
+  return Boolean(record.replacing) && record.holders.size < 2;
+}
+
 function providerAuth(config: AuthPluginConfig): FrontXPlugin {
   const generation = createGeneration(config);
   let record: AuthRealmRecord | null = null;
@@ -1637,7 +1643,9 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
     onRegister() {
       const found = readAuthRealm();
       if (found?.retired.has(config.provider)) throw new Error(RETIRED_PROVIDER_ERROR);
-      if (found?.replacing && found.current.provider !== config.provider) throw new Error(NESTED_REPLACEMENT_ERROR);
+      if (found?.replacing && (found.current.provider !== config.provider || isFirstPublish(found))) {
+        throw new Error(NESTED_REPLACEMENT_ERROR);
+      }
     },
     onInit(app) {
       const found = readAuthRealm();
@@ -1673,20 +1681,26 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
         holders: new Set(),
         listeners: new Set(),
         retired: new WeakSet(),
+        replacing: true,
       };
       published.runtime = createRealmRuntime(published);
-      const held = holdAuthRealm(app, published, generation);
-      try {
-        generation.start(published.holders, false);
-      } catch (error) {
-        // Not published yet: the release ends this provider and leaves the slot empty.
-        delete app.auth;
-        releaseAuthRealm(published, held);
-        throw error;
-      }
-      holder = held;
-      record = published;
+      // In the slot before the binder and the provider's subscribe run, so a build they start is refused.
       (globalThis as AuthRealmHost)[AUTH_REALM_SYMBOL] = published;
+      try {
+        const held = holdAuthRealm(app, published, generation);
+        try {
+          generation.start(published.holders, false);
+        } catch (error) {
+          // The last release ends this provider and empties the slot.
+          delete app.auth;
+          releaseAuthRealm(published, held);
+          throw error;
+        }
+        holder = held;
+        record = published;
+      } finally {
+        published.replacing = false;
+      }
     },
     onDestroy(app) {
       if (!record || !holder) return;
@@ -1706,7 +1720,8 @@ function joinAuth(): FrontXPlugin {
   return {
     name: 'auth',
     onRegister() {
-      if (!readAuthRealm()) throw new Error(NO_PROVIDER_ERROR);
+      const found = readAuthRealm();
+      if (!found || isFirstPublish(found)) throw new Error(NO_PROVIDER_ERROR);
     },
     onInit(app) {
       // `build()` runs onRegister and onInit in one synchronous call, so the

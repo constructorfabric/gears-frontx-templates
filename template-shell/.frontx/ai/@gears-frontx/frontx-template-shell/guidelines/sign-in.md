@@ -144,7 +144,9 @@ app leaves, the record and its list of replaced providers are gone. The
 provider in use passed again joins it. A new provider passed from a callback
 of a replacement still running (an `auth/sessionCheck` listener, the
 provider's `subscribe`, a binder) is refused as well; that app builds once
-the replacement has returned. The sign-in triggers wrap the provider the shell passed
+the replacement has returned. A build from a callback of the first
+provider's publish (its binder or its `subscribe`) is refused too: a provider
+the same way, a join as a join with no provider in the page. The sign-in triggers wrap the provider the shell passed
 (`wireSignInTriggers`), so a provider another app passes later carries no
 401 trigger until that app wires its own. A second `auth({ provider })`
 inside one app is not a replacement: `use()` throws.
