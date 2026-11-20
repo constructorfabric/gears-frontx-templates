@@ -52,7 +52,7 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
  *
  * The runtime is the one `auth()` joins on the sign-in runtime's own app
  * (`init-signin.ts`), handed in as `auth`: signing in through it is signing
- * in through the page's one provider, and `AuthEvents.LoggedIn` reaches the
+ * in through the page's provider in use, and `AuthEvents.LoggedIn` reaches the
  * eventBus of every app that holds the runtime, the shell's included. When the join failed there is no
  * runtime, the modal renders its error line instead of a form, and the
  * shell's own timeout with the chain's reload fallback ends the flow.

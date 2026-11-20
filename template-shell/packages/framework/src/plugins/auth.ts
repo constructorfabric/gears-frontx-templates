@@ -1332,7 +1332,7 @@ function releaseAuthRealm(record: AuthRealmRecord, holder: AuthRealmHolder): voi
  * Puts `next` in place of the provider in use; `bound` is the app that passed
  * it, already bound to it. Every holder follows at once,
  * since none keeps a provider of its own: its listeners move, its transport
- * is bound again with the new settings, its bus hears `SessionCheck` now and
+ * is bound again with the new settings, its bus hears `SessionCheck` at once and
  * `LoggedIn` or `LoggedOut` once the new provider's baseline lands. The old
  * provider's tracking stops here, which cancels its running session checks;
  * the old provider itself is destroyed once the last call started against it
@@ -1633,7 +1633,7 @@ function joinAuth(): FrontXPlugin {
       // record onRegister found is still the one in the slot.
       const joined = readAuthRealm();
       if (!joined) throw new Error(NO_PROVIDER_ERROR);
-      // The runtime is only known now, so it cannot come through `provides`.
+      // The runtime is known only in onInit, so it cannot come through `provides`.
       holder = holdAuthRealm(app, joined, joined.current);
       record = joined;
     },

@@ -14,7 +14,8 @@
  * - `auth()` with no provider, which joins the page's auth runtime (published
  *   by whichever app passed `auth({ provider })`, the shell in this template)
  *   and exposes it as `app.auth`. Signing in through it is signing in through
- *   the page's one provider, so the session is one the whole page sees. No
+ *   the page's provider in use, so the session is one the whole page sees,
+ *   and a provider another app passes later replaces it for this app too. No
  *   credentials travel over the bridge.
  *
  * The screen makes no API calls, so it registers no services and needs no

@@ -118,8 +118,23 @@ sign-in MFE joins it with `auth()`, no provider. Any app could pass the
 provider instead: the plugin does not know which app is the shell, the
 `AuthEvents` reach the eventBus of every app that holds the runtime, and the
 provider lives until the last of them is destroyed. A join with no provider
-in the page fails, and the sign-in MFE shows its error line. The modal then
-signs in through
+in the page fails in the join's `onRegister`, so its build rolls back, and
+the sign-in MFE shows its error line.
+
+A provider passed while another is in use replaces it. No app keeps a
+provider of its own: `app.auth` and every app's REST transport read the
+provider in use at call time, so all of them follow at once. Every app's bus
+hears `auth/sessionCheck` at the swap and then `auth/loggedIn` (the new
+provider has a session) or `auth/loggedOut` (it has none, or its read
+failed); the old provider's session checks are cancelled and its reports go
+nowhere; it is destroyed once the last call started against it settles; a
+login, callback or refresh that ends after the swap rejects, so a 401 is
+not retried with the old provider's session. The sign-in triggers wrap the
+provider the shell passed (`wireSignInTriggers`), so a provider another app
+passes later carries no 401 trigger until that app wires its own. A second
+`auth({ provider })` inside one app is not a replacement: `use()` throws.
+
+The modal then signs in through
 `app.auth.login` and sends no credentials to the shell. The shell only sees
 the session appear, which is what ends the `sign_in` action. The
 `auth/loggedIn` announcement is the wake-up, not the answer: the tracker
@@ -249,11 +264,12 @@ expected, and none is needed for the flow itself to work.
 transport from it and publishes the same `frontxApi` (and a custom
 `transport` binder, when the config has one) for every `auth()` join, so a
 project edits the config in one place and every app's requests carry the same
-credentials.
+credentials. A provider that replaces it brings its own config, and every
+app's transport is bound again with that one.
 
-Refreshes are the provider's to dedupe. The realm does not dedupe them: a
-join's transport forwards each 401 to the shared runtime's `refresh()`
-(`trackedProvider()` in `auth.ts`), and the dedup that exists is per
+Refreshes are the provider's to dedupe. The realm does not dedupe them: each
+app's transport calls the `refresh()` of the provider in use
+(`realmProvider()` in `auth.ts`), and the dedup that exists is per
 transport plugin instance, so the concurrent 401 refreshes of one app share
 one flight while two microfrontends that 401 at the same moment reach the
 provider's `refresh()` twice. A provider that keeps one token request in

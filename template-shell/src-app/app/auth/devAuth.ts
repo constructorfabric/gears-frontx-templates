@@ -44,7 +44,10 @@ export const devAuthConfig: AuthPluginConfig | undefined = import.meta.env.DEV
  * so a microfrontend that adds `auth()` with no provider joins the same
  * session, and binds its own REST transport with the same config, instead of
  * signing in on its own. Nothing here makes the shell special: any one app of
- * the page could pass the provider instead.
+ * the page could pass the provider instead. An app that passes a provider
+ * later replaces this one for every app of the page, the shell included; the
+ * sign-in triggers below stay on the provider passed here, so that app wires
+ * its own.
  */
 export function devAuthPlugins(): FrontXPlugin[] {
   if (!devAuthConfig) return [];
