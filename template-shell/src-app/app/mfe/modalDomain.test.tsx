@@ -95,6 +95,11 @@ describe('the modal domain through the real runtime', () => {
     await screen.findByRole('dialog', { name: 'Terms of use' });
     expect(modalState.getSnapshot()).toBe(extensionId('terms'));
     await waitFor(() => expect(mountedModalText(document.body)).toEqual(['modal ./terms']));
+    // The modal's host carries the theme host attribute, as a screen's does
+    // (screenThemeHost.test.tsx): the managed theme rule can reach the
+    // extension in its shadow root only through it.
+    const host = document.querySelector(`[data-extension-id="${extensionId('terms')}"]`);
+    expect(host?.hasAttribute(built.react.FRONTX_THEME_HOST_ATTRIBUTE)).toBe(true);
     // The routed domain owns its URL entries: the opened modal is addressable.
     expect(new URLSearchParams(window.location.search).get('popup')).toBe('terms');
 
