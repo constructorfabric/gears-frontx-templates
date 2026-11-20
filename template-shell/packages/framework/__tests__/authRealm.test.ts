@@ -724,15 +724,40 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     expect(peekRealm()?.holders.size).toBe(3);
   });
 
+  it('refuses a replaced provider only while the realm record exists: after the last release it publishes a new one', async () => {
+    const providerA = makeBearerProvider('a');
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b') })).build();
+    appA.destroy();
+    appB.destroy();
+    expect(peekRealm()).toBeUndefined();
+
+    // The documented outcome: the record and its list of replaced providers went with the last holder.
+    const graphA2 = await loadGraph();
+    const again = graphA2.createFrontX().use(graphA2.auth({ provider: providerA })).build();
+    expect(again.auth?.provider).toBe(providerA);
+    expect(peekRealm()?.holders.size).toBe(1);
+  });
+
   it('holds back what the new provider tells a moved listener until the swap commits, and drops it on a rollback', async () => {
-    let reportA!: (event: { state: 'authenticated' | 'unauthenticated' }) => void;
+    type Report = (event: { state: 'authenticated' | 'unauthenticated' }) => void;
+    const liveA = new Set<Report>();
     const unsubscribeA = vi.fn();
     const providerA = makeBearerProvider('a', {
       subscribe: vi.fn((listener) => {
-        reportA = listener as typeof reportA;
-        return unsubscribeA;
+        liveA.add(listener as Report);
+        return () => {
+          unsubscribeA();
+          liveA.delete(listener as Report);
+        };
       }),
     });
+    // A reports to the subscriptions still live on it, as a real provider does.
+    const reportA: Report = (event) => {
+      for (const live of liveA) live(event);
+    };
     const graphA = await loadGraph();
     const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
     const listener = vi.fn();
