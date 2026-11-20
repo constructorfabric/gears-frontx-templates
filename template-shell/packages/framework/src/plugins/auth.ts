@@ -1288,8 +1288,9 @@ function copyTransportConfig(
 function createHolder(app: FrontXApp): AuthRealmHolder {
   let binding: AuthTransportBinding | null = null;
   const unbind = () => {
-    binding?.destroy();
+    const done = binding;
     binding = null;
+    guarded("An app's transport binding destroy()", () => done?.destroy());
   };
   return {
     emit: (event) => eventBus.emit(event, {}),

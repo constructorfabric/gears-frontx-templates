@@ -819,6 +819,44 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/destroy\(\) threw/), expect.any(Error));
   });
 
+  /** A custom binder that registers nothing and whose binding throws on destroy(). */
+  const throwingBinder: AuthTransportBinder = () => ({
+    destroy: () => {
+      throw new Error('binding destroy failed');
+    },
+  });
+
+  it('binds every app for the new provider when an old binding throws on destroy()', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const graphA = await loadGraph();
+    graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('token-a'), transport: throwingBinder })).build();
+    const joinGraph = await loadGraph();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
+    expect(registered()).toHaveLength(0);
+
+    const graphB = await loadGraph();
+    graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('token-b') })).build();
+
+    expect(registered()).toHaveLength(3);
+    for (const plugin of registered()) {
+      const ctx = (await plugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+      expect(ctx.headers.Authorization).toBe('Bearer token-b');
+    }
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/transport binding destroy\(\) threw/), expect.any(Error));
+  });
+
+  it('gives the hold back when the binding of a leaving app throws on destroy()', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const providerA = makeBearerProvider('token-a', { destroy: vi.fn() });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA, transport: throwingBinder })).build();
+
+    appA.destroy();
+
+    expect(peekRealm()).toBeUndefined();
+    expect(providerA.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('warns in a development build at every replacement, naming both providers and their origin lists', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
