@@ -270,9 +270,13 @@ export function invalidateRejectedSession(credentials: string | null | undefined
  * throws synchronously is handled as a rejection.
  */
 export function readOnProviderInUse<T>(auth: AuthRuntime, read: () => Promise<T>): Promise<T> {
-  const provider = auth.provider;
+  let provider: unknown;
   return Promise.resolve()
-    .then(read)
+    .then(() => {
+      // Read in the same turn as the call, so a replacement before it counts as no crossing.
+      provider = auth.provider;
+      return read();
+    })
     .catch((error: unknown) => {
       if (auth.provider === provider) throw error;
       return read();

@@ -329,6 +329,37 @@ describe('wireSignInTriggers', () => {
     expect(checkAuth).toHaveBeenCalledTimes(2);
   });
 
+  it('a start-up check whose provider was replaced before the check started is asked once only', async () => {
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const checkAuth = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("the new provider's first check failed"))
+      .mockResolvedValue({ authenticated: false });
+    const { app, executeActionsChain } = stubApp({ checkAuth });
+    const runtime = app.auth as unknown as { provider: AuthProvider };
+    runtime.provider = stubProvider();
+    const providerB = stubProvider();
+    let armed = false;
+    // The replacement lands in a microtask queued as the start-up check reads
+    // app.auth: after the read is asked for, before the deferred read runs.
+    Object.defineProperty(app, 'auth', {
+      get: () => {
+        if (armed) queueMicrotask(() => { runtime.provider = providerB; });
+        return runtime;
+      },
+    });
+
+    wireSignInTriggers(app, stubProvider());
+    armed = true;
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    await flush();
+
+    expect(checkAuth).toHaveBeenCalledTimes(1);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
   it('a start-up check that rejects removes the entry the address named, and a later 401 still opens sign-in', async () => {
     // The entry the address names mounts a modal whose only closer is the
     // sign_in the chain holds. When the check rejects it sends no chain, so
