@@ -126,8 +126,6 @@ export {
   effects,
   queryCache,
   queryCacheShared,
-  authRealm,
-  authRealmShared,
   subscribeQueryCacheRuntimeChanged,
 
   // Registries

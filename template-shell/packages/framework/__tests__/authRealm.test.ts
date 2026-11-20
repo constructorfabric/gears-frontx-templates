@@ -1,29 +1,30 @@
 /**
- * Unit tests for the authRealm / authRealmShared plugins
+ * Unit tests for the realm side of the auth() plugin
+ *
+ * `auth({ provider })` passes the realm's one provider and publishes the
+ * session runtime; `auth()` with no provider joins it. Every app under test
+ * loads its own module copy of the framework, as the shell and each
+ * microfrontend of a page do.
  *
  * Covers:
- * 1. The host publishes app.auth into the realm slot and takes one retainer.
- * 2. authRealmShared() joins the same runtime: a login on the joined app.auth
- *    reaches the host provider.
- * 3. authRealmShared() throws when no host runtime exists.
- * 4. The joined runtime's REST requests carry the bearer token through the
- *    joining app's own apiRegistry.
- * 5. The join binds its transport with the frontxApi config the host realm
- *    publishes, forwarded whole (a field the joining copy of the type does
- *    not declare yet included).
- * 6. Teardown: releases are counted, the host release marks the runtime
- *    destroyed while a join still holds it (its auth() plugin destroys the
- *    provider right after), and the last release deletes the slot.
- * 7. The join removes its transport plugin on destroy.
- * 8. A joined MFE follows the origin lists the host passes to auth() and
- *    authRealm(): a bearer token goes only to allowedBearerOrigins, and a 401
- *    from an origin that gets no credentials starts no refresh.
+ * 1. Symmetry: the app that passed the provider and the apps that joined hold
+ *    the same runtime the same way, whichever of them is the shell.
+ * 2. A second provider is refused before any side effect, across apps and
+ *    inside one app.
+ * 3. A join with no provider in the realm is an error, raised before any side
+ *    effect.
+ * 4. AuthEvents reach the eventBus of every app that holds the runtime.
+ * 5. The provider lives while any app holds it: the last release destroys it.
+ * 6. A realm record of another contract version is refused.
+ * 7. A joined app's REST transport: the session, the published frontxApi
+ *    config and binder, the origin lists, the 401 refresh through the session
+ *    tracker.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RestPluginHooks, RestRequestContext } from '@gears-frontx/api';
 import type { AuthProvider, AuthSession, AuthTransition } from '@gears-frontx/auth';
-import type { AuthRuntime, AuthTransportBinder, Hai3ApiAuthTransportConfig } from '../src/plugins/auth';
+import type { AuthTransportBinder, Hai3ApiAuthTransportConfig } from '../src/plugins/auth';
 
 // One apiRegistry singleton serves every module graph of this file: the api
 // package is external, so vi.resetModules() keeps its module state. Reset it
@@ -31,72 +32,57 @@ import type { AuthRuntime, AuthTransportBinder, Hai3ApiAuthTransportConfig } fro
 let apiRegistry: typeof import('@gears-frontx/api').apiRegistry;
 let RestProtocol: typeof import('@gears-frontx/api').RestProtocol;
 
-const SHARED_AUTH_RUNTIME_SYMBOL = Symbol.for('frontx:auth:runtime');
-const SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL = Symbol.for('frontx:auth:transport-config');
-const SHARED_AUTH_RUNTIME_RETAINERS_SYMBOL = Symbol.for('frontx:auth:runtime-retainers');
-const SHARED_AUTH_RUNTIME_TEARDOWN_TOKEN_SYMBOL = Symbol.for('frontx:auth:runtime-teardown-token');
+const AUTH_REALM_SYMBOL = Symbol.for('frontx:auth:realm');
 
-type RealmHost = typeof globalThis & {
-  [SHARED_AUTH_RUNTIME_SYMBOL]?: AuthRuntime;
-  [SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL]?: Hai3ApiAuthTransportConfig;
-  [SHARED_AUTH_RUNTIME_RETAINERS_SYMBOL]?: number;
-  [SHARED_AUTH_RUNTIME_TEARDOWN_TOKEN_SYMBOL]?: number;
+type RealmRecordView = {
+  version: number;
+  runtime: unknown;
+  transportConfig?: Hai3ApiAuthTransportConfig;
+  retainers: number;
+  emitters: Set<unknown>;
 };
 
-function peekPublishedRuntime(): AuthRuntime | undefined {
-  return (globalThis as RealmHost)[SHARED_AUTH_RUNTIME_SYMBOL];
+type RealmHost = typeof globalThis & { [AUTH_REALM_SYMBOL]?: unknown };
+
+function peekRealm(): RealmRecordView | undefined {
+  return (globalThis as RealmHost)[AUTH_REALM_SYMBOL] as RealmRecordView | undefined;
 }
 
-function peekPublishedTransportConfig(): Hai3ApiAuthTransportConfig | undefined {
-  return (globalThis as RealmHost)[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL];
-}
-
-function peekRetainers(): number | undefined {
-  return (globalThis as RealmHost)[SHARED_AUTH_RUNTIME_RETAINERS_SYMBOL];
-}
-
-function peekTeardownToken(): number | undefined {
-  return (globalThis as RealmHost)[SHARED_AUTH_RUNTIME_TEARDOWN_TOKEN_SYMBOL];
-}
-
-function clearRealmSlots(): void {
-  const host = globalThis as RealmHost;
-  delete host[SHARED_AUTH_RUNTIME_SYMBOL];
-  delete host[SHARED_AUTH_TRANSPORT_CONFIG_SYMBOL];
-  delete host[SHARED_AUTH_RUNTIME_RETAINERS_SYMBOL];
-  delete host[SHARED_AUTH_RUNTIME_TEARDOWN_TOKEN_SYMBOL];
+function clearRealm(): void {
+  delete (globalThis as RealmHost)[AUTH_REALM_SYMBOL];
 }
 
 /**
  * One app per runtime: every app under test loads its own module copy, and
  * every import below resolves inside one reset window, so one app's
- * createFrontX, plugins and apiRegistry always belong to the same graph.
+ * createFrontX, auth plugin and eventBus always belong to the same graph.
  */
 type FrameworkGraph = {
   createFrontX: typeof import('../src/createFrontX').createFrontX;
   auth: typeof import('../src/plugins/auth').auth;
-  authRealm: typeof import('../src/plugins/authRealm').authRealm;
-  authRealmShared: typeof import('../src/plugins/authRealm').authRealmShared;
-  apiRegistry: typeof import('@gears-frontx/api').apiRegistry;
-  RestProtocol: typeof import('@gears-frontx/api').RestProtocol;
+  eventBus: typeof import('@gears-frontx/state').eventBus;
 };
 
 async function loadGraph(): Promise<FrameworkGraph> {
   vi.resetModules();
-  const [createFrontXModule, authModule, authRealmModule, apiModule] = await Promise.all([
+  const [createFrontXModule, authModule, stateModule] = await Promise.all([
     import('../src/createFrontX'),
     import('../src/plugins/auth'),
-    import('../src/plugins/authRealm'),
-    import('@gears-frontx/api'),
+    import('@gears-frontx/state'),
   ]);
   return {
     createFrontX: createFrontXModule.createFrontX,
     auth: authModule.auth,
-    authRealm: authRealmModule.authRealm,
-    authRealmShared: authRealmModule.authRealmShared,
-    apiRegistry: apiModule.apiRegistry,
-    RestProtocol: apiModule.RestProtocol,
+    eventBus: stateModule.eventBus,
   };
+}
+
+/** Records the AuthEvents one graph's eventBus hears. */
+function listen(graph: FrameworkGraph): string[] {
+  const heard: string[] = [];
+  graph.eventBus.on('auth/loggedIn', () => heard.push('loggedIn'));
+  graph.eventBus.on('auth/loggedOut', () => heard.push('loggedOut'));
+  return heard;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,14 +92,10 @@ async function loadGraph(): Promise<FrameworkGraph> {
 function makeBearerProvider(token: string, extra: Partial<AuthProvider> = {}): AuthProvider {
   return {
     getSession: vi.fn().mockResolvedValue({ kind: 'bearer', token } satisfies AuthSession),
-    checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
+    checkAuth: vi.fn().mockResolvedValue({ authenticated: false }),
     logout: vi.fn().mockResolvedValue({ type: 'none' }),
     ...extra,
   };
-}
-
-function makeLoginProvider(token: string, login: AuthProvider['login']): AuthProvider {
-  return makeBearerProvider(token, { login });
 }
 
 /** The transport plugin `frontxApiTransport()` registered for a protocol. */
@@ -123,15 +105,30 @@ function makeReqCtx(url: string, headers: Record<string, string> = {}): RestRequ
   return { method: 'GET', url, headers };
 }
 
+/** Builds a joining app in a fresh graph and returns the transport plugin it registered. */
+async function joinAndFindTransport(): Promise<AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>> {
+  const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
+  const joinGraph = await loadGraph();
+  joinGraph.createFrontX().use(joinGraph.auth()).build();
+  const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeJoin.includes(plugin));
+  expect(joinPlugin).toBeDefined();
+  return joinPlugin as AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
+}
+
+/** Lets the session tracker's init baseline land. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 beforeEach(async () => {
   ({ apiRegistry, RestProtocol } = await import('@gears-frontx/api'));
   apiRegistry.reset();
-  clearRealmSlots();
+  clearRealm();
 });
 
 afterEach(() => {
   apiRegistry.reset();
-  clearRealmSlots();
+  clearRealm();
   vi.restoreAllMocks();
 });
 
@@ -139,279 +136,315 @@ afterEach(() => {
 // Suite
 // ---------------------------------------------------------------------------
 
-describe('authRealm() - host side', () => {
-  it('declares the auth plugin as its dependency', async () => {
-    const { authRealm } = await loadGraph();
-    const plugin = authRealm();
-    expect(plugin.name).toBe('authRealm');
-    expect(plugin.dependencies).toEqual(['auth']);
-  });
-
-  it('publishes the app auth runtime into the realm slot with one retainer', async () => {
-    const { createFrontX, auth, authRealm } = await loadGraph();
+describe('auth() - one runtime per realm, whichever app passes the provider', () => {
+  it('publishes the runtime of auth({ provider }) with one holder', async () => {
+    const { createFrontX, auth } = await loadGraph();
     const provider = makeBearerProvider('token-1');
 
-    const app = createFrontX().use(auth({ provider })).use(authRealm()).build();
+    const app = createFrontX().use(auth({ provider })).build();
 
-    expect(app.auth).toBeDefined();
-    expect(peekPublishedRuntime()).toBe(app.auth);
-    expect(peekRetainers()).toBe(1);
-    expect(peekPublishedRuntime()?.provider).toBe(provider);
+    expect(app.auth?.provider).toBe(provider);
+    expect(peekRealm()?.runtime).toBe(app.auth);
+    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.version).toBe(1);
   });
 
-  it('throws a clear error when the auth plugin did not run', async () => {
-    const { createFrontX, authRealm } = await loadGraph();
+  it('gives a joining app the same runtime, so its login reaches the one provider', async () => {
+    const ownerGraph = await loadGraph();
+    const login = vi.fn().mockResolvedValue({ type: 'none' } satisfies AuthTransition);
+    const provider = makeBearerProvider('token-1', { login });
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
 
-    expect(() => createFrontX().use(authRealm()).build()).toThrow(
-      /authRealm\(\) requires the auth plugin/,
-    );
-    expect(peekPublishedRuntime()).toBeUndefined();
+    const joinGraph = await loadGraph();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+
+    expect(joinApp.auth).toBe(ownerApp.auth);
+    expect(peekRealm()?.retainers).toBe(2);
+    await joinApp.auth?.login?.({ type: 'password', payload: { username: 'ada', password: 'secret' } });
+    expect(login).toHaveBeenCalledWith({ type: 'password', payload: { username: 'ada', password: 'secret' } }, undefined);
   });
 
-  it('refuses to publish a second, different auth runtime in the same realm', async () => {
+  it('treats a microfrontend that passes the provider like a shell that does: the shell joins it', async () => {
+    // The "microfrontend" builds first and passes the provider; the "shell"
+    // joins. Nothing in the plugin depends on which app is which.
+    const mfeGraph = await loadGraph();
+    const provider = makeBearerProvider('token-1');
+    const mfeApp = mfeGraph.createFrontX().use(mfeGraph.auth({ provider })).build();
+
+    const shellGraph = await loadGraph();
+    const shellApp = shellGraph.createFrontX().use(shellGraph.auth()).build();
+
+    expect(shellApp.auth).toBe(mfeApp.auth);
+    expect(shellApp.auth?.provider).toBe(provider);
+  });
+
+  it('joins the same runtime for every app of the realm', async () => {
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth()).build();
+    const graphB = await loadGraph();
+    const appB = graphB.createFrontX().use(graphB.auth()).build();
+
+    expect(appA.auth).toBe(ownerApp.auth);
+    expect(appB.auth).toBe(ownerApp.auth);
+    expect(peekRealm()?.retainers).toBe(3);
+  });
+
+  it('throws on a config without a provider instead of joining silently', async () => {
+    const { auth } = await loadGraph();
+    expect(() => auth({ provider: undefined as unknown as AuthProvider })).toThrow(/config without a provider/);
+  });
+});
+
+describe('auth() - a second provider is refused before any side effect', () => {
+  it('refuses a provider in another app while the realm holds one', async () => {
     const first = await loadGraph();
-    first.createFrontX().use(first.auth({ provider: makeBearerProvider('token-1') })).use(first.authRealm()).build();
-
-    const second = await loadGraph();
-    expect(() =>
-      second
-        .createFrontX()
-        .use(second.auth({ provider: makeBearerProvider('token-2') }))
-        .use(second.authRealm())
-        .build(),
-    ).toThrow(/found a different auth runtime already published/);
-  });
-
-  it('refuses a second host before its auth() plugin starts a transport, a tracker or a subscription', async () => {
-    const first = await loadGraph();
-    const firstApp = first
-      .createFrontX()
-      .use(first.auth({ provider: makeBearerProvider('token-1') }))
-      .use(first.authRealm())
-      .build();
+    const firstApp = first.createFrontX().use(first.auth({ provider: makeBearerProvider('token-1') })).build();
     const transportsBefore = apiRegistry.plugins.getAll(RestProtocol).length;
 
     const second = await loadGraph();
     const subscribe = vi.fn(() => () => undefined);
     const secondProvider = makeBearerProvider('token-2', { subscribe });
-    expect(() =>
-      second.createFrontX().use(second.auth({ provider: secondProvider })).use(second.authRealm()).build(),
-    ).toThrow(/found a different auth runtime already published/);
+    expect(() => second.createFrontX().use(second.auth({ provider: secondProvider })).build()).toThrow(
+      /found another provider already in this realm/,
+    );
 
-    // No transport in the shared registry, no session tracker baseline read,
-    // no provider subscription: the refusal came before auth() onInit.
+    // No transport, no baseline read, no subscription: refused in onRegister.
     expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(transportsBefore);
     expect(secondProvider.checkAuth).not.toHaveBeenCalled();
     expect(subscribe).not.toHaveBeenCalled();
-    expect(peekPublishedRuntime()).toBe(firstApp.auth);
-    expect(peekRetainers()).toBe(1);
+    expect(peekRealm()?.runtime).toBe(firstApp.auth);
+    expect(peekRealm()?.retainers).toBe(1);
+
+    // The refused build left the runtime buildable: the same graph joins.
+    const joined = second.createFrontX().use(second.auth()).build();
+    expect(joined.auth).toBe(firstApp.auth);
   });
 
-  it('deletes the slot on destroy', async () => {
-    const { createFrontX, auth, authRealm } = await loadGraph();
-    const app = createFrontX().use(auth({ provider: makeBearerProvider('token-1') })).use(authRealm()).build();
-    expect(peekPublishedRuntime()).toBe(app.auth);
+  it('refuses a provider added to an app that already has auth(), from use()', async () => {
+    const { createFrontX, auth } = await loadGraph();
+    const provider = makeBearerProvider('token-1');
 
-    app.destroy();
-
-    expect(peekPublishedRuntime()).toBeUndefined();
-    expect(peekRetainers()).toBeUndefined();
-    expect(peekTeardownToken()).toBeUndefined();
+    // The builder skips a second plugin named `auth`; one with a provider is not skipped silently.
+    expect(() => createFrontX().use(auth()).use(auth({ provider }))).toThrow(/already has an auth\(\) plugin/);
+    expect(() => createFrontX().use(auth({ provider: makeBearerProvider('a') })).use(auth({ provider })))
+      .toThrow(/already has an auth\(\) plugin/);
+    expect(provider.checkAuth).not.toHaveBeenCalled();
+    expect(peekRealm()).toBeUndefined();
   });
 
-  it('publishes the frontxApi transport config for joining apps and clears it on destroy', async () => {
-    const { createFrontX, auth, authRealm } = await loadGraph();
-    const frontxApi: Hai3ApiAuthTransportConfig = {
-      allowedCookieOrigins: ['https://api.example.com'],
-      csrfHeaderName: 'x-csrf-token',
-    };
-    const app = createFrontX()
-      .use(auth({ provider: makeBearerProvider('token-1'), frontxApi }))
-      .use(authRealm({ frontxApi }))
-      .build();
-    expect(peekPublishedTransportConfig()).toEqual(frontxApi);
+  it('skips a join added after the provider in the same app', async () => {
+    const { createFrontX, auth } = await loadGraph();
+    const provider = makeBearerProvider('token-1');
 
-    app.destroy();
+    const app = createFrontX().use(auth({ provider })).use(auth()).build();
 
-    expect(peekPublishedTransportConfig()).toBeUndefined();
+    expect(app.auth?.provider).toBe(provider);
+    expect(peekRealm()?.retainers).toBe(1);
   });
 });
 
-describe('authRealmShared() - joining side', () => {
-  it('has no auth dependency: it replaces auth() for the joining app', async () => {
-    const { authRealmShared } = await loadGraph();
-    const plugin = authRealmShared();
-    expect(plugin.name).toBe('authRealmShared');
-    expect(plugin.dependencies).toBeUndefined();
+describe('auth() - a join with no provider in the realm', () => {
+  it('throws before any side effect, and the runtime can build again', async () => {
+    const graph = await loadGraph();
+
+    expect(() => graph.createFrontX().use(graph.auth()).build()).toThrow(/no app of the realm has passed one yet/);
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(0);
+    expect(peekRealm()).toBeUndefined();
+
+    // Refused in onRegister, so the build state was reset: once a provider is
+    // in the realm, the same runtime builds its app.
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
+    const app = graph.createFrontX().use(graph.auth()).build();
+    expect(app.auth).toBe(ownerApp.auth);
+  });
+});
+
+describe('auth() - AuthEvents reach every app that holds the runtime', () => {
+  it('emits a logout started in a joined app on the eventBus of every app', async () => {
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
+    const joinGraph = await loadGraph();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    // Each graph has its own bus, so what follows proves the realm relays.
+    expect(joinGraph.eventBus).not.toBe(ownerGraph.eventBus);
+    const ownerHeard = listen(ownerGraph);
+    const joinHeard = listen(joinGraph);
+
+    await joinApp.auth?.logout();
+
+    expect(ownerHeard).toEqual(['loggedOut']);
+    expect(joinHeard).toEqual(['loggedOut']);
+    expect(ownerApp.auth).toBe(joinApp.auth);
   });
 
-  it('joins the host runtime, so a login on the joined app.auth reaches the host provider', async () => {
-    const hostGraph = await loadGraph();
+  it('lets a shell that only joined hear the LoggedIn of a login made in the app that owns the provider', async () => {
     const login = vi.fn().mockResolvedValue({ type: 'none' } satisfies AuthTransition);
-    const provider = makeLoginProvider('token-1', login);
-    const hostApp = hostGraph.createFrontX().use(hostGraph.auth({ provider })).use(hostGraph.authRealm()).build();
+    const mfeGraph = await loadGraph();
+    const mfeApp = mfeGraph.createFrontX().use(mfeGraph.auth({ provider: makeBearerProvider('t', { login }) })).build();
+    const shellGraph = await loadGraph();
+    shellGraph.createFrontX().use(shellGraph.auth()).build();
+    const shellHeard = listen(shellGraph);
 
+    await mfeApp.auth?.login?.({ type: 'password', payload: {} });
+
+    expect(shellHeard).toEqual(['loggedIn']);
+  });
+
+  it('stops emitting on the eventBus of an app once it is destroyed', async () => {
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
     const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    const ownerHeard = listen(ownerGraph);
+    const joinHeard = listen(joinGraph);
 
-    expect(joinApp.auth).toBe(hostApp.auth);
-    expect(joinApp.auth?.provider).toBe(provider);
-    expect(peekRetainers()).toBe(2);
+    joinApp.destroy();
+    await ownerApp.auth?.logout();
 
-    const sharedAuth = joinApp.auth;
-    if (!sharedAuth?.login) throw new Error('expected the shared runtime to expose login');
-    await sharedAuth.login({ type: 'password', payload: { username: 'ada', password: 'secret' } });
+    expect(ownerHeard).toEqual(['loggedOut']);
+    expect(joinHeard).toEqual([]);
+  });
+});
 
+describe('auth() - the provider lives while any app holds it', () => {
+  it('keeps the provider alive when the app that passed it is destroyed, and ends it on the last release', async () => {
+    const unsubscribe = vi.fn();
+    const destroy = vi.fn();
+    const login = vi.fn().mockResolvedValue({ type: 'none' } satisfies AuthTransition);
+    const provider = makeBearerProvider('token-1', { subscribe: vi.fn(() => unsubscribe), destroy, login });
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
+    const ownerTransports = apiRegistry.plugins.getAll(RestProtocol).length;
+    const joinGraph = await loadGraph();
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    const joinHeard = listen(joinGraph);
+
+    ownerApp.destroy();
+
+    // The owner's own transport is gone; the provider, its subscription and
+    // the session tracker are not.
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(ownerTransports);
+    expect(destroy).not.toHaveBeenCalled();
+    expect(unsubscribe).not.toHaveBeenCalled();
+    expect(peekRealm()?.retainers).toBe(1);
+    await joinApp.auth?.login?.({ type: 'password', payload: {} });
     expect(login).toHaveBeenCalledTimes(1);
-    expect(login).toHaveBeenCalledWith({ type: 'password', payload: { username: 'ada', password: 'secret' } }, undefined);
+    expect(joinHeard).toEqual(['loggedIn']);
+
+    // A late join still finds the provider, and a second provider is still refused.
+    const lateGraph = await loadGraph();
+    const lateApp = lateGraph.createFrontX().use(lateGraph.auth()).build();
+    expect(lateApp.auth).toBe(joinApp.auth);
+    const rivalGraph = await loadGraph();
+    expect(() => rivalGraph.createFrontX().use(rivalGraph.auth({ provider: makeBearerProvider('x') })).build())
+      .toThrow(/found another provider already in this realm/);
+
+    lateApp.destroy();
+    expect(destroy).not.toHaveBeenCalled();
+    joinApp.destroy();
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(peekRealm()).toBeUndefined();
+
+    // With the slot free, a new provider can be passed.
+    const nextGraph = await loadGraph();
+    const nextApp = nextGraph.createFrontX().use(nextGraph.auth({ provider: makeBearerProvider('y') })).build();
+    expect(peekRealm()?.runtime).toBe(nextApp.auth);
   });
 
-  it('joins the same runtime for every app of the realm', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
+  it('destroys the provider with its only holder', async () => {
+    const destroy = vi.fn();
+    const { createFrontX, auth } = await loadGraph();
+    const app = createFrontX().use(auth({ provider: makeBearerProvider('t', { destroy }) })).build();
 
-    const joinGraphA = await loadGraph();
-    const joinAppA = joinGraphA.createFrontX().use(joinGraphA.authRealmShared()).build();
+    app.destroy();
 
-    const joinGraphB = await loadGraph();
-    const joinAppB = joinGraphB.createFrontX().use(joinGraphB.authRealmShared()).build();
-
-    expect(joinAppA.auth).toBe(hostApp.auth);
-    expect(joinAppB.auth).toBe(hostApp.auth);
-    expect(peekRetainers()).toBe(3);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(peekRealm()).toBeUndefined();
   });
 
-  it('throws a clear error when no host runtime exists', async () => {
-    const { createFrontX, authRealmShared } = await loadGraph();
-
-    expect(() => createFrontX().use(authRealmShared()).build()).toThrow(
-      /authRealmShared\(\) requires an existing host authRealm\(\) runtime/,
-    );
-  });
-
-  it('refuses a joining app that also registered auth() instead of overwriting it', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-    expect(peekRetainers()).toBe(1);
-    const transportsBeforeRefusal = apiRegistry.plugins.getAll(RestProtocol).length;
-
+  it('detaches the runtime and removes the transport of a joining app on destroy', async () => {
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
     const joinGraph = await loadGraph();
-    expect(() =>
-      joinGraph
-        .createFrontX()
-        .use(joinGraph.auth({ provider: makeBearerProvider('token-2') }))
-        .use(joinGraph.authRealmShared())
-        .build(),
-    ).toThrow(/authRealmShared\(\) replaces auth\(\)/);
+    const joinApp = joinGraph.createFrontX().use(joinGraph.auth()).build();
+    const joined = apiRegistry.plugins.getAll(RestProtocol).length;
 
-    // The refusal happens before the join: no retainer was taken, and the
-    // host runtime is still the published one.
-    expect(peekRetainers()).toBe(1);
-    expect(peekPublishedRuntime()).toBe(hostApp.auth);
+    joinApp.destroy();
 
-    // It also happens before any plugin's onInit runs. auth() registers its
-    // REST transport in the shared apiRegistry when its onInit runs, and a
-    // build that throws rolls no plugin back, so a refusal there would leave
-    // that transport (and the session tracker beside it) in the shared
-    // registry for the rest of the page's life.
-    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(transportsBeforeRefusal);
+    expect(joinApp.auth).toBeUndefined();
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(joined - 1);
+    expect(peekRealm()?.runtime).toBe(ownerApp.auth);
+    expect(peekRealm()?.retainers).toBe(1);
   });
 
-  it('releases the retainer when the transport binding throws', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-    expect(peekRetainers()).toBe(1);
-
-    // A build whose onInit throws never returns an app nobody could destroy,
-    // so the join has to give its retainer back on the failure itself.
+  it('gives the hold back when the transport binding of a join throws', async () => {
+    const ownerGraph = await loadGraph();
+    const ownerApp = ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('t') })).build();
     const add = vi.spyOn(apiRegistry.plugins, 'add').mockImplementation(() => {
       throw new Error('registry refused the auth transport plugin');
     });
 
     const joinGraph = await loadGraph();
-    expect(() => joinGraph.createFrontX().use(joinGraph.authRealmShared()).build()).toThrow(
+    expect(() => joinGraph.createFrontX().use(joinGraph.auth()).build()).toThrow(
       'registry refused the auth transport plugin',
     );
     add.mockRestore();
 
-    // The failed join left no retainer behind and the slot still publishes
-    // the host runtime, so a later join works.
-    expect(peekRetainers()).toBe(1);
-    expect(peekPublishedRuntime()).toBe(hostApp.auth);
-
-    const retryGraph = await loadGraph();
-    const retryApp = retryGraph.createFrontX().use(retryGraph.authRealmShared()).build();
-    expect(retryApp.auth).toBe(hostApp.auth);
-    expect(peekRetainers()).toBe(2);
+    expect(peekRealm()?.retainers).toBe(1);
+    expect(peekRealm()?.emitters.size).toBe(1);
+    expect(peekRealm()?.runtime).toBe(ownerApp.auth);
   });
+});
 
-  it('carries the bearer token through the joining app own apiRegistry', async () => {
-    const hostGraph = await loadGraph();
-    const provider = makeBearerProvider('token-1');
-    hostGraph.createFrontX().use(hostGraph.auth({ provider })).use(hostGraph.authRealm()).build();
-
-    // The api singleton is shared by every graph of this file, so the host
-    // auth() transport is registered here too. Diff the list around the join
-    // to pin down the plugin the join added.
-    const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
+describe('auth() - the realm record contract version', () => {
+  it('refuses a record of another version, for a join and for a provider, before any side effect', async () => {
+    (globalThis as RealmHost)[AUTH_REALM_SYMBOL] = { version: 999, runtime: {} };
+    const provider = makeBearerProvider('t');
 
     const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+    expect(() => joinGraph.createFrontX().use(joinGraph.auth()).build()).toThrow(/contract version 999/);
+    const ownerGraph = await loadGraph();
+    expect(() => ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build()).toThrow(
+      /contract version 999/,
+    );
 
-    expect(joinApp.apiRegistry).toBe(apiRegistry);
-    const afterJoin = apiRegistry.plugins.getAll(RestProtocol);
-    expect(afterJoin).toHaveLength(beforeJoin.length + 1);
-    const joinPlugin = afterJoin.find((plugin) => !beforeJoin.includes(plugin));
-    expect(joinPlugin).toBeDefined();
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(0);
+    expect(provider.checkAuth).not.toHaveBeenCalled();
+  });
+});
 
-    const ctx = (await (joinPlugin as AuthTransportPlugin).onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+describe('auth() - the REST transport of a joining app', () => {
+  it('carries the bearer token through the joining app own apiRegistry', async () => {
+    const ownerGraph = await loadGraph();
+    const provider = makeBearerProvider('token-1');
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
+
+    const joinPlugin = await joinAndFindTransport();
+    const ctx = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
 
     expect(ctx.headers.Authorization).toBe('Bearer token-1');
-    // The session comes from the shared runtime's provider: the host's one.
     expect(provider.getSession).toHaveBeenCalledTimes(1);
   });
 
-  it('binds the joining transport with the frontxApi config the host realm publishes', async () => {
-    const hostGraph = await loadGraph();
+  it('binds the joining transport with the frontxApi config the provider app passed, once', async () => {
     const frontxApi: Hai3ApiAuthTransportConfig = {
       allowedCookieOrigins: ['https://api.example.com'],
       csrfHeaderName: 'x-csrf-token',
     };
-    const provider: AuthProvider = {
+    const provider = makeBearerProvider('t', {
       getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-1' } satisfies AuthSession),
-      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
-    };
-    hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider, frontxApi }))
-      .use(hostGraph.authRealm({ frontxApi }))
-      .build();
+    });
+    const ownerGraph = await loadGraph();
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider, frontxApi })).build();
+    expect(peekRealm()?.transportConfig).toEqual(frontxApi);
 
-    // The api singleton is shared by every graph of this file. Diff the list
-    // around the join to pin down the transport plugin the join added.
-    const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
-
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-
-    const afterJoin = apiRegistry.plugins.getAll(RestProtocol);
-    const joinPlugin = afterJoin.find((plugin) => !beforeJoin.includes(plugin));
-    expect(joinPlugin).toBeDefined();
-
-    const ctx = (await (joinPlugin as AuthTransportPlugin).onRequest?.(
+    const joinPlugin = await joinAndFindTransport();
+    const ctx = (await joinPlugin.onRequest?.(
       makeReqCtx('https://api.example.com/accounts/me'),
     )) as RestRequestContext;
 
@@ -419,14 +452,10 @@ describe('authRealmShared() - joining side', () => {
     expect(ctx.headers['x-csrf-token']).toBe('csrf-1');
   });
 
-  it('binds the joining transport with the whole frontxApi config the host publishes, unknown fields included', async () => {
-    // `allowedExtraOrigins` stands in for a field the type does not declare:
-    // the join must forward a field the joining copy of the type does not
-    // know, so the test publishes it through a cast. Only the test casts: the
-    // production join spreads the config as it is. The cast also carries a
-    // stray `provider` key and a stray `trackRefresh` hook, the kind of keys a
-    // config field added one day could collide with: `trackRefresh` is the
-    // one hook of the binder args the spread could hand a stray value to.
+  it('binds the published binder with the whole config, unknown fields included and stray keys kept out', async () => {
+    // `allowedExtraOrigins` stands in for a field the joining copy of the type
+    // does not know; `provider` and `trackRefresh` are stray keys a config
+    // field could one day collide with.
     const frontxApi = {
       allowedCookieOrigins: ['https://a.example'],
       csrfHeaderName: 'X-CSRF',
@@ -435,170 +464,50 @@ describe('authRealmShared() - joining side', () => {
       provider: 'stray-provider-key',
       trackRefresh: () => async () => undefined,
     } as Hai3ApiAuthTransportConfig;
-    // The captured args are read back with the same test-only extra field.
     type CapturedBinderArgs = Parameters<AuthTransportBinder>[0] & { allowedExtraOrigins?: string[] };
     const binderArgs: CapturedBinderArgs[] = [];
     const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
       binderArgs.push(args);
       return { destroy: () => undefined };
     });
-    const hostGraph = await loadGraph();
-    hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1'), frontxApi, transport }))
-      .use(hostGraph.authRealm({ frontxApi, transport }))
-      .build();
-    expect(transport).toHaveBeenCalledTimes(1);
+    const ownerGraph = await loadGraph();
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider: makeBearerProvider('token-1'), frontxApi, transport })).build();
 
     const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
 
-    // The join bound the host's binder with the host's config whole: all
-    // four fields, the one the type does not know included, unchanged.
     expect(transport).toHaveBeenCalledTimes(2);
     const joinArgs = binderArgs[1];
     expect(joinArgs?.allowedCookieOrigins).toEqual(['https://a.example']);
     expect(joinArgs?.csrfHeaderName).toBe('X-CSRF');
     expect(joinArgs?.allowedBearerOrigins).toEqual(['https://api.example']);
     expect(joinArgs?.allowedExtraOrigins).toEqual(['https://extra.example']);
-    // The stray `provider` key of the published config must not replace the
-    // provider the join binds: the binder receives the tracked provider of
-    // the shared runtime, not the stray value, so the session it resolves is
-    // the host provider's one.
     expect(joinArgs?.provider).not.toBe('stray-provider-key');
-    const joinedSession = await joinArgs?.provider.getSession?.();
-    expect(joinedSession).toEqual({ kind: 'bearer', token: 'token-1' } satisfies AuthSession);
-    // The stray `trackRefresh` hook must not reach the binder either: the
-    // join sets that hook itself, and a stray one would report refreshes to
-    // nothing wired to this runtime's session tracking.
+    expect(await joinArgs?.provider.getSession?.()).toEqual({ kind: 'bearer', token: 'token-1' });
     expect(joinArgs?.trackRefresh).toBeUndefined();
   });
 
-  it('binds a copy of the host config: an edit the host makes afterwards reaches no join', async () => {
-    // The published slot outlives the host's onInit, and the host object is
-    // the caller's own: a field the host changes after publishing (a late
-    // origin added, a header renamed) must not reach a join that binds then,
-    // or the join would run on a config its host no longer has.
-    const frontxApi: Hai3ApiAuthTransportConfig = {
-      allowedCookieOrigins: ['https://api.example'],
-      csrfHeaderName: 'X-CSRF',
-    };
-    const provider: AuthProvider = {
+  it('binds a copy of the config: an edit or a push the provider app makes afterwards reaches no join', async () => {
+    const origins = ['https://api.example'];
+    const frontxApi: Hai3ApiAuthTransportConfig = { allowedCookieOrigins: origins, csrfHeaderName: 'X-CSRF' };
+    const provider = makeBearerProvider('t', {
       getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-1' } satisfies AuthSession),
-      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
-    };
-    const hostGraph = await loadGraph();
-    hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider, frontxApi }))
-      .use(hostGraph.authRealm({ frontxApi }))
-      .build();
+    });
+    const ownerGraph = await loadGraph();
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider, frontxApi })).build();
 
-    // The host edits its own object after the publish.
-    frontxApi.allowedCookieOrigins = ['https://late.example'];
+    origins.push('https://late.example');
     frontxApi.csrfHeaderName = 'X-LATE';
 
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-
-    // The join bound the config as it stood when it was published: its
-    // request to the published origin carries the published CSRF header.
-    const ctx = (await (apiRegistry.plugins.getAll(RestProtocol).at(-1) as AuthTransportPlugin).onRequest?.(
-      makeReqCtx('https://api.example/accounts/me'),
-    )) as RestRequestContext;
-    expect(ctx.withCredentials).toBe(true);
-    expect(ctx.headers['X-CSRF']).toBe('csrf-1');
-    expect(peekPublishedTransportConfig()).toEqual({
-      allowedCookieOrigins: ['https://api.example'],
-      csrfHeaderName: 'X-CSRF',
-    });
-  });
-
-  it('binds a copy of the origin lists: an origin the host pushes in after the publish reaches no join', async () => {
-    // The origin lists decide which origins get credentials and the CSRF
-    // header, so editing a list in place is editing the config. A shallow
-    // copy of the host object still shares the arrays, so
-    // `allowedCookieOrigins.push('https://late.example')` on the host's own
-    // list would arm every join that binds afterwards with the late origin.
-    // The published config therefore copies its array values one level deep,
-    // the way the replaced-field case above already copies the object.
-    const hostOrigins = ['https://api.example'];
-    const frontxApi: Hai3ApiAuthTransportConfig = {
-      allowedCookieOrigins: hostOrigins,
-      csrfHeaderName: 'X-CSRF',
-    };
-    const provider: AuthProvider = {
-      getSession: vi.fn().mockResolvedValue({ kind: 'cookie', csrfToken: 'csrf-1' } satisfies AuthSession),
-      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
-    };
-    const hostGraph = await loadGraph();
-    hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider, frontxApi }))
-      .use(hostGraph.authRealm({ frontxApi }))
-      .build();
-
-    // The host pushes into its own list after the publish. The list lives in
-    // its own variable because `allowedCookieOrigins` is optional on the
-    // config type, so the push reads the array directly instead of through
-    // the optional field.
-    hostOrigins.push('https://late.example');
-
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-
-    const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).at(-1) as AuthTransportPlugin;
-    // The join bound the list as it stood when it was published: the late
-    // origin is not on it, the published one is.
-    const late = (await joinPlugin.onRequest?.(
-      makeReqCtx('https://late.example/accounts/me'),
-    )) as RestRequestContext;
+    const joinPlugin = await joinAndFindTransport();
+    const late = (await joinPlugin.onRequest?.(makeReqCtx('https://late.example/x'))) as RestRequestContext;
     expect(late.withCredentials).toBeUndefined();
-    const published = (await joinPlugin.onRequest?.(
-      makeReqCtx('https://api.example/accounts/me'),
-    )) as RestRequestContext;
+    const published = (await joinPlugin.onRequest?.(makeReqCtx('https://api.example/x'))) as RestRequestContext;
     expect(published.withCredentials).toBe(true);
     expect(published.headers['X-CSRF']).toBe('csrf-1');
-    expect(peekPublishedTransportConfig()?.allowedCookieOrigins).toEqual(['https://api.example']);
   });
 
-  it('removes its transport plugin from the joining app registry on destroy', async () => {
-    const hostGraph = await loadGraph();
-    hostGraph.createFrontX().use(hostGraph.auth({ provider: makeBearerProvider('token-1') })).use(hostGraph.authRealm()).build();
-
-    const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    const joined = apiRegistry.plugins.getAll(RestProtocol).length;
-
-    joinApp.destroy();
-
-    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(joined - 1);
-  });
-
-  it('detaches the shared runtime from the joining app on destroy', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-
-    const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    expect(joinApp.auth).toBe(hostApp.auth);
-
-    joinApp.destroy();
-
-    expect(joinApp.auth).toBeUndefined();
-    // The host still holds the runtime: the slot survives.
-    expect(peekPublishedRuntime()).toBe(hostApp.auth);
-    expect(peekRetainers()).toBe(1);
-  });
-
-  it('reports a joined 401 refresh to the host tracker, which clears for the new identity before the retry', async () => {
-    // No subscribe: the host tracker hears of a refresh only when it is told.
+  it('reports a joined 401 refresh to the session tracker, which clears every app before the retry', async () => {
     let sub = 'user-a';
     let token = 'token-a';
     const getIdentity = vi.fn(async () => ({ sub }));
@@ -607,31 +516,25 @@ describe('authRealmShared() - joining side', () => {
       token = 'token-b';
       return { kind: 'bearer', token } satisfies AuthSession;
     });
-    const provider: AuthProvider = {
+    const provider = makeBearerProvider('unused', {
       getSession: vi.fn(async () => ({ kind: 'bearer', token }) satisfies AuthSession),
       checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
       getIdentity,
       refresh,
-    };
-    const hostGraph = await loadGraph();
-    // The host's eventBus: the module graph the host plugins were loaded in.
-    const { eventBus } = await import('@gears-frontx/state');
-    hostGraph.createFrontX().use(hostGraph.auth({ provider })).use(hostGraph.authRealm()).build();
-    // The host's baseline (user A) lands before the 401.
+    });
+    const ownerGraph = await loadGraph();
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
     await vi.waitFor(() => expect(getIdentity).toHaveBeenCalledTimes(1));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
 
     const order: string[] = [];
-    eventBus.on('auth/loggedIn', () => order.push('loggedIn'));
-
+    ownerGraph.eventBus.on('auth/loggedIn', () => order.push('owner:loggedIn'));
     const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
     const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
+    joinGraph.createFrontX().use(joinGraph.auth()).build();
+    joinGraph.eventBus.on('auth/loggedIn', () => order.push('join:loggedIn'));
     const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeJoin.includes(plugin)) as
-      | (AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>)
-      | undefined;
-    expect(joinPlugin).toBeDefined();
+      AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
 
     const errCtx = {
       error: new Error('HTTP 401'),
@@ -643,38 +546,28 @@ describe('authRealmShared() - joining side', () => {
         return { status: 200, headers: {}, data: {} };
       }),
     };
-    await joinPlugin?.onError?.(errCtx);
+    await joinPlugin.onError?.(errCtx);
 
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-b' } });
-    // The host emitted the session change for user B, and before the retry.
-    expect(order).toEqual(['loggedIn', 'retry']);
+    expect(order).toEqual(['owner:loggedIn', 'join:loggedIn', 'retry']);
   });
 
-  it('joins a host whose provider is frozen, for requests and for a 401 refresh', async () => {
+  it('joins a provider that is frozen, for requests and for a 401 refresh', async () => {
     let token = 'token-a';
     const refresh = vi.fn(async () => {
       token = 'token-b';
       return { kind: 'bearer', token } satisfies AuthSession;
     });
-    const provider: AuthProvider = Object.freeze({
+    const provider: AuthProvider = Object.freeze(makeBearerProvider('unused', {
       getSession: vi.fn(async () => ({ kind: 'bearer', token }) satisfies AuthSession),
-      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
       refresh,
-    });
-    const hostGraph = await loadGraph();
-    hostGraph.createFrontX().use(hostGraph.auth({ provider })).use(hostGraph.authRealm()).build();
+    }));
+    const ownerGraph = await loadGraph();
+    ownerGraph.createFrontX().use(ownerGraph.auth({ provider })).build();
 
-    const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeJoin.includes(plugin)) as
-      | (AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>)
-      | undefined;
-    expect(joinPlugin).toBeDefined();
-
-    const ctx = (await joinPlugin?.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
+    const joinPlugin = await joinAndFindTransport();
+    const ctx = (await joinPlugin.onRequest?.(makeReqCtx('/accounts/me'))) as RestRequestContext;
     expect(ctx.headers.Authorization).toBe('Bearer token-a');
 
     const errCtx = {
@@ -684,95 +577,43 @@ describe('authRealmShared() - joining side', () => {
       retryCount: 0,
       retry: vi.fn(async () => ({ status: 200, headers: {}, data: {} })),
     };
-    await joinPlugin?.onError?.(errCtx);
+    await joinPlugin.onError?.(errCtx);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(errCtx.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-b' } });
   });
-
-  it('binds the joining requests with the transport binder the host published', async () => {
-    const custom: AuthSession = { kind: 'custom', data: { apiKey: 'key-1' } } as unknown as AuthSession;
-    const provider: AuthProvider = {
-      getSession: vi.fn().mockResolvedValue(custom),
-      checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
-      logout: vi.fn().mockResolvedValue({ type: 'none' }),
-    };
-    const bound: AuthProvider[] = [];
-    const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
-      bound.push(args.provider);
-      return { destroy: () => undefined };
-    });
-    const hostGraph = await loadGraph();
-    hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider, transport }))
-      .use(hostGraph.authRealm({ transport }))
-      .build();
-    expect(transport).toHaveBeenCalledTimes(1);
-
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-
-    // The join bound the host's binder, not frontxApiTransport(), and its
-    // provider answers with the host's session.
-    expect(transport).toHaveBeenCalledTimes(2);
-    expect(await bound[1]?.getSession()).toBe(custom);
-  });
 });
 
-describe('authRealmShared() - the host origin lists on a joined MFE', () => {
+describe('auth() - the origin lists on a joined app', () => {
   const API_ORIGIN = 'https://api.example.com';
   const COOKIE_ONLY_ORIGIN = 'https://cookies.example.com';
   const FOREIGN_ORIGIN = 'https://foreign.example.com';
 
-  /**
-   * Builds the host the way a project does, with the same `frontxApi` passed
-   * to `auth()` and to `authRealm()`, joins it with `authRealmShared()`, and
-   * returns the transport plugin the join registered. The host lists the API
-   * origin for bearer tokens and a second origin for cookies only.
-   */
-  async function joinBearerHost(provider: AuthProvider): Promise<AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>> {
-    const frontxApi: Hai3ApiAuthTransportConfig = {
-      allowedBearerOrigins: [API_ORIGIN],
-      allowedCookieOrigins: [COOKIE_ONLY_ORIGIN],
-    };
-    const hostGraph = await loadGraph();
-    hostGraph
+  async function joinBearerOwner(provider: AuthProvider) {
+    const ownerGraph = await loadGraph();
+    ownerGraph
       .createFrontX()
-      .use(hostGraph.auth({ provider, frontxApi }))
-      .use(hostGraph.authRealm({ frontxApi }))
+      .use(ownerGraph.auth({
+        provider,
+        frontxApi: { allowedBearerOrigins: [API_ORIGIN], allowedCookieOrigins: [COOKIE_ONLY_ORIGIN] },
+      }))
       .build();
-
-    // The api singleton is shared by every graph of this file, so the host
-    // auth() transport is registered here too. Diff the list around the join
-    // to pin down the plugin the join added.
-    const beforeJoin = [...apiRegistry.plugins.getAll(RestProtocol)];
-    const joinGraph = await loadGraph();
-    joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    const joinPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeJoin.includes(plugin));
-    expect(joinPlugin).toBeDefined();
-    return joinPlugin as AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
+    return joinAndFindTransport();
   }
 
-  it('sends no bearer token to an origin outside allowedBearerOrigins', async () => {
-    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1'));
+  it('sends the bearer token to a listed origin and to no other', async () => {
+    const joinPlugin = await joinBearerOwner(makeBearerProvider('token-1'));
 
-    for (const url of [`${FOREIGN_ORIGIN}/accounts/me`, `${COOKIE_ONLY_ORIGIN}/accounts/me`]) {
+    for (const url of [`${FOREIGN_ORIGIN}/x`, `${COOKIE_ONLY_ORIGIN}/x`]) {
       const ctx = (await joinPlugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
       expect(ctx.headers.Authorization).toBeUndefined();
     }
-  });
-
-  it('sends the bearer token to an origin listed in allowedBearerOrigins', async () => {
-    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1'));
-
-    const ctx = (await joinPlugin.onRequest?.(makeReqCtx(`${API_ORIGIN}/accounts/me`))) as RestRequestContext;
-
-    expect(ctx.headers.Authorization).toBe('Bearer token-1');
+    const listed = (await joinPlugin.onRequest?.(makeReqCtx(`${API_ORIGIN}/x`))) as RestRequestContext;
+    expect(listed.headers.Authorization).toBe('Bearer token-1');
   });
 
   it('starts no refresh for a 401 from an origin that gets no credentials', async () => {
     const refresh = vi.fn(async () => ({ kind: 'bearer', token: 'token-2' }) satisfies AuthSession);
-    const joinPlugin = await joinBearerHost(makeBearerProvider('token-1', { refresh }));
+    const joinPlugin = await joinBearerOwner(makeBearerProvider('token-1', { refresh }));
     const make401 = (url: string) => ({
       error: new Error('HTTP 401'),
       request: makeReqCtx(url),
@@ -781,121 +622,13 @@ describe('authRealmShared() - the host origin lists on a joined MFE', () => {
       retry: vi.fn(async () => ({ status: 200, headers: {}, data: {} })),
     });
 
-    const foreign = make401(`${FOREIGN_ORIGIN}/accounts/me`);
-    const result = await joinPlugin.onError?.(foreign);
-
-    expect(result).toBe(foreign.error);
+    const foreign = make401(`${FOREIGN_ORIGIN}/x`);
+    expect(await joinPlugin.onError?.(foreign)).toBe(foreign.error);
     expect(refresh).not.toHaveBeenCalled();
-    expect(foreign.retry).not.toHaveBeenCalled();
 
-    // The same 401 from the listed API origin does refresh, so the join's
-    // error hook is live and only the origin kept the foreign one out.
-    const listed = make401(`${API_ORIGIN}/accounts/me`);
+    const listed = make401(`${API_ORIGIN}/x`);
     await joinPlugin.onError?.(listed);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(listed.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-2' } });
-  });
-});
-
-describe('authRealm() and authRealmShared() - teardown', () => {
-  it('marks the runtime destroyed when the host releases while a join still holds it', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-
-    const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    expect(peekRetainers()).toBe(2);
-
-    hostApp.destroy();
-
-    // The join keeps the runtime it already holds, but nothing publishes it
-    // any more: the host auth() plugin destroys the provider right after
-    // authRealm() releases, so the slot holds the destroyed marker instead.
-    expect(joinApp.auth).toBe(hostApp.auth);
-    expect(peekPublishedRuntime()).not.toBe(hostApp.auth);
-    expect(peekRetainers()).toBe(1);
-
-    // A join that arrives now is rejected instead of reaching the destroyed provider.
-    const lateJoinGraph = await loadGraph();
-    expect(() => lateJoinGraph.createFrontX().use(lateJoinGraph.authRealmShared()).build()).toThrow(
-      /the host authRealm\(\) runtime was already destroyed/,
-    );
-    expect(peekRetainers()).toBe(1);
-
-    // A new host can publish without waiting for the stale join to release.
-    const secondGraph = await loadGraph();
-    const secondApp = secondGraph
-      .createFrontX()
-      .use(secondGraph.auth({ provider: makeBearerProvider('token-2') }))
-      .use(secondGraph.authRealm())
-      .build();
-    expect(peekPublishedRuntime()).toBe(secondApp.auth);
-    expect(peekRetainers()).toBe(2);
-
-    // The stale join gives its own retainer back only.
-    joinApp.destroy();
-    expect(joinApp.auth).toBeUndefined();
-    expect(peekPublishedRuntime()).toBe(secondApp.auth);
-    expect(peekRetainers()).toBe(1);
-
-    secondApp.destroy();
-
-    expect(peekPublishedRuntime()).toBeUndefined();
-    expect(peekRetainers()).toBeUndefined();
-    expect(peekTeardownToken()).toBeUndefined();
-  });
-
-  it('deletes the slot only on the last release', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-
-    const joinGraph = await loadGraph();
-    const joinApp = joinGraph.createFrontX().use(joinGraph.authRealmShared()).build();
-    expect(peekRetainers()).toBe(2);
-
-    hostApp.destroy();
-
-    // The join still holds its retainer, so the slot is not deleted yet; the
-    // host release has already replaced the runtime with the destroyed marker.
-    expect(joinApp.auth).toBe(hostApp.auth);
-    expect(peekPublishedRuntime()).not.toBe(hostApp.auth);
-    expect(peekRetainers()).toBe(1);
-
-    joinApp.destroy();
-
-    expect(peekPublishedRuntime()).toBeUndefined();
-    expect(peekRetainers()).toBeUndefined();
-    expect(peekTeardownToken()).toBeUndefined();
-  });
-
-  it('lets a new host publish after the previous host released', async () => {
-    const hostGraph = await loadGraph();
-    const hostApp = hostGraph
-      .createFrontX()
-      .use(hostGraph.auth({ provider: makeBearerProvider('token-1') }))
-      .use(hostGraph.authRealm())
-      .build();
-
-    hostApp.destroy();
-    expect(peekPublishedRuntime()).toBeUndefined();
-
-    // A new host publishes again after the slot was deleted.
-    const secondGraph = await loadGraph();
-    const secondApp = secondGraph
-      .createFrontX()
-      .use(secondGraph.auth({ provider: makeBearerProvider('token-2') }))
-      .use(secondGraph.authRealm())
-      .build();
-
-    expect(peekPublishedRuntime()).toBe(secondApp.auth);
-    expect(peekRetainers()).toBe(1);
   });
 });

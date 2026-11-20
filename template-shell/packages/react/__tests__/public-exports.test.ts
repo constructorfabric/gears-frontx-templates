@@ -5,7 +5,7 @@
  */
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { Extension } from '@gears-frontx/framework';
-import { authRealm, authRealmShared } from '../src/index';
+import * as react from '../src/index';
 import type { useDomainExtensions } from '../src/mfe/hooks/useDomainExtensions';
 
 describe('@gears-frontx/react public exports', () => {
@@ -13,8 +13,9 @@ describe('@gears-frontx/react public exports', () => {
     expectTypeOf<ReturnType<typeof useDomainExtensions>>().toEqualTypeOf<Array<Omit<Extension, 'route'>>>();
   });
 
-  it('re-exports authRealm and authRealmShared from the framework', () => {
-    expect(authRealm).toBeTypeOf('function');
-    expect(authRealmShared).toBeTypeOf('function');
+  it('re-exports auth() as the one auth plugin, with no separate realm plugins', () => {
+    expect(react.auth).toBeTypeOf('function');
+    expect(react).not.toHaveProperty('authRealm');
+    expect(react).not.toHaveProperty('authRealmShared');
   });
 });
