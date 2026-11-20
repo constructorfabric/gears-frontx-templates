@@ -29,8 +29,14 @@ import {
   readSessionCredentials,
 } from './signIn';
 
-/** The event type of the provider hook the 401 trigger wraps. */
-type TransportErrorEvent = Parameters<NonNullable<AuthProvider['onTransportError']>>[0];
+/**
+ * The event type of the provider hook the 401 trigger wraps. The framework
+ * transport sets `credentialed` to false for a request to an origin that gets
+ * no credentials; an emitter that does not set it counts as credentialed.
+ */
+type TransportErrorEvent = Parameters<NonNullable<AuthProvider['onTransportError']>>[0] & {
+  credentialed?: boolean;
+};
 
 /**
  * The page-lifetime guard of the chain. One sign-in flow per page: the chain
@@ -515,6 +521,10 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   provider.onTransportError = (event: TransportErrorEvent): void => {
     previous?.(event);
     if (event.status !== 401) return;
+    // A request that carried no credentials, to an origin outside the app's
+    // own and its origin lists, says nothing about this session: no
+    // confirmation, no `checkAuth()`, no snapshot.
+    if (event.credentialed === false) return;
     // The guard is up: the chain cannot go out again, so there is nothing
     // left to confirm and nothing to send.
     if (chainSent) return;

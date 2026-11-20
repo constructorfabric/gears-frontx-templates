@@ -14,6 +14,7 @@ import type {
   AuthPermissions,
   AuthProvider,
   AuthSession,
+  AuthTransportErrorEvent,
   AuthTransportRequest,
   AuthStateListener,
   AuthUnsubscribe,
@@ -589,6 +590,14 @@ function shouldIncludeCredentials(url: string, allowedOrigins: readonly string[]
   return allowedOrigins?.includes(origin) ?? false;
 }
 
+/**
+ * The event the transport passes to `AuthProvider.onTransportError`. `credentialed` is false
+ * when the request went to an origin that gets no credentials under either origin list, the
+ * same check that keeps such a 401 from starting a refresh. An emitter that does not set it
+ * leaves the request counted as credentialed.
+ */
+type TransportErrorEvent = AuthTransportErrorEvent & { credentialed?: boolean };
+
 type RefreshFlight = {
   refresh: Promise<AuthSession | null>;
   /** Settles once the session tracker has seen the result; never rejects. */
@@ -669,15 +678,29 @@ class AuthRestPlugin extends RestPlugin {
     return false;
   }
 
+  /**
+   * Whether a request to `url` goes to an origin that gets credentials under either list. A
+   * 401 from any other origin says nothing about this session.
+   */
+  private reachesCredentialedOrigin(url: string): boolean {
+    const { allowedCookieOrigins = [], allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
+    return shouldIncludeCredentials(url, [...allowedCookieOrigins, ...allowedBearerOrigins]);
+  }
+
   async onError(ctx: ApiPluginErrorContext): Promise<Error | RestResponseContext> {
+    const credentialed = this.reachesCredentialedOrigin(ctx.request.url);
     // Notify provider of every transport error (informational; called before retry decisions).
+    // `credentialed` is false for a request to an origin that gets no credentials, so a hook
+    // can tell a 401 that says nothing about this session from one that does.
     const requestForHook = toAuthTransportRequest(ctx.request);
     if (requestForHook) {
-      this.config.provider.onTransportError?.({
+      const event: TransportErrorEvent = {
         request: requestForHook,
         error: ctx.error,
         status: ctx.response?.status,
-      });
+        credentialed,
+      };
+      this.config.provider.onTransportError?.(event);
     }
 
     if (ctx.response?.status !== 401) return ctx.error;
@@ -685,10 +708,8 @@ class AuthRestPlugin extends RestPlugin {
     if (!this.config.provider.refresh) return ctx.error;
     // A 401 from an origin that gets no credentials under either list says nothing about this
     // session: it neither refreshes the session nor counts toward the refresh limit.
-    const { allowedCookieOrigins = [], allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
-    if (!shouldIncludeCredentials(ctx.request.url, [...allowedCookieOrigins, ...allowedBearerOrigins])) {
-      return ctx.error;
-    }
+    if (!credentialed) return ctx.error;
+    const { allowedBearerOrigins = [] } = this.config.frontxApi ?? {};
 
     // Dedup concurrent 401 refresh calls into a single in-flight promise.
     // NOTE: shared refresh must NOT be bound to any single request's AbortSignal —

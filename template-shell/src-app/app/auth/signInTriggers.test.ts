@@ -110,6 +110,19 @@ function transportError(status: number): TransportErrorEvent {
   };
 }
 
+/**
+ * A 401 the transport marks as sent without credentials: the request went to
+ * an origin outside the app's own and its origin lists.
+ */
+function uncredentialed401(): TransportErrorEvent {
+  const event: TransportErrorEvent & { credentialed?: boolean } = {
+    ...transportError(401),
+    request: { url: 'https://foreign.example.com/x', method: 'GET' },
+    credentialed: false,
+  };
+  return event;
+}
+
 /** Lets the promises the trigger chains after the settles run to their end. */
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -510,6 +523,54 @@ describe('wireSignInTriggers', () => {
     await flush();
 
     expect(executeActionsChain).not.toHaveBeenCalled();
+  });
+
+  it('a 401 on a request that carried no credentials opens no modal and asks no checkAuth', async () => {
+    // The transport marks a request to an origin that gets no credentials:
+    // its 401 says nothing about this session, so the trigger neither
+    // confirms nor reads a snapshot. A credentialed 401 after it still asks
+    // checkAuth and opens the modal on a signed-out answer.
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider();
+    const checkAuth = vi
+      .fn()
+      .mockResolvedValueOnce({ authenticated: true }) // the start-up read
+      .mockResolvedValue({ authenticated: false });
+    const getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'tok' });
+    const { app, executeActionsChain } = stubApp({ checkAuth, getSession });
+
+    wireSignInTriggers(app, provider);
+    settleBootstrapAndSlot();
+    await vi.waitFor(() => expect(checkAuth).toHaveBeenCalledTimes(1));
+    const readsAtStart = getSession.mock.calls.length;
+
+    provider.onTransportError?.(uncredentialed401());
+    await flush();
+    await flush();
+    expect(checkAuth).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(readsAtStart);
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    // An event without the flag counts as credentialed.
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
+    expect(checkAuth).toHaveBeenCalledTimes(2);
+  });
+
+  it('a 401 on a request that carried no credentials opens no modal on a host without an auth runtime', async () => {
+    const { wireSignInTriggers } = await import('./signInTriggers');
+    const provider = stubProvider();
+    const { app, executeActionsChain } = stubApp(undefined);
+
+    wireSignInTriggers(app, provider);
+    provider.onTransportError?.(uncredentialed401());
+    settleBootstrapAndSlot();
+    await flush();
+    await flush();
+    expect(executeActionsChain).not.toHaveBeenCalled();
+
+    provider.onTransportError?.(transportError(401));
+    await vi.waitFor(() => expect(executeActionsChain).toHaveBeenCalledTimes(1));
   });
 
   it('a 401 a refresh can recover is confirmed against the session first', async () => {

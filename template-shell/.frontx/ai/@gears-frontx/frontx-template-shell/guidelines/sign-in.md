@@ -84,7 +84,12 @@ The shell sends the chain on two triggers, both in
   reload;
 - on a 401, through the provider's `onTransportError` hook, which the shell
   wraps rather than replaces, so a provider that reports its own transport
-  errors keeps doing so.
+  errors keeps doing so. A 401 on a request that carried no credentials does
+  not reach the trigger: the framework transport sets `credentialed: false`
+  on the event for a request to an origin outside the app's own and its
+  origin lists, by the same check that keeps such a 401 from starting a
+  refresh, and the trigger returns at once, with no `checkAuth()` and no
+  session snapshot. An event without the flag counts as credentialed.
 
 One page-lifetime guard keeps it to one chain per page, and the reload resets
 it. A bootstrap that fails inside a send burns the guard instead of releasing

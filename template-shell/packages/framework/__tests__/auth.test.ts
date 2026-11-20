@@ -1545,6 +1545,35 @@ describe('auth plugin', () => {
       const result = await plugin.onError?.(errCtx);
       expect(result).toBe(errCtx.error);
     });
+
+    it('marks the event credentialed only for a request to an origin that gets credentials', async () => {
+      const onTransportError = vi.fn();
+      const provider: AuthProvider = { ...makeBearerProvider('tok'), onTransportError };
+      const plugin = capturePlugin(provider, {
+        allowedBearerOrigins: ['https://api.example.com'],
+        allowedCookieOrigins: ['https://cookies.example.com'],
+      });
+      const fail = (url: string) =>
+        plugin.onError?.({
+          error: new Error('HTTP 401'),
+          request: makeReqCtx(url),
+          response: { status: 401, headers: {}, data: null },
+          retryCount: 0,
+          retry: vi.fn(),
+        });
+
+      await fail('https://foreign.example.com/x');
+      await fail('https://api.example.com/x');
+      await fail('https://cookies.example.com/x');
+      await fail('/api/x');
+
+      expect(onTransportError.mock.calls.map(([event]) => (event as { credentialed?: boolean }).credentialed)).toEqual([
+        false,
+        true,
+        true,
+        true,
+      ]);
+    });
   });
 
   // -------------------------------------------------------------------------
