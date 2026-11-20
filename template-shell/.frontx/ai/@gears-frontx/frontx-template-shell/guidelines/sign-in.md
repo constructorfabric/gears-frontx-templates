@@ -255,12 +255,20 @@ flight and queues the rest makes that one request per page.
 
 The origin lists are the host's, and they are the lists for every joined MFE,
 because a join takes no options (`authRealmShared()` is parameterless): the
-cookie origins and the CSRF header the host publishes beside the runtime are
-what every MFE's requests carry; the host's published `frontxApi` config is
-forwarded whole to every joined MFE. Today only cookie credentials are
-origin-checked (`AuthRestPlugin.onRequest`); a bearer token goes to every
-origin. A project passes the same `frontxApi` to BOTH `auth({ frontxApi })`
-and `authRealm({ frontxApi })` on the host: a config that reaches only
-`authRealm()` applies to the MFEs and not to the shell's own requests.
+host's published `frontxApi` config is forwarded whole to every joined MFE,
+so the cookie origins, the CSRF header and the bearer origins the host
+publishes beside the runtime are what every MFE's requests carry. Credentials
+go only to the app's own origin and to the listed ones
+(`AuthRestPlugin.onRequest`): a cookie session's `withCredentials` and CSRF
+header to `allowedCookieOrigins`, a bearer session's `Authorization` header
+to `allowedBearerOrigins`, the retry after a 401 refresh included. A request
+to any other origin goes without them, and its 401 starts no refresh and does
+not reach the sign-in trigger. A project whose API is on another origin lists
+it, and passes the same list to BOTH `auth({ frontxApi })` and
+`authRealm({ frontxApi })` on the host: `auth()` builds the shell's own
+transport from it, and `authRealm()` publishes it for the joins. A list that
+reaches only `authRealm()` lets the MFEs send credentials to the listed
+origins while the shell's own requests to them go without; a list that
+reaches only `auth()` does the reverse.
 
 Everything else in this flow is the shell's and stays unedited.
