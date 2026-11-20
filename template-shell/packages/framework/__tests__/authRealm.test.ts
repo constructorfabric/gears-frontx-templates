@@ -846,6 +846,33 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     }
   });
 
+  it('completes a replacement when the development warning cannot describe a provider', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const graphA = await loadGraph();
+      const appA = graphA.createFrontX().use(graphA.auth({
+        provider: new Proxy(makeBearerProvider('a'), {
+          get: (target, key) => {
+            if (key === 'constructor') throw new Error('no constructor');
+            return Reflect.get(target, key);
+          },
+        }),
+      })).build();
+      const providerB = makeBearerProvider('b');
+      const graphB = await loadGraph();
+
+      graphB.createFrontX().use(graphB.auth({ provider: providerB })).build();
+
+      expect(appA.auth?.provider).toBe(providerB);
+      expect(peekRealm()?.holders.size).toBe(2);
+      expect(registered()).toHaveLength(2);
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/replacement warning threw/), expect.any(Error));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('rejects a login and a callback that end after the swap; the old tracker emits nothing', async () => {
     let finishLogin!: (transition: AuthTransition) => void;
     let finishCallback!: (transition: AuthTransition) => void;

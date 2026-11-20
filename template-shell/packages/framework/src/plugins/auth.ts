@@ -1396,13 +1396,15 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
     entry.unsubscribe = unsubscribe;
   }
   previous.retire(true);
-  if (isDevelopment()) {
+  // A diagnostic: it reads the provider objects, so a throw there must not stop the committed swap.
+  guarded('The replacement warning', () => {
+    if (!isDevelopment()) return;
     console.warn(
       `[Gears FrontX] auth({ provider }) replaced the session provider in use, ${describeGeneration(previous)}, ` +
         `with ${describeGeneration(next)}. Every app of the page now sends the new provider's credentials ` +
         "under the new provider's transport settings. An app that means to use the provider in use passes auth().",
     );
-  }
+  });
   for (const holder of record.holders) holder.emit(AuthEvents.SessionCheck);
   for (const holder of record.holders) {
     if (holder === bound) continue;
