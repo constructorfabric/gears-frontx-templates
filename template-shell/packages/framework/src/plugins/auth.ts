@@ -1336,6 +1336,25 @@ function releaseAuthRealm(record: AuthRealmRecord, holder: AuthRealmHolder): voi
   record.current.retire(true);
 }
 
+/** Whether this is a development build, as bundlers set `process.env.NODE_ENV`. */
+function isDevelopment(): boolean {
+  try {
+    return process.env.NODE_ENV === 'development';
+  } catch {
+    return false;
+  }
+}
+
+/** Names a provider and its origin lists for a warning; the session itself is never read. */
+function describeGeneration(generation: AuthGeneration): string {
+  const name = generation.provider.constructor?.name;
+  const config = generation.transportConfig;
+  return `${name && name !== 'Object' ? name : 'a provider object'} ` +
+    `(bearer origins ${JSON.stringify(config?.allowedBearerOrigins ?? [])}, ` +
+    `cookie origins ${JSON.stringify(config?.allowedCookieOrigins ?? [])}` +
+    `${generation.transport ? ', a custom transport binder' : ''})`;
+}
+
 /**
  * Puts `next` in place of the provider in use; `bound` is the app that passed
  * it, already bound to it. The old provider and everything that authorised its
@@ -1377,6 +1396,13 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
     entry.unsubscribe = unsubscribe;
   }
   previous.retire(true);
+  if (isDevelopment()) {
+    console.warn(
+      `[Gears FrontX] auth({ provider }) replaced the session provider in use, ${describeGeneration(previous)}, ` +
+        `with ${describeGeneration(next)}. Every app of the page now sends the new provider's credentials ` +
+        "under the new provider's transport settings. An app that means to use the provider in use passes auth().",
+    );
+  }
   for (const holder of record.holders) holder.emit(AuthEvents.SessionCheck);
   for (const holder of record.holders) {
     if (holder === bound) continue;
@@ -1534,7 +1560,8 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  * replacement. A provider passed while another is in use replaces it for
  * every app of the page, the shell included, with its own `frontxApi` and
  * binder: credentials and the policy that authorises them belong to one
- * provider. Every app follows: its bus hears
+ * provider. A development build logs a warning that names both providers and
+ * their origin lists. Every app follows: its bus hears
  * `AuthEvents.SessionCheck` at once and `LoggedIn` (a session) or
  * `LoggedOut` (none, or the read failed) once the new provider's baseline
  * read lands. The old provider retires at once: its session tracking stops,

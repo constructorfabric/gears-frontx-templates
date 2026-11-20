@@ -818,6 +818,34 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     expect(error).toHaveBeenCalledWith(expect.stringMatching(/destroy\(\) threw/), expect.any(Error));
   });
 
+  it('warns in a development build at every replacement, naming both providers and their origin lists', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      class ShellProvider {
+        getSession = vi.fn().mockResolvedValue({ kind: 'bearer', token: 'secret-a' } satisfies AuthSession);
+        checkAuth = vi.fn().mockResolvedValue({ authenticated: false });
+        logout = vi.fn().mockResolvedValue({ type: 'none' });
+      }
+      const graphA = await loadGraph();
+      graphA.createFrontX().use(graphA.auth({
+        provider: new ShellProvider(),
+        frontxApi: { allowedBearerOrigins: [OLD_ONLY] },
+      })).build();
+      expect(warn).not.toHaveBeenCalled();
+      const graphB = await loadGraph();
+      graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('secret-b') })).build();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0]?.[0]);
+      expect(message).toContain(`ShellProvider (bearer origins ["${OLD_ONLY}"], cookie origins [])`);
+      expect(message).toContain('with a provider object (bearer origins [], cookie origins [])');
+      expect(message).not.toMatch(/secret/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('rejects a login and a callback that end after the swap; the old tracker emits nothing', async () => {
     let finishLogin!: (transition: AuthTransition) => void;
     let finishCallback!: (transition: AuthTransition) => void;
