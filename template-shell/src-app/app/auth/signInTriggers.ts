@@ -403,8 +403,11 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   // provider again. The auth runtime's own `refresh` is wrapped the same
   // way, for code that calls `app.auth.refresh()` itself; it calls the
   // original the auth plugin captured at build time, so no flight is seen
-  // twice. Both wraps sit on the provider this app passed: a provider that
-  // another app passes later, replacing it, carries neither.
+  // twice. The `refresh` and `onTransportError` wraps sit on the provider
+  // this app passed, so a provider another app passes later, replacing it,
+  // carries neither; the `app.auth.refresh` wrap sits on the realm's shared
+  // runtime, so it stays across a replacement and sees the
+  // `app.auth.refresh()` calls of every app.
   type TrackedFlight = {
     promise: Promise<unknown>;
     /** Set once the flight settles: the session it resolved to, or its failure. */

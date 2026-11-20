@@ -50,11 +50,14 @@ async function buildProviderMfe(provider: AuthProvider): Promise<{ app: FrontXAp
     const EventBus = actual.eventBus.constructor as new () => typeof actual.eventBus;
     return { ...actual, eventBus: new EventBus() };
   });
-  const react = await import('@gears-frontx/react');
-  const app = react.createFrontX().use(react.auth({ provider })).build();
-  vi.doUnmock('@gears-frontx/state');
-  vi.resetModules();
-  return { app, react };
+  try {
+    const react = await import('@gears-frontx/react');
+    const app = react.createFrontX().use(react.auth({ provider })).build();
+    return { app, react };
+  } finally {
+    vi.doUnmock('@gears-frontx/state');
+    vi.resetModules();
+  }
 }
 
 describe('a shell that joins the session a microfrontend app passed', () => {
@@ -76,8 +79,11 @@ describe('a shell that joins the session a microfrontend app passed', () => {
   });
 
   afterEach(async () => {
-    await teardownModalSuite(registry);
-    mfeApp?.destroy();
+    try {
+      await teardownModalSuite(registry);
+    } finally {
+      mfeApp?.destroy();
+    }
   });
 
   it.each(['the microfrontend app', 'the shell'] as const)(

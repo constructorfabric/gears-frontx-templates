@@ -157,6 +157,14 @@ export function stubAuthProvider() {
 }
 
 /**
+ * The auth plugin of the case's app and the app it was built into. The plugin
+ * holds the page-wide auth realm, which outlives the module reset between
+ * cases, so the teardown releases it: otherwise the next case's provider
+ * would replace this one instead of starting a realm of its own.
+ */
+let heldAuth: { plugin: FrontXPlugin; app: FrontXApp } | undefined;
+
+/**
  * Builds one app per case, the way `main.tsx` does in development: the
  * application schemas go on the type system first, the auth config rides on
  * the builder rather than the preset (the exported `Presets` type declares
@@ -168,14 +176,6 @@ export function stubAuthProvider() {
  * the chain's fallback with. `options.joinAuth` builds the app with `auth()`
  * alone, joining the provider another app of the realm passed.
  */
-/**
- * The auth plugin of the case's app and the app it was built into. The plugin
- * holds the page-wide auth realm, which outlives the module reset between
- * cases, so the teardown releases it: otherwise the next case's provider
- * would replace this one instead of starting a realm of its own.
- */
-let heldAuth: { plugin: FrontXPlugin; app: FrontXApp } | undefined;
-
 export async function buildApp(options?: {
   provider?: AuthProvider;
   joinAuth?: boolean;
@@ -209,11 +209,9 @@ export async function buildApp(options?: {
     }
   }
 
-  const authPlugin = options?.provider
-    ? react.auth({ provider: options.provider })
-    : options?.joinAuth
-      ? react.auth()
-      : undefined;
+  let authPlugin: FrontXPlugin | undefined;
+  if (options?.provider) authPlugin = react.auth({ provider: options.provider });
+  else if (options?.joinAuth) authPlugin = react.auth();
   const app = react
     .createFrontX()
     .useAll(react.presets.full())
