@@ -441,16 +441,81 @@ describe('auth() - a second provider replaces the one in use', () => {
     expect(peekRealm()?.current.transportConfig).toEqual({ csrfHeaderName: 'X-B' });
   });
 
-  it('keeps a provider passed again by another app: it goes on, not destroyed', async () => {
+  it('joins when another app passes the provider already in use: no swap, no events, nothing destroyed', async () => {
     const destroy = vi.fn();
-    const provider = makeBearerProvider('t', { destroy });
+    const login = vi.fn().mockResolvedValue({ type: 'none' } satisfies AuthTransition);
+    const provider = makeBearerProvider('t', { destroy, login });
     const graphA = await loadGraph();
-    graphA.createFrontX().use(graphA.auth({ provider })).build();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider })).build();
+    await settle();
+    const heard = listen(graphA);
+    const signingIn = appA.auth!.login!({ type: 'password', payload: {} });
+
     const graphB = await loadGraph();
     const appB = graphB.createFrontX().use(graphB.auth({ provider })).build();
+    await settle();
 
+    expect(appB.auth).toBe(appA.auth);
+    expect(peekRealm()?.holders.size).toBe(2);
     expect(destroy).not.toHaveBeenCalled();
-    expect(appB.auth?.provider).toBe(provider);
+    // A call running across it is not cut off as a replaced one.
+    await expect(signingIn).resolves.toEqual({ type: 'none' });
+    expect(heard).toEqual(['loggedIn']);
+  });
+
+  it('rolls back a replacement whose provider throws on subscribe', async () => {
+    const destroyA = vi.fn();
+    const providerA = makeBearerProvider('a', { destroy: destroyA });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: providerA })).build();
+    const listener = vi.fn();
+    appA.auth!.subscribe?.(listener);
+    await settle();
+    const heard = listen(graphA);
+    const transports = apiRegistry.plugins.getAll(RestProtocol).length;
+
+    const providerB = makeBearerProvider('b', {
+      subscribe: vi.fn(() => {
+        throw new Error('subscribe refused');
+      }),
+    });
+    const graphB = await loadGraph();
+    expect(() => graphB.createFrontX().use(graphB.auth({ provider: providerB })).build()).toThrow('subscribe refused');
+    await settle();
+
+    expect(appA.auth?.provider).toBe(providerA);
+    expect(peekRealm()?.holders.size).toBe(1);
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(transports);
+    expect(destroyA).not.toHaveBeenCalled();
+    expect(heard).toEqual([]);
+  });
+
+  it('publishes nothing when the first provider throws on subscribe', async () => {
+    const provider = makeBearerProvider('a', {
+      subscribe: vi.fn(() => {
+        throw new Error('subscribe refused');
+      }),
+    });
+    const graph = await loadGraph();
+
+    expect(() => graph.createFrontX().use(graph.auth({ provider })).build()).toThrow('subscribe refused');
+    expect(peekRealm()).toBeUndefined();
+    expect(apiRegistry.plugins.getAll(RestProtocol)).toHaveLength(0);
+  });
+
+  it('shows a binder that copies the provider the members of the provider in use', async () => {
+    const copies: Record<string, unknown>[] = [];
+    const transport = vi.fn((args: Parameters<AuthTransportBinder>[0]) => {
+      copies.push({ ...args.provider });
+      return { destroy: () => undefined };
+    });
+    const provider = makeBearerProvider('a');
+    const graph = await loadGraph();
+    graph.createFrontX().use(graph.auth({ provider, transport })).build();
+
+    expect(Object.keys(copies[0] ?? {}).sort()).toEqual(['checkAuth', 'getSession', 'logout']);
+    await (copies[0]?.getSession as () => Promise<unknown>)();
+    expect(provider.getSession).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the provider in use when a binder of the replacing app throws', async () => {

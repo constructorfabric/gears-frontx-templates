@@ -162,6 +162,11 @@ export type AuthTransportBinding = {
 };
 
 export type AuthTransportBinder = (args: {
+  /**
+   * The realm's view of the provider in use, not the object passed to
+   * `auth({ provider })`: each member is read off the provider in use when it
+   * is read, so the binding follows a replacement. Compare members, not identity.
+   */
   provider: AuthProvider;
   csrfHeaderName?: string;
   allowedCookieOrigins?: string[];
@@ -1119,8 +1124,11 @@ type AuthRealmRecord = {
   /** The apps that hold the runtime; the provider in use lives until the last one releases. */
   holders: Set<AuthRealmHolder>;
   /** The listeners added with `runtime.subscribe`, moved to each new provider. */
-  listeners: Set<{ listener: AuthStateListener; unsubscribe: AuthUnsubscribe | null }>;
+  listeners: Set<AuthRealmListener>;
 };
+
+/** A listener added with the realm runtime's `subscribe`, and its subscription on the provider in use. */
+type AuthRealmListener = { listener: AuthStateListener; unsubscribe: AuthUnsubscribe | null };
 
 type AuthRealmHost = typeof globalThis & { [AUTH_REALM_SYMBOL]?: AuthRealmRecord };
 
@@ -1238,24 +1246,29 @@ function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'
  * handler replaces with a bound function.
  */
 function realmProvider(record: AuthRealmRecord): AuthProvider {
+  const read = (key: PropertyKey): unknown => {
+    const generation = record.current;
+    const provider = generation.provider;
+    const value: unknown = Reflect.get(provider, key, provider);
+    if (typeof value !== 'function') return value;
+    return (...args: unknown[]) => {
+      const result = generation.run(() => (value as (...a: unknown[]) => unknown).apply(provider, args));
+      if (key !== 'refresh') return result;
+      return (result as Promise<unknown>).then((session) => {
+        if (record.current !== generation) throw new Error(REPLACED_PROVIDER_ERROR);
+        return session;
+      });
+    };
+  };
   return new Proxy({} as AuthProvider, {
-    get(_facade, key) {
-      const generation = record.current;
-      const provider = generation.provider;
-      const value: unknown = Reflect.get(provider, key, provider);
-      if (typeof value !== 'function') return value;
-      return (...args: unknown[]) => {
-        const result = generation.run(() => (value as (...a: unknown[]) => unknown).apply(provider, args));
-        if (key !== 'refresh') return result;
-        return (result as Promise<unknown>).then((session) => {
-          if (record.current !== generation) throw new Error(REPLACED_PROVIDER_ERROR);
-          return session;
-        });
-      };
-    },
-    has(_facade, key) {
-      return Reflect.has(record.current.provider, key);
-    },
+    get: (_facade, key) => read(key),
+    has: (_facade, key) => Reflect.has(record.current.provider, key),
+    // A binder that spreads, copies or lists the provider sees the members of the provider in use.
+    ownKeys: () => Reflect.ownKeys(record.current.provider),
+    getOwnPropertyDescriptor: (_facade, key) =>
+      Reflect.has(record.current.provider, key)
+        ? { configurable: true, enumerable: true, writable: false, value: read(key) }
+        : undefined,
   });
 }
 
@@ -1339,14 +1352,24 @@ function releaseAuthRealm(record: AuthRealmRecord, holder: AuthRealmHolder): voi
  * has settled.
  */
 function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, bound: AuthRealmHolder): void {
+  // The steps that call the new provider and may throw run first: a throw
+  // leaves the provider in use, its listeners and its tracking as they were.
+  const moved: Array<[AuthRealmListener, AuthUnsubscribe | null]> = [];
+  try {
+    for (const entry of record.listeners) moved.push([entry, next.provider.subscribe?.(entry.listener) ?? null]);
+    next.start(record.holders, true);
+  } catch (error) {
+    for (const [, unsubscribe] of moved) unsubscribe?.();
+    next.retire(false);
+    throw error;
+  }
   const previous = record.current;
   record.current = next;
-  for (const entry of record.listeners) {
+  for (const [entry, unsubscribe] of moved) {
     entry.unsubscribe?.();
-    entry.unsubscribe = next.provider.subscribe?.(entry.listener) ?? null;
+    entry.unsubscribe = unsubscribe;
   }
-  // The same provider object passed again goes on in the new generation, so it is not destroyed.
-  previous.retire(previous.provider !== next.provider);
+  previous.retire(true);
   for (const holder of record.holders) holder.emit(AuthEvents.SessionCheck);
   for (const holder of record.holders) {
     if (holder === bound) continue;
@@ -1357,7 +1380,6 @@ function replaceAuthProvider(record: AuthRealmRecord, next: AuthGeneration, boun
       console.error('[Gears FrontX] An app of the realm could not bind its transport to the new session provider', error);
     }
   }
-  next.start(record.holders, true);
 }
 
 /** Builds the generation of one provider: its runtime and its session tracking. */
@@ -1538,7 +1560,8 @@ type AuthPlugin = FrontXPlugin & { [DUPLICATE_PLUGIN_CLEANUP_SYMBOL]?: () => voi
  * - the app holds the provider in use: it lives until the last app that holds
  *   it is destroyed, not until the app that passed it is.
  *
- * A provider passed while another is in use replaces it. No app keeps a
+ * The provider in use passed again by another app is a join, not a
+ * replacement. A provider passed while another is in use replaces it. No app keeps a
  * provider of its own, so every app follows: its bus hears
  * `AuthEvents.SessionCheck` at once and `LoggedIn` (a session) or
  * `LoggedOut` (none, or the read failed) once the new provider's baseline
@@ -1588,11 +1611,24 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
     },
     onInit(app) {
       const found = readAuthRealm();
+      if (found && found.current.provider === config.provider) {
+        // The provider in use passed again: nothing to replace, so this app joins it as it is.
+        holder = holdAuthRealm(app, found, found.current);
+        record = found;
+        return;
+      }
       if (found) {
         // This app binds first, so a binder that throws leaves the provider in use untouched.
-        holder = holdAuthRealm(app, found, generation);
+        const held = holdAuthRealm(app, found, generation);
+        try {
+          replaceAuthProvider(found, generation, held);
+        } catch (error) {
+          delete app.auth;
+          releaseAuthRealm(found, held);
+          throw error;
+        }
+        holder = held;
         record = found;
-        replaceAuthProvider(found, generation, holder);
         return;
       }
       const published: AuthRealmRecord = {
@@ -1603,10 +1639,18 @@ function providerAuth(config: AuthPluginConfig): FrontXPlugin {
         listeners: new Set(),
       };
       published.runtime = createRealmRuntime(published);
-      holder = holdAuthRealm(app, published, generation);
+      const held = holdAuthRealm(app, published, generation);
+      try {
+        generation.start(published.holders, false);
+      } catch (error) {
+        // Not published yet: the release ends this provider and leaves the slot empty.
+        delete app.auth;
+        releaseAuthRealm(published, held);
+        throw error;
+      }
+      holder = held;
       record = published;
       (globalThis as AuthRealmHost)[AUTH_REALM_SYMBOL] = published;
-      generation.start(published.holders, false);
     },
     onDestroy(app) {
       if (!record || !holder) return;
