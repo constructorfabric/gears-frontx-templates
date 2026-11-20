@@ -26,7 +26,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RestPluginHooks, RestRequestContext } from '@gears-frontx/api';
 import type { AuthProvider, AuthSession, AuthTransition } from '@gears-frontx/auth';
-import type { AuthTransportBinder, Hai3ApiAuthTransportConfig } from '../src/plugins/auth';
+import type {
+  AuthTransportBinder,
+  FrameworkTransportErrorEvent,
+  Hai3ApiAuthTransportConfig,
+} from '../src/plugins/auth';
 
 // One apiRegistry singleton serves every module graph of this file: the api
 // package is external, so vi.resetModules() keeps its module state. Reset it
@@ -941,45 +945,87 @@ describe('auth() - the REST transport of a joining app', () => {
   });
 });
 
-describe('auth() - the origin lists on a joined app', () => {
+describe('auth() - the origin lists on the app that passed the provider and on a joined app', () => {
   const API_ORIGIN = 'https://api.example.com';
   const COOKIE_ONLY_ORIGIN = 'https://cookies.example.com';
   const FOREIGN_ORIGIN = 'https://foreign.example.com';
 
-  async function joinBearerOwner(provider: AuthProvider) {
-    const ownerGraph = await loadGraph();
-    ownerGraph
+  type Transport = AuthTransportPlugin & Pick<RestPluginHooks, 'onError'>;
+
+  /**
+   * Builds the app that passes the provider with one `frontxApi` (the API
+   * origin for bearer tokens, a second origin for cookies only) and an app
+   * that joins with `auth()`, and returns the transport each registered. Both
+   * transports reach the provider through the realm.
+   */
+  async function bearerApps(provider: AuthProvider): Promise<Array<[string, Transport]>> {
+    const beforeProvider = [...apiRegistry.plugins.getAll(RestProtocol)];
+    const providerGraph = await loadGraph();
+    providerGraph
       .createFrontX()
-      .use(ownerGraph.auth({
+      .use(providerGraph.auth({
         provider,
         frontxApi: { allowedBearerOrigins: [API_ORIGIN], allowedCookieOrigins: [COOKIE_ONLY_ORIGIN] },
       }))
       .build();
-    return joinAndFindTransport();
+    const providerPlugin = apiRegistry.plugins.getAll(RestProtocol).find((plugin) => !beforeProvider.includes(plugin));
+    expect(providerPlugin).toBeDefined();
+    const joinPlugin = await joinAndFindTransport();
+    return [
+      ['auth({ provider })', providerPlugin as Transport],
+      ['auth()', joinPlugin],
+    ];
   }
 
-  it('sends the bearer token to a listed origin and to no other', async () => {
-    const joinPlugin = await joinBearerOwner(makeBearerProvider('token-1'));
-
-    for (const url of [`${FOREIGN_ORIGIN}/x`, `${COOKIE_ONLY_ORIGIN}/x`]) {
-      const ctx = (await joinPlugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
-      expect(ctx.headers.Authorization).toBeUndefined();
+  it('sends no bearer token to an origin outside allowedBearerOrigins, a cookie-only origin included', async () => {
+    for (const [who, plugin] of await bearerApps(makeBearerProvider('token-1'))) {
+      for (const url of [`${FOREIGN_ORIGIN}/accounts/me`, `${COOKIE_ONLY_ORIGIN}/accounts/me`]) {
+        const ctx = (await plugin.onRequest?.(makeReqCtx(url))) as RestRequestContext;
+        expect(ctx.headers.Authorization, `${who} ${url}`).toBeUndefined();
+      }
     }
-    const listed = (await joinPlugin.onRequest?.(makeReqCtx(`${API_ORIGIN}/x`))) as RestRequestContext;
-    expect(listed.headers.Authorization).toBe('Bearer token-1');
   });
 
-  it('starts no refresh for a 401 from an origin that gets no credentials', async () => {
+  it('sends the bearer token to an origin listed in allowedBearerOrigins', async () => {
+    for (const [who, plugin] of await bearerApps(makeBearerProvider('token-1'))) {
+      const ctx = (await plugin.onRequest?.(makeReqCtx(`${API_ORIGIN}/accounts/me`))) as RestRequestContext;
+      expect(ctx.headers.Authorization, who).toBe('Bearer token-1');
+    }
+  });
+
+  it('starts no refresh for a 401 from an origin that gets no credentials, while a 401 from the listed origin does', async () => {
     const refresh = vi.fn(async () => ({ kind: 'bearer', token: 'token-2' }) satisfies AuthSession);
-    const joinPlugin = await joinBearerOwner(makeBearerProvider('token-1', { refresh }));
+    for (const [who, plugin] of await bearerApps(makeBearerProvider('token-1', { refresh }))) {
+      refresh.mockClear();
+      const foreign = make401(`${FOREIGN_ORIGIN}/accounts/me`);
+      expect(await plugin.onError?.(foreign)).toBe(foreign.error);
+      expect(refresh, who).not.toHaveBeenCalled();
+      expect(foreign.retry, who).not.toHaveBeenCalled();
 
-    const foreign = make401(`${FOREIGN_ORIGIN}/x`);
-    expect(await joinPlugin.onError?.(foreign)).toBe(foreign.error);
-    expect(refresh).not.toHaveBeenCalled();
+      // The same 401 from the listed origin refreshes, so the error hook is
+      // live and only the origin kept the foreign one out.
+      const listed = make401(`${API_ORIGIN}/accounts/me`);
+      await plugin.onError?.(listed);
+      expect(refresh, who).toHaveBeenCalledTimes(1);
+      expect(listed.retry, who).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-2' } });
+    }
+  });
 
-    const listed = make401(`${API_ORIGIN}/x`);
-    await joinPlugin.onError?.(listed);
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(listed.retry).toHaveBeenCalledWith({ headers: { Authorization: 'Bearer token-2' } });
+  it('hands the provider in use the credentialed flag of each 401, through a hook wrapped after the build', async () => {
+    // The realm reads `onTransportError` off the provider when the transport
+    // calls it, so a wrap set after the build (as the shell's sign-in
+    // trigger does) gets the framework's event, `credentialed` included.
+    const provider = makeBearerProvider('token-1');
+    const apps = await bearerApps(provider);
+    const flags: unknown[] = [];
+    provider.onTransportError = (event) => {
+      flags.push((event as FrameworkTransportErrorEvent).credentialed);
+    };
+    for (const [, plugin] of apps) {
+      for (const url of [`${FOREIGN_ORIGIN}/x`, `${API_ORIGIN}/x`, `${COOKIE_ONLY_ORIGIN}/x`]) {
+        await plugin.onError?.(make401(url));
+      }
+    }
+    expect(flags).toEqual([false, true, true, false, true, true]);
   });
 });
