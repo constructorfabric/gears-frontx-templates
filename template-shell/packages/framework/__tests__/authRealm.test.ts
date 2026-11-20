@@ -1065,6 +1065,21 @@ describe('auth() - a replaced provider retires at once, with the settings that a
     await expect(reading).rejects.toThrow(/was replaced before the call ended/);
   });
 
+  it('rejects as replaced a call that throws synchronously after replacing its provider; any other throw stays synchronous', async () => {
+    const graphB = await loadGraph();
+    let replace = false;
+    const getSession = vi.fn(() => {
+      if (replace) graphB.createFrontX().use(graphB.auth({ provider: makeBearerProvider('b') })).build();
+      throw new Error('A threw');
+    });
+    const graphA = await loadGraph();
+    const appA = graphA.createFrontX().use(graphA.auth({ provider: makeBearerProvider('a', { getSession }) })).build();
+
+    expect(() => appA.auth!.getSession()).toThrow('A threw');
+    replace = true;
+    await expect(appA.auth!.getSession()).rejects.toThrow(/was replaced before the call ended/);
+  });
+
   it('releases only its own hold when the replaced app leaves: the new provider lives on', async () => {
     const destroyA = vi.fn();
     const destroyB = vi.fn();

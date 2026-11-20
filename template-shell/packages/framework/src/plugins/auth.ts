@@ -1261,7 +1261,15 @@ function createRealmRuntime(realm: Pick<AuthRealmRecord, 'current' | 'listeners'
         if (access) return access(args[0]);
         throw new Error(REPLACED_PROVIDER_ERROR);
       };
-      return Promise.resolve(member(...args)).then(
+      let outcome: unknown;
+      try {
+        outcome = member(...args);
+      } catch (error) {
+        // Thrown synchronously as before, unless the call itself replaced the provider.
+        if (realm.current === generation) throw error;
+        outcome = Promise.reject(error);
+      }
+      return Promise.resolve(outcome).then(
         (value) => (realm.current === generation ? value : replaced()),
         (error: unknown) => {
           if (realm.current === generation) throw error;
