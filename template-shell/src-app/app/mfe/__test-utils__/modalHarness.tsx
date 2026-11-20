@@ -165,17 +165,22 @@ export function stubAuthProvider() {
  * real router. The modal and screen domains are the container's to register,
  * so they are not here. `options.failSignInLoad` makes the sign-in entry's
  * load reject, the deterministic mount failure the reload guard's cases drive
- * the chain's fallback with.
+ * the chain's fallback with. `options.joinAuth` builds the app with `auth()`
+ * alone, joining the provider another app of the realm passed.
  */
 /**
  * The auth plugin of the case's app and the app it was built into. The plugin
- * publishes its provider into the page-wide auth realm, which outlives the
- * module reset between cases, so the teardown releases it: otherwise the next
- * case's provider would be refused as a second one.
+ * holds the page-wide auth realm, which outlives the module reset between
+ * cases, so the teardown releases it: otherwise the next case's provider
+ * would replace this one instead of starting a realm of its own.
  */
 let heldAuth: { plugin: FrontXPlugin; app: FrontXApp } | undefined;
 
-export async function buildApp(options?: { provider?: AuthProvider; failSignInLoad?: () => boolean }) {
+export async function buildApp(options?: {
+  provider?: AuthProvider;
+  joinAuth?: boolean;
+  failSignInLoad?: () => boolean;
+}) {
   const react = await import('@gears-frontx/react');
   const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
     '@gears-frontx/frontx-template-shell',
@@ -204,7 +209,11 @@ export async function buildApp(options?: { provider?: AuthProvider; failSignInLo
     }
   }
 
-  const authPlugin = options?.provider ? react.auth({ provider: options.provider }) : undefined;
+  const authPlugin = options?.provider
+    ? react.auth({ provider: options.provider })
+    : options?.joinAuth
+      ? react.auth()
+      : undefined;
   const app = react
     .createFrontX()
     .useAll(react.presets.full())
