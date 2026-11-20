@@ -16,7 +16,7 @@
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "$comment": "Closed and empty: sign_in carries no credentials. The sign-in extension signs in through the shared auth runtime (authRealmShared), never through an action payload; the action only holds the chain open until a session exists"
+      "$comment": "Closed and empty: sign_in carries no credentials. The sign-in extension signs in through the shared auth runtime (auth() with no provider), never through an action payload; the action only holds the chain open until a session exists"
     },
     "timeout": {
       "type": "number",

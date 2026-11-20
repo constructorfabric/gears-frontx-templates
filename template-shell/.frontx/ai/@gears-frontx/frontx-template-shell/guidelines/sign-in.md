@@ -111,10 +111,15 @@ unmount chain that removes a sign-in entry the page-load address named
 
 ## Who performs the sign-in
 
-The shell does not. The auth plugin shares its runtime across the whole
-realm: `authRealm()` in the shell publishes `app.auth` into the
-`frontx:auth:runtime` slot on `globalThis`, and the sign-in MFE joins that
-slot with `authRealmShared()`. The modal then signs in through
+The shell does not. One app of the page passes the provider with
+`auth({ provider })`, the shell in this template, and that plugin publishes
+the session runtime into the `frontx:auth:realm` slot on `globalThis`; the
+sign-in MFE joins it with `auth()`, no provider. Any app could pass the
+provider instead: the plugin does not know which app is the shell, the
+`AuthEvents` reach the eventBus of every app that holds the runtime, and the
+provider lives until the last of them is destroyed. A join with no provider
+in the page fails, and the sign-in MFE shows its error line. The modal then
+signs in through
 `app.auth.login` and sends no credentials to the shell. The shell only sees
 the session appear, which is what ends the `sign_in` action. The
 `auth/loggedIn` announcement is the wake-up, not the answer: the tracker
@@ -199,8 +204,8 @@ once, with nothing to ask.
 `src-app/app/auth/devMockAuthProvider.ts` is development only, like mock
 mode. `src-app/app/auth/devAuth.ts` holds it behind `import.meta.env.DEV`
 together with the plugin list and the trigger wiring, and both entries call
-that one module, so a production build carries no provider, no auth plugin
-and no realm plugin, and it wires no trigger; the one thing it still does
+that one module, so a production build carries no provider and no auth
+plugin, and it wires no trigger; the one thing it still does
 there is remove a sign-in entry the page-load address named
 (`removeSignInEntryAtPageLoad`), since the modal that entry mounts has no
 `sign_in` behind it to close it. It accepts any non-empty credentials and
@@ -240,29 +245,25 @@ expected, and none is needed for the flow itself to work.
   session adds `frontxApi` (the cookie origins and the CSRF header name) to that
   same config object.
 
-Both plugins read that one config. `auth(authConfig)` builds the shell's own
-REST transport from it, and `authRealm({ frontxApi: authConfig.frontxApi })`
-publishes the same config for every `authRealmShared()` join. The shared module
-already passes it to both, so a project edits the config in one place. A project
-that writes the plugins out by hand must give both of them the same
-`frontxApi`: a host that passes it only to `auth()` publishes no config for the
-joins, so every MFE request, the sign-in MFE's included, goes out without the
-cookie credentials and CSRF header the shell's own requests carry, and nothing
-reports the problem.
+`auth(authConfig)` reads that one config: it builds the shell's own REST
+transport from it and publishes the same `frontxApi` (and a custom
+`transport` binder, when the config has one) for every `auth()` join, so a
+project edits the config in one place and every app's requests carry the same
+credentials.
 
 Refreshes are the provider's to dedupe. The realm does not dedupe them: a
 join's transport forwards each 401 to the shared runtime's `refresh()`
-(`trackedProvider()` in `authRealm.ts`), and the dedup that exists is per
+(`trackedProvider()` in `auth.ts`), and the dedup that exists is per
 transport plugin instance, so the concurrent 401 refreshes of one app share
 one flight while two microfrontends that 401 at the same moment reach the
-host provider's `refresh()` twice. A provider that keeps one token request in
+provider's `refresh()` twice. A provider that keeps one token request in
 flight and queues the rest makes that one request per page.
 
-The origin lists are the host's, and they are the lists for every joined MFE,
-because a join takes no options (`authRealmShared()` is parameterless): the
-host's published `frontxApi` config is forwarded whole to every joined MFE,
-so the cookie origins, the CSRF header and the bearer origins the host
-publishes beside the runtime are what every MFE's requests carry. Credentials
+The origin lists are those of the app that passed the provider, and they are
+the lists for every joined MFE, because a join takes no options (`auth()`
+with no provider): the published `frontxApi` config is forwarded whole to
+every joined MFE, so the cookie origins, the CSRF header and the bearer
+origins published beside the runtime are what every MFE's requests carry. Credentials
 go only to the app's own origin and to the listed ones
 (`AuthRestPlugin.onRequest`): a cookie session's `withCredentials` and CSRF
 header to `allowedCookieOrigins`, a bearer session's `Authorization` header
@@ -275,11 +276,7 @@ and it still reaches the trigger, which confirms it like any other 401 (it
 reads what the refresh flight resolved, and asks `checkAuth()` only when no
 flight ran or the flight rejected); the bearer retry still keeps the token
 from an origin outside `allowedBearerOrigins`. A project whose API is on
-another origin lists it, and passes the same list to BOTH `auth({ frontxApi })`
-and `authRealm({ frontxApi })` on the host: `auth()` builds the shell's own
-transport from it, and `authRealm()` publishes it for the joins. A list that
-reaches only `authRealm()` lets the MFEs send credentials to the listed
-origins while the shell's own requests to them go without; a list that
-reaches only `auth()` does the reverse.
+another origin lists it in the `frontxApi` of `auth({ provider, frontxApi })`,
+the one place it is written.
 
 Everything else in this flow is the shell's and stays unedited.

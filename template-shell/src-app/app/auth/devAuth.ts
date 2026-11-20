@@ -2,11 +2,11 @@
  * The development auth wiring both shell entries share.
  *
  * `main.tsx` and `main.no-uikit.tsx` build the same shell over different UI
- * kits, and the auth plugin, the realm sharing and the sign-in triggers are
- * the same in both. They live here once, so an edit to one of them cannot miss
- * the other: a project that adds `frontxApi` for a cookie session to a copy in
- * one entry only would leave the other entry's `authRealm()` joins binding
- * their REST transports without the cookie credentials and CSRF header.
+ * kits, and the auth plugin and the sign-in triggers are the same in both.
+ * They live here once, so an edit to one of them cannot miss the other: a
+ * project that adds `frontxApi` for a cookie session to a copy in one entry
+ * only would leave the other entry, and every microfrontend that joins it,
+ * without the cookie credentials and CSRF header.
  *
  * A project edits this file alone: the provider, its `frontxApi` config and
  * the `import.meta.env.DEV` condition are the one place a real provider
@@ -15,7 +15,6 @@
 
 import {
   auth,
-  authRealm,
   type AuthPluginConfig,
   type FrontXApp,
   type FrontXPlugin,
@@ -26,30 +25,30 @@ import { removeSignInEntryAtPageLoad, wireSignInTriggers } from './signInTrigger
 /**
  * The development auth provider: on in development, like mock mode, and the
  * only auth the template ships. A production build passes no auth config, so
- * the auth plugin, the realm sharing and the trigger wiring are all absent
+ * the auth plugin and the trigger wiring are both absent
  * from it, and the one sign-in thing it still does is remove a sign-in entry
  * the page-load address named (`removeSignInEntryAtPageLoad`). A project with
  * a cookie session adds `frontxApi` (cookie origins and the CSRF header name)
- * to this one config; both plugins below read it from here.
+ * to this one config; the auth plugin publishes it for the whole page.
  */
 export const devAuthConfig: AuthPluginConfig | undefined = import.meta.env.DEV
   ? { provider: createDevMockAuthProvider() }
   : undefined;
 
 /**
- * The plugins the shell adds for the realm's auth runtime, or an empty list
- * when the build has no auth config.
+ * The auth plugin the shell adds, or an empty list when the build has no auth
+ * config.
  *
- * `authRealm()` publishes the auth runtime the auth plugin built into the
- * realm slot, so a microfrontend of the page joins the same session through
- * `authRealmShared()` instead of signing in on its own. It takes the same
- * `frontxApi` as `auth()`: a join binds its own REST transport with the cookie
- * credentials and CSRF header the shell's requests carry, and a host that
- * published none would leave every MFE request without them.
+ * In this template the shell passes the page's one provider. `auth(config)`
+ * publishes the session runtime and its `frontxApi` config for the whole page,
+ * so a microfrontend that adds `auth()` with no provider joins the same
+ * session, and binds its own REST transport with the same config, instead of
+ * signing in on its own. Nothing here makes the shell special: any one app of
+ * the page could pass the provider instead.
  */
 export function devAuthPlugins(): FrontXPlugin[] {
   if (!devAuthConfig) return [];
-  return [auth(devAuthConfig), authRealm({ frontxApi: devAuthConfig.frontxApi })];
+  return [auth(devAuthConfig)];
 }
 
 /**

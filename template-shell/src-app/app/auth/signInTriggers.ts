@@ -400,7 +400,7 @@ export function wireSignInTriggers(app: FrontXApp, provider: AuthProvider): void
   // flight resolved to is kept with it, so the confirmation reads the
   // runtime's own answer instead of asking the provider again. The auth
   // runtime's own `refresh` is wrapped the same way: the microfrontends that
-  // join the runtime (`authRealmShared`) refresh through it, so the host's
+  // join the runtime (`auth()` with no provider) refresh through it, so the
   // session tracker hears of their flights, and it calls the original the
   // auth plugin captured at build time, so no flight is seen twice.
   type TrackedFlight = {

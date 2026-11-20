@@ -8,7 +8,7 @@
  * implements - and `sign_in` holds the chain open until the sign-in has
  * finished, whatever `refresh_page` follows it with. The shell does not
  * perform the sign-in itself: the sign-in MFE signs in through the shared auth
- * runtime (`authRealmShared`), and no action in this chain carries
+ * runtime it joins (`auth()` with no provider), and no action in this chain carries
  * credentials.
  *
  * Every failure falls back to `refresh_page`, so the requests that ran without
