@@ -109,6 +109,53 @@ config. A build without a provider wires no trigger, but it still sends the
 unmount chain that removes a sign-in entry the page-load address named
 (`removeSignInEntryAtPageLoad`).
 
+## Signing out
+
+On an app with an auth runtime the header's user block is the trigger of a
+user menu (the kit's dropdown menu; a plain `details` disclosure in the
+variants without the UI kit, which closes on Escape, on a pointer down outside
+it and when focus moves to an element outside it, as the kit menu does) with
+one item, "Sign out". The item calls `app.auth.logout()` exactly once, in the
+click's own turn, so a provider that replaces the current one after the click
+does not receive the call, and a logout that fails is not repeated. When the
+logout resolves, the header reloads the page through the `pageReload` seam.
+That reload is the user's, not a step of the sign-in chain: it does not go
+through `refresh_page`, so the automatic reload guard cannot refuse it. The
+start-up check of the reloaded page finds no session and opens the sign-in
+modal, and its user fetch requests no header user (see below). A logout that
+resolves to a `redirect` transition is not reloaded over: a redirect provider
+navigates itself.
+
+A sign-out that fails (`logout()` rejects or throws) reloads nothing and opens
+no modal; the header warns on the console (`[Header] the sign-out failed`).
+The runtime announces `auth/loggedOut` when `app.auth.logout()` finishes,
+resolved or rejected, and `bootstrapEffects.ts` answers every `auth/loggedOut`,
+whoever announced it (the header, code that calls `app.auth.logout()`, a
+provider's report), by clearing the header user and asking for it again: the
+fetch's session check brings the name back when the session survived, and
+when the provider says signed out it returns before any current-user request
+and the header stays empty.
+
+Code that calls `app.auth.logout()` itself gets no reload and no modal on the
+same page: the header user is cleared as above, and the sign-in modal opens at
+the next 401 the 401 trigger confirms or at the next page load, through the
+two triggers above.
+
+A user fetch is bound to the session it started in: every `auth/loggedOut`
+and `auth/loggedIn` starts a new one, and a fetch that lands after either
+puts neither its user nor its profile language in the header, nor ends the
+header's loading state, which belongs to the newer fetch. Both events clear
+the header user and ask for it again, so an account that signs in without a
+reload (a provider report, another tab, an account switch) has the previous
+user dropped at once and its own name filled in by that fetch. While signed
+out, the header also takes no user from a screen's `app/user/loaded`. A page
+that loads without a session announces nothing; its user fetch's session
+check (`checkAuth()` says signed out) counts as signed out instead, so it
+fetches no header user, since the mock API answers the current-user request
+whether a session exists or not, and takes none from `app/user/loaded`
+either. The reload after a sign-in fetches the user again. An app built
+without `auth()` keeps the plain user block and offers no sign-out.
+
 ## Who performs the sign-in
 
 The shell does not. One app of the page passes the provider with
