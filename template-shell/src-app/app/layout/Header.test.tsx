@@ -5,6 +5,8 @@ import { Header } from './Header';
 vi.mock('@gears-frontx/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@gears-frontx/react')>()),
   useAppSelector: () => undefined,
+  // An app without an auth runtime: the header's user menu has its own file.
+  useFrontX: () => ({}),
   // The header's user fallback is translated; without the provider this test
   // does not mount, the stub echoes the key verbatim.
   useTranslation: () => ({

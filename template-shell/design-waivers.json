@@ -3,7 +3,7 @@
     {
       "gate": "SYS-001",
       "screen": { "source": "src-app/app/layout/Header.tsx" },
-      "reason": "The header's plain language select is the no-UI-kit control App.no-uikit.tsx asks for; the kit's NativeSelect renders wherever the kit is in."
+      "reason": "The header's plain language select and its plain sign-out disclosure (a details element with a native button) are the no-UI-kit controls App.no-uikit.tsx asks for; the kit's NativeSelect and DropdownMenu render wherever the kit is in."
     },
     {
       "gate": "SYS-001",

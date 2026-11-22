@@ -18,7 +18,8 @@
  * modal state (modalDomain.test.tsx).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SIGN_IN_EXTENSION_ID } from '@/app/auth/signIn';
 import { claimAutomaticReload, clearAutomaticReload } from './automaticReload';
 import {
@@ -1287,4 +1288,181 @@ describe('the sign-in chain through the real runtime', () => {
     expect(modalState.getSnapshot()).toBeUndefined();
     expect(reloadPage).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * The shell as `main.tsx` wires it in development, with its header: the
+   * sign-in triggers, the bootstrap effects, the header, and the user request
+   * `Layout` sends on mount. The current-user request answers with its user
+   * whether a session exists or not, as the mock API does, so a header that
+   * names nobody shows the fetch gate at work.
+   */
+  async function startShell(provider: ReturnType<typeof stubAuthProvider>['provider']) {
+    const built = await buildApp({ provider });
+    registry = built.registry;
+    const { wireSignInTriggers } = await import('@/app/auth/signInTriggers');
+    const { registerBootstrapEffects } = await import('@/app/effects/bootstrapEffects');
+    const { fetchCurrentUser } = await import('@/app/actions/bootstrapActions');
+    const { AccountsApiService } = await import('@/app/api');
+    const { Header } = await import('@/app/layout/Header');
+    const has = built.react.apiRegistry.has.bind(built.react.apiRegistry);
+    const getService = built.react.apiRegistry.getService.bind(built.react.apiRegistry);
+    const currentUser = vi.fn(async () => ({
+      user: {
+        id: 'user-alex',
+        email: 'alex@example.com',
+        firstName: 'Alex',
+        lastName: 'Rivera',
+        role: 'user',
+        language: 'en',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    }));
+    vi.spyOn(built.react.apiRegistry, 'has').mockImplementation(
+      ((service: unknown) => service === AccountsApiService || has(service as never)) as typeof has,
+    );
+    vi.spyOn(built.react.apiRegistry, 'getService').mockImplementation(((service: unknown) =>
+      service === AccountsApiService
+        ? {
+            getCurrentUser: {
+              fetch: currentUser,
+            },
+          }
+        : getService(service as never)) as typeof getService);
+    wireSignInTriggers(built.app, provider);
+    registerBootstrapEffects(built.app.store.dispatch, built.app.auth);
+    await renderContainer(built.react, built.app);
+    render(
+      <built.react.FrontXProvider app={built.app}>
+        <Header />
+      </built.react.FrontXProvider>,
+    );
+    fetchCurrentUser();
+    // Let the init baseline land, the start-up check answer and the user fetch end.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    return { built, currentUser };
+  }
+
+  /** Lets what a sign-out started run to its end. */
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+  it('a sign-out from the header menu calls logout once and reloads the page, and the start-up check of the reloaded page opens the sign-in modal with nobody in the header', async () => {
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'signed-in' };
+    const logout = vi.spyOn(provider, 'logout');
+    await startShell(provider);
+    expect(await screen.findByText('Alex Rivera')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // An automatic reload happened just now: the guard would refuse the next
+    // `refresh_page`, but the user's own reload does not go through it.
+    expect(claimAutomaticReload()).toBe(true);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Alex Rivera' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
+    await waitFor(() => expect(reloadPage).toHaveBeenCalledTimes(1));
+    await settle();
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Alex Rivera')).toBeNull();
+    // This page opens no sign-in window: the reloaded one does.
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // The reload: a fresh page with the same provider, which holds no session.
+    expect(state.session).toBeNull();
+    await teardownModalSuite(registry);
+    vi.resetModules();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(makeSignInAggregateWithSecondModal()))),
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { currentUser } = await startShell(provider);
+
+    await screen.findByRole('dialog', { name: 'Sign in' });
+    await settle();
+    expect(screen.queryByText('Alex Rivera')).toBeNull();
+    expect(screen.getByRole('button', { name: 'User' })).toBeTruthy();
+    expect(currentUser).not.toHaveBeenCalled();
+  });
+
+  it('a sign-out from code that calls app.auth.logout() clears the header user, and neither reloads nor opens the sign-in modal', async () => {
+    const { provider, state } = stubAuthProvider();
+    state.session = { kind: 'bearer', token: 'signed-in' };
+    const { built, currentUser } = await startShell(provider);
+    expect(await screen.findByText('Alex Rivera')).toBeTruthy();
+
+    await act(async () => {
+      await built.app.auth?.logout();
+    });
+    await settle();
+
+    expect(screen.queryByText('Alex Rivera')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(reloadPage).not.toHaveBeenCalled();
+    // The refetch the announcement asked for stopped at its session check.
+    expect(currentUser).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['the header menu', 'still says signed in', true],
+    ['the header menu', 'says signed out', false],
+    ['code that calls app.auth.logout()', 'still says signed in', true],
+    ['code that calls app.auth.logout()', 'says signed out', false],
+  ] as const)(
+    'a sign-out from %s whose provider call rejects, while the provider %s, reloads nothing and leaves the header honest',
+    async (from, _answer, sessionSurvives) => {
+      // The runtime announces `auth/loggedOut` for a rejected logout too, so
+      // the header drops its user and asks for it again, whoever called the
+      // logout: the fetch's session check brings the name back only when the
+      // session survived, and requests nothing when it did not. A failed
+      // sign-out reloads nothing and opens no sign-in window.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { provider, state } = stubAuthProvider();
+      state.session = { kind: 'bearer', token: 'signed-in' };
+      provider.logout = vi.fn(async () => {
+        if (!sessionSurvives) state.session = null;
+        throw new Error('end-session failed');
+      });
+      const { built, currentUser } = await startShell(provider);
+      expect(await screen.findByText('Alex Rivera')).toBeTruthy();
+      expect(currentUser).toHaveBeenCalledTimes(1);
+
+      if (from === 'the header menu') {
+        await userEvent.click(screen.getByRole('button', { name: 'Alex Rivera' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
+        await waitFor(() =>
+          expect(warn.mock.calls.some(([message]) => String(message).includes('[Header] the sign-out failed'))).toBe(true),
+        );
+      } else {
+        let failure: unknown;
+        await act(async () => {
+          await built.app.auth?.logout().catch((error: unknown) => {
+            failure = error;
+          });
+        });
+        expect(String(failure)).toContain('end-session failed');
+      }
+
+      if (sessionSurvives) await screen.findByText('Alex Rivera');
+      await settle();
+      expect(provider.logout).toHaveBeenCalledTimes(1);
+      expect(reloadPage).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      if (sessionSurvives) {
+        expect(screen.getByText('Alex Rivera')).toBeTruthy();
+        expect(currentUser).toHaveBeenCalledTimes(2);
+      } else {
+        expect(screen.queryByText('Alex Rivera')).toBeNull();
+        // The sign-out's refetch stopped at its session check.
+        expect(currentUser).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
 });

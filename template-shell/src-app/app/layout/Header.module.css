@@ -53,3 +53,50 @@
   width: 6rem;
   height: var(--space-4);
 }
+
+/* The user block as the user menu's trigger: a button that keeps the block's
+   look at rest. */
+.userTrigger {
+  composes: signedIn;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* The no-kit user menu: a native disclosure whose summary is the user block
+   and whose content is the one sign-out button, under the block's right edge. */
+.userMenuPlain {
+  position: relative;
+}
+
+.userMenuPlain > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.userMenuPlain > summary::-webkit-details-marker {
+  display: none;
+}
+
+.signOutPlain {
+  position: absolute;
+  /* Above the page content (auto, or 1 inside the modal layer), below the
+     narrow menu's backdrop (30), the narrow expanded menu (40), the overlay
+     (50) and the popup and modal layers (1000). */
+  z-index: 20;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-popover);
+  font-family: inherit;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+  white-space: nowrap;
+  cursor: pointer;
+}

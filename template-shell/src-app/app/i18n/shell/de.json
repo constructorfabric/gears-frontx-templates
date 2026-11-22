@@ -11,7 +11,8 @@
   },
   "header": {
     "user": "Nutzer",
-    "language": "Sprache"
+    "language": "Sprache",
+    "signOut": "Abmelden"
   },
   "modal": {
     "close": "Schließen"

@@ -11,7 +11,8 @@
   },
   "header": {
     "user": "User",
-    "language": "Language"
+    "language": "Language",
+    "signOut": "Sign out"
   },
   "modal": {
     "close": "Close"
