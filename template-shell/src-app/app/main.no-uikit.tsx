@@ -44,8 +44,8 @@ const app = createFrontX()
 // the page-load address named (`removeSignInEntryAtPageLoad`).
 wireDevSignInTriggers(app);
 
-// Register app-level effects (pass store dispatch)
-registerBootstrapEffects(app.store.dispatch);
+// Register app-level effects (pass store dispatch, and the auth runtime when there is one)
+registerBootstrapEffects(app.store.dispatch, app.auth);
 
 // Apply the language the user chose in an earlier session (the i18n plugin's
 // startup English, not stored, on a first visit), and remember every later

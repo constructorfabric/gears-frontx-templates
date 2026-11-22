@@ -1,5 +1,6 @@
+import isEqual from 'lodash/isEqual';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Language, setHeaderLoading, setUser } from '@gears-frontx/react';
+import { Language, clearUser, headerSlice, setHeaderLoading, setUser, type AuthRuntime } from '@gears-frontx/react';
 import { UserRole } from '@/app/api/types';
 import { LANGUAGE_STORAGE_KEY } from '@/app/i18n/languagePersistence';
 
@@ -87,6 +88,11 @@ async function emitEvent(event: string, payload?: BootstrapTestBusPayload): Prom
 
 function getDispatchedActions(dispatch: ReturnType<typeof vi.fn>) {
   return dispatch.mock.calls.map(([action]) => action);
+}
+
+/** The header state the dispatched actions leave, through the framework's own header slice. */
+function headerStateAfter(dispatch: ReturnType<typeof vi.fn>) {
+  return getDispatchedActions(dispatch).reduce(headerSlice.reducer, undefined);
 }
 
 describe('registerBootstrapEffects', () => {
@@ -337,5 +343,318 @@ describe('registerBootstrapEffects', () => {
     await emitEvent('app/user/fetch');
 
     expect(languageChanges).toEqual([]);
+  });
+
+  describe('the session end', () => {
+    const ada = {
+      id: 'user-ada',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'ada@example.com',
+      role: UserRole.User,
+      language: Language.English,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const adaInHeader = setUser({ displayName: 'Ada Lovelace', email: 'ada@example.com', avatarUrl: undefined });
+
+    /** The runtime slice the effect reads: the session check, and the provider `readOnProviderInUse` compares. */
+    const runtime = (checkAuth: () => Promise<{ authenticated: boolean }>) =>
+      ({ provider: {}, checkAuth: vi.fn(checkAuth) }) as unknown as AuthRuntime & {
+        checkAuth: ReturnType<typeof vi.fn>;
+      };
+
+    const accountsAnswering = (fetch: ReturnType<typeof vi.fn>) => {
+      mockHas.mockReturnValue(true);
+      mockGetService.mockReturnValue({ getCurrentUser: { fetch } });
+    };
+
+    it('clears the header user on auth/loggedOut', async () => {
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+      registerBootstrapEffects(dispatch);
+      await emitEvent('auth/loggedOut');
+
+      expect(getDispatchedActions(dispatch)).toEqual([clearUser()]);
+    });
+
+    it('a real sign-out asks for the user again and requests nothing', async () => {
+      const fetch = vi.fn().mockResolvedValue({ user: ada });
+      accountsAnswering(fetch);
+      let authenticated = true;
+      const auth = runtime(async () => ({ authenticated }));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, auth);
+      await emitEvent('app/user/fetch');
+      expect(headerStateAfter(dispatch).user).toEqual(adaInHeader.payload);
+
+      authenticated = false;
+      await emitEvent('auth/loggedOut');
+      await vi.waitFor(() => expect(auth.checkAuth).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(headerStateAfter(dispatch)).toEqual({ user: null, loading: false }));
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('brings the user back when the session check contradicts auth/loggedOut', async () => {
+      // A logout from code that rejected while the session lived on, or a
+      // provider's spurious report: the announcement clears, the check says
+      // signed in.
+      const fetch = vi.fn().mockResolvedValue({ user: ada });
+      accountsAnswering(fetch);
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(async () => ({ authenticated: true })));
+      await emitEvent('app/user/fetch');
+
+      await emitEvent('auth/loggedOut');
+      expect(headerStateAfter(dispatch).user).toBeNull();
+      await vi.waitFor(() => expect(headerStateAfter(dispatch)).toEqual({
+        user: adaInHeader.payload,
+        loading: false,
+      }));
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    // A profile language other than the default, so a dropped answer that
+    // still applied its language would show as a change.
+    const adaInGerman = { ...ada, language: Language.German };
+
+    it('drops a user fetch that was in flight when the session ended, its profile language included', async () => {
+      let land!: (value: unknown) => void;
+      const fetch = vi.fn(() => new Promise((resolve) => (land = resolve)));
+      accountsAnswering(fetch);
+      let authenticated = true;
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(async () => ({ authenticated })));
+
+      const fetching = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(land).toBeTypeOf('function'));
+      authenticated = false;
+      await emitEvent('auth/loggedOut');
+      land({ user: adaInGerman });
+      await fetching;
+      await vi.waitFor(() => expect(headerStateAfter(dispatch)).toEqual({ user: null, loading: false }));
+
+      // The dropped fetch leaves the loading state to the sign-out, whose
+      // clear ends it, and to the fetch the sign-out asks for, whose check
+      // answers signed out: nothing stays loading with no fetch behind it.
+      expect(getDispatchedActions(dispatch)).toEqual([
+        setHeaderLoading(true),
+        clearUser(),
+        setHeaderLoading(true),
+        clearUser(),
+        setHeaderLoading(false),
+      ]);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(languageChanges).toEqual([]);
+    });
+
+    const grace = { ...ada, id: 'user-grace', firstName: 'Grace', lastName: 'Hopper', email: 'grace@example.com' };
+    const graceInHeader = setUser({ displayName: 'Grace Hopper', email: 'grace@example.com', avatarUrl: undefined });
+
+    /** A current-user request per call, each answered when the case says. */
+    const accountsAnsweringEachLater = () => {
+      const answers: Array<(value: unknown) => void> = [];
+      accountsAnswering(vi.fn(() => new Promise((resolve) => answers.push(resolve))));
+      return answers;
+    };
+
+    it.each([
+      ['the session ended and another one started', ['auth/loggedOut', 'auth/loggedIn']],
+      ['another account signed in with no sign-out before it', ['auth/loggedIn']],
+    ])('drops a user fetch that was in flight when %s, and names the new account', async (_name, events) => {
+      const answers = accountsAnsweringEachLater();
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch);
+
+      // The header names the previous account, and asks for it again.
+      const first = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(answers).toHaveLength(1));
+      answers[0]({ user: ada });
+      await first;
+      expect(headerStateAfter(dispatch).user).toEqual(adaInHeader.payload);
+      const fetching = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(answers).toHaveLength(2));
+
+      for (const event of events) await emitEvent(event);
+      // Each event dropped the previous account's user and asked again.
+      await vi.waitFor(() => expect(answers).toHaveLength(2 + events.length));
+      expect(headerStateAfter(dispatch).user).toBeNull();
+
+      // Every answer but the one asked for under the last event is stale.
+      for (const answer of answers.slice(1, -1)) answer({ user: adaInGerman });
+      await fetching;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(headerStateAfter(dispatch).user).toBeNull();
+      expect(languageChanges).not.toContain(Language.German);
+
+      answers[answers.length - 1]({ user: grace });
+      await vi.waitFor(() => expect(headerStateAfter(dispatch)).toEqual({
+        user: graceInHeader.payload,
+        loading: false,
+      }));
+      // Ada was named once, by the fetch that finished in her session.
+      expect(getDispatchedActions(dispatch).filter((action) => isEqual(action, adaInHeader))).toHaveLength(1);
+    });
+
+    it('a dropped fetch that lands while a newer one is out leaves the header loading', async () => {
+      const answers = accountsAnsweringEachLater();
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch);
+
+      const fetching = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(answers).toHaveLength(1));
+      await emitEvent('auth/loggedIn');
+      await vi.waitFor(() => expect(answers).toHaveLength(2));
+
+      answers[0]({ user: ada });
+      await fetching;
+      expect(headerStateAfter(dispatch)).toEqual({ user: null, loading: true });
+
+      answers[1]({ user: grace });
+      await vi.waitFor(() => expect(headerStateAfter(dispatch)).toEqual({
+        user: graceInHeader.payload,
+        loading: false,
+      }));
+    });
+
+    it('ignores a screen\'s app/user/loaded while signed out, and takes it again after auth/loggedIn', async () => {
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch);
+
+      await emitEvent('auth/loggedOut');
+      await emitEvent('app/user/loaded', { user: ada });
+      expect(getDispatchedActions(dispatch)).toEqual([clearUser()]);
+
+      // `auth/loggedIn` clears again and asks for the user, which this case's
+      // registry has no service for.
+      await emitEvent('auth/loggedIn');
+      await emitEvent('app/user/loaded', { user: ada });
+      expect(getDispatchedActions(dispatch)).toEqual([clearUser(), clearUser(), adaInHeader]);
+    });
+
+    it('fetches no user when the session check says signed out', async () => {
+      const fetch = vi.fn().mockResolvedValue({ user: ada });
+      accountsAnswering(fetch);
+      const auth = runtime(async () => ({ authenticated: false }));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+      registerBootstrapEffects(dispatch, auth);
+      await emitEvent('app/user/fetch');
+
+      expect(auth.checkAuth).toHaveBeenCalledTimes(1);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(getDispatchedActions(dispatch)).toEqual([setHeaderLoading(true), clearUser(), setHeaderLoading(false)]);
+    });
+
+    it('a page loaded signed out ignores a screen\'s app/user/loaded', async () => {
+      // The start of a signed-out page announces nothing; the fetch's session
+      // check is what tells the effect.
+      accountsAnswering(vi.fn().mockResolvedValue({ user: ada }));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(async () => ({ authenticated: false })));
+
+      await emitEvent('app/user/fetch');
+      await emitEvent('app/user/loaded', { user: ada });
+
+      expect(getDispatchedActions(dispatch)).toEqual([setHeaderLoading(true), clearUser(), setHeaderLoading(false)]);
+    });
+
+    it.each([
+      ['signed out, the header ends with no user', false, null],
+      ['signed in, the screen\'s user stays until the fetch answers', true, adaInHeader.payload],
+    ])('a screen\'s app/user/loaded during the page\'s first session check, which answers %s', async (_name, authenticated, user) => {
+      let answerCheck!: (value: { authenticated: boolean }) => void;
+      let land!: (value: unknown) => void;
+      accountsAnswering(vi.fn(() => new Promise((resolve) => (land = resolve))));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(() => new Promise((resolve) => (answerCheck = resolve))));
+
+      const fetching = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(answerCheck).toBeTypeOf('function'));
+      await emitEvent('app/user/loaded', { user: ada });
+      expect(headerStateAfter(dispatch)).toEqual({ user: adaInHeader.payload, loading: false });
+
+      answerCheck({ authenticated });
+      if (authenticated) {
+        await vi.waitFor(() => expect(land).toBeTypeOf('function'));
+        expect(headerStateAfter(dispatch)).toEqual({ user, loading: false });
+        land({ user: grace });
+        await fetching;
+        expect(headerStateAfter(dispatch)).toEqual({ user: graceInHeader.payload, loading: false });
+      } else {
+        await fetching;
+        expect(headerStateAfter(dispatch)).toEqual({ user, loading: false });
+      }
+    });
+
+    it('a session check that says signed in takes a screen\'s app/user/loaded again', async () => {
+      // A failed sign-out announced `auth/loggedOut`, and the header asks
+      // again: the session lived, so the page is not signed out.
+      accountsAnswering(vi.fn().mockResolvedValue({ user: ada }));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(async () => ({ authenticated: true })));
+
+      await emitEvent('auth/loggedOut');
+      await emitEvent('app/user/fetch');
+      dispatch.mockClear();
+      await emitEvent('app/user/loaded', { user: ada });
+
+      expect(getDispatchedActions(dispatch)).toEqual([adaInHeader]);
+    });
+
+    it('a session check answered across a sign-out does not count as signed in', async () => {
+      const answers: Array<(value: { authenticated: boolean }) => void> = [];
+      accountsAnswering(vi.fn().mockResolvedValue({ user: ada }));
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+      registerBootstrapEffects(dispatch, runtime(() => new Promise((resolve) => answers.push(resolve))));
+
+      const fetching = emitEvent('app/user/fetch');
+      await vi.waitFor(() => expect(answers).toHaveLength(1));
+      await emitEvent('auth/loggedOut');
+      // The sign-out asks again, and its own check answers signed out.
+      await vi.waitFor(() => expect(answers).toHaveLength(2));
+      answers[0]({ authenticated: true });
+      answers[1]({ authenticated: false });
+      await fetching;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await emitEvent('app/user/loaded', { user: ada });
+
+      expect(getDispatchedActions(dispatch)).not.toContainEqual(adaInHeader);
+    });
+
+    it.each([
+      ['says signed in', () => Promise.resolve({ authenticated: true })],
+      ['rejects', () => Promise.reject(new Error('down'))],
+      [
+        'throws synchronously',
+        (): Promise<{ authenticated: boolean }> => {
+          throw new Error('no provider');
+        },
+      ],
+    ])('fetches the user when the session check %s', async (_name, checkAuth) => {
+      const fetch = vi.fn().mockResolvedValue({ user: ada });
+      accountsAnswering(fetch);
+      const dispatch = vi.fn();
+      const { registerBootstrapEffects } = await import('./bootstrapEffects');
+
+      registerBootstrapEffects(dispatch, runtime(checkAuth));
+      await emitEvent('app/user/fetch');
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(getDispatchedActions(dispatch)).toEqual([setHeaderLoading(true), adaInHeader, setHeaderLoading(false)]);
+    });
   });
 });

@@ -70,8 +70,8 @@ wireDevSignInTriggers(app);
 // registry is not tied to any mount window.
 void app.mfeRegistry;
 
-// Register app-level effects (pass store dispatch)
-registerBootstrapEffects(app.store.dispatch);
+// Register app-level effects (pass store dispatch, and the auth runtime when there is one)
+registerBootstrapEffects(app.store.dispatch, app.auth);
 
 // Register all themes (default theme has default:true, activates automatically)
 app.themeRegistry.register(defaultTheme);
