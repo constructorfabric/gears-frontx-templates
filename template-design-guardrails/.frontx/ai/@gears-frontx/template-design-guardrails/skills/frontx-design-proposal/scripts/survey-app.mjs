@@ -40,9 +40,10 @@
  * - links: the address each screen's links carry as the app renders them
  *   (the shell's menu links, literal links in the screens' code), and
  *   whether they disagree with the registered route; a route template
- *   counts only where a link is built from it (an href or to prop, or a
- *   navigation call), and templates that disagree leave the links
- *   unresolved;
+ *   counts only where a link is built from it (an href or to prop, a
+ *   navigation call, or a small helper named for addresses), templates that
+ *   disagree leave the links unresolved, and so does a layout that builds
+ *   links from code the survey does not read (link form not detected);
  * - variants: the drawing kit classes the app window, its navigation, the
  *   phone header and the brand take;
  * - appLookCss: the app-look style block for the proposal page.
@@ -1587,31 +1588,43 @@ function readLook(root, screens, chromeOf) {
 /**
  * The address each screen's links carry as the app renders them: the shell's
  * menu builds its links from a template around the route (`/?screen=${route}`)
- * in an href or to prop or key (href= or href:) or a navigation call (LINK_BUILT); other templates
+ * in an href or to prop or key (href= or href:) or a navigation call (LINK_BUILT), or as
+ * what a small helper returns whose one parameter is the route and whose name
+ * says it makes an address (LINK_HELPER: hrefFor, linkTo, pathOf); other templates
  * are not links, and two that disagree leave every link unresolved,
- * and a screen may carry literal links (an href or a *HREF constant). Each
+ * and a screen may carry literal links (an href or a *HREF constant). When no
+ * template is read but the layout builds an href or to prop from code
+ * (LINK_UNREAD), the link form is not detected and every link is unresolved:
+ * the person checks the menu code by hand. Only a layout that builds no link
+ * from code keeps the registered route. Each
  * screen gets its link and where it was read; mismatch says the registered
  * route is not what a shared link carries.
  */
 const LINK_BUILT = /(?:\b(?:href|to)\s*[=:]\s*\{?|\b(?:navigate|push|assign|open|redirect)\(|\blocation(?:\.href)?\s*=)\s*$/;
+const LINK_HELPER = /(?:\b(?:const|let|var)\s+\w*(?:href|link|url|path)\w*\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+\w*(?:href|link|url|path)\w*\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
+const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])/;
 
 function readLinks(root, screens) {
   const layoutDir = path.join(root, 'src-app/app/layout');
   const files = walk(layoutDir, (f) => /\.(tsx|ts|jsx|js)$/.test(f) && !/\.test\./.test(f));
-  // A template counts only where a link is built from it: an href or to prop (or a const of that name), or a navigation call.
+  // A template counts only where a link is built from it: an href or to prop (or a const of that name), a navigation call, or a link helper.
   const candidates = [];
+  const unread = [];
   for (const file of files) {
     // Raw text: the template may hold a regular expression with // in it (`.replace(/^\//, '')`).
     const text = withoutBlocks(read(file), '/*', '*/');
     for (const m of text.matchAll(/`([^`$]*)\$\{\s*route((?:\.replace\([^)]*\))?)\s*\}([^`]*)`/g)) {
-      const before = text.slice(Math.max(0, m.index - 80), m.index);
-      if (!LINK_BUILT.test(before)) continue;
+      // Both tests look at a short window before the template, so the read stays linear in the file's size.
+      const before = text.slice(Math.max(0, m.index - 120), m.index);
+      if (!LINK_BUILT.test(before.slice(-80)) && !LINK_HELPER.test(before)) continue;
       candidates.push({ prefix: m[1], strip: /\^\\?\//.test(m[2]), suffix: m[3], file: rel(root, file), template: m[0] });
     }
+    if (LINK_UNREAD.test(text)) unread.push(rel(root, file));
   }
   const shapes = new Set(candidates.map((c) => JSON.stringify([c.prefix, c.strip, c.suffix])));
   const rule = shapes.size === 1 ? candidates[0] : null;
   const disagree = shapes.size > 1;
+  const notDetected = !rule && !disagree && unread.length > 0;
   const inCode = [];
   const base = path.join(root, 'src-app/mfe_packages');
   for (const pkg of [...new Set(screens.map((x) => x.package))]) {
@@ -1621,10 +1634,17 @@ function readLinks(root, screens) {
   }
   const out = screens.map((x) => {
     if (disagree) return { route: x.route, label: x.label, link: UNRESOLVED, source: `the shell builds links from ${candidates.length} templates that disagree: ${candidates.map((c) => `${c.file} ${c.template}`).join('; ')}` };
+    if (notDetected) return { route: x.route, label: x.label, link: UNRESOLVED, source: `link form not detected, check the menu code by hand: ${unread.join(', ')} ${unread.length > 1 ? 'build links' : 'builds a link'} from code the survey does not read` };
     const link = rule ? `${rule.prefix}${rule.strip ? x.route.replace(/^\//, '') : x.route}${rule.suffix}` : x.route;
     return { route: x.route, label: x.label, link, source: rule ? `${rule.file} ${rule.template}` : 'no link template in src-app/app/layout: the registered route' };
   });
-  return { screens: out, inCode, mismatch: !disagree && out.some((x) => x.link !== x.route), ...(disagree ? { templates: candidates.map((c) => `${c.file} ${c.template}`) } : {}) };
+  return {
+    screens: out,
+    inCode,
+    mismatch: !disagree && !notDetected && out.some((x) => x.link !== x.route),
+    ...(disagree ? { templates: candidates.map((c) => `${c.file} ${c.template}`) } : {}),
+    ...(notDetected ? { unread } : {}),
+  };
 }
 
 
@@ -1732,7 +1752,7 @@ export function survey(root) {
       ...(s.label === UNRESOLVED ? [`screens.${s.route}.label`] : []),
       ...(s.source.includes(UNRESOLVED) ? [`screens.${s.route}.source`] : []),
     ]),
-    ...(result.links.templates ? ['links'] : []),
+    ...(result.links.templates || result.links.unread ? ['links'] : []),
   ];
   result.skipped = [...new Map(skipped.map((s) => [s.file, { file: rel(root, s.file), why: s.why }])).values()];
   // A file the survey meant to read and could not is a gap the agent fills by hand.

@@ -240,6 +240,40 @@ describe('the app name, the content column and the link addresses', () => {
       expect(built.links.screens.map((x) => x.link), call).toEqual([`${prefix}/home`, `${prefix}/docs`]);
     }
   });
+
+  it('reads a link template from a small helper named for addresses, and leaves a link form it cannot read unresolved', () => {
+    const side = (files) => {
+      const root = writeProposalApp(tempDir());
+      for (const [rel, text] of Object.entries(files)) writeFileSync(path.join(root, rel), text);
+      return survey.survey(root);
+    };
+    const helper = side({
+      'src-app/app/layout/Menu.tsx': [
+        'export const Menu = ({ items }) => {',
+        '  const hrefFor = (route: string | undefined): string =>',
+        "    route ? `/?screen=${route.replace(/^\\//, '')}` : '/';",
+        '  return items.map((x) => <a href={hrefFor(x.route)}>{x.label}</a>);',
+        '};',
+        '',
+      ].join('\n'),
+    });
+    expect(helper.links.screens.map((x) => x.link)).toEqual(['/?screen=home', '/?screen=docs']);
+    expect(helper.links.mismatch).toBe(true);
+    expect(helper.unresolved).not.toContain('links');
+    const fn = side({ 'src-app/app/layout/Menu.tsx': 'function linkTo(route) { return `/app${route}`; }\nexport const Menu = ({ items }) => items.map((x) => <a href={linkTo(x.route)}>{x.label}</a>);\n' });
+    expect(fn.links.screens.map((x) => x.link)).toEqual(['/app/home', '/app/docs']);
+    // A helper whose name says nothing about addresses is not taken as the link form.
+    const other = side({ 'src-app/app/layout/Menu.tsx': 'const labelFor = (route) => `screen ${route}`;\nexport const Menu = ({ items }) => items.map((x) => <a href={pick(x)} title={labelFor(x.route)}>{x.label}</a>);\n' });
+    expect(other.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
+    expect(other.links.screens[0].source).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+    expect(other.links.mismatch).toBe(false);
+    expect(other.unresolved).toContain('links');
+    const printed = survey.readable(other);
+    expect(printed).toContain('Addresses the app\'s links carry (link form not detected, check the menu code by hand');
+    expect(printed).not.toMatch(/^ {2}Home {2}\/home$/m);
+    // A literal address is not a link form to read.
+    expect(side({ 'src-app/app/layout/Logo.tsx': "export const Logo = () => <a href={'/'}>Home</a>;\n" }).links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
+  });
 });
 
 describe('the active tab text', () => {
