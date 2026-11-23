@@ -5,7 +5,7 @@ description: "Scaffold a new microfrontend (MFE) package inside template-mfe —
 
 # Add an MFE Package (template-mfe)
 
-**Seeing it first:** when the person asked to see the page before it is built ("show me first", "how could it look", options) and the design guardrails template is installed (check for `.frontx/ai/*/*/skills/frontx-design-proposal/`), its `frontx-design-proposal` skill runs before this one, and this one builds from its record.
+**Seeing it first:** when the design guardrails template is installed (check for `.frontx/ai/*/*/skills/frontx-design-proposal/`), its `frontx-design-proposal` skill decides first, by the rule its SKILL.md names, whether a new page is drawn before it is built: at once when the person asked to see the page or options first; otherwise offered once, in one short line in the person's language, when they have neither seen nor described its look. When the step runs, this skill builds from its record; on a refusal or no answer, build now.
 
 This skill is specific to **template-mfe**. It relies on template-mfe's concrete
 scaffold (`src-app/mfe_packages/_blank-mfe/`) and manifest pipeline
