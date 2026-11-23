@@ -36,7 +36,12 @@ import {
   NODE_BIN_DIR,
   type MfeInfo,
 } from './lib/mfe-tools.js';
-import { isPortFree, PREVIEW_HOST } from './lib/preview-ports.js';
+import {
+  isPortFree,
+  MOVE_PREVIEW_PORTS_ENV_VAR,
+  PREVIEW_HOST,
+  previewPortsMovable,
+} from './lib/preview-ports.js';
 
 const SCRIPT_NAME = 'verify-preflight';
 
@@ -1121,6 +1126,18 @@ async function run(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<num
     return 1;
   }
   const options = parsed.options;
+
+  // This run probes, reuses and waits on every screen at the port its package
+  // declares, so it cannot follow a preview dev:all moved: refuse the setting
+  // before anything is probed or started.
+  if (previewPortsMovable(env)) {
+    console.error(
+      `[${SCRIPT_NAME}] ${MOVE_PREVIEW_PORTS_ENV_VAR}=1 is not supported here: this run checks each ` +
+        "screen at the port its package declares. Unset it, or use it with a run that starts dev:all " +
+        "itself (the design check's --start-server).",
+    );
+    return 1;
+  }
 
   // The host port is resolved before anything is probed, so every later step
   // works with one port: --host-port, then FRONTX_VERIFY_HOST_PORT, then the

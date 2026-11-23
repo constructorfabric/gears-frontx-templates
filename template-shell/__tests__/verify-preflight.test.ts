@@ -1936,6 +1936,18 @@ describe.skipIf(process.platform === 'win32')('the command', () => {
     expect(run.stdout).not.toContain('READY');
   });
 
+  it('refuses FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 before probing, since it checks each screen at its declared port', async () => {
+    const [hostPort, cdpPort] = await Promise.all([freeHighPort(), freeHighPort()]);
+    const run = runCommand(['--no-start', '--host-port', String(hostPort), '--cdp-port', String(cdpPort)], {
+      FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1',
+    });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 is not supported here');
+    expect(run.stdout).not.toContain('host port');
+    expect(run.stderr).not.toContain('Servers are not running');
+  });
+
   it('a FRONTX_VERIFY_HOST_PORT that is not a port does not stop a run that names the port with the flag', async () => {
     // The flag wins over the variable, so the variable is not read at all when
     // the flag names the port: a value the run would never use must not fail
