@@ -4,6 +4,8 @@
 // browser-driving CLI itself is exercised end-to-end against a real app, not
 // here - these tests pin the logic every run depends on.
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -61,8 +63,14 @@ describe('cli main: inputs checked before any browser work', () => {
     vi.spyOn(console, 'error').mockImplementation((line: string) => errors.push(line));
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const at = (file: string) => path.join(root, file);
-    const code = await main([...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)), '--chrome', at('no-chrome')]);
-    return { code, errors: errors.join('\n'), logged: log.mock.calls.flat().join('\n') };
+    let code: number | undefined;
+    let thrown: unknown;
+    try {
+      code = await main([...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)), '--chrome', at('no-chrome')]);
+    } catch (error) {
+      thrown = error;
+    }
+    return { code, thrown, errors: errors.join('\n'), logged: log.mock.calls.flat().join('\n') };
   }
 
   const DESIGN = [
@@ -107,6 +115,49 @@ describe('cli main: inputs checked before any browser work', () => {
     expect(result.errors).not.toMatch(/\n\s+at /);
     expect(result.logged).not.toMatch(/launching headless Chrome|waiting for/);
     expect(result.code).toBe(2);
+  });
+
+  // Whatever already answers --url is not the server --start-server was asked
+  // for: beside another project on the same port the sweep would measure that
+  // project. The run refuses before starting anything or launching a browser.
+  it('refuses --start-server when --url already answers, and starts nothing', async () => {
+    const other = http.createServer((_req, res) => res.end('another project'));
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    try {
+      const url = `http://127.0.0.1:${(other.address() as AddressInfo).port}/`;
+      const marker = path.join(os.tmpdir(), `design-verify-started-${process.pid}-${Date.now()}`);
+      const command = `node -e "require('fs').writeFileSync(process.argv[1], 'x')" ${marker}`;
+      // --cdp-url keeps a run that did attach away from any real browser.
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      expect(result.code).toBe(2);
+      expect(result.errors).toContain(`design-verify: ${url} already answers, but this run did not start that server`);
+      expect(result.errors).toMatch(/stop the server holding it/);
+      expect(result.errors).toMatch(/run without --start-server to measure the running server on purpose/);
+      expect(result.logged).not.toMatch(/starting dev server|attaching|waiting for|launching headless Chrome/);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
+  // Without --start-server, --url names the server to measure on purpose.
+  it('measures the server on --url when no --start-server is given', async () => {
+    // The same listener refuses the DevTools call, so the run stops right
+    // after the server step without any browser.
+    const running = http.createServer((req, res) => {
+      res.statusCode = req.url?.startsWith('/json/') ? 404 : 200;
+      res.end('the app');
+    });
+    await new Promise<void>((resolve) => running.listen(0, '127.0.0.1', resolve));
+    try {
+      const url = `http://127.0.0.1:${(running.address() as AddressInfo).port}/`;
+      const result = await runCli({}, ['--url', url, '--cdp-url', url]);
+      expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
+      expect(result.logged).toMatch(/waiting for/);
+    } finally {
+      await new Promise((resolve) => running.close(resolve));
+    }
   });
 });
 

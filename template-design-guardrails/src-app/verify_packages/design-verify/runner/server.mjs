@@ -37,8 +37,9 @@ export async function waitForUrl(url, options = {}) {
  * One quick reachability probe, for deciding whether a server already holds
  * the URL before --start-server spawns a second one. A second server on an
  * occupied port dies instantly (or binds elsewhere) while the sweep silently
- * measures whatever was already listening — attaching explicitly instead
- * keeps the report honest about which server produced the evidence.
+ * measures whatever was already listening, possibly another project: the
+ * runner refuses to start then, rather than report on a server it did not
+ * start.
  *
  * @param {string} url
  * @param {{timeoutMs?: number, fetchImpl?: typeof fetch}} [options]

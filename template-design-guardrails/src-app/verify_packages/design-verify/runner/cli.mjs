@@ -171,17 +171,24 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     if (config.startServer) {
       if (await isUrlReachable(config.url)) {
-        // A second server on an occupied port dies (or binds elsewhere) while
-        // the sweep would silently measure the incumbent - attach explicitly.
-        console.log(
-          `design-verify: ${config.url} is already reachable - attaching to the running server instead of starting "${config.startServer}"`,
+        // Whatever answers is not a server this run started, and nothing an
+        // HTTP answer carries tells this project's dev server from another
+        // project's on the same port: measuring it would report on the wrong
+        // app. A second server would die on the occupied port (or bind
+        // elsewhere), so the run starts nothing and refuses.
+        console.error(
+          `design-verify: ${config.url} already answers, but this run did not start that server, ` +
+            `so it cannot tell whether it is this project's app. Either stop the server holding it ` +
+            `and run again; or pass --url with a free port and start the server there (the template ` +
+            `shell's dev:all takes the host port from FRONTX_VERIFY_HOST_PORT); or run without ` +
+            `--start-server to measure the running server on purpose`,
         );
-      } else {
-        const serverCwd = resolveServerCwd(config);
-        console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
-        const server = startServer(config.startServer, { cwd: serverCwd });
-        cleanups.push(server.stop);
+        return 2;
       }
+      const serverCwd = resolveServerCwd(config);
+      console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
+      const server = startServer(config.startServer, { cwd: serverCwd });
+      cleanups.push(server.stop);
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
     await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs });
