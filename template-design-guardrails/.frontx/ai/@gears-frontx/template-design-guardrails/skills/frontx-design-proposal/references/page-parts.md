@@ -182,7 +182,7 @@ One table, a row per screen (checked), then one closing note (checked):
 <p class="note">A file link shared before keeps opening the file; Back returns to the list as it was left.</p>
 ```
 
-- The address is the one the app's links carry (the survey's links: `/?screen=docs` when the menu builds its links that way), not only the registered route; when the two disagree, say which one a shared link carries.
+- The address is the one the app's links carry (the survey's links: `/?screen=docs` when the menu builds its links that way), not only the registered route; when the two disagree, say which one a shared link carries. The form may be written with its named part in angle brackets, `/?screen=<route>` or `/tasks/<id>` (escaped as `&lt;route&gt;` on the page): one word in brackets inside an address that starts with "/" is the address form, not text left from the template (checked).
 - The address shows what a link keeps: search and filters in the address, one item by its id.
 - When addresses start with more than one base (the app on its own and inside a shell, today's and after a move), one line per base with its tag sits above the table and the table gives the part after the base; with one base there are no base lines (checked).
 - When the proposal changes an existing screen, the column "Today the same link opens" says what each address opens today, so a link someone already shared is accounted for (checked).

@@ -369,6 +369,8 @@ describe('check-proposal.mjs reads a page in time linear in its length', { timeo
     ['placeholder closers with no opener', 40000, (n) => atEnd(`<p>${'}}'.repeat(n)}</p>`)],
     ['placeholders split by markup', 2500, (n) => atEnd(`<p>${'{{a<b>b</b>'.repeat(n)}}}</p>`)],
     ['spaces in an address', 40000, (n) => atEnd(`<a href="#a${' '.repeat(n)}b">x</a>`)],
+    ['an address form of many parts', 40000, (n) => atEnd(`<p>${'/a&lt;b&gt;'.repeat(n)}</p>`)],
+    ['address form openers with no named part', 40000, (n) => atEnd(`<p> ${'/./'.repeat(n)}&lt;</p>`)],
     ['nested elements', 2500, cut('<b>')],
   ])('%s', (what, n, build) => {
     // With a survey beside the page, so the app-look block is read declaration by declaration.
@@ -390,6 +392,8 @@ describe('check-proposal.mjs reads a page in time linear in its length', { timeo
 
   it.each([
     ['tag openers in a field', (n) => `- Page id: ${'<a'.repeat(n)}\n`],
+    ['an address form of many parts in a field', (n) => `- Survey: ${'/a<b>'.repeat(n)}\n`],
+    ['address form openers with no named part in a field', (n) => `- Survey: ${' /./'.repeat(n)}<\n`],
     ['an item of spaces in the optional parts', (n) => `- Optional parts: flow: added, it shows the steps;${' '.repeat(n)}; x\n`],
   ])('CHOICE.md: %s', (what, build) => {
     expectLinear((n) => check.checkChoice(build(n)), 10000, what);

@@ -250,6 +250,15 @@ const ARROW_REFS = { rarr: '\u2192', rightarrow: '\u2192', RightArrow: '\u2192',
 // UTF-8 read as Windows-1252: a lead letter followed by a continuation-byte character, or the replacement character.
 const GARBLED = /[\u00c3\u00c2\u00e2][\u0080-\u00bf\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2013-\u203a\u20ac\u2122]|\ufffd/;
 const UNFILLED = /&lt;[a-zA-Z][a-zA-Z0-9 ,.'-]{0,60}&gt;|\bREPLACE\b|\bTODO\b/;
+/**
+ * An address written with a named part, `/?screen=<route>` or `/tasks/<id>`: the form the app's links take
+ * (references/page-parts.md, the addresses), not a placeholder left. It starts with "/" at the start of a word,
+ * every named part is one word in angle brackets, and it holds no space. A match starts only where a word starts,
+ * so no two tries cover the same text and the scan stays linear. `lt` and `gt` are the brackets as the text writes them.
+ */
+const addressForm = (lt, gt) => new RegExp(`(?<=^|[\\s("'])/[\\w\\-./?=#%]*(?:${lt}[a-zA-Z][\\w-]{0,30}${gt}[\\w\\-./?=#%]*)+`, 'g');
+const ADDRESS_FORM_HTML = addressForm('&lt;', '&gt;');
+const ADDRESS_FORM_TEXT = addressForm('<', '>');
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'are', 'it', 'its', 'with', 'each', 'every', 'this', 'that', 'what', 'where', 'how', 'goes', 'go']);
 const ALLOWED_STYLE_PROPS = new Set(['--cols', '--w', '--h']);
 const FORBIDDEN_IN_DRAWING = new Set(['img', 'svg', 'canvas', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'style', 'script', 'iframe']);
@@ -1725,7 +1734,7 @@ const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w)
 function checkText({ root, add }) {
   const body = find(root, (n) => n.tag === 'body')[0] ?? root;
   const text = proseOf(body);
-  const left = UNFILLED.exec(text);
+  const left = UNFILLED.exec(text.replace(ADDRESS_FORM_HTML, ' '));
   if (left) add('text', `template text "${left[0]}" left in the page`);
   const bad = GARBLED.exec(text);
   if (bad) add('text', `garbled characters ${JSON.stringify(bad[0])}: the text was saved in one encoding and read in another`);
@@ -1937,8 +1946,8 @@ export function checkChoice(text, { options = [], pageId, revision, parts = null
     if (!fields.has(label)) add(`field "${label}" is missing`);
     else if (fields.get(label) === '') add(`field "${label}" is empty; write "none" when there is nothing`);
   }
-  // Inline code may name a placeholder on purpose (`<revision-dir>`); field values may not.
-  for (const m of new Set(text.replace(/`[^`\n]*`/g, '').match(/<[a-z@][^<>\n]*>/gi) ?? [])) add(`placeholder ${m} left`);
+  // Inline code may name a placeholder on purpose (`<revision-dir>`), and so may an address form (/?screen=<route>); field values may not.
+  for (const m of new Set(text.replace(/`[^`\n]*`/g, '').replace(ADDRESS_FORM_TEXT, ' ').match(/<[a-z@][^<>\n]*>/gi) ?? [])) add(`placeholder ${m} left`);
   if (pageId && fields.has('Page id') && fields.get('Page id') !== pageId) add(`Page id "${fields.get('Page id')}" is not the folder's "${pageId}"`);
   if (revision && fields.has('Revision') && fields.get('Revision') !== revision) add(`Revision "${fields.get('Revision')}" is not the folder's "${revision}"`);
   const revNo = Number(/^r(\d+)$/.exec(fields.get('Revision') ?? '')?.[1] ?? 0);

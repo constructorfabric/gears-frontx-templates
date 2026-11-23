@@ -94,6 +94,15 @@ describe('words, labels, ids, links and the glossary', () => {
     ['glossary', edit(docs, '<span class="map-name">Document</span>', '<span class="map-name"><span class="term" data-term="outline">Document</span></span>'), 'term "outline" is marked in #map'],
     ['glossary', edit(docs, '<li>Writing or editing documents.</li>', '<li>Writing an outline for documents.</li>'), '"Outline" appears in #asked, before #how'],
   ]))('reports %s: %s', (kind, message, html) => one(html, kind, message));
+
+  it('takes an address written with a named part as the address form, and still finds a placeholder left', () => {
+    const NOTE = 'The app\'s links carry the screen in the address (/?screen=docs)';
+    const form = edit(docs, NOTE, 'The app\'s links carry the screen in the address (/?screen=&lt;route&gt;, here /?screen=docs; a document at /docs/&lt;id&gt;)');
+    expect(findings(form).filter((f) => f.startsWith('[text]'))).toEqual([]);
+    one(edit(docs, NOTE, 'The app\'s links carry the screen in the address (&lt;route&gt;)'), 'text', 'template text "&lt;route&gt;" left');
+    one(edit(docs, NOTE, 'The app\'s links carry the screen in the address (/?screen=&lt;the screen name&gt;)'), 'text', 'template text "&lt;the screen name&gt;" left');
+    one(edit(docs, NOTE, 'The app\'s links carry the screen in the address (/?screen=docs) &lt;route&gt;'), 'text', 'template text "&lt;route&gt;" left');
+  });
 });
 
 describe('the Decisions field of CHOICE.md', () => {
