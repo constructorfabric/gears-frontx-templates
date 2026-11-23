@@ -40,7 +40,7 @@ describe('check-proposal.mjs on broken copies of the flow', () => {
     ['a step named off the map', edit('<span class="flow-name">Invite a teammate</span>', '<span class="flow-name">Invite form</span>'), 'the step "Invite form" is not a screen of the map'],
     ['an outside step that links', edit('<span class="flow-step flow-step--outside" id="f-mail" data-outside data-row="5" data-col="2"><span class="flow-name">Email</span><span class="flow-what">outside the app; the invitee opens the link</span></span>', '<a class="flow-step flow-step--outside" id="f-mail" href="#draw-join" data-outside data-row="5" data-col="2"><span class="flow-name">Email</span></a>'), 'the step "Email" is outside the app and links nowhere'],
     ['two starts', edit('data-row="2" data-col="2">', 'data-row="2" data-col="2" data-start>'), '2 starts; a flow has one'],
-    ['no start', edit(' data-row="1" data-col="2" data-start>', ' data-row="1" data-col="2">'), '0 starts; a flow has one'],
+    ['no start', edit(' data-row="1" data-col="2" data-start="Start">', ' data-row="1" data-col="2">'), '0 starts; a flow has one'],
     ['a box with no way in', edit('<span class="flow-edge" data-from="f-sent" data-to="f-mail"></span>', ''), '"Email" has no way in'],
     ['a box with no way out', edit('<span class="flow-edge" data-from="f-join" data-to="f-joined"></span>', ''), '"Join the team" has no way out'],
     ['an end that leads on', edit('<span class="flow-edge" data-from="f-dead" data-to="f-ask"></span>', '<span class="flow-edge" data-from="f-dead" data-to="f-ask"></span><span class="flow-edge" data-from="f-ask" data-to="f-joined"></span>'), 'the end "Asks for a new link" leads on'],

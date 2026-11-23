@@ -112,7 +112,7 @@ describe('check-proposal.mjs reports each rule on a broken copy of a worked exam
     ['flow', 'data-cols="5"; a flow has 2, 3 or 4 columns', () => edit(invite, '<div class="flow" data-cols="3">', '<div class="flow" data-cols="5">')],
     ['flow', 'the box "Invite a teammate" has no id', () => edit(invite, '<a class="flow-step" id="f-invite" ', '<a class="flow-step" ')],
     ['flow', 'has no name (.flow-name)', () => edit(invite, '<span class="flow-name">Invite a teammate</span>', '<span>Invite a teammate</span>')],
-    ['flow', 'the start "', () => edit(edit(invite, ' data-start>', '>'), 'class="flow-decision" id=', 'data-start class="flow-decision" id=')],
+    ['flow', 'the start "', () => edit(edit(invite, ' data-start="Start">', '>'), 'class="flow-decision" id=', 'data-start="Start" class="flow-decision" id=')],
     // storyboard, cue, text
     ['storyboard', 'a storyboard (ol.story) without an aria-label', () => edit(invite, '<ol class="story" data-width="phone" aria-label="Sending an invitation, step by step">', '<ol class="story" data-width="phone">')],
     ['storyboard', 'frame 3 is not an li.story-frame', () => edit(invite, '<li class="story-frame"><figure class="drawing" id="draw-send-3"', '<li class="story-step"><figure class="drawing" id="draw-send-3"')],

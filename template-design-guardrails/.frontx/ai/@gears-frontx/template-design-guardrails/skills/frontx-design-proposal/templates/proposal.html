@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-L8Ajp8j3LSgzQj7d9cJEwzsK4Wu6ZGfJEEP49iRPOSI=' 'sha256-Pun4IhUpJA/iqTUHYGtHJqvOvFEVApNyYrGH/z1TFDE='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Ady4vXVfjuiBTokABgwAEUQkUJqe2f8rBiI8QYFRRBo=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proposal: {{PAGE_TITLE}}</title>
 <style id="frame">
@@ -201,7 +201,8 @@ a.flow-step:hover { border-color: var(--info); box-shadow: inset 0 0 0 1px var(-
 .flow-end[data-end="stop"] { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 .flow-end[data-end="done"]::before { content: "\2713"; }
 .flow-end[data-end="stop"]::before { content: "\2715"; }
-.flow [data-start]::before { content: "Start"; position: absolute; left: 50%; top: -18px; transform: translateX(-50%); color: var(--muted); font-size: 0.6875rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.flow [data-start]::before { content: attr(data-start); position: absolute; left: 50%; top: -18px; transform: translateX(-50%); color: var(--muted); font-size: 0.6875rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.flow [data-start=""]::before { content: "Start"; }
 .flow-edge { position: absolute; z-index: 2; left: 0; top: 0; max-width: 120px; padding: 0 4px; background: var(--bg); color: var(--text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; }
 .flow:not(.is-drawn) .flow-edge, .flow-edge:empty { display: none; }
 .flow-lines { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; pointer-events: none; }
@@ -563,13 +564,13 @@ dialog button:hover { background: var(--raise); }
 <section class="sec" id="flow">
   <h2>How it goes</h2>
   <!-- Only when the feature's own path has a decision, or three steps or more in a fixed order across screens (a wizard, a checkout, an approval, an invitation). Not the paths: the paths are a person's typical tasks, the flow is the feature's logic. Boxes sit on a grid of data-cols columns (2, 3 or 4) by data-row and data-col; the page script draws the connectors.
-  A step: <a class="flow-step" id="f-form" href="#draw-invite" data-row="1" data-col="2" data-start><span class="flow-name">Invite a teammate</span><span class="flow-what">types the address</span></a>; its name is a screen's name in the map, its link the drawing that shows it. A step outside the app: <span class="flow-step flow-step--outside" id="f-mail" data-outside data-row="3" data-col="2"><span class="flow-name">Email</span><span class="flow-what">outside the app</span></span>.
+  A step: <a class="flow-step" id="f-form" href="#draw-invite" data-row="1" data-col="2" data-start="Start"><span class="flow-name">Invite a teammate</span><span class="flow-what">types the address</span></a>; its name is a screen's name in the map, its link the drawing that shows it; the start's data-start is the word shown above it, in the page's language. A step outside the app: <span class="flow-step flow-step--outside" id="f-mail" data-outside data-row="3" data-col="2"><span class="flow-name">Email</span><span class="flow-what">outside the app</span></span>.
   A decision: <span class="flow-decision" id="f-member" data-row="2" data-col="2">Already in the team?</span>, two ways out or more, each labelled.
   An end: <span class="flow-end" id="f-joined" data-end="done" data-row="6" data-col="2">Joins the team</span>; a refusal or an error: data-end="stop". Every branch reaches an end; the refusal or error branch is always drawn.
   A connector, after the boxes: <span class="flow-edge" data-from="f-member" data-to="f-refused">Yes</span>; one with no label is empty. -->
   <p class="takeaway">{{ONE_SENTENCE: where the feature starts, the decision that splits it, and how each branch ends.}}</p>
   <figure class="flow-fig"><div class="flow" data-cols="3">
-    <a class="flow-step" id="f-{{STEP}}" href="#draw-{{SCREEN}}" data-row="1" data-col="2" data-start><span class="flow-name">{{SCREEN_NAME}}</span><span class="flow-what">{{WHAT_HAPPENS}}</span></a>
+    <a class="flow-step" id="f-{{STEP}}" href="#draw-{{SCREEN}}" data-row="1" data-col="2" data-start="Start"><span class="flow-name">{{SCREEN_NAME}}</span><span class="flow-what">{{WHAT_HAPPENS}}</span></a>
     <span class="flow-decision" id="f-{{DECISION}}" data-row="2" data-col="2">{{QUESTION}}</span>
     <span class="flow-end" id="f-{{DONE}}" data-end="done" data-row="3" data-col="2">{{OUTCOME}}</span>
     <span class="flow-end" id="f-{{REFUSED}}" data-end="stop" data-row="3" data-col="3">{{REFUSAL}}</span>
@@ -722,13 +723,14 @@ dialog button:hover { background: var(--raise); }
   <h2>Your answer</h2>
   <!-- The answer block (references/page-parts.md, "Answer block"). Keep the hint, the ids and the classes as they are.
   data-subject names the proposal, its page id and its revision, as the top bar does.
+  The data-phrase-* attributes hold the words the page's scripts write themselves: the answer text's connecting words, the Copy state lines and the name of a scroll box with no caption. Write each in the page's language and keep every {place} in it ({subject}, {letter}, {name}, {answer}, {changes}): the script fills those in.
   Which option: one card per option, value its capital letter, data-say its name, the label "<b>A. Name</b>" as the option's h3, then its Best for line; the recommended one carries the suggested tag and is checked.
   With one design instead, these two cards:
   <label class="pick pick--card"><input type="radio" name="option" value="build" data-say="build it as drawn" checked><span><b>Build it as drawn</b> <span class="tag">suggested</span><span class="small">The page is built as these drawings show it.</span></span></label>
   <label class="pick pick--card"><input type="radio" name="option" value="change" data-say="change it first, as written under Changes"><span><b>Change it first</b><span class="small">Say below what to change before it is built.</span></span></label>
   One fieldset per open question, data-q its number, the legend "n. " and the question (it may be shortened), name="q<n>": two to four ready answers, exactly one suggested (the tag, and checked); data-say is a full sentence that carries the question's meaning, so the text reads on its own. Never a "not decided" answer. -->
   <p class="ans-hint">The suggested answers are already picked. Change what you disagree with, press Copy answer and paste it into the chat. You can also just write the answer in your own words.</p>
-  <form class="answer" id="answer-form" data-subject="the {{PAGE_TITLE}} proposal (page {{PAGE_ID}}, revision {{REVISION}})">
+  <form class="answer" id="answer-form" data-subject="the {{PAGE_TITLE}} proposal (page {{PAGE_ID}}, revision {{REVISION}})" data-phrase-choose="For {subject} I choose option {letter}, &quot;{name}&quot;." data-phrase-answer="For {subject} I answer: {answer}." data-phrase-questions="My answers to the open questions:" data-phrase-changes="Changes: {changes}" data-phrase-none="none" data-phrase-copied="Copied. Paste it into the chat." data-phrase-failed="Could not copy: the text is selected, copy it by hand." data-phrase-wide-part="Wide part">
 <fieldset class="ans-q" data-q="option"><legend>Which option?</legend><div class="picks picks--cards">
 <label class="pick pick--card"><input type="radio" name="option" value="A" data-say="{{OPTION_A_NAME}}" checked><span><b>A. {{OPTION_A_NAME}}</b> <span class="tag">suggested</span><span class="small">Best for {{...}}.</span></span></label>
 <label class="pick pick--card"><input type="radio" name="option" value="B" data-say="{{OPTION_B_NAME}}"><span><b>B. {{OPTION_B_NAME}}</b><span class="small">Best for {{...}}.</span></span></label>
@@ -903,7 +905,7 @@ dialog button:hover { background: var(--raise); }
       box.setAttribute('role', 'region');
       if (!box.hasAttribute('aria-label')) {
         const label = box.closest('figure')?.querySelector('figcaption') ?? box.querySelector('table[aria-label]') ?? box.closest('section')?.querySelector('h3, h2');
-        const text = (label?.getAttribute?.('aria-label') || label?.textContent || 'Wide part').trim().replace(/\s+/g, ' ');
+        const text = (label?.getAttribute?.('aria-label') || label?.textContent || document.getElementById('answer-form')?.dataset.phraseWidePart || 'Wide part').trim().replace(/\s+/g, ' ');
         box.setAttribute('aria-label', text);
       }
     }
@@ -1154,11 +1156,15 @@ dialog button:hover { background: var(--raise); }
 (() => {
   // The answer from the proposal's name, the picked option { value, say },
   // the open questions [{ n, say }] in page order and the changes typed.
-  function answerText(subject, option, questions, changes) {
-    const lines = [/^[A-Z]$/.test(option.value) ? `For ${subject} I choose option ${option.value}, "${option.say}".` : `For ${subject} I answer: ${option.say}.`];
-    if (questions.length) lines.push('', 'My answers to the open questions:');
+  // The connecting words come from the form's data-phrase-* (words), in the
+  // page's language, English when the page gives none; each {place} in them
+  // is filled once, as text.
+  function answerText(subject, option, questions, changes, words = {}) {
+    const say = (key, english, places = {}) => (words[key] || english).replace(/\{(\w+)\}/g, (m, k) => (Object.hasOwn(places, k) ? places[k] : m));
+    const lines = [/^[A-Z]$/.test(option.value) ? say('phraseChoose', 'For {subject} I choose option {letter}, "{name}".', { subject, letter: option.value, name: option.say }) : say('phraseAnswer', 'For {subject} I answer: {answer}.', { subject, answer: option.say })];
+    if (questions.length) lines.push('', say('phraseQuestions', 'My answers to the open questions:'));
     for (const q of questions) lines.push(`${q.n}. ${q.say}`);
-    lines.push('', 'Changes: ' + (changes.trim() || 'none'));
+    lines.push('', say('phraseChanges', 'Changes: {changes}', { changes: changes.trim() || say('phraseNone', 'none') }));
     return lines.join('\n');
   }
   const form = document.getElementById('answer-form');
@@ -1168,15 +1174,15 @@ dialog button:hover { background: var(--raise); }
     const picked = (name) => form.querySelector(`input[name="${name}"]:checked`);
     const o = picked('option');
     const qs = [...form.querySelectorAll('.ans-q[data-q]')].filter((f) => f.dataset.q !== 'option');
-    return answerText(form.dataset.subject, { value: o.value, say: o.dataset.say }, qs.map((f) => ({ n: f.dataset.q, say: picked('q' + f.dataset.q).dataset.say })), form.elements.changes.value);
+    return answerText(form.dataset.subject, { value: o.value, say: o.dataset.say }, qs.map((f) => ({ n: f.dataset.q, say: picked('q' + f.dataset.q).dataset.say })), form.elements.changes.value, form.dataset);
   };
   const show = () => { out.textContent = text(); state.textContent = ''; };
   form.addEventListener('input', show);
   form.addEventListener('submit', (e) => e.preventDefault());
   show();
   document.getElementById('answer-copy').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(text()); state.textContent = 'Copied. Paste it into the chat.'; }
-    catch { getSelection().selectAllChildren(out); state.textContent = 'Could not copy: the text is selected, copy it by hand.'; }
+    try { await navigator.clipboard.writeText(text()); state.textContent = form.dataset.phraseCopied || 'Copied. Paste it into the chat.'; }
+    catch { getSelection().selectAllChildren(out); state.textContent = form.dataset.phraseFailed || 'Could not copy: the text is selected, copy it by hand.'; }
   });
 })();
 </script>

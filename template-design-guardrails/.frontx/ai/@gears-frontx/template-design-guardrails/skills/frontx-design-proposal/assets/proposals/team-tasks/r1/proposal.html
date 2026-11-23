@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-L8Ajp8j3LSgzQj7d9cJEwzsK4Wu6ZGfJEEP49iRPOSI=' 'sha256-Pun4IhUpJA/iqTUHYGtHJqvOvFEVApNyYrGH/z1TFDE='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Ady4vXVfjuiBTokABgwAEUQkUJqe2f8rBiI8QYFRRBo=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proposal: Team tasks</title>
 <style id="frame">
@@ -201,7 +201,8 @@ a.flow-step:hover { border-color: var(--info); box-shadow: inset 0 0 0 1px var(-
 .flow-end[data-end="stop"] { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 .flow-end[data-end="done"]::before { content: "\2713"; }
 .flow-end[data-end="stop"]::before { content: "\2715"; }
-.flow [data-start]::before { content: "Start"; position: absolute; left: 50%; top: -18px; transform: translateX(-50%); color: var(--muted); font-size: 0.6875rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.flow [data-start]::before { content: attr(data-start); position: absolute; left: 50%; top: -18px; transform: translateX(-50%); color: var(--muted); font-size: 0.6875rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.flow [data-start=""]::before { content: "Start"; }
 .flow-edge { position: absolute; z-index: 2; left: 0; top: 0; max-width: 120px; padding: 0 4px; background: var(--bg); color: var(--text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; }
 .flow:not(.is-drawn) .flow-edge, .flow-edge:empty { display: none; }
 .flow-lines { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; pointer-events: none; }
@@ -903,7 +904,7 @@ dialog button:hover { background: var(--raise); }
 <section class="sec" id="answer">
   <h2>Your answer</h2>
   <p class="ans-hint">The suggested answers are already picked. Change what you disagree with, press Copy answer and paste it into the chat. You can also just write the answer in your own words.</p>
-  <form class="answer" id="answer-form" data-subject="the Team tasks proposal (page team-tasks, revision r1)">
+  <form class="answer" id="answer-form" data-subject="the Team tasks proposal (page team-tasks, revision r1)" data-phrase-choose="For {subject} I choose option {letter}, &quot;{name}&quot;." data-phrase-answer="For {subject} I answer: {answer}." data-phrase-questions="My answers to the open questions:" data-phrase-changes="Changes: {changes}" data-phrase-none="none" data-phrase-copied="Copied. Paste it into the chat." data-phrase-failed="Could not copy: the text is selected, copy it by hand." data-phrase-wide-part="Wide part">
 <fieldset class="ans-q" data-q="option"><legend>Which option?</legend><div class="picks picks--cards">
 <label class="pick pick--card"><input type="radio" name="option" value="A" data-say="Table" checked><span><b>A. Table</b> <span class="tag">suggested</span><span class="small">Best for a team lead who scans many tasks and compares due dates and owners.</span></span></label>
 <label class="pick pick--card"><input type="radio" name="option" value="B" data-say="Cards"><span><b>B. Cards</b><span class="small">Best for a small team with a few tasks each, often on a tablet or phone.</span></span></label>
@@ -1081,7 +1082,7 @@ dialog button:hover { background: var(--raise); }
       box.setAttribute('role', 'region');
       if (!box.hasAttribute('aria-label')) {
         const label = box.closest('figure')?.querySelector('figcaption') ?? box.querySelector('table[aria-label]') ?? box.closest('section')?.querySelector('h3, h2');
-        const text = (label?.getAttribute?.('aria-label') || label?.textContent || 'Wide part').trim().replace(/\s+/g, ' ');
+        const text = (label?.getAttribute?.('aria-label') || label?.textContent || document.getElementById('answer-form')?.dataset.phraseWidePart || 'Wide part').trim().replace(/\s+/g, ' ');
         box.setAttribute('aria-label', text);
       }
     }
@@ -1332,11 +1333,15 @@ dialog button:hover { background: var(--raise); }
 (() => {
   // The answer from the proposal's name, the picked option { value, say },
   // the open questions [{ n, say }] in page order and the changes typed.
-  function answerText(subject, option, questions, changes) {
-    const lines = [/^[A-Z]$/.test(option.value) ? `For ${subject} I choose option ${option.value}, "${option.say}".` : `For ${subject} I answer: ${option.say}.`];
-    if (questions.length) lines.push('', 'My answers to the open questions:');
+  // The connecting words come from the form's data-phrase-* (words), in the
+  // page's language, English when the page gives none; each {place} in them
+  // is filled once, as text.
+  function answerText(subject, option, questions, changes, words = {}) {
+    const say = (key, english, places = {}) => (words[key] || english).replace(/\{(\w+)\}/g, (m, k) => (Object.hasOwn(places, k) ? places[k] : m));
+    const lines = [/^[A-Z]$/.test(option.value) ? say('phraseChoose', 'For {subject} I choose option {letter}, "{name}".', { subject, letter: option.value, name: option.say }) : say('phraseAnswer', 'For {subject} I answer: {answer}.', { subject, answer: option.say })];
+    if (questions.length) lines.push('', say('phraseQuestions', 'My answers to the open questions:'));
     for (const q of questions) lines.push(`${q.n}. ${q.say}`);
-    lines.push('', 'Changes: ' + (changes.trim() || 'none'));
+    lines.push('', say('phraseChanges', 'Changes: {changes}', { changes: changes.trim() || say('phraseNone', 'none') }));
     return lines.join('\n');
   }
   const form = document.getElementById('answer-form');
@@ -1346,15 +1351,15 @@ dialog button:hover { background: var(--raise); }
     const picked = (name) => form.querySelector(`input[name="${name}"]:checked`);
     const o = picked('option');
     const qs = [...form.querySelectorAll('.ans-q[data-q]')].filter((f) => f.dataset.q !== 'option');
-    return answerText(form.dataset.subject, { value: o.value, say: o.dataset.say }, qs.map((f) => ({ n: f.dataset.q, say: picked('q' + f.dataset.q).dataset.say })), form.elements.changes.value);
+    return answerText(form.dataset.subject, { value: o.value, say: o.dataset.say }, qs.map((f) => ({ n: f.dataset.q, say: picked('q' + f.dataset.q).dataset.say })), form.elements.changes.value, form.dataset);
   };
   const show = () => { out.textContent = text(); state.textContent = ''; };
   form.addEventListener('input', show);
   form.addEventListener('submit', (e) => e.preventDefault());
   show();
   document.getElementById('answer-copy').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(text()); state.textContent = 'Copied. Paste it into the chat.'; }
-    catch { getSelection().selectAllChildren(out); state.textContent = 'Could not copy: the text is selected, copy it by hand.'; }
+    try { await navigator.clipboard.writeText(text()); state.textContent = form.dataset.phraseCopied || 'Copied. Paste it into the chat.'; }
+    catch { getSelection().selectAllChildren(out); state.textContent = form.dataset.phraseFailed || 'Could not copy: the text is selected, copy it by hand.'; }
   });
 })();
 </script>

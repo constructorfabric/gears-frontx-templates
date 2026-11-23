@@ -37,16 +37,29 @@ const answerText = (() => {
   return new Function(`${source}\nreturn answerText;`)();
 })();
 
+/** The data-phrase-* attributes of the answer form as the form's dataset names them (data-phrase-wide-part: phraseWidePart). */
+const phrases = (attrs) => Object.fromEntries([...attrs.matchAll(/ data-(phrase-[a-z-]+)="([^"]*)"/g)]
+  .map(([, name, value]) => [name.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), value.replaceAll('&quot;', '"').replaceAll('&amp;', '&')]));
+const GERMAN = {
+  phraseChoose: 'Für {subject} wähle ich Option {letter}, "{name}".',
+  phraseAnswer: 'Für {subject} antworte ich: {answer}.',
+  phraseQuestions: 'Meine Antworten auf die offenen Fragen:',
+  phraseChanges: 'Änderungen: {changes}',
+  phraseNone: 'keine',
+  phraseCopied: 'Kopiert. Füge es in den Chat ein.',
+  phraseFailed: 'Kopieren ging nicht: der Text ist markiert, kopiere ihn von Hand.',
+};
+
 /** The answer a page's block gives with its picks as they are: the inputs read from the page, the text from answerText. */
 const defaultAnswer = (html) => {
-  const [, subject, body] = /<form class="answer" id="answer-form" data-subject="([^"]+)">([\s\S]*?)<\/form>/.exec(html);
+  const [, subject, attrs, body] = /<form class="answer" id="answer-form" data-subject="([^"]+)"([^>]*)>([\s\S]*?)<\/form>/.exec(html);
   const picked = (name) => {
     const m = new RegExp(`<input type="radio" name="${name}" value="([^"]*)" data-say="([^"]*)" checked>`).exec(body);
     expect(m, `the checked pick of ${name}`).not.toBeNull();
     return { value: m[1], say: m[2] };
   };
   const questions = [...body.matchAll(/<fieldset class="ans-q" data-q="(\d+)">/g)].map((m) => ({ n: m[1], say: picked(`q${m[1]}`).say }));
-  return answerText(subject, picked('option'), questions, '').split('\n');
+  return answerText(subject, picked('option'), questions, '', phrases(attrs)).split('\n');
 };
 const FULL_FIRST = /^For the .+ proposal \(page ([a-z0-9-]+), revision (r\d+)\) I (?:choose option [A-C], ".+"|answer: build it as drawn)\.$/;
 
@@ -54,6 +67,16 @@ describe('the answer text of the page script', () => {
   it('names the option by its letter, or gives the design\'s answer, then the questions and the changes', () => {
     expect(answerText('the X proposal', { value: 'B', say: 'Cards' }, [{ n: '1', say: 'Only a team lead invites.' }], '  move the filter  ')).toBe('For the X proposal I choose option B, "Cards".\n\nMy answers to the open questions:\n1. Only a team lead invites.\n\nChanges: move the filter');
     expect(answerText('the X proposal', { value: 'build', say: 'build it as drawn' }, [], ' ')).toBe('For the X proposal I answer: build it as drawn.\n\nChanges: none');
+  });
+
+  it('writes its own words from the page\'s phrases, in the page\'s language, filling each place once', () => {
+    expect(answerText('den Vorschlag {name}', { value: 'B', say: 'Karten {letter}' }, [{ n: '1', say: 'Nur eine Teamleitung lädt ein.' }], '', GERMAN))
+      .toBe('Für den Vorschlag {name} wähle ich Option B, "Karten {letter}".\n\nMeine Antworten auf die offenen Fragen:\n1. Nur eine Teamleitung lädt ein.\n\nÄnderungen: keine');
+    expect(answerText('den Vorschlag', { value: 'build', say: 'so bauen' }, [], ' $& Filter ', GERMAN)).toBe('Für den Vorschlag antworte ich: so bauen.\n\nÄnderungen: $& Filter');
+  });
+
+  it('keeps its English words for a phrase the page leaves empty', () => {
+    expect(answerText('the X proposal', { value: 'build', say: 'build it as drawn' }, [], '', { phraseAnswer: '', phraseNone: '' })).toBe('For the X proposal I answer: build it as drawn.\n\nChanges: none');
   });
 });
 
@@ -64,13 +87,13 @@ describe('the answer text of the page script', () => {
  * Selectors it does not know throw, so a change of the script shows here.
  */
 function answerPage(html) {
-  const [, subject, body] = /<form class="answer" id="answer-form" data-subject="([^"]+)">([\s\S]*?)<\/form>/.exec(html);
+  const [, subject, attrs, body] = /<form class="answer" id="answer-form" data-subject="([^"]+)"([^>]*)>([\s\S]*?)<\/form>/.exec(html);
   const radios = [...body.matchAll(/<input type="radio" name="([^"]+)" value="([^"]*)" data-say="([^"]*)"( checked)?>/g)].map(([, name, value, say, checked]) => ({ name, value, dataset: { say }, checked: !!checked }));
   const groups = [...body.matchAll(/<fieldset class="ans-q" data-q="([^"]+)">/g)].map((m) => ({ dataset: { q: m[1] } }));
   const listeners = {};
   const on = (key) => (type, fn) => { listeners[`${key}:${type}`] = fn; };
   const form = {
-    dataset: { subject },
+    dataset: { subject, ...phrases(attrs) },
     elements: { changes: { value: '' } },
     addEventListener: on('form'),
     querySelector(sel) {
@@ -125,6 +148,38 @@ describe('the answer script of each worked example, run on its own answer form',
     page.listeners['form:input']();
     expect(page.ids['answer-state'].textContent).toBe('');
   });
+
+  it('writes the answer and the Copy states in the words the form gives, in another language', async () => {
+    const html = readFileSync(path.join(proposals, 'team-tasks/r1/proposal.html'), 'utf8');
+    const page = answerPage(html);
+    Object.assign(page.form.dataset, GERMAN);
+    page.run();
+    const lines = page.ids['answer-text'].textContent.split('\n');
+    expect(lines[0]).toBe(`Für ${page.subject} wähle ich Option A, "Table".`);
+    expect(lines[2]).toBe('Meine Antworten auf die offenen Fragen:');
+    expect(lines.at(-1)).toBe('Änderungen: keine');
+    await page.listeners['copy:click']();
+    expect(page.ids['answer-state'].textContent).toBe(GERMAN.phraseCopied);
+    const refused = answerPage(html);
+    Object.assign(refused.form.dataset, GERMAN);
+    refused.run(async () => { throw new Error('denied'); });
+    await refused.listeners['copy:click']();
+    expect(refused.ids['answer-state'].textContent).toBe(GERMAN.phraseFailed);
+  });
+
+  it.each(['team-tasks/r1', 'team-tasks/r2', 'account-settings/r1', 'docs-redesign/r1', 'invite-teammate/r1'])('%s carries the scripts\' words on its answer form, in English', (dir) => {
+    const [, attrs] = /<form class="answer" id="answer-form" data-subject="[^"]+"([^>]*)>/.exec(readFileSync(path.join(proposals, dir, 'proposal.html'), 'utf8'));
+    expect(phrases(attrs)).toEqual({
+      phraseChoose: 'For {subject} I choose option {letter}, "{name}".',
+      phraseAnswer: 'For {subject} I answer: {answer}.',
+      phraseQuestions: 'My answers to the open questions:',
+      phraseChanges: 'Changes: {changes}',
+      phraseNone: 'none',
+      phraseCopied: 'Copied. Paste it into the chat.',
+      phraseFailed: 'Could not copy: the text is selected, copy it by hand.',
+      phraseWidePart: 'Wide part',
+    });
+  });
 });
 
 describe('the full answer each worked example gives', () => {
@@ -160,7 +215,7 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['a subject without the revision', edit(r1, '(page team-tasks, revision r1)', '(page team-tasks)'), 'does not name page team-tasks and revision r1'],
     ['no changes field', r1.replaceOrFail(/<label class="ans-q ans-note">[\s\S]*?<\/label>\n/, ''), 'no "Anything to change?" textarea'],
     ['no Copy button', edit(r1, ' id="answer-copy"', ''), 'has no #answer-copy'],
-    ['a changed answer script', edit(r1, "'Changes: '", "'Change: '"), 'the answer-js block differs'],
+    ['a changed answer script', edit(r1, "'Changes: {changes}'", "'Change: {changes}'"), 'the answer-js block differs'],
   ])('reports %s', (_, html, message) => {
     const found = check.checkPage(html).findings;
     expect(found.some((f) => f.includes(message)), found.join('\n')).toBe(true);

@@ -253,6 +253,28 @@ describe('the frame for the rendered check and the hover notes', () => {
     expect(frame).not.toMatch(/\[data-tip\]:hover::after/);
   });
 
+  /** nameScrolls from the skeleton's frame script, run on one scroll box with nothing to name it by and the given answer form. */
+  const scrollName = (form) => {
+    const src = /\n {2}function nameScrolls\(\) \{[\s\S]*?\n {2}\}\n/.exec(js)?.[0];
+    if (!src) throw new Error('the frame script of templates/proposal.html has no function nameScrolls');
+    const attrs = {};
+    const box = { scrollWidth: 900, clientWidth: 400, setAttribute: (k, v) => { attrs[k] = v; }, hasAttribute: (k) => k in attrs, closest: () => null, querySelector: () => null };
+    const doc = { querySelectorAll: () => [box], getElementById: (id) => (id === 'answer-form' ? form : null) };
+    new Function('document', `${src}\nnameScrolls();`)(doc);
+    return attrs['aria-label'];
+  };
+
+  it('names a scroll box with nothing to name it by with the answer form\'s word, English when the page gives none', () => {
+    expect(scrollName({ dataset: { phraseWidePart: 'Breiter Teil' } })).toBe('Breiter Teil');
+    expect(scrollName({ dataset: { phraseWidePart: '' } })).toBe('Wide part');
+    expect(scrollName(null)).toBe('Wide part');
+  });
+
+  it('writes the word above a flow\'s start from its data-start, "Start" when the attribute is a bare flag', () => {
+    expect(frame).toMatch(/\.flow \[data-start\]::before \{ content: attr\(data-start\);/);
+    expect(frame).toMatch(/\.flow \[data-start=""\]::before \{ content: "Start"; \}/);
+  });
+
   it('has a motion guard and a danger pair, and its mapping colours read at 4.5:1 on white', () => {
     expect(frame).toMatch(/prefers-reduced-motion: reduce/);
     for (const name of ['--danger', '--info', '--ok', '--warn']) expect(contrast(hex(name), '#ffffff'), name).toBeGreaterThanOrEqual(4.5);

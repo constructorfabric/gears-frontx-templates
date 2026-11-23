@@ -181,6 +181,10 @@
  *   placeholder; an open question without the reason for its suggested
  *   answer (.why); a group without its legend; no "Anything to change?"
  *   textarea in its label, or no answer text, Copy button or state line;
+ *   on a page not in English, a data-phrase-* of the form (the words the
+ *   scripts write: choose, answer, questions, changes, none, copied, failed,
+ *   wide-part) missing or empty; on any page, a phrase given without a place
+ *   the script fills ({subject}, {letter}, {name}, {answer}, {changes});
  * - revision: from r2 on, no "Changed since r<n-1>:" line in the head, or
  *   one without links or with a link to nothing; in r1, such a line.
  * Optional parts (references/page-parts.md, "Optional parts"):
@@ -189,7 +193,8 @@
  *   drawing nor is marked outside the app (data-outside), or whose name is no
  *   screen of the map (without a map: not in the caption of the drawing it
  *   links); not exactly one start (data-start) or a start that is
- *   not a step; a box with no way in but the start, or no way out but an end;
+ *   not a step; on a page not in English, a start whose data-start gives
+ *   no word to show above it; a box with no way in but the start, or no way out but an end;
  *   an end that leads on, or with data-end other than done or stop; a
  *   decision with fewer than two ways out, or a way out without its label; a
  *   connector naming a box the flow lacks; a box the start never reaches, or
@@ -1222,6 +1227,8 @@ export function checkPage(html, { survey = null } = {}) {
 // A ready answer that defers the decision instead of making it.
 // "Skip" alone defers; "Skip the confirmation step" is a real answer.
 const NOT_DECIDED = /\b(?:not (?:yet )?decided|undecided|decide later|no answer|not sure|don'?t know|no preference|tbd|to be decided)\b|^\s*skip(?:ped)?\s*[.!]?\s*$/i;
+/** The words the page's scripts write, from the answer form's data-phrase-*, and the places each must keep for the script to fill. */
+const PHRASES = { choose: ['{subject}', '{letter}', '{name}'], answer: ['{subject}', '{answer}'], questions: [], changes: ['{changes}'], none: [], copied: [], failed: [], 'wide-part': [] };
 const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn' }, { value: 'change', name: 'Change it first' }];
 
 /**
@@ -1242,6 +1249,12 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add
   const subject = form.attrs['data-subject'] ?? '';
   const names = english ? [`page ${pageId}`, `revision ${revision}`] : [pageId, revision];
   if (pageId && revision && !names.every((x) => subject.includes(x))) add('answer', `data-subject "${subject}" does not name page ${pageId} and revision ${revision} as the top bar does`);
+  // The scripts' own words: English by default, so a page in another language gives each one in its language.
+  for (const [key, places] of Object.entries(PHRASES)) {
+    const words = norm(form.attrs[`data-phrase-${key}`] ?? '');
+    if (!words) { if (!english) add('answer', `the answer form has no words in data-phrase-${key}: the script writes them, so give them in the page's language`); continue; }
+    for (const place of places) if (!words.includes(place)) add('answer', `data-phrase-${key} leaves out ${place}, the place the script fills in`);
+  }
   const groups = find(form, (n) => n.tag === 'fieldset' && hasClass(n, 'ans-q'));
   for (const g of groups) if (!g.children.some((c) => typeof c !== 'string' && c.tag === 'legend' && norm(textOf(c)))) add('answer', `the group "${g.attrs['data-q'] ?? ''}" has no legend`);
   const picksOf = (g, name) => find(g, (n) => n.tag === 'input' && n.attrs.type === 'radio' && n.attrs.name === name).map((input) => {
@@ -1526,7 +1539,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
     if (inside(n, (a) => hasClass(a, 'takeaway')) || hasClass(n, 'takeaway')) add('tips', 'a tip inside a takeaway; the takeaway is understood without one');
   }
 
-  checkFlow({ flowSec: sectionById.get('flow'), main, map, add });
+  checkFlow({ flowSec: sectionById.get('flow'), main, map, english, add });
   checkStory({ main, how, english, add });
   const guarantees = checkGuarantees({ sections: [...sectionById.values()], add });
   checkCue({ main, sections: [...sectionById.values()], screens, add });
@@ -1581,7 +1594,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
  * and a way out for every box, labelled ways out of a decision, every branch
  * reaching an end, the refusal or error branch drawn.
  */
-function checkFlow({ flowSec, main, map, add }) {
+function checkFlow({ flowSec, main, map, english, add }) {
   const flows = find(main, (n) => n.tag === 'div' && hasClass(n, 'flow'));
   if (!flowSec) { if (flows.length) add('flow', 'a flow lives in its own section #flow'); return; }
   const flow = flows.find((f) => inside(f, (a) => a === flowSec));
@@ -1633,6 +1646,7 @@ function checkFlow({ flowSec, main, map, add }) {
   }
   const starts = nodes.filter((n) => n.attrs['data-start'] !== undefined);
   if (starts.length !== 1) add('flow', `${starts.length} starts; a flow has one (data-start)`);
+  if (!english && starts.some((n) => !norm(n.attrs['data-start']))) add('flow', 'the start has no word in data-start: the word shown above it, "Start" in the page\'s language');
   for (const s of starts) if (!hasClass(s, 'flow-step')) add('flow', `the start "${label(s)}" is not a step`);
   for (const n of nodes) {
     const end = hasClass(n, 'flow-end');

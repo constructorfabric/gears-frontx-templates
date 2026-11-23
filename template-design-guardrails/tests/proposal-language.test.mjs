@@ -40,12 +40,26 @@ const german = (html) => html
   .replace(/(class="chip[^"]*"[^>]*data-state="(\w+)"[^>]*>)\2</g, (_, open, state) => `${open}${CHIPS[state]}<`)
   .replace(/Changed since (r\d+):/, 'Geändert seit $1:')
   .replace('Sending, step by step, on a phone', 'Senden, Schritt für Schritt, am Telefon')
-  .replace(/<th>(Part|Today|Proposed|Screen|Address|Today the same link opens)<\/th>/g, (_, h) => `<th>${COLUMNS[h]}</th>`);
+  .replace(/<th>(Part|Today|Proposed|Screen|Address|Today the same link opens)<\/th>/g, (_, h) => `<th>${COLUMNS[h]}</th>`)
+  .replace(/ data-start="Start"/g, ' data-start="Beginn"')
+  .replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, ` ${PHRASES}>`);
+
+/** The words the page's scripts write, in German, as the answer form carries them. */
+const PHRASES = [
+  'data-phrase-choose="Für {subject} wähle ich Option {letter}, &quot;{name}&quot;."',
+  'data-phrase-answer="Für {subject} antworte ich: {answer}."',
+  'data-phrase-questions="Meine Antworten auf die offenen Fragen:"',
+  'data-phrase-changes="Änderungen: {changes}"',
+  'data-phrase-none="keine"',
+  'data-phrase-copied="Kopiert. Füge es in den Chat ein."',
+  'data-phrase-failed="Kopieren ging nicht: der Text ist markiert, kopiere ihn von Hand."',
+  'data-phrase-wide-part="Breiter Teil"',
+].join(' ');
 
 describe('a page in the person\'s own language', () => {
   it.each(examples)('%s relabelled in German reads clean', (rev) => {
     const page = german(read(rev));
-    expect(page).not.toMatch(/Proposal: |<dt>Best for|class="tag">suggested|Changed since|<th>Today/);
+    expect(page).not.toMatch(/Proposal: |<dt>Best for|class="tag">suggested|Changed since|<th>Today|data-start="Start"|data-phrase-choose="For/);
     expect(findings(page)).toEqual([]);
   });
 
@@ -82,6 +96,33 @@ describe('a page in the person\'s own language', () => {
   it('finds a removed column heading in the paths table of a page not in English', () => {
     const found = findings(german(read('docs-redesign/r1')).replaceOrFail('<th>Step 3</th><th>Heute</th>', '<th>Step 3</th>'));
     expect(found.filter((f) => f.startsWith('[paths]') && f.includes('column without a heading')), found.join('\n')).toHaveLength(1);
+  });
+
+  it.each(['choose', 'answer', 'questions', 'changes', 'none', 'copied', 'failed', 'wide-part'])('asks a page not in English for the words data-phrase-%s', (key) => {
+    const page = german(read('team-tasks/r1'));
+    for (const broken of [page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), ''), page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), ` data-phrase-${key}=""`)]) {
+      expect(findings(broken).filter((f) => f.startsWith(`[answer] the answer form has no words in data-phrase-${key}`))).toHaveLength(1);
+    }
+  });
+
+  it('lets a page in English leave the words to the scripts\' English', () => {
+    const page = read('team-tasks/r1').replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, '>').replace(/ data-start="Start"/g, ' data-start');
+    expect(findings(page)).toEqual([]);
+  });
+
+  it.each([
+    ['choose', '{letter}', 'Für {subject} wähle ich Option {letter}, &quot;{name}&quot;.', 'Für {subject} wähle ich &quot;{name}&quot;.'],
+    ['answer', '{answer}', 'Für {subject} antworte ich: {answer}.', 'Für {subject} antworte ich.'],
+    ['changes', '{changes}', 'Änderungen: {changes}', 'Änderungen'],
+  ])('finds data-phrase-%s without its place %s', (key, place, from, to) => {
+    const found = findings(german(read('team-tasks/r1')).replaceOrFail(`data-phrase-${key}="${from}"`, `data-phrase-${key}="${to}"`));
+    expect(found).toContain(`[answer] data-phrase-${key} leaves out ${place}, the place the script fills in`);
+  });
+
+  it('asks a page not in English for the word above a flow\'s start', () => {
+    const page = german(read('invite-teammate/r1'));
+    expect(page).toContain(' data-start="Beginn"');
+    expect(findings(page.replaceOrFail(' data-start="Beginn"', ' data-start'))).toContain('[flow] the start has no word in data-start: the word shown above it, "Start" in the page\'s language');
   });
 
   it.each([
