@@ -528,8 +528,11 @@ const urlStripped = (s) => {
 };
 /** The text a scheme check reads: the address as URL parsing reads it, in ASCII lower case. */
 const bare = (s) => lowerAscii(urlStripped(s));
-/** A control character a browser does not strip from inside an address; no honest address holds one. */
-const ADDRESS_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+/**
+ * A control character a browser does not strip from inside an address; no honest address holds one: every C0 control
+ * but tab, line feed and carriage return, and DEL (\p{Cc} with those three and the C1 block taken out).
+ */
+const ADDRESS_CONTROL = /(?![\t\n\r\x80-\x9f])\p{Cc}/u;
 
 const URL_ATTRS = new Set(['srcset', 'poster', 'data', 'action', 'formaction', 'ping', 'background', 'lowsrc', 'dynsrc', 'longdesc', 'cite', 'codebase', 'classid', 'manifest', 'icon', 'archive', 'usemap', 'itemtype']);
 /**
@@ -840,7 +843,7 @@ const sameValue = (a, b) => norm(String(a)).toLowerCase().replace(/\s*,\s*/g, ',
 const enoughWhy = (why) => why !== null && words(why) >= 3;
 
 /** Findings of the app-look block and the drawing kit variants against the survey the page was drawn from. */
-function checkAgainstSurvey({ root, look, drawings, survey, add }) {
+function checkAgainstSurvey({ look, drawings, survey, add }) {
   if (look !== null && survey.look) {
     const declared = appLookDeclarations(look);
     for (const [key, value] of Object.entries(survey.look)) {
@@ -1144,7 +1147,7 @@ export function checkPage(html, { survey = null } = {}) {
     const text = norm(body.map((c) => (typeof c === 'string' ? c : textOf(c))).join(' '));
     if (words(text) > 40 || find(built, (n) => n.tag === 'li').length) add('built', 'the "Built from what the app already has" part is one short line; the full list of components goes to CHOICE.md (Reuses)');
   }
-  if (survey) checkAgainstSurvey({ root, look, drawings, survey, add });
+  if (survey) checkAgainstSurvey({ look, drawings, survey, add });
   const rec = sectionById.get('recommendation');
   if (rec) {
     for (const link of find(rec, (n) => n.tag === 'a')) {
@@ -1643,7 +1646,7 @@ function checkGuarantees({ sections, add }) {
   let drawn = false;
   const skip = (n) => ['script', 'style', 'code', 'pre', 'figure', 'nav'].includes(n.tag) || ['notes', 'canvas', 'request', 'story', 'flow-fig'].some((c) => hasClass(n, c));
   // The page's own copies of the two marks are taken out first (checkText reports them), so only a link makes a mark.
-  const unmarked = (s) => s.replace(/[\u0001\u0002]/g, '');
+  const unmarked = (s) => s.replaceAll(MARK, '').replaceAll(PIN, '');
   const flat = (node) => node.children.map((c) => {
     if (typeof c === 'string') return unmarked(c);
     if (skip(c)) return ' ';
@@ -1730,7 +1733,7 @@ function checkText({ root, add }) {
   // the text or in an attribute value, and the check's own reading of sentences uses two of them as private marks
   // (checkGuarantees).
   const controls = new Set();
-  const scan = (s) => { for (const m of s.matchAll(/[\u0000-\u0008\u000b\u000e-\u001f\u007f-\u009f]/g)) controls.add(`U+${m[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`); };
+  const scan = (s) => { for (const m of s.matchAll(/(?![\t\n\f\r])\p{Cc}/gu)) controls.add(`U+${m[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`); };
   for (const n of [root, ...walk(root)]) {
     if (n.tag === 'script' || n.tag === 'style') continue;
     for (const c of n.children) if (typeof c === 'string') scan(c);

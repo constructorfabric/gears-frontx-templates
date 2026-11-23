@@ -391,7 +391,7 @@ export const safeSvgValue = (name, raw) => {
   return !/&[#a-z]/i.test(value)
     && !/[\\<>{}]/.test(value)
     && callsAllowed(name, value)
-    && (name !== 'href' || /^#[^\u0000-\u0020%]*$/.test(value));
+    && (name !== 'href' || (/^#[^ %]*$/.test(value) && ![...value].some((c) => c.codePointAt(0) < 0x20)));
 };
 const JSX_NAMES = { classname: 'class', strokewidth: 'stroke-width', strokelinecap: 'stroke-linecap', strokelinejoin: 'stroke-linejoin', strokemiterlimit: 'stroke-miterlimit', strokeopacity: 'stroke-opacity', strokedasharray: 'stroke-dasharray', strokedashoffset: 'stroke-dashoffset', fillrule: 'fill-rule', fillopacity: 'fill-opacity', cliprule: 'clip-rule', clippath: 'clip-path', stopcolor: 'stop-color', stopopacity: 'stop-opacity', xlinkhref: 'href', 'xlink:href': 'href' };
 const DROPPED = /^(class|style|on\w+|aria-(?!hidden$)[\w-]+|role|focusable|tabindex|data-[\w-]+|xmlns:\w+|xml:\w+|version|key|ref)$/;
@@ -1008,11 +1008,6 @@ function resolveVars(raw, lookup, depth = 0) {
     i = j;
   }
   return out.trim();
-}
-
-/** Resolves a token through theme variables, then the kit scope. */
-function resolveToken(name, theme, scope) {
-  return resolveVars(`var(${name})`, (n) => theme?.get(n) ?? scope.get(n) ?? null);
 }
 
 /** A length in px: px, rem (16 px), or a calc() of them; null otherwise. */
@@ -1710,7 +1705,7 @@ export function survey(root) {
     brandMark: { kind: brand.kind, file: brand.file ?? null, why: brand.why, ...(brand.svg ? { svg: brand.svg } : {}), ...(brand.src ? { src: brand.src } : {}) },
     brandDefs: brandDefs(brand),
     brandHtml: brandHtml(variants, brand, appName, chrome.initials),
-    screens: screens.map(({ css, ...s }) => s),
+    screens: screens.map((s) => { const out = { ...s }; delete out.css; return out; }),
     links: readLinks(root, screens),
     screenLooks,
     notShown,
@@ -1752,7 +1747,7 @@ export function survey(root) {
  * so is a bidirectional control, a line or paragraph separator and U+FEFF
  * (written as \u202e), so none can reorder or break how a line looks.
  */
-const HIDDEN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/g;
+const HIDDEN = /(?![\t\n])[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/gu;
 export const visible = (s) => s.replace(HIDDEN, (c) => (c.charCodeAt(0) > 0xff ? `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}` : `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`));
 
 /** The survey as a short list for the person at the terminal; any project text in it goes through visible(). */
