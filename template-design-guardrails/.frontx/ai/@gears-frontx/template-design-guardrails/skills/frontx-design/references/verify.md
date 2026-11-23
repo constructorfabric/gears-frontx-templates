@@ -73,8 +73,20 @@ unbounded foreground command: after two settle-and-read attempts with no
 output, the environment is unavailable. `--start-server "npm run dev:all"`
 is the sanctioned way to bring a server up (bounded waits, stopped at the
 end); it runs the command from the directory npm was invoked in, so run the
-runner from the project root or pass `--server-cwd <project root>`. Runner
-exit code 2 is the `environment unavailable` report: relay its message. The
+runner from the project root or pass `--server-cwd <project root>`.
+
+Beside another project that holds the shell's ports (5173 and the screen
+preview ports), give this run its own: `FRONTX_VERIFY_HOST_PORT` moves the
+host (pass the same port in `--url`), and `FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1`
+lets `dev:all` start each taken screen preview on a free port and print it:
+
+```
+FRONTX_VERIFY_HOST_PORT=5791 FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 \
+  npm run verify:ui --workspace=@gears-frontx/design-verify -- \
+  --url http://localhost:5791/ --start-server "npm run dev:all" --menu "Login,Tasks"
+```
+
+Runner exit code 2 is the `environment unavailable` report: relay its message. The
 same exit code fires when a screenshot asked for with `--screenshots` could
 not be captured or written (listed as `SCREENSHOT <route> <theme> <width>px`):
 that screen is not verified until the capture succeeds.
