@@ -6,6 +6,7 @@ import {
   FRONTX_SHARED_PROPERTY_THEME,
   getLanguageMetadata,
   Language,
+  useSharedProperty,
 } from '@gears-frontx/react';
 import {
   Card,
@@ -18,7 +19,6 @@ import {
   Skeleton,
 } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
-import { useBridgeProperty } from '../../shared/useBridgeProperty';
 import { useHostDirection } from '../../shared/useHostDirection';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { CHROME_ACTION_SET_LANGUAGE } from '../../shared/extension-ids';
@@ -70,8 +70,8 @@ const languageModules = import.meta.glob('./i18n/*.json') as Record<
  */
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ bridge }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const theme = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_THEME, 'default');
-  const language = useBridgeProperty(bridge, FRONTX_SHARED_PROPERTY_LANGUAGE, 'en');
+  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME, { bridge, fallback: 'default' });
+  const language = useSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, { bridge, fallback: 'en' });
   useHostDirection(containerRef, language);
 
   // Load translations using the shared hook
