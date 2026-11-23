@@ -274,6 +274,48 @@ describe('the app name, the content column and the link addresses', () => {
     // A literal address is not a link form to read.
     expect(side({ 'src-app/app/layout/Logo.tsx': "export const Logo = () => <a href={'/'}>Home</a>;\n" }).links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
   });
+
+  it('leaves menu entries built as objects from code unresolved, and a plain string in the object as it was', () => {
+    const side = (files) => {
+      const root = writeProposalApp(tempDir());
+      for (const [rel, text] of Object.entries(files)) writeFileSync(path.join(root, rel), text);
+      return survey.survey(root);
+    };
+    const notDetected = 'link form not detected, check the menu code by hand: src-app/app/layout/Items.tsx builds a link from code the survey does not read';
+    for (const entry of ['{ label: route, href: makeHref(route) }', '{ label: route, to: makeHref(route) }', '{ label: route, href: `${base}/${route.slice(1)}` }']) {
+      const built = side({ 'src-app/app/layout/Items.tsx': `export const items = (routes: string[]) => routes.map((route) => (${entry}));\n` });
+      expect(built.links.screens.map((x) => x.link), entry).toEqual(['unresolved', 'unresolved']);
+      expect(built.links.screens[0].source, entry).toBe(notDetected);
+      expect(built.unresolved, entry).toContain('links');
+    }
+    const plain = side({ 'src-app/app/layout/Items.tsx': "export const items = [{ label: 'Home', href: '/home' }, { label: 'Docs', to: '/docs' }];\n" });
+    expect(plain.links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
+    expect(plain.unresolved).not.toContain('links');
+  });
+
+  it('does not let a readable link helper stand for a menu link built by another function', () => {
+    const side = (files) => {
+      const root = writeProposalApp(tempDir());
+      for (const [rel, text] of Object.entries(files)) writeFileSync(path.join(root, rel), text);
+      return survey.survey(root);
+    };
+    const masked = side({
+      'src-app/app/layout/Menu.tsx': [
+        'const hrefFor = (route) => `/old${route}`;',
+        'export const Back = ({ route }) => <a href={hrefFor(route)}>Back</a>;',
+        'export const Menu = ({ items }) => items.map((x) => <a href={makeMenuHref(x.route)}>{x.label}</a>);',
+        '',
+      ].join('\n'),
+    });
+    expect(masked.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
+    expect(masked.links.screens[0].source).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+    expect(masked.unresolved).toContain('links');
+    expect(survey.readable(masked)).not.toContain('/old/home');
+    const objects = side({
+      'src-app/app/layout/Menu.tsx': 'function linkTo(route) { return `/app${route}`; }\nexport const items = (routes) => routes.map((route) => ({ to: makeMenuHref(route) }));\n',
+    });
+    expect(objects.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
+  });
 });
 
 describe('the active tab text', () => {

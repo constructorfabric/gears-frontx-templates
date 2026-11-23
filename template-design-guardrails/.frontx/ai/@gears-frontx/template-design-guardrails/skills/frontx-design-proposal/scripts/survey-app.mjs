@@ -1593,16 +1593,21 @@ function readLook(root, screens, chromeOf) {
  * says it makes an address (LINK_HELPER: hrefFor, linkTo, pathOf); other templates
  * are not links, and two that disagree leave every link unresolved,
  * and a screen may carry literal links (an href or a *HREF constant). When no
- * template is read but the layout builds an href or to prop from code
+ * template is read but the layout builds an href or to prop from code, or an
+ * object key href: or to: from a call or a template with an expression
  * (LINK_UNREAD), the link form is not detected and every link is unresolved:
- * the person checks the menu code by hand. Only a layout that builds no link
+ * the person checks the menu code by hand. The same holds when a template is
+ * read but the layout also builds an href or to from a call to a function that
+ * is not a helper a template was read from (LINK_CALL): the readable helper
+ * does not stand for that link. Only a layout that builds no link
  * from code keeps the registered route. Each
  * screen gets its link and where it was read; mismatch says the registered
  * route is not what a shared link carries.
  */
 const LINK_BUILT = /(?:\b(?:href|to)\s*[=:]\s*\{?|\b(?:navigate|push|assign|open|redirect)\(|\blocation(?:\.href)?\s*=)\s*$/;
-const LINK_HELPER = /(?:\b(?:const|let|var)\s+\w*(?:href|link|url|path)\w*\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+\w*(?:href|link|url|path)\w*\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
-const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])/;
+const LINK_HELPER = /(?:\b(?:const|let|var)\s+(\w*(?:href|link|url|path)\w*)\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+(\w*(?:href|link|url|path)\w*)\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
+const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])|\b(?:href|to)\s*:\s*(?:[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/;
+const LINK_CALL = /\b(?:href|to)\s*[=:]\s*\{?\s*([A-Za-z_$][\w$.]*)\s*\(/g;
 
 function readLinks(root, screens) {
   const layoutDir = path.join(root, 'src-app/app/layout');
@@ -1610,21 +1615,29 @@ function readLinks(root, screens) {
   // A template counts only where a link is built from it: an href or to prop (or a const of that name), a navigation call, or a link helper.
   const candidates = [];
   const unread = [];
+  const calls = [];
   for (const file of files) {
     // Raw text: the template may hold a regular expression with // in it (`.replace(/^\//, '')`).
     const text = withoutBlocks(read(file), '/*', '*/');
     for (const m of text.matchAll(/`([^`$]*)\$\{\s*route((?:\.replace\([^)]*\))?)\s*\}([^`]*)`/g)) {
       // Both tests look at a short window before the template, so the read stays linear in the file's size.
       const before = text.slice(Math.max(0, m.index - 120), m.index);
-      if (!LINK_BUILT.test(before.slice(-80)) && !LINK_HELPER.test(before)) continue;
-      candidates.push({ prefix: m[1], strip: /\^\\?\//.test(m[2]), suffix: m[3], file: rel(root, file), template: m[0] });
+      const built = LINK_BUILT.test(before.slice(-80));
+      const helper = built ? null : LINK_HELPER.exec(before);
+      if (!built && !helper) continue;
+      candidates.push({ prefix: m[1], strip: /\^\\?\//.test(m[2]), suffix: m[3], file: rel(root, file), template: m[0], helper: helper?.[1] ?? helper?.[2] ?? null });
     }
     if (LINK_UNREAD.test(text)) unread.push(rel(root, file));
+    for (const c of text.matchAll(LINK_CALL)) calls.push({ name: c[1], file: rel(root, file) });
   }
   const shapes = new Set(candidates.map((c) => JSON.stringify([c.prefix, c.strip, c.suffix])));
   const rule = shapes.size === 1 ? candidates[0] : null;
   const disagree = shapes.size > 1;
-  const notDetected = !rule && !disagree && unread.length > 0;
+  // A link built by a call to anything but a helper a template was read from is a link form the survey does not read.
+  const helpers = new Set(candidates.map((c) => c.helper).filter(Boolean));
+  const foreign = rule ? [...new Set(calls.filter((c) => !helpers.has(c.name)).map((c) => c.file))] : [];
+  if (foreign.length > 0) unread.splice(0, unread.length, ...foreign);
+  const notDetected = !disagree && (rule ? foreign.length > 0 : unread.length > 0);
   const inCode = [];
   const base = path.join(root, 'src-app/mfe_packages');
   for (const pkg of [...new Set(screens.map((x) => x.package))]) {
