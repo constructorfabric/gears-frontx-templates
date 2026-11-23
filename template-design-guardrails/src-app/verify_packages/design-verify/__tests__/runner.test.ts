@@ -172,14 +172,63 @@ describe('cli main: inputs checked before any browser work', () => {
   // code, at once rather than after --server-timeout-ms.
   it('stops waiting when the started server exits, and prints its last output and exit code', async () => {
     const url = `http://127.0.0.1:${await freePort()}/`;
-    const command = `node -e "console.log('building'); console.error('Preview ports already in use: port 3001'); process.exit(1)"`;
+    // Both streams are read, but their order across two pipes is not fixed,
+    // so each line is checked on its own; exitCode lets both drain first.
+    const command = `node -e "console.log('building'); console.error('Preview ports already in use: port 3001'); process.exitCode = 1"`;
     const started = Date.now();
     const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
     expect(result.code).toBe(2);
     expect(Date.now() - started).toBeLessThan(15_000);
     expect(result.errors).toMatch(/the server command exited with code 1 before .* answered/);
-    expect(result.errors).toMatch(/building\n.*Preview ports already in use: port 3001/);
+    expect(result.errors).toMatch(/last output:\n(.*\n)*building$/m);
+    expect(result.errors).toMatch(/last output:\n(.*\n)*Preview ports already in use: port 3001$/m);
     expect(result.logged).not.toMatch(/launching headless Chrome/);
+  });
+
+  // A background child of the command (`vite &`) can keep its pipes open long
+  // after the command itself exited: the wait still ends on the exit, and the
+  // output read so far is printed after a short bounded grace.
+  it('stops waiting when the started command exits while a background child holds its output', async () => {
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const command = `echo 'before the exit'; sleep 30 & exit 3`;
+    const started = Date.now();
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
+    const took = Date.now() - started;
+    expect(result.code).toBe(2);
+    expect(took).toBeLessThan(4_000);
+    expect(result.errors).toMatch(/the server command exited with code 3 before .* answered/);
+    expect(result.errors).toMatch(/last output:\nbefore the exit$/m);
+  });
+
+  // The precheck gives up on a server that is slow to answer, so the run
+  // starts its command, which dies on the taken port, and the next probe gets
+  // the other server's answer: the run refuses instead of measuring it.
+  it('refuses when --url answers after the command it started has already exited', async () => {
+    let requests = 0;
+    const slow = http.createServer((req, res) => {
+      requests += 1;
+      res.statusCode = req.url?.startsWith('/json/') ? 404 : 200;
+      if (requests === 1) setTimeout(() => res.end('another project'), 2_000);
+      else res.end('another project');
+    });
+    await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
+    try {
+      const url = `http://127.0.0.1:${(slow.address() as AddressInfo).port}/`;
+      const command = `echo 'port in use'; exit 1`;
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.logged).toMatch(/starting dev server/);
+      expect(result.errors).toContain(
+        `design-verify: ${url} answered, but the server command this run started exited with code 1, ` +
+          'so the answer came from a server this run did not start',
+      );
+      expect(result.errors).toMatch(/last output:\nport in use$/m);
+      expect(result.logged).not.toMatch(/launching headless Chrome/);
+    } finally {
+      slow.closeAllConnections();
+      await new Promise((resolve) => slow.close(resolve));
+    }
   });
 
   it('prints the output of a server that never answered once --server-timeout-ms passes', async () => {
@@ -817,13 +866,15 @@ describe('server', () => {
   });
 
   // The output is kept only as a tail, so a chatty server on a long run cannot
-  // fill memory: at most the last 40 lines and 8 KB, stdout and stderr both.
+  // fill memory: at most the last 40 lines of the last 8 KB written. Written to one stream, so
+  // the order is fixed (stderr is read too: see the cli tests above).
   it('keeps a bounded tail of the server output and reports how it ended', async () => {
     const script =
       "for (let i = 0; i < 100; i += 1) console.log('line ' + i); " +
-      "console.log('x'.repeat(20000)); console.error('the cause'); process.exit(3)";
+      "console.log('x'.repeat(20000)); console.log('the cause'); process.exitCode = 3";
     const server = startServer(`node -e "${script}"`);
     await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    await server.settled();
     expect(server.ended()).toBe('exited with code 3');
     const tail = server.output();
     expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(8192);
@@ -836,6 +887,7 @@ describe('server', () => {
   it('keeps the last 40 lines when they are short', async () => {
     const server = startServer(`node -e "for (let i = 0; i < 100; i += 1) console.log('line ' + i)"`);
     await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    await server.settled();
     expect(server.output().split('\n')).toEqual(Array.from({ length: 40 }, (_, i) => `line ${i + 60}`));
   });
 });

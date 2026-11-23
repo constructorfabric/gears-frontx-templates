@@ -63,20 +63,26 @@ export async function isUrlReachable(url, options = {}) {
 
 const TAIL_BYTES = 8192;
 const TAIL_LINES = 40;
+/** How long settled() waits for the streams to drain after the command ended. */
+const OUTPUT_GRACE_MS = 300;
 
 /**
  * Start the dev-server command in its own process group so stop() can take
  * down the whole tree (npm run spawns children).
  *
  * Its stdout and stderr are always read, so the server never blocks on a full
- * pipe, but only their last TAIL_BYTES are kept: output() gives the last
- * TAIL_LINES lines of that, for a start that failed to say why. ended() names
- * how the command ended once it has (its exit code or signal), so a wait can
- * stop at once instead of sitting out its deadline.
+ * pipe, but only the last TAIL_BYTES bytes it wrote are kept: output() gives
+ * the last TAIL_LINES lines of those, for a start that failed to say why.
+ * ended() names how the command ended once it has (its exit code or signal),
+ * so a wait can stop at once instead of sitting out its deadline. It is set on
+ * 'exit', not on 'close': a background child of the command (`vite &`) can
+ * hold the pipes long after the command itself is gone. settled() then gives
+ * the streams a short bounded grace to drain before output() is read.
  *
  * @param {string} command shell command, e.g. "npm run dev:all"
  * @param {{cwd?: string}} [options]
- * @returns {{stop: () => void, ended: () => string | undefined, output: () => string}}
+ * @returns {{stop: () => void, ended: () => string | undefined, output: () => string,
+ *   settled: () => Promise<void>}}
  */
 export function startServer(command, options = {}) {
   const child = spawn(command, {
@@ -97,14 +103,26 @@ export function startServer(command, options = {}) {
   child.on('error', (error) => {
     ended ??= `could not be started (${error.message})`;
   });
-  // 'close' comes after the streams are drained, so output() is complete.
-  child.on('close', (code, signal) => {
+  child.on('exit', (code, signal) => {
     ended ??= signal ? `was ended by ${signal}` : `exited with code ${code}`;
   });
+  // 'close' comes once every holder of the pipes is gone and they are drained.
+  const closed = new Promise((resolve) => child.on('close', resolve));
   return {
     ended: () => ended,
+    settled: () =>
+      new Promise((resolve) => {
+        const timer = setTimeout(resolve, OUTPUT_GRACE_MS);
+        timer.unref();
+        closed.then(() => {
+          clearTimeout(timer);
+          resolve(undefined);
+        });
+      }),
     output: () => {
       // Skip a UTF-8 sequence the byte cut split, then keep the last lines.
+      // The bound is on the bytes kept: decoding invalid UTF-8 replaces each
+      // bad byte with U+FFFD, so the printed text may be longer than they are.
       let start = 0;
       while (start < tail.length && (tail[start] & 0xc0) === 0x80) start += 1;
       const lines = tail.subarray(start).toString('utf8').replace(/\n$/, '').split('\n');

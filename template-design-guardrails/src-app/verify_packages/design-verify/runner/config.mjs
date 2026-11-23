@@ -206,9 +206,12 @@ Usage: node runner/cli.mjs [flags]
                             a free --url, or drop --start-server to measure
                             the running server on purpose. The command must
                             keep running: when it exits before --url answers,
-                            the wait ends at once; then, or when the wait
-                            times out, the run prints the command's last 40
-                            lines of output (8 KB at most) and exits 2
+                            the wait ends at once, and when --url answers
+                            after it exited, the answer came from a server
+                            the run did not start. Then, or when the wait
+                            times out, the run prints at most the last 40
+                            lines of the last 8 KB the command wrote, and
+                            exits 2
   --server-cwd <dir>        Directory to run --start-server in (default:
                             $INIT_CWD - where npm was invoked, so the app
                             root when using "npm run verify:ui" from there -

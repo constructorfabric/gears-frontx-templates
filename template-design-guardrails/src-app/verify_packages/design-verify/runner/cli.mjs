@@ -51,7 +51,9 @@ import { CONTRAST_CHECK, contrastPairs, contrastState, ContrastInputError, probe
 import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
 
 const SWEEP_LINE = /\[design-defects\]/;
-const VERIFY_PKG_FAILURE = /\[verify-packages\].*(none installed|failed to load)/;
+/** The pause before a second look at a started command that the URL answered for. */
+const SERVER_EXIT_RECHECK_MS = 500;
+const VERIFY_PKG_FAILURE =/\[verify-packages\].*(none installed|failed to load)/;
 
 /** @param {string} base @param {string} route */
 function joinUrl(base, route) {
@@ -193,20 +195,42 @@ export async function main(argv = process.argv.slice(2)) {
       cleanups.push(server.stop);
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
+    // The server's own words say why it never answered (a port in use, a
+    // failed build); a healthy start never prints them.
+    const printServerOutput = async () => {
+      if (server.ended() === undefined) {
+        console.error(
+          `design-verify: the server command is still running and is stopped now; its last output:\n${server.output() || '(no output)'}`,
+        );
+        return;
+      }
+      await server.settled();
+      console.error(`design-verify: the server command's last output:\n${server.output() || '(no output)'}`);
+    };
     try {
       await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs, ended: server?.ended });
     } catch (error) {
       if (!server) throw error;
-      // The server's own words say why it never answered (a port in use, a
-      // failed build); a healthy start never prints them.
       console.error(`design-verify: ${error instanceof Error ? error.message : String(error)}`);
-      console.error(
-        (server.ended() === undefined
-          ? 'design-verify: the server command is still running and is stopped now; its last output:'
-          : "design-verify: the server command's last output:") +
-          `\n${server.output() || '(no output)'}`,
-      );
+      await printServerOutput();
       return 2;
+    }
+    if (server) {
+      // The URL answered, but the precheck above can miss a slow server that
+      // already held it: a command that died on the taken port then leaves
+      // that server to be measured. Its exit can arrive just after the answer,
+      // so the check is made once more after a short pause.
+      if (server.ended() === undefined) await new Promise((r) => setTimeout(r, SERVER_EXIT_RECHECK_MS));
+      const ended = server.ended();
+      if (ended !== undefined) {
+        console.error(
+          `design-verify: ${config.url} answered, but the server command this run started ${ended}, ` +
+            `so the answer came from a server this run did not start and is not measured. ` +
+            `Stop the server holding ${config.url}, or pass --url with a free port, and run again`,
+        );
+        await printServerOutput();
+        return 2;
+      }
     }
 
     let endpoint = config.cdpUrl;
