@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-zrq9sQvJjSJ46JhDjXjA/tu32OR+Fo0DosOVu+q7Eco=' 'sha256-Pun4IhUpJA/iqTUHYGtHJqvOvFEVApNyYrGH/z1TFDE='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-L8Ajp8j3LSgzQj7d9cJEwzsK4Wu6ZGfJEEP49iRPOSI=' 'sha256-Pun4IhUpJA/iqTUHYGtHJqvOvFEVApNyYrGH/z1TFDE='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proposal: {{PAGE_TITLE}}</title>
 <style id="frame">
@@ -1113,6 +1113,14 @@ dialog button:hover { background: var(--raise); }
       const text = range.getBoundingClientRect().width;
       const up = el.parentElement.getBoundingClientRect().width;
       if (el.offsetWidth > text + 40 && el.offsetWidth > 0.6 * up) add('stretched', el, `${el.offsetWidth} px wide for ${Math.round(text)} px of text: it stretches across its row; wrap it in a d-row`);
+      else if ([...el.classList].includes('d-badge')) {
+        // A badge in a column that stretches its items takes the width of the widest one: wider than its text, padding and border.
+        const cs = getComputedStyle(el);
+        const ps = getComputedStyle(el.parentElement);
+        const own = text + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+        const stacked = /flex/.test(ps.display) && /^column/.test(ps.flexDirection) && /^(normal|stretch)$/.test(ps.alignItems) && /^(auto|normal|stretch)$/.test(cs.alignSelf);
+        if (stacked && el.offsetWidth > own + 2) add('stretched', el, `${el.offsetWidth} px wide for ${Math.round(own)} px of its own: the column it sits in stretches it; wrap it in a d-row`);
+      }
     }
     for (const flow of document.querySelectorAll('main .flow')) {
       const fb = flow.getBoundingClientRect();

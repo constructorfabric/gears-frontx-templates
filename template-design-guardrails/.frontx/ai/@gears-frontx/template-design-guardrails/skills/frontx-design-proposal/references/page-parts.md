@@ -297,7 +297,7 @@ An svg on the page (an icon, a small chart, the logo) holds only drawing element
 
 ## Wide parts and the rendered check
 
-A drawing, the map and every table sit in their own scroll box (`.scroll`, `.map`, `.tbl-wrap`); the page itself never scrolls sideways. The page script gives every box that scrolls a keyboard stop, the role region and a name from its caption, its table's label or its heading. Nothing moves for a reader who asked for less motion, and the page prints with the top bar once at the top. The frame script also offers `checkProposalLayout()`, the rendered check a session with a headless browser runs (`references/propose.md`, step 6); it reports a badge or chip stretched across its row (`stretched`: wrap it in a `d-row`), and on a page with a flow boxes on top of each other and connectors through a box or a label.
+A drawing, the map and every table sit in their own scroll box (`.scroll`, `.map`, `.tbl-wrap`); the page itself never scrolls sideways. The page script gives every box that scrolls a keyboard stop, the role region and a name from its caption, its table's label or its heading. Nothing moves for a reader who asked for less motion, and the page prints with the top bar once at the top. The frame script also offers `checkProposalLayout()`, the rendered check a session with a headless browser runs (`references/propose.md`, step 6); it reports a badge or chip stretched across its row, or a badge a `d-stack` stretches to the width of a wider one (`stretched`: wrap it in a `d-row`), and on a page with a flow boxes on top of each other and connectors through a box or a label.
 
 ## Changed since
 

@@ -197,6 +197,23 @@ describe('the frame for the rendered check and the hover notes', () => {
     expect(kinds(page({ badges: [chip({ parent: wideRow })] }))).toEqual([]);
   });
 
+  it('checkProposalLayout reports a badge a column stack stretches to a wider badge\'s width, and passes it in a row or at its own width', () => {
+    // A d-stack of 70 px: the Overdue badge sets its width, the To do badge (30 px of text, 18 px of padding and border) is stretched to it.
+    const stack = (more = {}) => ({ getBoundingClientRect: () => rect(0, 0, 70, 50), style: { display: 'flex', flexDirection: 'column', alignItems: 'normal', ...more } });
+    const badge = (width, textWidth, parent, more = {}) => {
+      const b = el('span', 'd-badge', rect(0, 0, width, 20), { textWidth, parent, text: 'To do', inside: ['.canvas'] });
+      Object.assign(b.style, { paddingLeft: '8px', paddingRight: '8px', borderLeftWidth: '1px', borderRightWidth: '1px', alignSelf: 'auto', ...more });
+      return b;
+    };
+    expect(layoutCheck(page({ badges: [badge(70, 52, stack()), badge(70, 30, stack())] })).problems).toEqual([{ kind: 'stretched', item: 'span.d-badge "To do"', detail: '70 px wide for 48 px of its own: the column it sits in stretches it; wrap it in a d-row' }]);
+    expect(kinds(page({ badges: [badge(70, 30, stack({ alignItems: 'stretch' }))] }))).toEqual(['stretched']);
+    // At its own width, in a stack that does not stretch, in a row, or aligned on its own: no finding.
+    expect(kinds(page({ badges: [badge(48, 30, stack())] }))).toEqual([]);
+    expect(kinds(page({ badges: [badge(70, 30, stack({ alignItems: 'flex-start' }))] }))).toEqual([]);
+    expect(kinds(page({ badges: [badge(70, 30, stack({ flexDirection: 'row' }))] }))).toEqual([]);
+    expect(kinds(page({ badges: [badge(70, 30, stack(), { alignSelf: 'flex-start' })] }))).toEqual([]);
+  });
+
   it('checkProposalLayout leaves out what it exempts: a wide box in a wide parent, a box in a scroll box, a thumbnail, a dialog or a tip, a hidden one, an ellipsis, a note on the canvas, a box with no text of its own, a chip in a thumbnail', () => {
     const parent = wide();
     expect(kinds(page({ all: [parent, wide({ parent })] }))).toEqual(['page-overflow']);
