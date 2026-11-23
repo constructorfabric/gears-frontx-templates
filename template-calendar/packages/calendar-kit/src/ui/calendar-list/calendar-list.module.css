@@ -1,0 +1,305 @@
+.root {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+}
+
+.heading {
+  composes: label from "../../styles/modules/text.module.css";
+  margin: 0;
+}
+
+.state {
+  min-inline-size: 0;
+}
+
+.list {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  /* 26px pitch: 24px rows with a 2px gap. */
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-1);
+}
+
+.groupHeading {
+  composes: label from "../../styles/modules/text.module.css";
+  margin: 0;
+  color: var(--cal-color-muted);
+}
+
+.nested {
+  padding-inline-start: var(--cal-space-4);
+}
+
+.row {
+  border-radius: var(--cal-radius-sm);
+  min-inline-size: 0;
+  color: var(--cal-color-text);
+  align-items: center;
+}
+
+.row:hover {
+  background-color: var(--cal-state-hover);
+}
+
+.label {
+  align-items: center;
+  display: flex;
+  min-inline-size: 0;
+  inline-size: 100%;
+  cursor: pointer;
+}
+
+.checkbox {
+  cursor: pointer;
+}
+
+.hiddenCheckbox:not([data-checked], [data-indeterminate]) {
+  border-color: var(--cal-color-muted);
+}
+
+.colorBlue {
+  --calendar-color: var(--cal-color-calendar-blue);
+}
+
+.colorLavender {
+  --calendar-color: var(--cal-color-calendar-lavender);
+}
+
+.colorViolet {
+  --calendar-color: var(--cal-color-calendar-violet);
+}
+
+.colorPurple {
+  --calendar-color: var(--cal-color-calendar-purple);
+}
+
+.colorOrange {
+  --calendar-color: var(--cal-color-calendar-orange);
+}
+
+.colorBrown {
+  --calendar-color: var(--cal-color-calendar-brown);
+}
+
+.colorTurquoise {
+  --calendar-color: var(--cal-color-calendar-turquoise);
+}
+
+/* ui-kit stretches the tick to the whole swatch. */
+.colorBlue :global(svg),
+.colorLavender :global(svg),
+.colorViolet :global(svg),
+.colorPurple :global(svg),
+.colorOrange :global(svg),
+.colorBrown :global(svg),
+.colorTurquoise :global(svg) {
+  block-size: var(--cal-icon-size-xs);
+  inline-size: var(--cal-icon-size-xs);
+}
+
+/* A surface-coloured tick contrasts with the accent fill in both themes. */
+.colorBlue:is([data-checked], [data-indeterminate]),
+.colorLavender:is([data-checked], [data-indeterminate]),
+.colorViolet:is([data-checked], [data-indeterminate]),
+.colorPurple:is([data-checked], [data-indeterminate]),
+.colorOrange:is([data-checked], [data-indeterminate]),
+.colorBrown:is([data-checked], [data-indeterminate]),
+.colorTurquoise:is([data-checked], [data-indeterminate]) {
+  border-color: var(--calendar-color);
+  background-color: var(--calendar-color);
+  color: var(--cal-color-surface);
+}
+
+.name {
+  composes: truncate from "../../styles/modules/text.module.css";
+  min-inline-size: 0;
+}
+
+.name[data-hidden] {
+  color: var(--cal-color-muted);
+}
+
+.create {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.createButton {
+  inline-size: 100%;
+}
+
+.moreButton {
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+/* The icon sits in nested inline spans; their baseline gap moves it off the row centre. */
+.moreButton span {
+  align-items: center;
+  display: flex;
+}
+
+/* Pointer focus left on a button would keep it shown after its menu closes; only keyboard focus reveals it. */
+.row:hover .moreButton,
+.row:has(:focus-visible) .moreButton,
+.moreButtonOpen {
+  opacity: 1;
+}
+
+/* Inline button: 20px square, radius 4, grey fill. Beats the xs size's own rules. */
+.row .moreButton {
+  block-size: 20px;
+  inline-size: 20px;
+  border-radius: var(--cal-radius-sm);
+  background-color: var(--cal-color-selection);
+}
+
+.menu {
+  border-radius: var(--cal-radius-popover);
+  font-size: var(--cal-text-label-size);
+  inline-size: 228px;
+  line-height: var(--cal-text-label-line-height);
+}
+
+.menuList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--cal-space-2);
+  list-style: none;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: var(--cal-radius-md);
+  background: none;
+  color: var(--cal-color-text);
+  cursor: pointer;
+  font: inherit;
+  gap: var(--cal-space-2);
+  inline-size: 100%;
+  min-block-size: 32px;
+  padding-block: 0;
+  padding-inline: var(--cal-space-2);
+  text-align: start;
+}
+
+.menuItem:hover {
+  background-color: var(--cal-state-hover);
+}
+
+.menuItem:focus-visible {
+  box-shadow: inset 0 0 0 var(--cal-border-width-focus)
+    var(--cal-color-focus-ring);
+}
+
+.menuItem:disabled {
+  background: none;
+  color: var(--cal-color-subtle);
+  cursor: default;
+}
+
+.menuItemStart {
+  justify-content: flex-start;
+}
+
+.menuIcon {
+  flex: none;
+  block-size: var(--cal-icon-size-sm);
+  inline-size: var(--cal-icon-size-sm);
+}
+
+.menuPicker {
+  inline-size: 276px;
+}
+
+.colorTag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--cal-radius-md);
+  background-color: var(--calendar-color);
+  block-size: 24px;
+  color: var(--cal-color-action-foreground);
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-label-weight);
+  padding-block: 0;
+  padding-inline: var(--cal-space-2);
+  white-space: nowrap;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cal-space-2);
+  padding: var(--cal-space-4);
+}
+
+.swatch {
+  border: 0;
+  border-radius: var(--cal-radius-pill);
+  background-color: var(--calendar-color);
+  block-size: 28px;
+  cursor: pointer;
+  inline-size: 28px;
+  padding: 0;
+}
+
+.swatch:focus-visible {
+  outline: var(--cal-focus-ring-width) solid var(--cal-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.swatch[aria-checked="true"] {
+  box-shadow:
+    0 0 0 2px var(--cal-color-surface),
+    0 0 0 4px var(--cal-color-muted);
+}
+
+.pickerFooter {
+  display: flex;
+  justify-content: flex-end;
+  border-block-start: var(--cal-border-width-1) solid var(--cal-color-divider);
+  gap: var(--cal-space-2);
+  min-block-size: 52px;
+  padding-block: var(--cal-space-2);
+  padding-inline: var(--cal-space-3);
+}
+
+@media (forced-colors: active) {
+  .checkbox:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .colorBlue:is([data-checked], [data-indeterminate]),
+  .colorLavender:is([data-checked], [data-indeterminate]),
+  .colorViolet:is([data-checked], [data-indeterminate]),
+  .colorPurple:is([data-checked], [data-indeterminate]),
+  .colorOrange:is([data-checked], [data-indeterminate]),
+  .colorBrown:is([data-checked], [data-indeterminate]),
+  .colorTurquoise:is([data-checked], [data-indeterminate]) {
+    background-color: Highlight;
+    border-color: CanvasText;
+  }
+}

@@ -1,0 +1,12 @@
+.dialog {
+  inline-size: min(360px, calc(100% - (var(--cal-space-8) * 2)));
+}
+
+.body {
+  padding: var(--cal-space-4);
+}
+
+.footer {
+  justify-content: flex-end;
+  gap: var(--cal-space-3);
+}

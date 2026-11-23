@@ -1,0 +1,691 @@
+.panel {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+  background: var(--cal-color-surface);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+}
+
+/* The body supplies the 20px side inset; the form adds only the 16px top and 24px bottom. */
+.form {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+  flex-direction: column;
+  padding: var(--cal-space-4) 0 var(--cal-space-6);
+}
+
+.header,
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.heading,
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--cal-space-2);
+}
+
+.heading {
+  min-inline-size: 0;
+  flex: 1;
+  justify-content: space-between;
+  min-block-size: 64px;
+  padding: var(--cal-space-2) var(--cal-space-3);
+}
+
+/* The close glyph takes the brand colour; the ghost variant would paint it muted. */
+.headerActions > .closeButton.closeButton {
+  color: var(--cal-color-brand);
+}
+
+.footerDivider {
+  flex: none;
+  margin-block: 0;
+}
+
+.footerActions {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cal-space-2);
+  justify-content: flex-end;
+  min-block-size: calc(64px - var(--cal-border-width-1));
+  padding: var(--cal-space-2) var(--cal-space-5);
+}
+
+.footerActions > button {
+  border-width: 0;
+}
+
+.footerActions > button:disabled:not([aria-busy="true"]) {
+  color: var(--cal-color-placeholder);
+  opacity: 1;
+}
+
+/* Save takes the brand action colour; the kit primary variant would paint the error token. */
+.footerActions > .saveButton.saveButton,
+.repeatActions > .saveButton.saveButton {
+  --button-bg: var(--cal-color-action);
+  --button-bg-hover: color-mix(in srgb, var(--cal-color-action) 95%, var(--cal-color-text));
+}
+
+.title {
+  min-inline-size: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-inline-start: var(--cal-space-2);
+  font-size: var(--cal-text-panel-title-size);
+  line-height: var(--cal-text-panel-title-line-height);
+  font-weight: var(--cal-text-panel-title-weight);
+}
+
+.kindSwitch {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cal-space-1);
+  min-inline-size: 0;
+  padding-inline-start: var(--cal-space-1);
+}
+
+.kindSwitch :global(button[aria-pressed="true"]) {
+  background: var(--cal-color-surface);
+  border-color: var(--cal-color-text);
+}
+
+/* Tabs are plain text on the grey selected fill, as in the design. */
+.kindSwitch > button {
+  border-width: 0;
+}
+
+.kindSwitch > button:not([aria-pressed="true"]) {
+  background: none;
+  color: var(--cal-color-muted);
+}
+
+.description {
+  composes: helperText from "../../styles/modules/text.module.css";
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+  flex-direction: column;
+  padding-inline: var(--cal-space-5);
+}
+
+/* ScrollRegion sets data-scrolled once the body moves; the fade shows only then. */
+.body::before {
+  position: sticky;
+  z-index: 1;
+  display: block;
+  flex: none;
+  background: linear-gradient(var(--cal-color-surface), transparent);
+  block-size: var(--cal-space-4);
+  content: "";
+  inset-block-start: 0;
+  margin-block-end: calc(-1 * var(--cal-space-4));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.body[data-scrolled]::before {
+  opacity: 1;
+}
+
+/* Fields stack 8px apart; each group starts 20px below the previous one (.groupStart). */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-2);
+}
+
+.groupStart {
+  margin-block-start: var(--cal-space-3);
+}
+
+.field {
+  min-inline-size: 0;
+}
+
+.control,
+.controlWrap {
+  inline-size: 100%;
+}
+
+.control input[type="date"],
+.control input[type="time"] {
+  appearance: none;
+}
+
+.control input[type="date"]::-webkit-calendar-picker-indicator,
+.control input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.comboboxField {
+  inline-size: 100%;
+}
+
+.comboboxFieldControl {
+  box-sizing: border-box;
+  background: var(--cal-color-surface);
+  border: var(--cal-border-width-1) solid var(--cal-color-input);
+  border-radius: var(--cal-radius-md);
+  color: var(--cal-color-text);
+  font-size: var(--cal-text-label-size);
+  gap: var(--cal-space-2);
+  inline-size: 100%;
+  line-height: var(--cal-text-label-line-height);
+  padding-inline: var(--cal-space-3);
+}
+
+.comboboxFieldControl :global(input) {
+  font-size: var(--cal-text-field-size);
+  line-height: var(--cal-text-label-line-height);
+}
+
+/* A disabled people or location box greys the whole box, as the other fields do. */
+.comboboxFieldControl:has(:disabled) {
+  border-color: var(--cal-color-grid-line);
+  background: var(--cal-color-input-disabled);
+  color: var(--cal-color-muted);
+}
+
+.comboboxFieldControl:has(:disabled) :global(input) {
+  background: transparent;
+  color: inherit;
+}
+
+.comboboxFieldTags {
+  block-size: auto;
+  min-block-size: calc(var(--cal-space-6) + (var(--cal-space-2) * 2));
+  padding-block: var(--cal-space-2);
+}
+
+/* The toggle shares a capped chip with the name; a long translation ellipsizes. */
+.optionalToggle {
+  flex-shrink: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: var(--cal-border-width-1) solid transparent;
+  border-radius: var(--cal-radius-pill);
+  background: transparent;
+  block-size: var(--cal-control-height-sm);
+  color: var(--cal-color-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--cal-text-meta-size);
+  line-height: var(--cal-text-meta-line-height);
+  padding-block: 0;
+  padding-inline: var(--cal-space-1);
+}
+
+.optionalToggle:hover {
+  background: var(--cal-state-hover);
+}
+
+.optionalToggle[aria-pressed="true"] {
+  border-color: var(--cal-color-grid-line-strong);
+  background: var(--cal-color-surface);
+  color: var(--cal-color-text);
+}
+
+.optionalToggle:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.optionalToggle:focus-visible {
+  outline: var(--cal-border-width-focus) solid var(--cal-color-text);
+  outline-offset: 1px;
+}
+
+.timeRow,
+.dateRow {
+  align-items: center;
+  display: grid;
+  gap: var(--cal-space-2);
+  min-inline-size: 0;
+}
+
+/* Shared tracks keep both rows' columns aligned; the all-day switch sits in the same 85px track as the day count. */
+.timeRow {
+  grid-template-columns: minmax(0, 1fr) var(--cal-icon-size-sm) minmax(0, 1fr) 85px;
+}
+
+/* The day count keeps its column while empty, so the end date does not change width. */
+.dateRow {
+  grid-template-columns: minmax(0, 1fr) var(--cal-icon-size-sm) minmax(0, 1fr) 85px;
+}
+
+.rowField {
+  min-inline-size: 0;
+}
+
+/* A disabled time with no value shows its empty segments as a placeholder, in the placeholder colour. */
+.emptyTime.emptyTime:disabled {
+  color: var(--cal-color-placeholder);
+}
+
+.rowArrow {
+  block-size: var(--cal-icon-size-sm);
+  color: var(--cal-color-muted);
+  inline-size: var(--cal-icon-size-sm);
+  justify-self: center;
+}
+
+.repeatHint {
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-meta-size);
+  line-height: var(--cal-text-meta-line-height);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dayCount {
+  color: var(--cal-color-text);
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.locationButton {
+  justify-content: center;
+  inline-size: 100%;
+}
+
+.locationButton svg {
+  block-size: var(--cal-icon-size-sm);
+  inline-size: var(--cal-icon-size-sm);
+}
+
+.visuallyHidden {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
+
+.calendarColorDot {
+  block-size: 20px;
+  border-radius: var(--cal-radius-pill);
+  display: inline-block;
+  flex-shrink: 0;
+  inline-size: 20px;
+}
+
+.calendarColorTurquoise {
+  background: var(--cal-color-turquoise-accent);
+}
+
+.calendarColorPurple {
+  background: var(--cal-color-purple-accent);
+}
+
+.calendarColorOrange {
+  background: var(--cal-color-orange-accent);
+}
+
+.calendarColorGreen {
+  background: var(--cal-color-success);
+}
+
+.calendarColorBlue {
+  background: var(--cal-color-blue-accent);
+}
+
+.calendarColorLavender {
+  background: var(--cal-color-lavender-accent);
+}
+
+.calendarColorViolet {
+  background: var(--cal-color-violet-accent);
+}
+
+.calendarColorBrown {
+  background: var(--cal-color-brown-accent);
+}
+
+.calendarColorPink {
+  background: var(--cal-color-error);
+}
+
+.checkboxField {
+  align-items: center;
+}
+
+.separator {
+  flex: none;
+  margin-block: var(--cal-space-3);
+}
+
+/* The description sits 36px below the location button: the 8px field gap plus this 28px. */
+.descriptionField {
+  margin-block-start: calc(var(--cal-space-3) + var(--cal-space-4));
+}
+
+.descriptionLabel {
+  font-weight: var(--cal-text-label-weight);
+}
+
+.dimmed {
+  opacity: 0.5;
+}
+
+.repeatView {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  inline-size: 100%;
+}
+
+.repeatActions {
+  align-self: stretch;
+  display: flex;
+  gap: var(--cal-space-2);
+  justify-content: flex-end;
+}
+
+.customBody {
+  --repeat-row-height: 28px;
+  align-items: flex-start;
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--cal-space-5);
+  inline-size: 100%;
+  overflow: hidden;
+  padding: var(--cal-space-4) var(--cal-space-4) var(--cal-space-6);
+}
+
+.repeatIntervalRow {
+  align-items: center;
+  block-size: var(--repeat-row-height);
+  display: flex;
+  flex: none;
+  gap: var(--cal-space-2);
+  inline-size: 100%;
+}
+
+.repeatInlineLabel {
+  color: var(--cal-color-text);
+  flex: none;
+  font-size: var(--cal-text-grid-size);
+  inline-size: 40px;
+  line-height: var(--cal-text-grid-line-height);
+}
+
+.repeatUnit {
+  box-sizing: border-box;
+  flex: none;
+  inline-size: 88px;
+}
+
+.repeatUnit :global(button) {
+  block-size: var(--repeat-row-height);
+}
+
+.repeatUnitPopup {
+  --c-select-popup-width: max-content;
+}
+
+/* The calendar names the selected row in the muted grey, not the repeat list's tertiary grey. */
+.calendarPopup.calendarPopup {
+  --cal-select-selected-text: var(--cal-color-muted);
+}
+
+/* The field primitive's wrapper spans its row; here each control keeps its 88px width. */
+.repeatIntervalRow > div {
+  flex: none;
+  inline-size: 88px;
+}
+
+/* The arrow keys still step the interval, so the native spin buttons go. */
+.repeatInterval {
+  block-size: var(--repeat-row-height);
+  box-sizing: border-box;
+  flex: none;
+  inline-size: 88px;
+  padding-inline: var(--cal-space-1);
+}
+
+/* The input primitive puts the class on its shell and on the control inside it; the control fills
+   the shell. */
+.repeatInterval .repeatInterval {
+  block-size: auto;
+  flex: 1 1 auto;
+  inline-size: 100%;
+  padding-inline: 0;
+}
+
+.repeatInterval input {
+  appearance: textfield;
+  text-align: center;
+}
+
+.repeatInterval input::-webkit-inner-spin-button,
+.repeatInterval input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.weekdays {
+  align-items: center;
+  border: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  gap: var(--cal-space-2);
+  inline-size: 100%;
+  block-size: var(--repeat-row-height);
+  margin: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.weekdays legend,
+.ends legend {
+  color: var(--cal-color-text);
+  flex: none;
+  inline-size: 40px;
+  padding: 0;
+}
+
+.weekdayButtons {
+  align-items: center;
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: var(--cal-space-1);
+  inline-size: fit-content;
+}
+
+.weekdayButtons :global(button) {
+  block-size: var(--repeat-row-height);
+  inline-size: 60px;
+}
+
+.ends {
+  align-items: center;
+  box-sizing: border-box;
+  column-gap: var(--cal-space-2);
+  display: grid;
+  flex: none;
+  grid-template-columns: 40px max-content minmax(0, 1fr);
+  inline-size: 100%;
+  row-gap: var(--cal-space-2);
+}
+
+.endsLabel {
+  align-self: start;
+  color: var(--cal-color-text);
+  font-size: var(--cal-text-grid-size);
+  grid-column: 1;
+  grid-row: 1;
+  line-height: var(--cal-text-grid-line-height);
+}
+
+.endOptions {
+  display: contents;
+}
+
+.endOptions > :global(span) {
+  min-inline-size: max-content;
+}
+
+.endOptions > :global(span):nth-child(1) {
+  grid-column: 2 / -1;
+  grid-row: 1;
+}
+
+.endOptions > :global(span):nth-child(2) {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  grid-column: 2;
+  grid-row: 2;
+  /* Floored to the control height so switching Never/On does not move the radio. */
+  min-block-size: var(--cal-control-height-sm);
+}
+
+.repeatEndDate {
+  box-sizing: border-box;
+  grid-column: 3;
+  grid-row: 2;
+  inline-size: 100%;
+  margin: 0;
+  min-inline-size: 202px;
+}
+
+.repeatFooter {
+  align-items: center;
+  block-size: 52px;
+  border-block-start: var(--cal-border-width-1) solid var(--cal-color-grid-line);
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  gap: var(--cal-space-2);
+  justify-content: flex-end;
+  padding: var(--cal-space-2) var(--cal-space-3);
+}
+
+.discardBackdrop {
+  background: var(--cal-color-scrim);
+  inset: 0;
+  opacity: 0.72;
+  position: absolute;
+  z-index: 20;
+}
+
+/* Doubled class outranks the primitive's surface rule. */
+.discardDialog.discardDialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-4);
+  inline-size: 340px;
+  padding: var(--cal-space-4);
+  border: var(--cal-border-width-1) solid var(--cal-color-overlay-border);
+  border-radius: 16px;
+  background: var(--cal-color-overlay-surface);
+  box-shadow: var(--cal-shadow-panel);
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  max-block-size: calc(100% - (var(--cal-space-8) * 2));
+  max-inline-size: calc(100% - (var(--cal-space-8) * 2));
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 21;
+}
+
+.discardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cal-space-1);
+}
+
+.discardTitle {
+  margin: 0;
+  color: var(--cal-color-text);
+  font-size: var(--cal-text-panel-title-size);
+  line-height: var(--cal-text-panel-title-line-height);
+  font-weight: var(--cal-text-panel-title-weight);
+}
+
+.discardDescription {
+  margin: 0;
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+}
+
+.discardFooter {
+  display: flex;
+  gap: var(--cal-space-2);
+  justify-content: flex-end;
+}
+
+.discardCancel,
+.discardAction {
+  box-sizing: border-box;
+  block-size: var(--cal-control-height-md);
+  min-block-size: var(--cal-control-height-md);
+  padding-block: 0;
+  padding-inline: var(--cal-space-4);
+  border: 0;
+  border-radius: var(--cal-radius-md);
+  font-size: var(--cal-text-label-size);
+  line-height: var(--cal-text-label-line-height);
+  font-weight: var(--cal-text-label-weight);
+}
+
+.discardCancel {
+  background: var(--cal-state-hover);
+  color: var(--cal-color-text);
+}
+
+.discardAction {
+  background: var(--cal-color-error);
+  color: var(--cal-color-action-foreground);
+}
+
+/* Neutral focus ring; the UA ring would paint the host theme's blue. */
+.discardCancel:focus-visible,
+.discardAction:focus-visible {
+  outline: var(--cal-border-width-focus) solid var(--cal-color-grid-line-strong);
+  outline-offset: var(--cal-border-width-1);
+}
+
+/* ui-kit fills radios grey by default. */
+.ends :global([role="radio"]) {
+  background: var(--cal-color-surface);
+  border-color: var(--cal-color-muted);
+}
+
+.ends :global([role="radio"][aria-checked="true"]) {
+  background: var(--cal-color-surface);
+  border-color: var(--cal-color-text);
+}

@@ -1,0 +1,193 @@
+{
+  "name": "@gears-frontx/calendar-kit",
+  "version": "0.1.0-alpha.1",
+  "description": "Composable calendar components for FrontX applications",
+  "files": [
+    "dist",
+    "llms.txt",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js"
+    },
+    "./grid": {
+      "types": "./dist/grid.d.ts",
+      "import": "./dist/grid.js"
+    },
+    "./week-grid": {
+      "types": "./dist/week-grid.d.ts",
+      "import": "./dist/week-grid.js"
+    },
+    "./day-grid": {
+      "types": "./dist/day-grid.d.ts",
+      "import": "./dist/day-grid.js"
+    },
+    "./month-grid": {
+      "types": "./dist/month-grid.d.ts",
+      "import": "./dist/month-grid.js"
+    },
+    "./agenda-view": {
+      "types": "./dist/agenda-view.d.ts",
+      "import": "./dist/agenda-view.js"
+    },
+    "./calendar-toolbar": {
+      "types": "./dist/calendar-toolbar.d.ts",
+      "import": "./dist/calendar-toolbar.js"
+    },
+    "./event-card": {
+      "types": "./dist/event-card.d.ts",
+      "import": "./dist/event-card.js"
+    },
+    "./event-detail-panel": {
+      "types": "./dist/event-detail-panel.d.ts",
+      "import": "./dist/event-detail-panel.js"
+    },
+    "./create-event": {
+      "types": "./dist/create-event.d.ts",
+      "import": "./dist/create-event.js"
+    },
+    "./conflict-indicator": {
+      "types": "./dist/conflict-indicator.d.ts",
+      "import": "./dist/conflict-indicator.js"
+    },
+    "./availability-grid": {
+      "types": "./dist/availability-grid.d.ts",
+      "import": "./dist/availability-grid.js"
+    },
+    "./calendar-side-panel": {
+      "types": "./dist/calendar-side-panel.d.ts",
+      "import": "./dist/calendar-side-panel.js"
+    },
+    "./month-navigator": {
+      "types": "./dist/month-navigator.d.ts",
+      "import": "./dist/month-navigator.js"
+    },
+    "./search-results": {
+      "types": "./dist/search-results.d.ts",
+      "import": "./dist/search-results.js"
+    },
+    "./time-zone-list": {
+      "types": "./dist/time-zone-list.d.ts",
+      "import": "./dist/time-zone-list.js"
+    },
+    "./world-clocks": {
+      "types": "./dist/world-clocks.d.ts",
+      "import": "./dist/world-clocks.js"
+    },
+    "./calendar-list": {
+      "types": "./dist/calendar-list.d.ts",
+      "import": "./dist/calendar-list.js"
+    },
+    "./recurrence-scope-dialog": {
+      "types": "./dist/recurrence-scope-dialog.d.ts",
+      "import": "./dist/recurrence-scope-dialog.js"
+    },
+    "./package.json": "./package.json",
+    "./theme.css": "./dist/theme.css",
+    "./reset.css": "./dist/reset.css",
+    "./themes/example.css": "./dist/themes/example.css",
+    "./src/*": null,
+    "./chunks/*": null,
+    "./__test-utils__/*": null,
+    "./core/*": null,
+    "./react/*": null,
+    "./ui/*": null,
+    "./docs/*": null,
+    "./i18n/*": null,
+    "./styles/*": null
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "frontx",
+    "calendar",
+    "events",
+    "react",
+    "components",
+    "css-modules",
+    "design-system"
+  ],
+  "author": "Cyber Fabric",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/constructorfabric/gears-frontx-templates.git",
+    "directory": "template-calendar/packages/calendar-kit"
+  },
+  "scripts": {
+    "build": "vite build",
+    "type-check": "tsc --noEmit && npm run type-check:core && npm run type-check:tools",
+    "type-check:core": "tsc -p tsconfig.core.json",
+    "type-check:tools": "tsc -p tsconfig.tools.json",
+    "type-check:test": "tsc -p tsconfig.test.json",
+    "type-check:demo": "tsc -p demo/tsconfig.json",
+    "test": "npm run test:unit && npm run test:dist",
+    "test:unit": "vitest --run --passWithNoTests=false",
+    "test:dist": "npm run build && vitest --run --config vitest.dist.config.ts --maxWorkers=2",
+    "test:demo": "vitest --run --config demo/vitest.config.ts",
+    "test:a11y": "vitest --run __tests__/accessibility.test.tsx --passWithNoTests=false --testTimeout=30000",
+    "test:unit:watch": "vitest --watch",
+    "test:consumer": "bash scripts/verify-first-alpha.sh",
+    "demo": "npm run build && vite demo",
+    "demo:build": "vite build demo",
+    "demo:preview": "vite preview demo",
+    "docs": "node scripts/docs.ts",
+    "docs:check": "node scripts/docs.ts --check"
+  },
+  "dependencies": {
+    "@gears-frontx/ui-kit": "0.5.0",
+    "clsx": "2.1.1",
+    "lucide-react": "1.33.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "@vitest/coverage-v8": "4.1.4",
+    "axe-core": "4.13.0",
+    "jsdom": "26.1.0",
+    "magic-string": "0.30.21",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-is": "19.3.0",
+    "rollup-plugin-node-externals": "9.0.1",
+    "typescript": "5.4.2",
+    "vite": "6.4.3",
+    "vite-plugin-dts": "4.5.4",
+    "vite-plugin-lib-inject-css": "2.2.2",
+    "vitest": "4.1.4",
+    "vitest-axe": "0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

@@ -1,0 +1,27 @@
+/* The design draws the now line twice the hairline weight and hangs a filled time tag on its start. */
+.nowLine {
+  position: absolute;
+  inset-inline: 0;
+  z-index: var(--cal-layer-now-line);
+  block-size: 0;
+  border-block-start: calc(2 * var(--cal-border-width-1)) solid var(--cal-color-now);
+  pointer-events: none;
+}
+
+.nowLabel {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 100%;
+  translate: 0 -50%;
+  min-inline-size: 20px;
+  padding: calc(var(--cal-space-1) / 2);
+  border-radius: var(--cal-radius-slot);
+  color: var(--cal-color-action-foreground);
+  background: var(--cal-color-now-label);
+  font-size: var(--cal-text-caption-size);
+  font-weight: var(--cal-text-caption-weight);
+  line-height: var(--cal-text-caption-line-height);
+  letter-spacing: var(--cal-text-caption-tracking);
+  text-align: center;
+  white-space: nowrap;
+}

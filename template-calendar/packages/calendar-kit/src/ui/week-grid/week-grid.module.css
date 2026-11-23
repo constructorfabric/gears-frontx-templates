@@ -1,0 +1,511 @@
+/* Below the grid's 44rem floor, as beside an open side panel, the view scrolls sideways instead
+   of spilling over whatever sits next to it. */
+.container {
+  composes: viewRoot from "../../styles/modules/layout.module.css";
+  overflow-x: auto;
+}
+
+.interactionSurface {
+  flex: 1 1 auto;
+  grid-column: 1;
+  grid-row: 3;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.weekGrid {
+  flex: 1 1 auto;
+  block-size: 100%;
+  min-inline-size: 44rem;
+  min-block-size: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border-radius: var(--cal-radius-md);
+}
+
+.weekGrid > [role="row"],
+.weekGrid .interactionSurface > [role="row"] {
+  grid-template-columns: var(--grid-gutter-width) repeat(5, minmax(0, 1fr));
+}
+
+.weekGrid.sevenDays > [role="row"],
+.weekGrid.sevenDays .interactionSurface > [role="row"] {
+  grid-template-columns: var(--grid-gutter-width) repeat(7, minmax(0, 1fr));
+}
+
+.weekGrid.trailingGutter.fiveDays > [role="row"],
+.weekGrid.trailingGutter.fiveDays .interactionSurface > [role="row"] {
+  grid-template-columns: var(--grid-gutter-width) repeat(5, minmax(0, 1fr)) var(
+      --grid-gutter-width
+    );
+}
+
+.weekGrid.trailingGutter.sevenDays > [role="row"],
+.weekGrid.trailingGutter.sevenDays .interactionSurface > [role="row"] {
+  grid-template-columns: var(--grid-gutter-width) repeat(7, minmax(0, 1fr)) var(
+      --grid-gutter-width
+    );
+}
+
+.trailingGutterCell {
+  min-block-size: var(--grid-hour-height);
+  padding: 0;
+  background: var(--cal-color-surface);
+  border-inline-end: 0;
+}
+
+.trailingGutter .nowLine.nowLine {
+  inset-inline-end: var(--grid-gutter-width);
+}
+
+.weekGrid > [role="row"] > [role="columnheader"]:first-child {
+  padding: 0;
+}
+
+.weekGrid > [role="row"] > [role="columnheader"] {
+  block-size: 48px;
+  min-block-size: 48px;
+  padding: var(--cal-space-2);
+  border-inline-end: var(--cal-border-width-1) solid var(--cal-color-divider);
+}
+
+.weekGrid.weekGrid > [role="row"] > [role="columnheader"] {
+  padding-block-end: 0;
+}
+
+.weekGrid > [role="row"] > [role="columnheader"]:last-child,
+.weekGrid > [role="row"] > [role="gridcell"]:last-child,
+.weekGrid .interactionSurface > [role="row"] > [role="gridcell"]:last-child {
+  border-inline-end: 0;
+}
+
+.weekGrid > [role="row"] > [role="gridcell"] {
+  min-block-size: var(--grid-hour-height);
+  background: var(--cal-color-surface);
+}
+
+.weekGrid .interactionSurface > [role="row"] > [role="gridcell"] {
+  min-block-size: var(--grid-hour-height);
+  background: var(--cal-color-surface);
+}
+
+.weekGrid > [role="row"]:first-child {
+  z-index: var(--cal-layer-day-number-band);
+  background: var(--cal-color-surface);
+}
+
+.weekGrid > [role="row"]:nth-child(2) {
+  z-index: var(--cal-layer-all-day-band);
+  background: var(--cal-color-surface);
+}
+
+.headerGutter {
+  composes: gutterCell from "../../styles/modules/grid.module.css";
+  display: block;
+  color: var(--cal-color-subtle);
+  font-size: var(--cal-text-caption-size);
+  font-weight: var(--cal-text-caption-weight);
+  line-height: var(--cal-text-caption-line-height);
+  letter-spacing: var(--cal-text-caption-tracking);
+}
+
+.gutter {
+  composes: gutterCell from "../../styles/modules/grid.module.css";
+  display: block;
+  font-size: var(--cal-text-meta-size);
+  line-height: var(--cal-text-meta-line-height);
+}
+
+.gutter.allDayGutter {
+  display: flex;
+  align-items: center;
+  block-size: 100%;
+}
+
+.weekday {
+  composes: weekdayLabel from "../../styles/modules/text.module.css";
+  display: block;
+}
+
+/* Doubled classes outrank the composed text classes, whose sizes and colours land later in the bundle. */
+.weekday.weekday {
+  color: var(--cal-color-subtle);
+  font-size: var(--cal-text-caption-size);
+  font-weight: var(--cal-text-caption-weight);
+  line-height: var(--cal-text-caption-line-height);
+}
+
+.dayNumber {
+  composes: dayNumber from "../../styles/modules/text.module.css";
+  display: block;
+}
+
+.dayNumber.dayNumber {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+/* Doubled class outranks the composed dayNumber and weekdayLabel. */
+.today.today {
+  color: var(--cal-color-now-label);
+}
+
+.cellContent {
+  position: relative;
+  z-index: 0;
+  min-block-size: var(--grid-hour-height);
+  padding: var(--cal-space-1);
+}
+
+.unavailable {
+  composes: unavailable from "../../styles/modules/state.module.css";
+}
+
+/* A slot under a busy event refuses input, but the event card already draws the busy state; a
+   grey fill behind the grey card read as a second, wider block. The day grid draws none either. */
+.unavailableSlot {
+  cursor: not-allowed;
+}
+
+.cellContent[data-paint] {
+  background: var(--cal-slot-selected);
+}
+
+.cellContent[data-paint][data-color-family="blue"] {
+  background: var(--cal-color-blue-background);
+}
+
+.cellContent[data-paint][data-color-family="lavender"] {
+  background: var(--cal-color-lavender-background);
+}
+
+.cellContent[data-paint][data-color-family="violet"] {
+  background: var(--cal-color-violet-background);
+}
+
+.cellContent[data-paint][data-color-family="brown"] {
+  background: var(--cal-color-brown-background);
+}
+
+.cellContent[data-paint][data-color-family="turquoise"] {
+  background: var(--cal-color-turquoise-background);
+}
+
+.cellContent[data-paint][data-color-family="purple"] {
+  background: var(--cal-color-purple-background);
+}
+
+.cellContent[data-paint][data-color-family="orange"] {
+  background: var(--cal-color-orange-background);
+}
+
+.cellContent[data-paint][data-invalid] {
+  background: var(--cal-slot-unavailable);
+  box-shadow: inset 0 0 0 var(--cal-border-width-1) var(--cal-color-error);
+}
+
+.cellContent[data-drop-target] {
+  background: var(--cal-slot-selected);
+  outline: var(--cal-border-width-1) dashed var(--cal-slot-selected-ring);
+  outline-offset: calc(-1 * var(--cal-border-width-1));
+}
+
+/* The ghost is the dragged card as a drop would place it: above the cards around it, never
+   taking the pointer, and casting the drag shadow. */
+.eventFrame.dragGhost {
+  z-index: 20;
+  border-radius: var(--cal-radius-slot);
+  box-shadow: var(--cal-shadow-drag);
+  inset-block-start: 0;
+  pointer-events: none;
+}
+
+/* The cell holding the ghost drops its own stacking context, so the ghost competes with the cards
+   instead of painting under all of them. */
+.cellContent:has([data-drag-ghost]) {
+  z-index: auto;
+}
+
+/* The preview sits in the first painted cell, which drops its stacking context like the ghost's cell. */
+.cellContent:has([data-paint-preview]) {
+  z-index: auto;
+}
+
+/* Mirrors the event card body and its time row so the preview reads as an uncoloured card. */
+.paintPreview {
+  position: absolute;
+  inset-inline: 0;
+  z-index: 20;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: var(--cal-space-1) var(--cal-event-card-padding-inline-end) var(--cal-space-1) var(--cal-space-1);
+  border-radius: var(--cal-radius-slot);
+  background-color: var(--cal-color-raised);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+  letter-spacing: var(--cal-text-grid-tracking);
+  pointer-events: none;
+}
+
+/* Square like the card bar, which inherits its radius from an unrounded wrapper span. */
+.paintPreviewBar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(-1 * var(--cal-border-width-1));
+  inline-size: var(--cal-event-card-bar-width);
+  background-color: var(--cal-color-text);
+}
+
+.paintPreviewTime {
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  gap: var(--cal-space-1);
+  min-inline-size: 0;
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-meta-weight);
+  line-height: var(--cal-text-meta-line-height);
+  white-space: nowrap;
+}
+
+.paintPreviewIcon {
+  flex-shrink: 0;
+  inline-size: var(--cal-icon-size-xs);
+  block-size: var(--cal-icon-size-xs);
+}
+
+/* Bands are decorative and never take the pointer, so cells and events beneath stay clickable. */
+.timeRangeFrame {
+  position: absolute;
+  pointer-events: none;
+}
+
+.timeRangeFrame > * {
+  position: absolute;
+  block-size: 100%;
+  inline-size: 100%;
+  inset: 0;
+}
+
+.eventFrame {
+  position: absolute;
+  z-index: 2;
+  min-inline-size: 0;
+  pointer-events: auto;
+}
+
+.eventFrame[data-dragging] {
+  opacity: 0.4;
+}
+
+.timedFrame {
+  margin-inline: 0 2px;
+}
+
+/* Timed cards keep 1px off the hour line above and the column line before them, as in the
+   design. Doubled class outranks the card's own size. */
+.eventFrame.timedFrame > * {
+  inset-block: var(--cal-border-width-1);
+  inset-inline: var(--cal-border-width-1) 0;
+  inline-size: auto;
+  block-size: auto;
+}
+
+/* A grab strip on the bottom edge; the card's own colour shows it on hover and touch. */
+.eventFrame.timedFrame > .resizeHandle {
+  z-index: 1;
+  block-size: var(--cal-space-2);
+  cursor: ns-resize;
+  inset-block: auto 0;
+  inset-inline: 0;
+  touch-action: none;
+}
+
+.eventFrame.timedFrame > .resizeHandle:after {
+  position: absolute;
+  border-radius: var(--cal-radius-pill);
+  background: currentcolor;
+  block-size: calc(var(--cal-border-width-1) * 2);
+  content: "";
+  inset-block-end: var(--cal-border-width-1);
+  inset-inline: 30%;
+  opacity: 0;
+}
+
+/* Same rule as the day grid: hover on a fine pointer, the card being resized, and every card on
+   touch; never because of focus, and never during a move drag. */
+@media (hover: hover) and (pointer: fine) {
+  .eventFrame:hover > .resizeHandle:after {
+    opacity: 0.6;
+  }
+}
+
+.eventFrame > .resizeHandle:active:after {
+  opacity: 0.6;
+}
+
+@media (pointer: coarse) {
+  .eventFrame.timedFrame > .resizeHandle {
+    block-size: var(--cal-space-4);
+  }
+
+  .eventFrame > .resizeHandle:after {
+    opacity: 0.6;
+  }
+}
+
+.interactionSurface:has([data-dragging]) .eventFrame > .resizeHandle:after {
+  opacity: 0;
+}
+
+.allDayFrame {
+  inset-inline-start: 0;
+  z-index: 3;
+  block-size: var(--grid-chip-height);
+  margin-inline: 2px;
+}
+
+.eventFrame > * {
+  position: absolute;
+  inset: 0;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.customEvent {
+  composes: focusRing from "../../styles/modules/focus-ring.module.css";
+}
+
+.customEvent.customEvent {
+  box-sizing: border-box;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+  padding: var(--cal-space-1) var(--cal-space-2);
+  color: var(--cal-color-text);
+  background: var(--cal-color-raised);
+  border: var(--cal-border-width-1) solid var(--cal-border-event);
+  border-radius: var(--cal-radius-slot);
+  font: inherit;
+  text-align: start;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.selectedRing {
+  composes: selectedRing from "../../styles/modules/state.module.css";
+}
+
+.customEvent.customEvent.unavailable {
+  border-color: var(--cal-slot-unavailable-ring);
+}
+
+.customEvent.customEvent:hover:not(.unavailable) {
+  background: var(--cal-state-hover);
+}
+
+.customConflicts {
+  margin: var(--cal-space-1) 0 0;
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-meta-size);
+}
+
+.nowLine {
+  composes: nowLine from "../../styles/modules/now-line.module.css";
+}
+
+.nowLine::after {
+  content: "";
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: var(--cal-now-segment-inline-start, 0);
+  inline-size: var(--cal-now-segment-inline-size, 0);
+  block-size: 2px;
+  background: var(--cal-color-now);
+  pointer-events: none;
+}
+
+.nowLine.nowLine {
+  inset-inline-start: var(--grid-gutter-width);
+}
+
+.nowLabel {
+  composes: nowLabel from "../../styles/modules/now-line.module.css";
+}
+
+.liveRegion {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
+
+.detailSlot {
+  margin-block-start: var(--cal-space-4);
+  padding: var(--cal-space-4);
+  background: var(--cal-color-overlay-surface);
+  border: var(--cal-border-width-1) solid var(--cal-color-overlay-border);
+  border-radius: var(--cal-radius-md);
+  box-shadow: var(--cal-shadow-panel);
+}
+
+@media (forced-colors: active) {
+  .customEvent.customEvent:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .nowLine {
+    border-color: Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customEvent.customEvent {
+    transition-duration: 0s;
+  }
+}
+
+/* The `+N` lane tile. Its position and lane come from the layout as inline styles. */
+.overflow.overflow {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  justify-content: flex-start;
+  border: var(--cal-border-width-1) solid var(--cal-border-event);
+  border-radius: var(--cal-radius-slot);
+  background: var(--cal-color-raised);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-label-weight);
+  line-height: var(--cal-text-meta-line-height);
+  padding-block: var(--cal-space-xxs);
+  padding-inline: var(--cal-space-1);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* On paper the whole week prints, not the part that fits the scroll area. The current time is not useful there. */
+@media print {
+  .container,
+  .interactionSurface {
+    overflow: visible;
+    block-size: auto;
+    print-color-adjust: exact;
+  }
+
+  .weekGrid {
+    block-size: auto;
+    min-inline-size: 0;
+  }
+
+  .nowLine.nowLine,
+  .nowLabel.nowLabel {
+    display: none;
+  }
+}

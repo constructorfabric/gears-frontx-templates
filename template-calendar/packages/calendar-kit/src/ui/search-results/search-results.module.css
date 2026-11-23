@@ -1,0 +1,246 @@
+.results {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-4);
+  color: var(--cal-color-text);
+  font-family: var(--cal-font-family);
+}
+
+.groups {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cal-space-4);
+}
+
+/* The label sits close to its rows; each row's own padding spaces the rows. */
+.group,
+.rows {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+}
+
+.group {
+  gap: var(--cal-space-1);
+}
+
+/* Sentence case: "Wed, Aug 26" read as shouting in capitals. */
+.day {
+  composes: sectionLabel from "../../styles/modules/text.module.css";
+  font-weight: var(--cal-text-label-weight);
+  text-transform: none;
+}
+
+.dayToday {
+  color: var(--cal-color-now);
+}
+
+/* Results line up with the search field above them, so the list item adds no inset of its own. */
+.resultItem {
+  padding-inline: 0;
+}
+
+.result {
+  composes: focusRing from "../../styles/modules/focus-ring.module.css";
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--cal-radius-md);
+  color: var(--cal-color-text);
+  cursor: pointer;
+  font-family: var(--cal-font-family);
+  font-size: inherit;
+  gap: var(--cal-space-1);
+  inline-size: 100%;
+  justify-content: flex-start;
+  margin: 0;
+  min-inline-size: 0;
+  outline: none;
+  padding: var(--cal-space-1) var(--cal-space-2) var(--cal-space-1)
+    var(--cal-space-3);
+  text-align: start;
+  transition:
+    background-color var(--cal-motion-duration-short) ease,
+    border-color var(--cal-motion-duration-short) ease,
+    box-shadow var(--cal-motion-duration-short) ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 116px;
+  white-space: normal;
+}
+
+.result:hover {
+  background: var(--cal-state-hover);
+}
+
+/* The family sets the colour bar and the intense text: start time, title and Now stay readable on the surface. */
+.colorTurquoise {
+  --search-result-bar: var(--cal-color-turquoise-accent);
+  --search-result-intense: var(--cal-color-turquoise-foreground);
+}
+
+.colorPurple {
+  --search-result-bar: var(--cal-color-purple-accent);
+  --search-result-intense: var(--cal-color-purple-foreground);
+}
+
+.colorOrange {
+  --search-result-bar: var(--cal-color-orange-accent);
+  --search-result-intense: var(--cal-color-orange-foreground);
+}
+
+.colorBlue {
+  --search-result-bar: var(--cal-color-blue-accent);
+  --search-result-intense: var(--cal-color-blue-foreground);
+}
+
+.colorLavender {
+  --search-result-bar: var(--cal-color-lavender-accent);
+  --search-result-intense: var(--cal-color-lavender-foreground);
+}
+
+.colorViolet {
+  --search-result-bar: var(--cal-color-violet-accent);
+  --search-result-intense: var(--cal-color-violet-foreground);
+}
+
+.colorBrown {
+  --search-result-bar: var(--cal-color-brown-accent);
+  --search-result-intense: var(--cal-color-brown-foreground);
+}
+
+.times {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  inline-size: 56px;
+  min-inline-size: 0;
+}
+
+.start {
+  color: var(--search-result-intense, var(--cal-color-text));
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-caption-weight);
+  line-height: var(--cal-text-meta-line-height);
+  white-space: nowrap;
+}
+
+.end {
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-caption-size);
+  font-weight: var(--cal-text-caption-weight);
+  line-height: var(--cal-text-caption-line-height);
+  white-space: nowrap;
+}
+
+.bar {
+  flex: none;
+  border-radius: var(--cal-radius-pill);
+  background: var(--search-result-bar, var(--cal-color-muted));
+  inline-size: 3px;
+}
+
+.content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--cal-space-1);
+  min-inline-size: 0;
+  padding-inline: var(--cal-space-1);
+}
+
+.title {
+  composes: truncate from "../../styles/modules/text.module.css";
+  max-inline-size: 100%;
+  color: var(--search-result-intense, inherit);
+  font-size: var(--cal-text-meta-size);
+  font-weight: var(--cal-text-title-weight);
+  line-height: var(--cal-text-meta-line-height);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  color: var(--cal-color-muted);
+  font-size: var(--cal-text-meta-size);
+  gap: var(--cal-space-1);
+  line-height: var(--cal-text-meta-line-height);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.truncate {
+  composes: truncate from "../../styles/modules/text.module.css";
+  min-inline-size: 0;
+}
+
+.icon {
+  flex: none;
+  block-size: 12px;
+  inline-size: 12px;
+}
+
+.now {
+  color: var(--cal-color-now-label);
+  font-weight: var(--cal-text-caption-weight);
+}
+
+/* Each avatar overlaps the one before it; the surface-coloured border separates them. */
+.avatars {
+  display: flex;
+  align-items: center;
+  padding-block: var(--cal-space-1);
+}
+
+.avatars > * {
+  flex: none;
+  border: 3px solid var(--cal-color-surface);
+  block-size: 28px;
+  inline-size: 28px;
+  margin-inline-end: -3px;
+}
+
+.liveRegion {
+  composes: srOnly from "../../styles/modules/sr-only.module.css";
+}
+
+@media (forced-colors: active), (prefers-contrast: more) {
+  .dayToday {
+    color: Highlight;
+  }
+
+  .result {
+    color: CanvasText;
+    background: Canvas;
+    border-color: CanvasText;
+  }
+
+  .result:hover,
+  .result:focus-visible {
+    color: HighlightText;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .start,
+  .end,
+  .title,
+  .metaRow,
+  .now {
+    color: inherit;
+  }
+
+  .bar {
+    background: CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result {
+    transition-duration: 0s;
+  }
+}

@@ -1,0 +1,77 @@
+# @gears-frontx/calendar-kit
+
+> React 19 calendar UI for FrontX host applications: week, day, month and agenda views, event card and detail, create-event form, availability painting, and side-panel tools. It renders host data and reports user intent through typed callbacks; the host owns data, access rules, conflicts, persistence and translations.
+
+Rules an assistant should follow when writing code against this package:
+
+- Import `@gears-frontx/ui-kit/theme.css` and then `@gears-frontx/calendar-kit/theme.css` once, and map the `--cal-*` seams to your own tokens (`themes/example.css` is an optional example preset showing one complete mapping). The wrapped ui-kit controls read their tokens from ui-kit's theme; calendar-kit's does not define them.
+- Import a family subpath (`@gears-frontx/calendar-kit/week-grid`) instead of the root when bundle size matters: the root entry keeps every family's CSS reachable, a subpath only that family's.
+- Build values with the parsers: `calendarDate("2026-09-23")`, `parseLocalTime("09:30")`, `utcInstant(...)`, `parseIanaTimeZone("Europe/Istanbul")`. They throw `RangeError` on bad input. Never cast strings to these branded types.
+- A timed `CalendarEvent` needs `startDate`, `startTime`, `endDate`, `endTime` in its own zone and `start`/`end` instants from `fromViewerDateTime`. An all-day event has an exclusive `endDate` and `null` times.
+- Components never change host data. Handle `onEventSelect`, `onQuickCreate`, `onPaintSelect`, `onMoveRequest` and `onResizeRequest` (call `confirm()` or `cancel()`), `onSubmit` (return `{ error }` to keep the form open) and the toolbar callbacks.
+- Stateful props come as `value` / `defaultValue` / `onValueChange`. `undefined` means uncontrolled; `null` means controlled and empty.
+- `CalendarProvider` takes `timeZone`; `CalendarLocalizationProvider` takes `locale`, `direction`, `t`, `messages` and `onMissingTranslation`. A component also takes `locale`, `direction`, `t`, `translations` and `timeZone`, and those override the providers for that component. `t(id, values)` receives canonical `calendar.*` ids, a numeric `count` for plurals and raw values; returning the id falls back to English.
+- Pass `now` to freeze today and the now line in tests and screenshots.
+- Style through `--cal-*` seams, `className`, the grids' `cellClassName`/`columnHeaderClassName`/`gutterClassName`/`weekNumberClassName`, and `data-event-id`. Never target kit CSS Module class names.
+
+## Guides
+
+- [Getting started](dist/docs/getting-started.md): install, styles, a first week, callbacks, providers, import paths
+- [Concepts](dist/docs/concepts.md): ownership, branded values, time zones, the event model, layout vocabulary, drafts
+- [Architecture and data flow](dist/docs/architecture.md): layers, folders, render and interaction flow, design reasons
+- [Customization](dist/docs/customization.md): tokens, dark mode, behaviour props, text, classes, DOM hooks, render slots, composition, headless
+- [Internationalization](dist/docs/i18n.md): provider, per-component overrides, resolution order, plurals, RTL
+- [Theming](dist/docs/theming.md): every seam with its default and example-preset value
+- [Headless controllers](dist/docs/headless.md): the controller hooks and the React-free core functions
+- [Recipes](dist/docs/recipes.md): compiled examples for common screens
+- [Which part when](dist/docs/which-part-when.md): goal to component, prop and recipe, plus invariants
+- Numbered recipes, each with a compiled sample:
+  - [S1 date span](dist/docs/s01-date-span.md): MonthGrid date range with blocked days
+  - [S2 second date span](dist/docs/s02-second-date-span.md): S1 with a host colour wrapper
+  - [S3 month view](dist/docs/s03-month-view.md): month events with a selected range
+  - [S4 weekly hours](dist/docs/s04-weekly-hours.md): WeekGrid weekdays, 15-minute slots, break bands
+  - [S5 week rich cards](dist/docs/s05-week-rich-cards.md): WeekGrid metadata rows per card
+  - [S6 resource availability](dist/docs/s06-resource-availability.md): AvailabilityGrid cell painting
+  - [S7 person availability](dist/docs/s07-person-availability.md): sparse AvailabilityGrid per person
+  - [S8 timeslot hours](dist/docs/s08-timeslot-hours.md): add hours and days with addAvailabilityCells
+  - [S9 timeslot availability](dist/docs/s09-timeslot-availability.md): AvailabilityGrid in a native details section
+  - [S10 tiny grid](dist/docs/s10-tiny-grid.md): compact read-only AvailabilityGrid
+  - [S11 slot picker](dist/docs/s11-slot-picker.md): AvailabilityGrid cell states in renderCell
+  - [S12 dense week](dist/docs/s12-dense-week.md): toolbar slots, overflow chip, dense WeekGrid
+  - [S13 intersections](dist/docs/s13-intersections.md): WeekGrid blocks with host state colour
+  - [S14 kit demo card](dist/docs/s14-kit-demo.md): standalone EventCard with metadata
+  - [E1 conflict week](dist/docs/e01-conflict-week.md): conflict frame, weekend header, toolbar
+  - [E2 long event blocks](dist/docs/e02-long-event-blocks.md): joined card line and toolbar action
+  - [E3 event detail sheet](dist/docs/e03-event-detail-sheet.md): EventDetailContent with sections and rows
+  - [E4 event wizard](dist/docs/e04-event-wizard.md): host page with host inputs
+  - [E5 event detail in the side panel](dist/docs/e05-event-detail-side-panel.md): EventDetailPanel controlled by open
+  - [E6 create form in the side panel](dist/docs/e06-create-side-panel.md): CreateEventPanel with its required lists
+- [Testing](dist/docs/testing.md): jsdom stubs, frozen time, queries
+- [Troubleshooting](dist/docs/troubleshooting.md): symptoms and fixes
+- [Accessibility](dist/docs/accessibility.md): keyboard and screen-reader behaviour
+- [Message catalog](dist/docs/messages.md): every message id with its English text
+
+## Components
+
+- [WeekGrid](dist/docs/week-grid.md): five- or seven-day time grid with quick-create, painting and drag-to-move
+- [DayGrid](dist/docs/day-grid.md): one-day time grid
+- [MonthGrid](dist/docs/month-grid.md): month with overflow and date-range picking
+- [AgendaView](dist/docs/agenda-view.md): thirty days as a grouped list
+- [CalendarToolbar](dist/docs/calendar-toolbar.md): title, Today, previous/next, view switcher
+- [EventCard](dist/docs/event-card.md): the default event surface
+- [EventDetailPanel](dist/docs/event-detail-panel.md): inline event detail region
+- [CreateEventPanel](dist/docs/create-event.md): create-event form with recurrence and discard guard
+- [ConflictIndicator](dist/docs/conflict-indicator.md): named conflicts
+- [AvailabilityGrid](dist/docs/availability-grid.md): paint free time
+- [CalendarSidePanel](dist/docs/calendar-side-panel.md): side-panel shell
+- [MonthNavigator](dist/docs/month-navigator.md): mini month
+- [SearchResults](dist/docs/search-results.md): local search grouped by day
+- [TimeZoneList](dist/docs/time-zone-list.md): comparison time zone picker
+- [WorldClocks](dist/docs/world-clocks.md): editable clocks
+- [CalendarList](dist/docs/calendar-list.md): show or hide calendars
+- [CalendarGrid](dist/docs/calendar-grid.md): the accessible grid primitive
+- [RecurrenceScopeDialog](dist/docs/recurrence-scope-dialog.md): choose this, following or all events for a recurring change
+
+## Optional
+
+- [Everything in one file](dist/llms-full.txt)
