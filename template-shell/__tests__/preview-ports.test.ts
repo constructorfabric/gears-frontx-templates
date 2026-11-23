@@ -16,7 +16,14 @@ import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { PREVIEW_HOST, isPortFree, previewCommand } from '../scripts/lib/preview-ports';
+import {
+  PREVIEW_HOST,
+  choosePreviewPorts,
+  isPortFree,
+  movedPreviewPortsMessage,
+  previewCommand,
+  previewPortsMovable,
+} from '../scripts/lib/preview-ports';
 
 const SHELL_DIR = resolve(__dirname, '..');
 
@@ -63,10 +70,79 @@ describe('previewCommand', () => {
     expect(previewCommand({ name: 'orders-mfe', port: 3010 }).command).toBe('npm run preview -- --strictPort');
   });
 
+  it('starts a moved preview on the moved port, after the package script so it wins, and still strict', () => {
+    expect(previewCommand({ name: 'orders-mfe', port: 3010 }, 51234).command).toBe(
+      'npm run preview -- --port 51234 --strictPort',
+    );
+  });
+
   it('starts the preview in the package directory', () => {
     expect(previewCommand({ name: 'orders-mfe', port: 3010 }).cwd).toBe(
       join(process.cwd(), 'src-app', 'mfe_packages', 'orders-mfe'),
     );
+  });
+});
+
+describe('previewPortsMovable', () => {
+  it('is on only for exactly 1', () => {
+    expect(previewPortsMovable({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1' })).toBe(true);
+    expect(previewPortsMovable({})).toBe(false);
+    expect(previewPortsMovable({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: 'true' })).toBe(false);
+    expect(previewPortsMovable({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '0' })).toBe(false);
+  });
+});
+
+describe('choosePreviewPorts', () => {
+  it('gives each taken package its own free port, never a reserved one', async () => {
+    const declared = await holdPort();
+    const orders = { name: 'orders-mfe', port: declared };
+    const reports = { name: 'reports-mfe', port: declared + 1 };
+
+    const chosen = await choosePreviewPorts([orders, reports], new Set([declared, declared + 1]));
+
+    expect([...chosen.keys()]).toEqual(['orders-mfe', 'reports-mfe']);
+    const ports = [...chosen.values()];
+    expect(new Set(ports).size).toBe(2);
+    for (const port of ports) {
+      expect(port).not.toBe(declared);
+      expect(port).not.toBe(declared + 1);
+      expect(await isPortFree(port)).toBe(true);
+    }
+  });
+
+  it('skips a port the system offers when it is reserved, given to an earlier package, or taken', async () => {
+    // Two ports that were free a moment ago: taken and released, so nothing holds them.
+    const first = await holdPort();
+    const second = await holdPort();
+    await release(holders.pop()!);
+    await release(holders.pop()!);
+    const held = await holdPort();
+    const offers = [5791, held, first, first, second];
+    const chosen = await choosePreviewPorts(
+      [
+        { name: 'a-mfe', port: 3001 },
+        { name: 'b-mfe', port: 3002 },
+      ],
+      new Set([5791]),
+      async () => offers.shift()!,
+    );
+
+    expect(chosen).toEqual(new Map([['a-mfe', first], ['b-mfe', second]]));
+  });
+
+  it('gives up with the package named when no offered port is usable', async () => {
+    await expect(
+      choosePreviewPorts([{ name: 'a-mfe', port: 3001 }], new Set([5791]), async () => 5791),
+    ).rejects.toThrow('No free port found for the preview of a-mfe after 20 attempts.');
+  });
+
+  it('prints every moved package with its declared and chosen port', () => {
+    expect(
+      movedPreviewPortsMessage(
+        [{ name: 'orders-mfe', port: 3001 }],
+        new Map([['orders-mfe', 51234]]),
+      ),
+    ).toBe('Preview port already in use, moved (FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1):\n  - orders-mfe: port 3001 -> 51234');
   });
 });
 
@@ -94,6 +170,7 @@ describe('dev:all Step 0 port checks', () => {
     // the shell running the tests cannot decide what the fixture run sees.
     const env = { ...process.env };
     delete env.FRONTX_VERIFY_HOST_PORT;
+    delete env.FRONTX_VERIFY_MOVE_PREVIEW_PORTS;
     Object.assign(env, extraEnv);
     return spawnSync(
       process.execPath,
@@ -131,6 +208,19 @@ describe('dev:all Step 0 port checks', () => {
     expect(run.stderr).toContain(`port ${ordersPort} (orders-mfe, src-app/mfe_packages/orders-mfe/package.json)`);
     expect(run.stderr).toContain(`port ${reportsPort} (reports-mfe, src-app/mfe_packages/reports-mfe/package.json)`);
     expect(run.stderr).not.toContain('billing-mfe');
+    expect(run.stdout).not.toContain('Building MFE packages');
+  });
+
+  it('keeps refusing a taken port with the same message when FRONTX_VERIFY_MOVE_PREVIEW_PORTS is set but not to 1', async () => {
+    const ordersPort = await holdPort();
+    previewPackage('orders-mfe', ordersPort);
+
+    const run = runDevAll({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: 'true' });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('Preview port already in use:');
+    expect(run.stderr).toContain(`port ${ordersPort} (orders-mfe, src-app/mfe_packages/orders-mfe/package.json)`);
+    expect(run.stdout).not.toContain('moved');
     expect(run.stdout).not.toContain('Building MFE packages');
   });
 

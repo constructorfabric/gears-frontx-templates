@@ -8,6 +8,10 @@
  *
  * Port discovery: reads each package's package.json preview (or dev) script
  * for a --port NNNN argument. No separate registry file required.
+ *
+ * With FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 a preview whose declared port is
+ * taken is started on a free port instead, and the dev manifest addresses that
+ * package there (scripts/lib/preview-ports.ts).
  */
 
 import { spawn } from 'child_process';
@@ -20,10 +24,13 @@ import {
   type MfeInfo,
 } from './lib/mfe-tools.js';
 import {
+  choosePreviewPorts,
   findSharedPreviewPorts,
   findTakenPreviewPorts,
   isPortFree,
+  movedPreviewPortsMessage,
   previewCommand,
+  previewPortsMovable,
   sharedPreviewPortsMessage,
   takenPreviewPortsMessage,
   type PreviewCommand,
@@ -51,7 +58,11 @@ function hostCommand(hostPort: number | undefined): string {
 // command arrives already resolved: resolving it here would run first in
 // Step 3, after the MFE builds, and an invalid FRONTX_VERIFY_HOST_PORT would
 // only be reported once they are done.
-function buildPreviewCommands(mfes: MfeInfo[], hostCmd: string): PreviewCommand[] {
+function buildPreviewCommands(
+  mfes: MfeInfo[],
+  hostCmd: string,
+  movedPorts: ReadonlyMap<string, number>,
+): PreviewCommand[] {
   const commands: PreviewCommand[] = [];
 
   // Add main app
@@ -60,18 +71,26 @@ function buildPreviewCommands(mfes: MfeInfo[], hostCmd: string): PreviewCommand[
   // MFE preview only (build already done in the sequential step), each in
   // its package on a strict port (scripts/lib/preview-ports.ts)
   for (const mfe of mfes) {
-    commands.push(previewCommand(mfe));
+    commands.push(previewCommand(mfe, movedPorts.get(mfe.name)));
   }
 
   return commands;
 }
 
-// Run manifest generation after MFE builds
-function generateManifests(): Promise<void> {
+/** One argument for `/bin/sh -c`, quoted so the shell passes it as it is. */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+// Run manifest generation after MFE builds. A moved preview is passed on as
+// `--preview-port <package>=<port>`; without one the command is unchanged.
+function generateManifests(movedPorts: ReadonlyMap<string, number>): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log('📋 Generating MFE manifests...\n');
 
-    const proc = spawn('/bin/sh', ['-c', 'npm run generate:mfe-manifests'], {
+    const overrides = [...movedPorts].map(([name, port]) => ` --preview-port ${shellQuote(`${name}=${port}`)}`);
+    const command = `npm run generate:mfe-manifests${overrides.length > 0 ? ` --${overrides.join('')}` : ''}`;
+    const proc = spawn('/bin/sh', ['-c', command], {
       stdio: 'inherit',
       cwd: process.cwd(),
     });
@@ -120,8 +139,15 @@ async function main() {
     throw new Error(sharedPreviewPortsMessage(shared));
   }
   const taken = await findTakenPreviewPorts(packages);
+  let movedPorts = new Map<string, number>();
   if (taken.length > 0) {
-    throw new Error(takenPreviewPortsMessage(taken));
+    if (!previewPortsMovable()) {
+      throw new Error(takenPreviewPortsMessage(taken));
+    }
+    const reserved = new Set(packages.map((mfe) => mfe.port));
+    if (hostEnv.port !== undefined) reserved.add(hostEnv.port);
+    movedPorts = await choosePreviewPorts(taken, reserved);
+    console.log(`${movedPreviewPortsMessage(taken, movedPorts)}\n`);
   }
   if (hostEnv.port !== undefined && !(await isPortFree(hostEnv.port))) {
     throw new Error(
@@ -135,10 +161,10 @@ async function main() {
 
   // Step 2: Generate manifests (reads dist/mf-manifest.json, writes public/generated-mfe-manifests.json).
   // This child is also where the skipped-examples notice is printed, once per run.
-  await generateManifests();
+  await generateManifests(movedPorts);
 
   // Step 3: Start host + MFE preview servers concurrently
-  const commands = buildPreviewCommands(packages, hostCmd);
+  const commands = buildPreviewCommands(packages, hostCmd, movedPorts);
 
   console.log('📝 Running concurrently:');
   commands.forEach(({ command, cwd }, idx) => {
