@@ -26,6 +26,44 @@ frontx add mfe    --source github:constructorfabric/gears-frontx-templates//temp
 
 `<ref>` is a tag, branch, or commit. Pin it in anything meant to be reproducible - a floating branch ref (`@main`) will move under you.
 
+## Optional template passport: `frontx.gdl`
+
+A template may carry **one optional `frontx.gdl` at its root**, beside `frontx-template.json`. It describes the template as a whole for tools that assemble a product from FrontX templates (Gearbox, Constructor Studio). Individual example MFEs and workspace packages inside a template do not carry separate passports.
+
+`frontx-template.json` remains the template's required manifest and the basis for template discovery and validation. A missing `frontx.gdl` is valid; it does not mean the template is incomplete or prevent it from being used. Templates that do not need to describe a Gears integration can omit the file entirely. For example, `template-design-guardrails` contains AI design guidelines and needs no GDL passport. `template-mfe` also omits it: its current MFEs are examples, not a stable inventory of the template's runtime screens or backend dependencies.
+
+`template-shell/frontx.gdl` describes the shell's build, serving and authentication configuration using the existing GDL 1.5 `shell(...)` vocabulary:
+
+```python
+# template-shell/frontx.gdl (abridged)
+gdl_version = "1.5"
+shell(
+    name = "@gears-frontx/frontx-template-shell",
+    version = "0.1.0-alpha.7",
+    node = ">=24.14.0",
+    package_manager = "npm",
+    build = "npm run build",
+    output = "dist",
+    base = "/",
+    api_prefix = "/cf/",
+    runtime_env = None,
+    env = {},
+    build_env = [],
+    signs_in = False,
+    sign_in_redirect = None,
+)
+```
+
+The stock shell does not sign users in or read runtime environment addresses. A template that adds those capabilities updates its single root passport. Example MFE routes, fixtures and backend calls are not a template-level contract and are not listed in individual GDL files.
+
+### Keeping it in step
+
+If a passport is present, keep facts it repeats from `package.json` (identity, versions, dependency pins and build settings) in step with that manifest. Fields may be omitted when the reader can infer them from the manifests; the existing `shell(...)` vocabulary requires an explicit `signs_in`. Optionality of the file is separate from validation of its contents.
+
+The passport is metadata in the source template directory. It is outside `ownershipBoundaries`, so `frontx seed` and `frontx add` do not copy it into the generated project. This lets several templates each have their own passport without competing to own the project's root `frontx.gdl`. A generated product's own GDL configuration is maintained separately.
+
+The GDL 1.5 syntax reference is Gearbox's `docs/gdl.md`; the shell template's passport uses its existing `shell(...)` syntax.
+
 ## Relationship to the FrontX ecosystem
 
 The templates pin the FrontX ecosystem packages they consume (`@gears-frontx/api`, `@gears-frontx/mfes`, `@gears-frontx/gts-plugin`, ...) to exact registry versions, published from [`gears-frontx`](https://github.com/constructorfabric/gears-frontx). This repo never builds those packages from source - it only verifies that a pinned version is real (see "Validating locally" below). `template-mfe`'s six overrides into `../template-shell` are the one exception: `template-shell` lives in this same repo, one level up, so its packages resolve locally without a publish round-trip - see the leading comment in `template-mfe/package.json`.
