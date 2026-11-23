@@ -142,7 +142,7 @@ Every section but the head, the glossary and the answer opens with its heading a
 10. `addresses`: a row per screen with its address as the app's links carry it (the survey's links, not only the registered route), how it is reached and what the link keeps; base lines when there is more than one base; what today's same link opens when an existing screen changes; a closing note.
 11. `built`: one short line in plain words, what is reused and what is new ("The table, tabs and badges the Docs page already uses; new: the status counters"). The full list with kit components goes to CHOICE.md, Reuses.
 12. `data`: each field, what it means and its mark, "exists today" with the service or "needs a new data request". Never invent an endpoint.
-13. `states`: loading, empty, error, full and any other, one line each, saying which are drawn.
+13. `states`: loading, empty, error, full and any other, one line each, saying which are drawn. List only the states the page's data can produce: a page whose data the project's design files supply with no request (sample data, no network calls) has no "could not load" state; say so in one line instead of listing it.
 14. `recommendation` (only with options): which, the concrete reason, marked as a suggestion, and one linked card per option.
 15. `questions`: one `<li id="q-n">` each, naming the part it touches, with the reason for its suggested answer in one short sentence (`<span class="small why">Suggested: ..., because ....</span>`).
 16. `glossary`: only when the page coins names a person would not know (several screens, a new word for a new thing); never for a single page with options whose names explain themselves.

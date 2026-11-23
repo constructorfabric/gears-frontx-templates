@@ -334,4 +334,9 @@ describe('the record lookup in references/build.md', () => {
     expect(docs.length).toBeGreaterThan(6);
     for (const doc of docs) expect(readFileSync(path.join(skill, doc), 'utf8'), doc).not.toMatch(/\bls -\w*v/);
   });
+
+  it('names another skill\'s steps by what they do, never by a number that can go stale', () => {
+    const docs = ['SKILL.md', ...readdirSync(path.join(skill, 'references')).filter((f) => f.endsWith('.md')).map((f) => `references/${f}`)];
+    for (const doc of docs) expect(readFileSync(path.join(skill, doc), 'utf8'), doc).not.toMatch(/add-mfe-package[^.]*\bsteps? \d/i);
+  });
 });

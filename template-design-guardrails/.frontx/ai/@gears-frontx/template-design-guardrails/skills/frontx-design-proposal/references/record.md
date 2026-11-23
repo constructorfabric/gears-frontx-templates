@@ -44,7 +44,7 @@ Only the person's own reply selects. A recommendation, an answer the page picked
    - Regions: the page's regions at each width (1440, 768, 390): what sits where, and what changes on a phone.
    - Blocks: each drawn block of the chosen option with its kit component, from `references/drawing-kit.md` ("table block = kit Table inside a bordered Card").
    - Data fields: each field and its source status: "exists today: <service>" or "needs a new data request, to be agreed".
-   - States to build: every state from the page's States section.
+   - States to build: every state from the page's States section; a state the data cannot produce ("could not load" with no request) is not listed.
    - Kit gaps: each pattern drawn without a kit component, or `none`.
 5. Check the folder again; a selected record is clean only with the person's words, a known option, a date and every hand-off field filled.
 

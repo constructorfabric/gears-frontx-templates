@@ -91,7 +91,7 @@ When the page has a data section, every screen ends with one line (checked):
 <p class="reads">Reads: <span class="mark">exists today</span> people's names, from AccountsApiService; <span class="mark mark--new">needs a new data request</span> the tasks.</p>
 ```
 
-The same two marks label each field of "Data it needs". Never invent an endpoint.
+The same two marks label each field of "Data it needs". Never invent an endpoint. Where the project's design files say how data is supplied (sample data, no network calls), the data section says so, and the states section lists only the states that data can produce.
 
 ## Tips
 
