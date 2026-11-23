@@ -4,7 +4,7 @@ The rules for each part of the proposal page beyond the drawings and their notes
 
 ## Top bar
 
-Before `main`, the skeleton's `<div class="topbar">`: the FrontX mark with the word FrontX, a vertical line, the page title as the page's only `h1` (`.topbar-title`, "Proposal: <title>"), and at the far end two lines of page facts (`.topbar-meta`): the page id, revision and date, then "Everything here is proposed unless marked" with its scope chip (checked: the page facts are there, and the answer block names the page id and revision they show; the date is not checked). The mark is the product mark of the proposal tool, the same on every proposal page, never the surveyed app's logo; it lives in the skeleton and stays as it is (checked). The bar is sticky, white, with a line below; no menu, no theme switch; on a narrow screen the two lines go under the title. When the request names a tracker issue, the first line of page facts links it, after the date, with a plain https address: the one address on the page that leaves it (checked). The document's `<title>` is the same text as the h1 (checked). The `head` section then starts with the takeaway: one sentence of thirty words at most (checked), in names the person brings, never a description of the page.
+Before `main`, the skeleton's `<div class="topbar">`: the FrontX mark with the word FrontX, a vertical line, the page title as the page's only `h1` (`.topbar-title`, "Proposal: <title>", with "Proposal" in the page's language, see "The page's language"), and at the far end two lines of page facts (`.topbar-meta`): the page id, revision and date, then "Everything here is proposed unless marked" with its scope chip (checked: the page facts are there, and the answer block names the page id and revision they show; the date is not checked). The mark is the product mark of the proposal tool, the same on every proposal page, never the surveyed app's logo; it lives in the skeleton and stays as it is (checked). The bar is sticky, white, with a line below; no menu, no theme switch; on a narrow screen the two lines go under the title. When the request names a tracker issue, the first line of page facts links it, after the date, with a plain https address: the one address on the page that leaves it (checked). The document's `<title>` is the same text as the h1 (checked). The `head` section then starts with the takeaway: one sentence of thirty words at most (checked), in names the person brings, never a description of the page.
 
 ## Section takeaways
 
@@ -110,7 +110,7 @@ Each choice the page draws has one state:
 <a class="chip" data-state="open" href="#q-2">open</a>
 ```
 
-A chip sits where the choice acts: in a note, a data line, a field. The top bar's page facts or a heading can give one state to everything under it (`chip chip--scope`); the top bar's covers the page ("Everything here is proposed unless marked"). A chip that repeats the state of its scope is a finding (checked). The text of a chip is its state; an open chip links to its question, `<li id="q-n">` in "Open questions" (checked).
+A chip sits where the choice acts: in a note, a data line, a field. The top bar's page facts or a heading can give one state to everything under it (`chip chip--scope`); the top bar's covers the page ("Everything here is proposed unless marked"). A chip that repeats the state of its scope is a finding (checked). The text of a chip is its state, in the page's language; an open chip links to its question, `<li id="q-n">` in "Open questions" (checked).
 
 ## Disclosures
 
@@ -279,6 +279,12 @@ Past seven sections after the head or three screens, a `nav.cue` right after the
 
 On a wide screen the cue sticks under the top bar and the page script marks the section in view (`aria-current`); on a narrow one it is a plain list of links under the head. Without the script it stays a list of links.
 
+## The page's language
+
+The page is in the person's own language, the one they write in. `<html lang>` names it with a language tag (`de`, `pt-BR`; checked: the page has one), and every text the agent writes is in it: the title and its word for "Proposal", the page facts, the takeaways, the ask, headings, prose, option names and their two fields, notes, sample data, chips, the suggested tag, the open questions, their ready answers and `data-say` sentences, the hint, legends, the button's label, `data-subject`, the zoom dialog's Close. On a page in English the check reads the English labels this file names ("Proposal:", "Best for", "Trade-off", "suggested", a chip's state, "Changed since r<n>:", "on a phone", the table columns); on a page in another language it finds the same parts by place and class, so write them in that language (checked).
+
+What stays in English for now, so promise no more: the two frame scripts are kept byte for byte, so the words they write themselves are English: the answer text's connecting words ("For ... I choose option ...", "My answers to the open questions:", "Changes: none"), the Copy state line and the fallback name of a scroll box with no caption. What the agent puts into that text (the subject, the option's name, every `data-say`) is in the person's language. When the page is not in English, say this in one line as you hand it over. The check finds a guarantee sentence and a "not decided" answer by English words, and counts words between spaces; in another language apply those rules yourself. The record keeps fixed English names: CHOICE.md's field names and status values (`references/record.md`), `survey.json` keys, and the page's classes, ids and `data-*` values. The person's own words quoted in CHOICE.md stay as they said them.
+
 ## Words on the page
 
 - A section shows at most 120 words of prose beside its drawings, notes and tables; a screen and an option count on their own (checked). A paragraph that lists parts or steps is a drawing or a table not made yet.
@@ -301,7 +307,7 @@ A drawing, the map and every table sit in their own scroll box (`.scroll`, `.map
 
 ## Changed since
 
-From r2 on, the head carries one line before the takeaway (checked): `<p class="changed">Changed since r1: <a href="#screen-list">the list is the table you chose</a>; ...</p>`, each link to a changed section that exists (checked). r1 has none (checked). `references/revise.md` is the procedure.
+From r2 on, the head carries one line before the takeaway (checked): `<p class="changed">Changed since r1: <a href="#screen-list">the list is the table you chose</a>; ...</p>`, each link to a changed section that exists (checked); on a page in another language the line is in that language and names the previous revision, `r1:` (checked). r1 has none (checked). `references/revise.md` is the procedure.
 
 ## Why the page is shaped this way
 

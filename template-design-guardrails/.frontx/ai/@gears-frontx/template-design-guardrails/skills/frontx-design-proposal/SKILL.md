@@ -1,7 +1,7 @@
 ---
 name: frontx-design-proposal
 version: 0.8.0
-description: Use BEFORE a new page or screen is built when the person says "show me first", "how could it look", "give me options" or "before you build" - draw it on one local HTML page in the app's own look, ask, record the answer, then build from the record.
+description: Use before a new page or screen is built, when the person wants to see or choose its look first, or offer it once when they have neither seen nor described that look - draw it on one local HTML page in the app's own look and the person's language, ask, record the answer, then build from the record.
 ---
 
 # FrontX design proposal
@@ -10,6 +10,8 @@ Explain a new page or feature before anything is built: one self-contained HTML 
 
 ## Binding essentials
 
+- When it runs: at once when the person asked to see the page or options first; otherwise offered once, in one short line in the person's language, for new screens whose look they have neither seen nor described, and taken only on a yes; no offer for a small change or a look already given (`references/offer.md`).
+- Everything the person sees is in their own language; the frame scripts' own words stay English for now (`references/page-parts.md`, "The page's language").
 - Drawn, not built: no MFE package, no dev server, no build, no screenshot of a running app and no browser are needed to make the proposal. Real code is written only after the person has chosen, by `../frontx-design/SKILL.md`.
 - One design by default. Two or three options only for a part with a real trade-off (how a list is laid out, where an action lives); never options for decoration.
 - Drawings are composed only from the drawing kit, `templates/draw/`, in the app's values that `scripts/survey-app.mjs` prints. A pattern with no block is drawn from the nearest blocks and named as a kit gap in the open questions.
@@ -32,6 +34,7 @@ Explain a new page or feature before anything is built: one self-contained HTML 
 
 | Task | Load |
 |---|---|
+| Decide whether to take or offer the step | `references/offer.md` |
 | Propose a page or feature | `references/propose.md`; parts in `references/page-parts.md`; blocks in `references/drawing-kit.md` |
 | Record the answer | `references/record.md` |
 | Change the proposal after feedback | `references/revise.md` |
@@ -39,8 +42,9 @@ Explain a new page or feature before anything is built: one self-contained HTML 
 
 ## Map
 
+- `references/offer.md` - when the step is taken, offered once, or skipped, and the person's language.
 - `references/propose.md` - the fast path with commands and the budget: an existing proposal, survey, frame, draw, annotate, assemble, check (text, rendered, a fresh reader), open, ask.
-- `references/page-parts.md` - the rules of each part: top bar, section takeaways, the problem, phone and desktop, map, thumbnails, zooms, data lines, tips, chips, disclosures, mapping, paths, addresses, glossary, answer block, the optional parts (flow, storyboard, guarantees, position cue) with when each applies, words on the page, wide parts and the rendered check, "Changed since", and why the page is shaped this way.
+- `references/page-parts.md` - the rules of each part: top bar, section takeaways, the problem, phone and desktop, map, thumbnails, zooms, data lines, tips, chips, disclosures, mapping, paths, addresses, glossary, answer block, the optional parts (flow, storyboard, guarantees, position cue) with when each applies, the page's language, words on the page, wide parts and the rendered check, "Changed since", and why the page is shaped this way.
 - `references/revise.md` - the next revision after feedback, edited by sections.
 - `references/drawing-kit.md` - every block, the kit component it stands for, the custom properties.
 - `references/record.md` - the record folder, revisions, CHOICE.md, recording the answer.
