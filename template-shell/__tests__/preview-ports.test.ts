@@ -113,12 +113,16 @@ describe('choosePreviewPorts', () => {
   });
 
   it('skips a port the system offers when it is reserved, given to an earlier package, or taken', async () => {
-    // Two ports that were free a moment ago: taken and released, so nothing holds them.
+    // Two ports that were free a moment ago: taken and released, so nothing
+    // holds them. `held` is taken while they are still bound, so the system
+    // cannot hand it one of them.
     const first = await holdPort();
     const second = await holdPort();
-    await release(holders.pop()!);
-    await release(holders.pop()!);
     const held = await holdPort();
+    const heldServer = holders.pop()!;
+    await release(holders.pop()!);
+    await release(holders.pop()!);
+    holders.push(heldServer);
     const offers = [5791, held, first, first, second];
     const chosen = await choosePreviewPorts(
       [

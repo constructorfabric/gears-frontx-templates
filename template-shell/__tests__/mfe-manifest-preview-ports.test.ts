@@ -133,8 +133,10 @@ describe('the dev manifest with a moved preview', () => {
     expect(publicPaths(generate(new Map([['billing-mfe', 51234]])))).toEqual(['http://127.0.0.1:51234/']);
   });
 
-  it('refuses a moved port for a package it does not aggregate, and leaves no aggregate behind', () => {
+  it('refuses a moved port for a package it does not aggregate, and removes the aggregate an earlier run wrote', () => {
     builtPackage('billing-mfe', 'http://localhost:3010/assets/remoteEntry.js');
+    generate();
+    expect(existsSync(outputFile)).toBe(true);
 
     expect(() => generate(new Map([['biling-mfe', 51234]]))).toThrow(
       '--preview-port names no aggregated MFE package: biling-mfe',
@@ -142,8 +144,10 @@ describe('the dev manifest with a moved preview', () => {
     expect(existsSync(outputFile)).toBe(false);
   });
 
-  it('refuses a moved port for a package addressed at "/", which names no port to move', () => {
+  it('refuses a moved port for a package addressed at "/", which names no port to move, and removes the earlier aggregate', () => {
     builtPackage('billing-mfe', undefined);
+    generate();
+    expect(existsSync(outputFile)).toBe(true);
 
     expect(() => generate(new Map([['billing-mfe', 51234]]))).toThrow(
       '[billing-mfe] --preview-port 51234 was given, but the package\'s publicPath "/" is not an absolute URL',
