@@ -1,0 +1,220 @@
+<!--
+  Blocks of the drawing kit (references/drawing-kit.md), one per marked
+  fragment. Copy a fragment into a drawing, change only its words, and add
+  data-note="n" to an element the page explains. Classes come from draw.css;
+  style="" sets only --cols, --w or --h. The kit component each block stands
+  for is in references/drawing-kit.md. The window, navigation, phone header
+  and brand take the classes survey.json names under "variants"; the
+  fragments below show each variant once.
+-->
+
+<!-- block: app window, side menu (put .d-main content inside); the active link is filled -->
+<div class="d-app">
+  <nav class="d-side d-active--filled">
+    <span class="d-brand">App name</span>
+    <span class="d-navlink">Home</span>
+    <span class="d-navlink">Docs</span>
+    <span class="d-navlink d-navlink--active d-navlink--new">New page <span class="d-new">new</span></span>
+  </nav>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: zoom on a part already shown in a full drawing (no navigation; only in a figure with data-zoom-of) -->
+<div class="d-app d-app--zoom">
+  <!-- the part, larger or opened -->
+</div>
+
+<!-- block: app window, top header, links right after the brand, active link as a pill -->
+<div class="d-app d-app--top">
+  <div class="d-top d-active--pill">
+    <span class="d-brand">App name</span>
+    <span class="d-navlink">Home</span>
+    <span class="d-navlink d-navlink--active d-navlink--new">New page <span class="d-new">new</span></span>
+    <div class="d-topend"><span class="d-avatar">AB</span></div>
+  </div>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: app window, top header, links at the far end, active link underlined, brand mark as initials -->
+<div class="d-app d-app--top">
+  <div class="d-top d-top--end d-active--underline">
+    <span class="d-brand d-brand--initials"><span class="d-mark">AN</span>App name</span>
+    <span class="d-navlink">Home</span>
+    <span class="d-navlink">Docs</span>
+    <span class="d-navlink d-navlink--active d-navlink--new">New page <span class="d-new">new</span></span>
+  </div>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: top header with the app's own logo: paste brandHtml from survey.json as it is; never draw or edit a logo by hand. An SVG logo is defined once per page: survey.json brandDefs (the logo as one symbol with the id brand-mark) goes once right after the body start tag, and every drawn brand refers to it with a use element pointing at #brand-mark, as brandHtml does. A small image logo is embedded in each brand. -->
+<div class="d-app d-app--top">
+  <div class="d-top d-top--end d-active--underline">
+    <span class="d-brand d-brand--logo"><span class="d-logo"><svg aria-hidden="true"><use href="#brand-mark"/></svg></span>App name</span>
+    <span class="d-navlink">Home</span>
+    <span class="d-navlink d-navlink--active">New page</span>
+  </div>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: phone window, 390 px, with a menu button -->
+<div class="d-app d-app--phone">
+  <div class="d-top"><span class="d-burger"></span><span class="d-brand">App name</span></div>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: phone window, 390 px, brand row then a second row of links that scrolls sideways inside itself -->
+<div class="d-app d-app--phone">
+  <div class="d-top d-top--rows d-active--underline">
+    <span class="d-brand">App name</span>
+    <div class="d-toplinks"><span class="d-navlink">Home</span><span class="d-navlink">Docs</span><span class="d-navlink d-navlink--active">New page</span></div>
+  </div>
+  <div class="d-main">
+    <!-- page content -->
+  </div>
+</div>
+
+<!-- block: short window, for "where it sits" and states (no minimum height) -->
+<div class="d-app d-app--mini">
+  <nav class="d-side"><span class="d-brand">App name</span><span class="d-navlink d-navlink--active">Page</span></nav>
+  <div class="d-main"><span class="d-skel" style="--w: 60%"></span></div>
+</div>
+
+<!-- block: page head (title and the lead under it) -->
+<div class="d-pagehead">
+  <div class="d-pagehead__text"><span class="d-h1">Page title</span><span class="d-lead">One line under the title</span></div>
+  <span class="d-btn d-btn--primary">Main action</span>
+</div>
+
+<!-- block: coloured band (a hero, a closing band): full width on the app's band colour, text back in the column; d-band--alt takes the second band colour. The title takes the screen's own heading size (--d-band-title). -->
+<div class="d-band">
+  <span class="d-band-title">Big headline of the page</span>
+  <span class="d-lead">One line under it</span>
+  <div class="d-row"><span class="d-btn d-btn--outline">Main action</span></div>
+</div>
+<div class="d-band d-band--alt">
+  <span class="d-section-title">Closing line</span>
+  <div class="d-row"><span class="d-btn d-btn--outline">Second action</span></div>
+</div>
+
+<!-- block: section heading of a long page (bigger than a card title; its size from the survey, --d-section) -->
+<span class="d-section-title">What you get with the app.</span>
+
+<!-- block: card, and a selected card -->
+<div class="d-card">
+  <span class="d-h2">Card title</span>
+  <span class="d-muted">Card content</span>
+</div>
+<div class="d-card d-card--selected">
+  <span class="d-h2">Selected card</span>
+  <span class="d-muted">Card content</span>
+</div>
+
+<!-- block: counters row -->
+<div class="d-stats" style="--cols: 4">
+  <div class="d-stat"><span class="d-stat__value">24</span><span class="d-stat__label">Open</span></div>
+  <div class="d-stat"><span class="d-stat__value">3</span><span class="d-stat__label">Overdue</span></div>
+  <div class="d-stat"><span class="d-stat__value">11</span><span class="d-stat__label">Done this week</span></div>
+  <div class="d-stat"><span class="d-stat__value">5</span><span class="d-stat__label">People</span></div>
+</div>
+
+<!-- block: counters without a card around each, the second one selected (a counter that filters) -->
+<div class="d-stats d-stats--plain" style="--cols: 3">
+  <div class="d-stat"><span class="d-stat__value">24</span><span class="d-stat__label">Open</span></div>
+  <div class="d-stat d-stat--selected"><span class="d-stat__value">3</span><span class="d-stat__label">Overdue</span></div>
+  <div class="d-stat"><span class="d-stat__value">11</span><span class="d-stat__label">Done</span></div>
+</div>
+
+<!-- block: table in a card -->
+<div class="d-card d-card--flush">
+  <table class="d-table">
+    <thead><tr><th>Name</th><th>Owner</th><th>Status</th><th class="d-num">Amount</th></tr></thead>
+    <tbody>
+      <tr><td><span class="d-clip">A long name that is cut to one line</span></td><td><span class="d-row"><span class="d-avatar">MC</span>Maya Chen</span></td><td><span class="d-badge d-badge--ok">Active</span></td><td class="d-num">1,200</td></tr>
+      <tr><td>Short name</td><td><span class="d-muted">Unassigned</span></td><td><span class="d-badge">Draft</span></td><td class="d-num"><span class="d-muted">None</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- block: badges -->
+<div class="d-row">
+  <span class="d-badge">Neutral</span><span class="d-badge d-badge--ok">Done</span><span class="d-badge d-badge--warn">Waiting</span><span class="d-badge d-badge--danger">Overdue</span><span class="d-badge d-badge--info">In progress</span>
+</div>
+
+<!-- block: tabs (the active tab's text takes --d-tab-active, the app's colour when it sets one) -->
+<div class="d-tabs">
+  <span class="d-tab d-tab--active">All <span class="d-badge">8</span></span><span class="d-tab">Open <span class="d-badge">5</span></span><span class="d-tab">Closed</span>
+</div>
+
+<!-- block: buttons -->
+<div class="d-row">
+  <span class="d-btn d-btn--primary">Primary</span><span class="d-btn d-btn--outline">Outline</span><span class="d-btn d-btn--ghost">Ghost</span><span class="d-btn d-btn--outline d-btn--sm">Small</span>
+</div>
+
+<!-- block: form controls -->
+<div class="d-stack">
+  <div class="d-field"><span class="d-label">Name</span><span class="d-input">Placeholder</span></div>
+  <span class="d-input d-input--search">Search</span>
+  <div class="d-field"><span class="d-label">Owner</span><span class="d-select">Anyone</span></div>
+  <span class="d-check d-check--on">Checked</span><span class="d-check">Not checked</span>
+  <span class="d-switch d-switch--on">On</span><span class="d-switch">Off</span>
+</div>
+
+<!-- block: stepper (numbered steps in a row: done with a tick, the current one filled, the rest to do); in a phone window it becomes a vertical list, or draw a d-select instead -->
+<div class="d-steps">
+  <span class="d-step d-step--done">Create a project</span><span class="d-step d-step--current">Pick a template</span><span class="d-step">Invite people</span>
+</div>
+
+<!-- block: progress bar (--w is the share done) -->
+<div class="d-stack"><span class="d-small d-muted">1 of 3 done</span><span class="d-progress" style="--w: 33%"></span></div>
+
+<!-- block: alerts -->
+<div class="d-stack">
+  <div class="d-alert d-alert--info">Information</div>
+  <div class="d-alert d-alert--warn">Warning</div>
+  <div class="d-alert d-alert--danger">Something failed</div>
+  <div class="d-alert d-alert--ok">Saved</div>
+</div>
+
+<!-- block: empty state -->
+<div class="d-card">
+  <div class="d-empty"><span class="d-h2">Nothing here yet</span><span class="d-muted">What will show here</span><span class="d-btn d-btn--primary d-btn--sm">First action</span></div>
+</div>
+
+<!-- block: loading -->
+<div class="d-card">
+  <span class="d-skel"></span><span class="d-skel" style="--w: 80%"></span><span class="d-skel" style="--w: 60%"></span>
+</div>
+
+<!-- block: list rows -->
+<div class="d-list">
+  <div class="d-listrow"><span class="d-avatar">MC</span><div class="d-stack d-grow"><span class="d-strong">Row title</span><span class="d-small d-muted">Row detail</span></div><span class="d-badge">Tag</span></div>
+  <div class="d-listrow"><span class="d-avatar">OH</span><div class="d-stack d-grow"><span class="d-strong">Row title</span><span class="d-small d-muted">Row detail</span></div><span class="d-btn d-btn--ghost d-btn--sm">Open</span></div>
+</div>
+
+<!-- block: board column -->
+<div class="d-board" style="--cols: 3">
+  <div class="d-col">
+    <div class="d-colhead">To do <span class="d-badge">2</span></div>
+    <div class="d-tile"><span class="d-strong">Item title</span><div class="d-row d-row--between"><span class="d-avatar">MC</span><span class="d-small d-muted">Mar 14</span></div></div>
+  </div>
+</div>
+
+<!-- block: chart placeholder -->
+<div class="d-card">
+  <span class="d-h2">Chart title</span>
+  <div class="d-chart"><span class="d-bar" style="--h: 40%"></span><span class="d-bar" style="--h: 75%"></span><span class="d-bar" style="--h: 55%"></span><span class="d-bar" style="--h: 90%"></span></div>
+</div>
+
+<!-- block: layout helpers -->
+<div class="d-grid" style="--cols: 3"><div class="d-card">Grid cell</div><div class="d-card">Grid cell</div><div class="d-card">Grid cell</div></div>
+<div class="d-row d-row--between"><span class="d-strong">Left</span><span class="d-small d-muted">Right</span></div>

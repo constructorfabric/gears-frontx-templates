@@ -1,0 +1,210 @@
+/*
+  Drawing kit of the frontx-design-proposal skill (references/drawing-kit.md).
+  Blocks that mirror the FrontX UI Kit's components and the app's chrome, drawn
+  in plain HTML and CSS. Every colour, radius, font, size and spacing comes
+  from a --d-* custom property; the survey (scripts/survey-app.mjs) prints the
+  app's values for them, already scaled to the drawing window, and the
+  proposal page sets them in its app-look style. Shapes the app's chrome can
+  take (where the header links sit, how the active link is marked, a phone
+  header with a second row of links) are block variants: classes the survey
+  names. The defaults below are the kit's light values, so a block renders
+  without them. This file is copied unchanged into templates/proposal.html; a
+  drawing uses only these classes and never restyles them.
+*/
+.d-app {
+  --d-bg: #f1f5f9; --d-surface: #ffffff; --d-text: #0f172a; --d-muted: #334155;
+  --d-subtle: #f1f5f9; --d-line: #e2e8f0; --d-accent: #0065e3; --d-accent-text: #ffffff;
+  --d-ok: #047857; --d-ok-soft: #e8f8f1; --d-warn: #92400e; --d-warn-soft: #fff7d6;
+  --d-danger: #be123c; --d-danger-soft: #fff1f2; --d-info: #2563eb; --d-info-soft: #eaf2ff;
+  --d-nav-bg: #0f172a; --d-nav-text: #b3b9c3; --d-nav-active: #0065e3; --d-nav-active-text: #ffffff;
+  --d-radius: 0.625rem; --d-font: ui-sans-serif, system-ui, sans-serif;
+  --d-h1: 1.25rem; --d-h2: 1rem; --d-body: 0.875rem; --d-small: 0.75rem;
+  --d-h1-weight: 600; --d-h1-track: normal; --d-lead: 0.875rem; --d-stat: 1.75rem; --d-th-case: none;
+  --d-gutter: 28px; --d-max: 100%; --d-top: 24px; --d-btn-h: 34px; --d-btn-radius: 8px;
+  --d-nav-h: 52px; --d-nav-pad: 20px; --d-nav-gap: 16px; --d-nav-size: 0.875rem;
+  --d-toplink: #334155; --d-toplink-active: #0f172a; --d-brand-size: 1rem; --d-mark: 20px; --d-mark-color: var(--d-accent); --d-tab-active: #0f172a;
+  --d-h1-phone: 1.25rem; --d-gutter-phone: 16px; --d-top-phone: 16px; --d-nav-h-phone: 52px; --d-navrow-h-phone: 40px;
+  --d-section: calc(var(--d-h1) * 0.8); --d-section-phone: calc(var(--d-h1-phone) * 0.8);
+  --d-band-bg: var(--d-accent); --d-band-text: var(--d-accent-text); --d-band-alt-bg: var(--d-text); --d-band-alt-text: var(--d-surface);
+  --d-band-title: var(--d-h1); --d-band-title-phone: var(--d-h1-phone); --d-band-title-weight: var(--d-h1-weight);
+}
+.d-app, .d-app * { box-sizing: border-box; }
+.d-app {
+  display: grid; grid-template-columns: 200px 1fr; grid-template-rows: auto 1fr;
+  width: 1120px; min-height: 640px; overflow: hidden;
+  background: var(--d-bg); color: var(--d-text); font-family: var(--d-font); font-size: var(--d-body); line-height: 1.45;
+  border: 1px solid var(--d-line); border-radius: 10px; text-align: left;
+}
+.d-app:not(.d-app--zoom) { container-type: inline-size; --d-main-w: calc(100cqw - 200px); }
+.d-app--top { grid-template-columns: 1fr; }
+.d-app.d-app--top, .d-app.d-app--phone { --d-main-w: 100cqw; }
+.d-app--phone { width: 390px; min-height: 720px; grid-template-columns: 1fr; }
+/* A phone window takes the app's phone values; two classes so the app-look block cannot override them. */
+.d-app.d-app--phone { --d-h1: var(--d-h1-phone); --d-gutter: var(--d-gutter-phone); --d-top: var(--d-top-phone); --d-nav-h: var(--d-nav-h-phone); --d-nav-pad: var(--d-gutter-phone); --d-max: 100%; --d-section: var(--d-section-phone); --d-band-title: var(--d-band-title-phone); }
+.d-app--mini { min-height: 0; }
+.d-app--zoom { display: flex; flex-direction: column; gap: 12px; width: auto; max-width: 640px; min-height: 0; padding: 16px; }
+
+/* Chrome: side menu, top header, phone bar. Variants on the nav element:
+   d-active--underline, d-active--pill, d-active--filled (how the active link
+   is marked); d-top--end (links at the far end); d-top--rows (a phone header
+   whose second row holds the links, scrolling sideways inside itself). */
+.d-side { grid-row: 1 / span 2; background: var(--d-nav-bg); color: var(--d-nav-text); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.d-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--d-brand-size); padding: 4px 8px 14px; color: inherit; white-space: nowrap; }
+.d-brand::before { content: ""; width: var(--d-mark); height: var(--d-mark); border-radius: 6px; background: var(--d-accent); flex: none; }
+.d-brand--initials::before, .d-brand--logo::before { display: none; }
+/* The app's own logo, inlined by the survey (brandHtml): an SVG drawn in --d-mark-color, or a small embedded image. */
+.d-logo { display: inline-block; width: var(--d-mark); height: var(--d-mark); color: var(--d-mark-color); flex: none; }
+.d-logo > svg, .d-logo > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.d-mark { display: inline-grid; place-items: center; width: var(--d-mark); height: var(--d-mark); border-radius: 6px; background: var(--d-accent); color: var(--d-accent-text); font-size: calc(var(--d-mark) * 0.45); font-weight: 700; flex: none; }
+.d-navlink { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: calc(var(--d-radius) - 4px); color: inherit; white-space: nowrap; }
+.d-navlink::before { content: ""; width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid currentColor; opacity: 0.7; flex: none; }
+.d-navlink--active { background: var(--d-nav-active); color: var(--d-nav-active-text); }
+.d-navlink--new { box-shadow: inset 0 0 0 1.5px var(--d-nav-active); }
+.d-new { margin-left: auto; font-size: var(--d-small); font-weight: 600; padding: 0 6px; border-radius: 999px; background: var(--d-nav-active); color: var(--d-nav-active-text); }
+.d-top { display: flex; align-items: center; gap: var(--d-nav-gap); padding: 0 var(--d-nav-pad); height: var(--d-nav-h); background: var(--d-surface); border-bottom: 1px solid var(--d-line); }
+.d-top .d-brand { padding: 0; color: var(--d-text); }
+.d-top .d-navlink { color: var(--d-toplink); font-size: var(--d-nav-size); }
+.d-top .d-navlink--active { background: var(--d-subtle); color: var(--d-toplink-active); }
+.d-top .d-navlink::before { display: none; }
+.d-topend { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.d-top--end > .d-brand { margin-right: auto; }
+.d-top--end > .d-topend { margin-left: 0; }
+.d-top.d-active--underline .d-navlink { align-self: stretch; padding: 0; border-radius: 0; }
+.d-active--underline .d-navlink--active { background: transparent; color: var(--d-toplink-active); box-shadow: inset 0 -2px 0 var(--d-accent); }
+.d-side.d-active--underline .d-navlink--active { color: var(--d-nav-active); box-shadow: inset 0 -2px 0 var(--d-nav-active); }
+.d-active--pill .d-navlink--active { background: var(--d-subtle); color: var(--d-text); border-radius: 999px; }
+.d-active--filled .d-navlink--active { background: var(--d-nav-active); color: var(--d-nav-active-text); }
+.d-top--rows { flex-direction: column; align-items: stretch; height: auto; gap: 0; }
+.d-top--rows > .d-brand { height: var(--d-nav-h); }
+.d-toplinks { display: flex; align-items: stretch; gap: var(--d-nav-gap); height: var(--d-navrow-h-phone); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.d-burger { width: 20px; height: 14px; border-top: 2px solid currentColor; border-bottom: 2px solid currentColor; position: relative; flex: none; }
+.d-burger::after { content: ""; position: absolute; left: 0; right: 0; top: 4px; border-top: 2px solid currentColor; }
+/* The content column: the app's gutter, centred within the app's maximum width. */
+.d-main { padding: var(--d-top) max(var(--d-gutter), calc((100% - var(--d-max)) / 2)) 28px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Page head */
+.d-pagehead { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.d-pagehead__text { display: flex; flex-direction: column; gap: 6px; margin-right: auto; }
+.d-h1 { font-size: var(--d-h1); font-weight: var(--d-h1-weight); letter-spacing: var(--d-h1-track); line-height: 1.15; margin: 0; }
+.d-lead { font-size: var(--d-lead); color: var(--d-muted); }
+.d-h2 { font-size: var(--d-h2); font-weight: 600; line-height: 1.35; margin: 0; }
+/* A section heading of a long page: bigger than a card title, its size from the survey (--d-section). */
+.d-section-title { font-size: var(--d-section); font-weight: var(--d-h1-weight); letter-spacing: var(--d-h1-track); line-height: 1.15; margin: 0; }
+.d-muted { color: var(--d-muted); }
+.d-small { font-size: var(--d-small); }
+.d-strong { font-weight: 600; }
+
+/* Coloured band: a full-width section on one of the app's own band colours
+   (a hero, a closing band). It cancels the content column's padding so it
+   runs edge to edge; its text sits back in the column. d-band--alt takes the
+   second band colour. */
+.d-band { --d-bleed: max(var(--d-gutter), calc((var(--d-main-w) - var(--d-max)) / 2)); margin: 0 calc(-1 * var(--d-bleed)); padding: 40px var(--d-bleed); background: var(--d-band-bg); color: var(--d-band-text); display: flex; flex-direction: column; gap: 14px; }
+.d-band--alt { background: var(--d-band-alt-bg); color: var(--d-band-alt-text); }
+.d-band:first-child { margin-top: calc(-1 * var(--d-top)); }
+.d-band:last-child { margin-bottom: -28px; }
+.d-band .d-muted, .d-band .d-lead { color: inherit; opacity: 0.85; }
+.d-band .d-btn--outline { background: var(--d-band-text); color: var(--d-band-bg); border-color: transparent; }
+.d-band .d-btn--ghost { color: inherit; }
+.d-band-title { font-size: var(--d-band-title); font-weight: var(--d-band-title-weight); letter-spacing: var(--d-h1-track); line-height: 1.1; margin: 0; }
+
+/* Layout helpers */
+.d-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.d-row--between { justify-content: space-between; }
+.d-stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.d-grid { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 12px; }
+.d-grow { flex: 1 1 0; min-width: 0; }
+
+/* Card and counters */
+.d-card { background: var(--d-surface); border: 1px solid var(--d-line); border-radius: var(--d-radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.d-card--flush { padding: 0; overflow: hidden; }
+.d-stats { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 12px; }
+.d-stat { background: var(--d-surface); border: 1px solid var(--d-line); border-radius: var(--d-radius); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; }
+.d-stat__value { font-size: var(--d-stat); font-weight: 600; line-height: 1.2; }
+.d-stats--plain .d-stat { background: transparent; border: 0; border-radius: 0; padding: 4px 0; }
+.d-card--selected, .d-stat--selected { border-color: var(--d-accent); box-shadow: inset 0 0 0 1px var(--d-accent); }
+.d-stats--plain .d-stat--selected { box-shadow: inset 0 -2px 0 var(--d-accent); }
+.d-stat__label { font-size: var(--d-small); color: var(--d-muted); }
+
+/* Table */
+.d-table { width: 100%; border-collapse: collapse; font-size: var(--d-body); }
+.d-table th { text-align: left; font-weight: 500; text-transform: var(--d-th-case); font-size: var(--d-small); color: var(--d-muted); padding: 10px 14px; border-bottom: 1px solid var(--d-line); white-space: nowrap; }
+.d-table td { padding: 10px 14px; border-bottom: 1px solid var(--d-line); vertical-align: middle; }
+.d-table tr:last-child td { border-bottom: 0; }
+.d-table .d-num { text-align: right; font-variant-numeric: tabular-nums; }
+.d-clip { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Badge, avatar */
+.d-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: var(--d-small); font-weight: 500; background: var(--d-subtle); color: var(--d-muted); border: 1px solid var(--d-line); white-space: nowrap; }
+.d-badge--ok { background: var(--d-ok-soft); color: var(--d-ok); border-color: transparent; }
+.d-badge--warn { background: var(--d-warn-soft); color: var(--d-warn); border-color: transparent; }
+.d-badge--danger { background: var(--d-danger-soft); color: var(--d-danger); border-color: transparent; }
+.d-badge--info { background: var(--d-info-soft); color: var(--d-info); border-color: transparent; }
+.d-avatar { width: 24px; height: 24px; border-radius: 999px; background: var(--d-subtle); color: var(--d-muted); border: 1px solid var(--d-line); display: inline-grid; place-items: center; font-size: 0.625rem; font-weight: 600; flex: none; }
+
+/* Tabs */
+.d-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--d-line); }
+.d-tab { padding: 8px 12px; color: var(--d-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.d-tab--active { color: var(--d-tab-active); border-bottom-color: var(--d-accent); font-weight: 500; }
+
+/* Buttons and form controls */
+.d-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--d-btn-h); padding: 0 calc(var(--d-btn-h) * 0.45); border-radius: var(--d-btn-radius); font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
+.d-btn--primary { background: var(--d-accent); color: var(--d-accent-text); }
+.d-btn--outline { background: var(--d-surface); color: var(--d-text); border-color: var(--d-line); }
+.d-btn--ghost { background: transparent; color: var(--d-text); }
+.d-btn--sm { height: 28px; padding: 0 10px; font-size: var(--d-small); }
+.d-card > .d-btn, .d-stack > .d-btn { align-self: flex-start; }
+.d-input, .d-select { display: inline-flex; align-items: center; height: 34px; padding: 0 12px; min-width: 180px; border: 1px solid var(--d-line); border-radius: calc(var(--d-radius) - 2px); background: var(--d-surface); color: var(--d-muted); white-space: nowrap; }
+.d-input--search::before { content: ""; width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 999px; margin-right: 8px; flex: none; }
+.d-select { justify-content: space-between; gap: 12px; color: var(--d-text); }
+.d-select::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--d-muted); border-bottom: 1.5px solid var(--d-muted); transform: rotate(45deg) translateY(-2px); flex: none; }
+.d-field { display: flex; flex-direction: column; gap: 4px; }
+.d-label { font-size: var(--d-small); font-weight: 500; }
+.d-check { display: inline-flex; align-items: center; gap: 8px; position: relative; }
+.d-check::before { content: ""; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--d-line); background: var(--d-surface); flex: none; }
+.d-check--on::before { background: var(--d-accent); border-color: var(--d-accent); }
+/* The tick of a checked box. */
+.d-check--on::after { content: ""; position: absolute; left: 5.5px; top: 50%; width: 4px; height: 8px; border: solid var(--d-accent-text); border-width: 0 2px 2px 0; transform: translateY(-62%) rotate(45deg); }
+.d-switch { display: inline-flex; align-items: center; gap: 8px; }
+.d-switch::before { content: ""; width: 30px; height: 18px; border-radius: 999px; background: var(--d-line); box-shadow: inset 2px 0 0 2px var(--d-line), inset 14px 0 0 2px var(--d-surface); flex: none; }
+.d-switch--on::before { background: var(--d-accent); box-shadow: inset -2px 0 0 2px var(--d-accent), inset -14px 0 0 2px var(--d-accent-text); }
+
+/* Stepper: numbered steps in a row, done (a tick), current (filled) or to do;
+   in a phone window the row becomes a vertical list (or draw a d-select). Progress bar: --w is the
+   share done. */
+.d-steps { display: flex; align-items: center; gap: 8px 20px; counter-reset: d-step; flex-wrap: wrap; }
+.d-step { display: inline-flex; align-items: center; gap: 8px; color: var(--d-muted); counter-increment: d-step; white-space: nowrap; position: relative; }
+.d-step::before { content: counter(d-step); display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; border: 1.5px solid var(--d-line); background: var(--d-surface); font-size: var(--d-small); font-weight: 600; flex: none; }
+.d-step--current { color: var(--d-text); font-weight: 600; }
+.d-step--current::before { background: var(--d-accent); border-color: var(--d-accent); color: var(--d-accent-text); }
+.d-step--done { color: var(--d-text); }
+.d-step--done::before { content: ""; background: var(--d-accent); border-color: var(--d-accent); }
+.d-step--done::after { content: ""; position: absolute; left: 9.5px; top: 50%; width: 5px; height: 9px; border: solid var(--d-accent-text); border-width: 0 2px 2px 0; transform: translateY(-62%) rotate(45deg); }
+.d-app--phone .d-steps { flex-direction: column; align-items: stretch; gap: 10px; }
+.d-progress { display: block; height: 8px; border-radius: 999px; background: var(--d-subtle); border: 1px solid var(--d-line); overflow: hidden; }
+.d-progress::before { content: ""; display: block; height: 100%; width: var(--w, 0%); background: var(--d-accent); }
+
+/* Alert, empty state, loading */
+.d-alert { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: var(--d-radius); border: 1px solid var(--d-line); background: var(--d-surface); }
+.d-alert::before { content: ""; width: 14px; height: 14px; border-radius: 999px; background: currentColor; margin-top: 3px; flex: none; }
+.d-alert--info { background: var(--d-info-soft); color: var(--d-info); border-color: transparent; }
+.d-alert--warn { background: var(--d-warn-soft); color: var(--d-warn); border-color: transparent; }
+.d-alert--danger { background: var(--d-danger-soft); color: var(--d-danger); border-color: transparent; }
+.d-alert--ok { background: var(--d-ok-soft); color: var(--d-ok); border-color: transparent; }
+.d-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; text-align: center; }
+.d-empty::before { content: ""; width: 40px; height: 40px; border-radius: 12px; background: var(--d-subtle); border: 1px solid var(--d-line); margin-bottom: 6px; }
+.d-skel { display: block; height: 12px; border-radius: 6px; background: var(--d-line); width: var(--w, 100%); }
+
+/* List rows */
+.d-list { display: flex; flex-direction: column; background: var(--d-surface); border: 1px solid var(--d-line); border-radius: var(--d-radius); }
+.d-listrow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--d-line); min-width: 0; }
+.d-listrow:last-child { border-bottom: 0; }
+
+/* Board column and tile */
+.d-board { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 12px; align-items: start; }
+.d-col { background: var(--d-subtle); border: 1px solid var(--d-line); border-radius: var(--d-radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.d-colhead { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 2px 4px; }
+.d-tile { background: var(--d-surface); border: 1px solid var(--d-line); border-radius: calc(var(--d-radius) - 2px); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+
+/* Chart placeholder */
+.d-chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; padding: 8px 4px 0; border-bottom: 1px solid var(--d-line); }
+.d-bar { flex: 1 1 0; height: var(--h, 50%); background: var(--d-accent); border-radius: 4px 4px 0 0; opacity: 0.85; }
