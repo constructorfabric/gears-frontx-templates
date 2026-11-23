@@ -58,6 +58,32 @@ describe('a page in the person\'s own language', () => {
     expect(findings(read('account-settings/r1').replaceOrFail('<html lang="en">', '<html>'))).toContain('[head] the page has no lang on <html>: the language the page is written in, the person\'s own');
   });
 
+  it.each(['English', 'en_US'])('reads a lang that is not a language tag (%s) as a finding and keeps the English labels', (lang) => {
+    const found = findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', `<html lang="${lang}">`).replaceOrFail('<dt>Best for</dt>', '<dt>Am besten für</dt>'));
+    expect(found).toContain(`[head] the lang on <html> is not a language tag: "${lang}" (two or three letters, then optional parts joined by hyphens, as de or pt-BR)`);
+    expect(found).toContain('[options] option #option-a has no "Best for"');
+  });
+
+  it.each(['EN', 'en-GB', ' en', ''])('keeps the English labels for the lang "%s"', (lang) => {
+    const found = findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', `<html lang="${lang}">`).replaceOrFail('<dt>Best for</dt>', '<dt>Am besten für</dt>'));
+    expect(found).toContain('[options] option #option-a has no "Best for"');
+    expect(found.filter((f) => f.includes('not a language tag'))).toEqual([]);
+  });
+
+  it.each([
+    ['paths', '<th>Step 3</th><th>Heute</th>', '<th>Step 3</th><th></th>'],
+    ['addresses', '<th>Heute öffnet derselbe Link</th>', '<th></th>'],
+    ['mapping', '<th>Heute</th><th>Vorschlag</th>', '<th>Heute</th><th></th>'],
+  ])('finds an empty column heading in the %s table of a page not in English', (table, heading, emptied) => {
+    const found = findings(german(read('docs-redesign/r1')).replaceOrFail(heading, emptied));
+    expect(found.filter((f) => f.startsWith(`[${table}]`) && f.includes('column without a heading')), found.join('\n')).toHaveLength(1);
+  });
+
+  it('finds a removed column heading in the paths table of a page not in English', () => {
+    const found = findings(german(read('docs-redesign/r1')).replaceOrFail('<th>Step 3</th><th>Heute</th>', '<th>Step 3</th>'));
+    expect(found.filter((f) => f.startsWith('[paths]') && f.includes('column without a heading')), found.join('\n')).toHaveLength(1);
+  });
+
   it.each([
     ['options', 'option #option-a has fewer than two fields (dl.fields: what it is best for, its trade-off)', () => german(read('team-tasks/r1')).replaceOrFail('<dt>Nachteil</dt>', '')],
     ['answer', 'question 1 marks 0 answers suggested', () => german(read('team-tasks/r1')).replaceOrFail(/(data-q="1">[\s\S]*?)<span class="tag">empfohlen<\/span>/, '$1')],

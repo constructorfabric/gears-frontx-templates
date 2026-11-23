@@ -87,17 +87,20 @@
  *   "Proposal: <title>" (.topbar-title) and the page facts (.topbar-meta);
  *   a document <title> that differs from the h1;
  *   a takeaway that is not one sentence, no ask, no line saying these are
- *   drawings; no lang on <html>;
+ *   drawings; no lang on <html>, or a lang that is not a language tag (two
+ *   or three letters, then optional parts joined by hyphens);
  * - language: the page is written in the person's own language, named by
- *   <html lang>. On a page in English the labels the agent writes read as
+ *   <html lang>. A lang that is not a language tag is read as English. On a
+ *   page in English the labels the agent writes read as
  *   below ("Proposal:", "Best for", "suggested", a chip's state, "Changed
  *   since", "on a phone", the table columns). On a page in another language
  *   the same parts are found by their place and class instead: the title is
  *   a word, a colon and the title; a disclaimer has text; an option has two
  *   fields; a tag in a ready answer marks it suggested; a chip has text; the
  *   "Changed since" line names the previous revision; a storyboard's width
- *   heading is there; a table's columns are counted and today's cells found
- *   by their class;
+ *   heading is there; every column of the mapping, paths and addresses
+ *   tables has a heading with text, and today's cells are found by their
+ *   class;
  * - views: an option, a screen without options or the one design without a
  *   phone drawing of its own (a .d-app--phone figure) or without a desktop
  *   drawing, a phone drawing after the desktop one or inside a disclosure,
@@ -283,10 +286,21 @@ const HTML_ELEMENTS = new Set('html head body title meta link style script noscr
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color-mix)\(|\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|pink)\b/i;
 const words = (text) => text.trim().split(/\s+/).filter(Boolean).length;
-/** The page is in English when <html lang> says so or names no language; then the check reads its English labels. */
+/** A language tag: two or three letters, then optional parts of letters or digits joined by hyphens (en, de, pt-BR). */
+const LANG_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/i;
+const langOf = (root) => find(root, (n) => n.tag === 'html')[0]?.attrs.lang?.trim();
+/** The page is in English when <html lang> says so, names no language or is no language tag; then the check reads its English labels. */
 const inEnglish = (root) => {
-  const lang = find(root, (n) => n.tag === 'html')[0]?.attrs.lang?.trim();
-  return !lang || /^en(?:-|$)/i.test(lang);
+  const lang = langOf(root);
+  return !lang || !LANG_TAG.test(lang) || /^en(?:-|$)/i.test(lang);
+};
+/** On a page not in English: every column of a table has a heading with text (th in thead), counted against its widest body row. */
+const headsEveryColumn = (table) => {
+  const span = (n) => Math.max(1, Number.parseInt(n.attrs.colspan ?? '1', 10) || 1);
+  const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead'));
+  const columns = Math.max(0, ...find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'))
+    .map((tr) => tr.children.filter((c) => typeof c !== 'string' && (c.tag === 'th' || c.tag === 'td')).reduce((sum, c) => sum + span(c), 0)));
+  return heads.every((n) => norm(textOf(n))) && heads.reduce((sum, n) => sum + span(n), 0) >= columns;
 };
 /** The revision the top bar's page facts give: the second code (r<n>), else the words "revision r<n>". */
 const revisionOf = (meta) => {
@@ -1010,6 +1024,8 @@ export function checkPage(html, { survey = null } = {}) {
   // language: the page names the language it is written in; the English labels bind a page in English only
   const english = inEnglish(root);
   if (!find(root, (n) => n.tag === 'html' && norm(n.attrs.lang ?? '')).length) add('head', 'the page has no lang on <html>: the language the page is written in, the person\'s own');
+  const lang = langOf(root);
+  if (lang && !LANG_TAG.test(lang)) add('head', `the lang on <html> is not a language tag: "${lang}" (two or three letters, then optional parts joined by hyphens, as de or pt-BR)`);
 
   // top bar: the FrontX mark, the page title as the page's only h1, the page facts
   const topbar = find(root, (n) => hasClass(n, 'topbar'))[0];
@@ -1860,6 +1876,7 @@ function checkMapping({ mapping, english, add }) {
   if (!table) { add('mapping', 'no mapping table (table.mapping)'); return; }
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
   if (english ? heads.join('|') !== 'Part|Today|Proposed' : heads.length !== 3) add('mapping', 'the mapping table has the columns Part, Today and Proposed');
+  if (!english && !headsEveryColumn(table)) add('mapping', 'the mapping table has a column without a heading (th in thead, with text)');
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
   if (!rows.length) add('mapping', 'the mapping table has no part of today\'s page');
   const used = new Set();
@@ -1894,6 +1911,7 @@ function checkPaths({ paths, changes, byId, main, english, add }) {
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
   const hasToday = english ? heads.includes('Today') : rows.some((tr) => find(tr, (n) => n.tag === 'td' && hasClass(n, 'today')).length);
+  if (!english && !headsEveryColumn(table)) add('paths', 'the paths table has a column without a heading (th in thead, with text)');
   if (changes && !hasToday) add('paths', 'the page changes an existing screen; the paths table needs a Today column');
   if (!rows.length) add('paths', 'the paths table has no task');
   for (const tr of rows) {
@@ -1933,6 +1951,7 @@ function checkAddresses({ addresses, screens, changes, english, add }) {
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
   if (english) for (const h of ['Screen', 'Address']) if (!heads.includes(h)) add('addresses', `the addresses table has no "${h}" column`);
   if (!english && heads.length < 2) add('addresses', 'the addresses table has no screen and address columns');
+  if (!english && !headsEveryColumn(table)) add('addresses', 'the addresses table has a column without a heading (th in thead, with text)');
   const todayOpens = english ? heads.includes('Today the same link opens') : find(table, (n) => n.tag === 'td' && hasClass(n, 'today-opens')).length > 0;
   if (changes && !todayOpens) add('addresses', 'the page changes an existing screen; the table needs the column "Today the same link opens"');
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
