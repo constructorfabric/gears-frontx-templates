@@ -253,10 +253,16 @@ const UNFILLED = /&lt;[a-zA-Z][a-zA-Z0-9 ,.'-]{0,60}&gt;|\bREPLACE\b|\bTODO\b/;
 /**
  * An address written with a named part, `/?screen=<route>` or `/tasks/<id>`: the form the app's links take
  * (references/page-parts.md, the addresses), not a placeholder left. It starts with "/" at the start of a word,
- * every named part is one word in angle brackets, and it holds no space. A match starts only where a word starts,
+ * every named part is one word in angle brackets, and it holds no space. After a named part comes a separator
+ * ("/", "?", "=", ...) or the end of the address, never a letter, a digit or another bracket, and the address ends
+ * at a boundary (a space, the end of the text, or closing punctuation), so text glued to it (`<route>TODO`,
+ * `<route><REPLACE>`) is not taken in. A match starts only where a word starts and no address part holds a space,
  * so no two tries cover the same text and the scan stays linear. `lt` and `gt` are the brackets as the text writes them.
  */
-const addressForm = (lt, gt) => new RegExp(`(?<=^|[\\s("'])/[\\w\\-./?=#%]*(?:${lt}[a-zA-Z][\\w-]{0,30}${gt}[\\w\\-./?=#%]*)+`, 'g');
+const addressForm = (lt, gt) => {
+  const part = `${lt}[a-zA-Z][\\w-]{0,30}${gt}`;
+  return new RegExp(`(?<=^|[\\s("'\`])/[\\w\\-./?=#%]*${part}(?:[\\-./?=#%][\\w\\-./?=#%]*${part})*(?:[\\-./?=#%][\\w\\-./?=#%]*)?(?=$|[\\s.,;:)'"\`\\u2019\\u201d])`, 'g');
+};
 const ADDRESS_FORM_HTML = addressForm('&lt;', '&gt;');
 const ADDRESS_FORM_TEXT = addressForm('<', '>');
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'are', 'it', 'its', 'with', 'each', 'every', 'this', 'that', 'what', 'where', 'how', 'goes', 'go']);

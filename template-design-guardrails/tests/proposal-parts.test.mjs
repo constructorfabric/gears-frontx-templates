@@ -111,6 +111,13 @@ describe('the revision fields of CHOICE.md', () => {
     expect(survey('The menu builds its links as /?screen=<the route name>.')).toEqual(['[choice] placeholder <the route name> left']);
   });
 
+  it('takes the address form in a field only when it ends at a boundary, not a placeholder glued to it', () => {
+    const survey = (line) => check.checkChoice(choice.replaceOrFail(/^(- Survey: .*)$/m, `$1 ${line}`)).filter((f) => f.includes('placeholder'));
+    expect(survey('The menu builds its links as /?screen=<route><REPLACE>')).toEqual(['[choice] placeholder <route> left', '[choice] placeholder <REPLACE> left']);
+    expect(survey('The menu builds its links as /?screen=<route>x.')).toEqual(['[choice] placeholder <route> left']);
+    expect(survey('The menu builds its links as `/?screen=<route>`; a task opens at (/tasks/<id>/edit), see "/?screen=<route>".')).toEqual([]);
+  });
+
   it('reports a replaced record that fills the build hand-off', () => {
     expect(check.checkChoice(choice.replaceOrFail('- Route: none yet', '- Route: /tasks'), { options: ['a', 'b', 'c'] })).toContain('[choice] "Route" stays "none yet" in a replaced revision');
   });
