@@ -27,6 +27,7 @@ Extra steps: a project that needs steps the kit's scales do not carry (a bigger 
 |---|---|
 | Author or fix a theme | `references/theme.md`, `references/color.md`, then `references/verify.md` |
 | Build or revise a screen | `references/generate.md`, `references/app-screens.md`, `references/state-completeness.md`, then the topic references below that match the screen |
+| Show a new page before building it, as a drawn proposal with options where a real choice exists | the sibling skill `frontx-design-proposal` (`../frontx-design-proposal/SKILL.md`) |
 | Place a screen in FrontX | `references/frontx-context.md` |
 | Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
 | Verify: static check of the source, browser check of the render, waivers | `references/verify.md` |
