@@ -283,7 +283,7 @@ The YAML front matter above names the kit's design tokens (`colors`, `typography
 
 ## The design skill
 
-Every visual task starts with the one design skill, `frontx-design`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`. Its `SKILL.md` is a short map: the binding essentials, which reference to load for each task (theme, build, place, review, verify, DESIGN.md, handoff), and every file the skill holds. Paths below are relative to that directory.
+The template ships two design skills. Every visual task starts with `frontx-design`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`. Its `SKILL.md` is a short map: the binding essentials, which reference to load for each task (theme, build, place, review, verify, DESIGN.md, handoff), and every file the skill holds. Paths below are relative to that directory.
 
 - `references/`: the procedures and the topic rules (layout, tokens, typography, colour, motion, components, accessibility, data display, compositions).
 - `rules/`: the machine-readable rules. `rules/quality-gates.json` is the one rule registry; when sources disagree, `sourcePrecedence` in `rules/design-contract.json` is the one order.

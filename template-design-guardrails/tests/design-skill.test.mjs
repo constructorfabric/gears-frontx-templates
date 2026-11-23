@@ -1,5 +1,5 @@
 /**
- * Whole-skill check for the design-guardrails bundle's one skill,
+ * Whole-skill check for the design-guardrails bundle's design skill,
  * `skills/frontx-design/`. The SKILL.md map is the index of the skill (it
  * replaced the generated guideline index), so this test keeps it honest: the
  * rule registry has a valid shape, every gate id the prose cites exists, the

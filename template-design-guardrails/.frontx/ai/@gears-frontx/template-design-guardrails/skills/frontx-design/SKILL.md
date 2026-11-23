@@ -6,7 +6,7 @@ description: Use for any visual task in a FrontX app - build, restyle, review or
 
 # FrontX design
 
-The one skill for everything visual in a FrontX app. This file is the map; the detail sits in the files it names. Paths are relative to `<project>/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`; a copy found elsewhere has no siblings, so read the installed one.
+The skill for everything visual in a FrontX app; its sibling `frontx-design-proposal` draws a page for the person to see before it is built. This file is the map; the detail sits in the files it names. Paths are relative to `<project>/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`; a copy found elsewhere has no siblings, so read the installed one.
 
 ## Binding essentials
 
