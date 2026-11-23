@@ -37,7 +37,7 @@
  * them.
  *
  * Usage:
- *   npx tsx scripts/generate-mfe-manifests.ts [--base-url <url>]
+ *   npx tsx scripts/generate-mfe-manifests.ts [--base-url <url>] [--preview-port <package>=<port> ...]
  *
  * When --base-url is omitted, publicPath comes from manifest.metaData.publicPath
  * in the enriched mfe-manifest.json (set by the build plugin from mf-manifest.json).
@@ -214,17 +214,27 @@ export class ManifestGenerator {
   private readonly outputFile: string;
   private readonly globalBaseUrl: string | null;
   private readonly mfeManifestPath: string;
+  private readonly previewPorts: ReadonlyMap<string, number>;
 
+  /**
+   * @param previewPorts - The port a package's preview was moved to, keyed by
+   *   package directory name (`--preview-port`, passed by `dev:all` only for a
+   *   preview it moved). A package named here is addressed at its resolved
+   *   publicPath with only the port replaced; every other package, and every
+   *   run without the map, is addressed exactly as without it.
+   */
   constructor(
     mfePackagesDir: string,
     outputFile: string,
     mfeManifestPath: string,
-    globalBaseUrl: string | null
+    globalBaseUrl: string | null,
+    previewPorts: ReadonlyMap<string, number> = new Map()
   ) {
     this.mfePackagesDir = mfePackagesDir;
     this.outputFile = outputFile;
     this.mfeManifestPath = mfeManifestPath;
     this.globalBaseUrl = globalBaseUrl;
+    this.previewPorts = previewPorts;
   }
 
   run(): void {
@@ -243,6 +253,12 @@ export class ManifestGenerator {
       const packageDirs = this.discoverPackages();
       console.log(`Found ${packageDirs.length} MFE package(s):`);
       packageDirs.forEach((p) => console.log(`  - ${p}`));
+      // A moved port for a package this run does not aggregate would leave that
+      // package's preview unreachable from the manifest without a word.
+      const unknown = [...this.previewPorts.keys()].filter((name) => !packageDirs.includes(name));
+      if (unknown.length > 0) {
+        throw new Error(`--preview-port names no aggregated MFE package: ${unknown.join(', ')}`);
+      }
 
       const configs = packageDirs.map((dir) => this.processPackage(dir));
       const output = this.renderOutputFile(configs);
@@ -340,7 +356,7 @@ export class ManifestGenerator {
     const labelDictionaries = this.validateLabelDictionaries(mfeJson, pkgPath, packageDir);
     const publicPath = this.resolvePublicPath(mfeJson, packageDir);
 
-    const outManifest = this.buildManifest(mfeJson.manifest, publicPath);
+    const outManifest = this.buildManifest(mfeJson.manifest, this.atPreviewPort(publicPath, packageDir));
     const outEntries = this.buildEntries(mfeJson.entries, outManifest, packageDir);
 
     return {
@@ -666,6 +682,31 @@ export class ManifestGenerator {
     });
   }
 
+  /**
+   * The resolved publicPath of a package whose preview `dev:all` moved, with
+   * the moved port in place of the declared one; any other package's publicPath
+   * unchanged. Applied after `resolvePublicPath`, so where the address comes
+   * from stays decided there.
+   */
+  private atPreviewPort(publicPath: string, packageDir: string): string {
+    const port = this.previewPorts.get(packageDir);
+    if (port === undefined) {
+      return publicPath;
+    }
+    let url: URL;
+    try {
+      url = new URL(publicPath);
+    } catch {
+      throw new Error(
+        `[${packageDir}] --preview-port ${port} was given, but the package's publicPath "${publicPath}" ` +
+          `is not an absolute URL, so it names no port to move. Set manifest.remoteEntry in its mfe.json ` +
+          `to the address of its preview server.`
+      );
+    }
+    url.port = String(port);
+    return url.href;
+  }
+
   private renderOutputFile(configs: OutMfeManifestConfig[]): string {
     return JSON.stringify(configs, null, 2) + '\n';
   }
@@ -746,10 +787,22 @@ function collectGtsIds(mfeJson: RawEnrichedMfeJson): LocatedGtsId[] {
 // CLI entry point
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv: string[]): { baseUrl: string | null } {
+function parseArgs(argv: string[]): { baseUrl: string | null; previewPorts: Map<string, number> } {
   const idx = argv.indexOf('--base-url');
   const baseUrl = (idx !== -1 && idx + 1 < argv.length) ? argv[idx + 1] : null;
-  return { baseUrl };
+  // `--preview-port <package>=<port>`, once per moved preview (dev:all).
+  const previewPorts = new Map<string, number>();
+  argv.forEach((arg, i) => {
+    if (arg !== '--preview-port') return;
+    const value = argv[i + 1] ?? '';
+    const match = /^([^=]+)=(\d+)$/.exec(value);
+    const port = match ? Number(match[2]) : 0;
+    if (!match || port < 1 || port > 65535) {
+      throw new Error(`--preview-port expects <package>=<port> with a port between 1 and 65535, got "${value}"`);
+    }
+    previewPorts.set(match[1], port);
+  });
+  return { baseUrl, previewPorts };
 }
 
 const MFE_MANIFEST_PATH = 'dist/mfe-manifest.json';
@@ -784,12 +837,12 @@ const isProcessEntryPoint =
   realPathOrSelf(resolve(invokedPath)) === realPathOrSelf(fileURLToPath(import.meta.url));
 
 if (isProcessEntryPoint) {
-  const { baseUrl } = parseArgs(process.argv.slice(2));
   const mfePackagesDir = join(process.cwd(), 'src-app/mfe_packages');
   const outputFile = join(process.cwd(), 'public/generated-mfe-manifests.json');
 
   try {
-    new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, baseUrl).run();
+    const { baseUrl, previewPorts } = parseArgs(process.argv.slice(2));
+    new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, baseUrl, previewPorts).run();
   } catch (err) {
     console.error('Error generating MFE manifests:', err instanceof Error ? err.message : String(err));
     process.exit(1);
