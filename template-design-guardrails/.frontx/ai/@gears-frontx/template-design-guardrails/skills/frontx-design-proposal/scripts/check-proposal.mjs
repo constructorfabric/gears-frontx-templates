@@ -87,7 +87,17 @@
  *   "Proposal: <title>" (.topbar-title) and the page facts (.topbar-meta);
  *   a document <title> that differs from the h1;
  *   a takeaway that is not one sentence, no ask, no line saying these are
- *   drawings;
+ *   drawings; no lang on <html>;
+ * - language: the page is written in the person's own language, named by
+ *   <html lang>. On a page in English the labels the agent writes read as
+ *   below ("Proposal:", "Best for", "suggested", a chip's state, "Changed
+ *   since", "on a phone", the table columns). On a page in another language
+ *   the same parts are found by their place and class instead: the title is
+ *   a word, a colon and the title; a disclaimer has text; an option has two
+ *   fields; a tag in a ready answer marks it suggested; a chip has text; the
+ *   "Changed since" line names the previous revision; a storyboard's width
+ *   heading is there; a table's columns are counted and today's cells found
+ *   by their class;
  * - views: an option, a screen without options or the one design without a
  *   phone drawing of its own (a .d-app--phone figure) or without a desktop
  *   drawing, a phone drawing after the desktop one or inside a disclosure,
@@ -273,6 +283,18 @@ const HTML_ELEMENTS = new Set('html head body title meta link style script noscr
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color-mix)\(|\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|pink)\b/i;
 const words = (text) => text.trim().split(/\s+/).filter(Boolean).length;
+/** The page is in English when <html lang> says so or names no language; then the check reads its English labels. */
+const inEnglish = (root) => {
+  const lang = find(root, (n) => n.tag === 'html')[0]?.attrs.lang?.trim();
+  return !lang || /^en(?:-|$)/i.test(lang);
+};
+/** The revision the top bar's page facts give: the second code (r<n>), else the words "revision r<n>". */
+const revisionOf = (meta) => {
+  if (!meta) return null;
+  const code = find(meta, (n) => n.tag === 'code').map((n) => norm(textOf(n)))[1];
+  const m = /^r(\d+)$/.exec(code ?? '') ?? /revision\s+r(\d+)/i.exec(textOf(meta));
+  return m ? Number(m[1]) : null;
+};
 
 // The tokenizer below follows the HTML standard's tokenizer, and the parts of its tree builder that
 // decide how the text after a tag is read: tag and attribute grammar, comments, raw text and RCDATA
@@ -985,6 +1007,10 @@ export function checkPage(html, { survey = null } = {}) {
   const sectionById = new Map(sections.map((n) => [n.attrs.id, n]));
   checkTakeaways({ sections, add });
 
+  // language: the page names the language it is written in; the English labels bind a page in English only
+  const english = inEnglish(root);
+  if (!find(root, (n) => n.tag === 'html' && norm(n.attrs.lang ?? '')).length) add('head', 'the page has no lang on <html>: the language the page is written in, the person\'s own');
+
   // top bar: the FrontX mark, the page title as the page's only h1, the page facts
   const topbar = find(root, (n) => hasClass(n, 'topbar'))[0];
   if (!topbar) add('head', 'no top bar (.topbar) before main with the FrontX mark, the title and the page facts');
@@ -992,7 +1018,7 @@ export function checkPage(html, { survey = null } = {}) {
     if (inside(topbar, (a) => a.tag === 'main')) add('head', 'the top bar (.topbar) sits before main, not inside it');
     const h1s = find(root, (n) => n.tag === 'h1');
     const title = find(topbar, (n) => n.tag === 'h1' && hasClass(n, 'topbar-title'))[0];
-    if (!title || !/^Proposal: \S/.test(norm(textOf(title)))) add('head', 'the title must read "Proposal: <page title>" (h1.topbar-title in the top bar)');
+    if (!title || !(english ? /^Proposal: \S/ : /^[^:]+: \S/).test(norm(textOf(title)))) add('head', `the title must read ${english ? '"Proposal: <page title>"' : '"<the word for proposal>: <page title>"'} (h1.topbar-title in the top bar)`);
     if (h1s.length !== 1) add('head', `${h1s.length} h1 elements; the top bar's title is the page's only h1`);
     const docTitle = find(root, (n) => n.tag === 'title')[0];
     if (title && (!docTitle || norm(textOf(docTitle)) !== norm(textOf(title)))) add('head', `the document <title> "${docTitle ? norm(textOf(docTitle)) : ''}" differs from the h1 "${norm(textOf(title))}"`);
@@ -1014,7 +1040,7 @@ export function checkPage(html, { survey = null } = {}) {
     }
     if (!find(head, (n) => hasClass(n, 'ask')).length) add('head', 'no ask (.ask) in the head');
     const disclaimer = find(head, (n) => hasClass(n, 'disclaimer'))[0];
-    if (!disclaimer || !/drawings/i.test(textOf(disclaimer))) add('head', 'no line saying these are drawings for deciding (.disclaimer)');
+    if (!disclaimer || !(english ? /drawings/i : /\S/).test(textOf(disclaimer))) add('head', 'no line saying these are drawings for deciding (.disclaimer)');
   }
 
   // options
@@ -1029,7 +1055,8 @@ export function checkPage(html, { survey = null } = {}) {
     for (const opt of optionNodes) {
       if (opt.attrs['data-option'] === undefined || opt.attrs.id !== `option-${opt.attrs['data-option']}`) add('options', `option #${opt.attrs.id} needs data-option and the id option-<letter>`);
       const dts = find(opt, (n) => n.tag === 'dt').map((n) => norm(textOf(n)));
-      for (const label of ['Best for', 'Trade-off']) if (!dts.includes(label)) add('options', `option #${opt.attrs.id} has no "${label}"`);
+      if (english) for (const label of ['Best for', 'Trade-off']) if (!dts.includes(label)) add('options', `option #${opt.attrs.id} has no "${label}"`);
+      if (!english && find(opt, (n) => n.tag === 'dl' && hasClass(n, 'fields')).flatMap((dl) => find(dl, (n) => n.tag === 'dt' && norm(textOf(n)))).length < 2) add('options', `option #${opt.attrs.id} has fewer than two fields (dl.fields: what it is best for, its trade-off)`);
     }
     if (!sectionById.has('recommendation')) add('sections', 'with options the recommendation section is required');
   } else {
@@ -1169,7 +1196,7 @@ export function checkPage(html, { survey = null } = {}) {
       if (!optionIds.includes((link.attrs.href ?? '').replace(/^#/, ''))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
     }
   }
-  checkAnswer({ root, sectionById, optionNodes, withOptions, add });
+  checkAnswer({ root, sectionById, optionNodes, withOptions, english, add });
   checkViews({ how, screens, optionNodes, add });
   const { guarantees } = checkParts({ root, main, sectionById, drawings, screens, how, add });
   const parts = { guarantees, flow: sectionById.has('flow'), storyboard: find(main, (n) => n.tag === 'ol' && hasClass(n, 'story')).length > 0, cue: find(main, (n) => n.tag === 'nav' && hasClass(n, 'cue')).length > 0 };
@@ -1187,7 +1214,7 @@ const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn' }, { value: 'c
  * with ready answers, the suggested ones checked, each with a full sentence to
  * copy, plus the changes and the Copy button.
  */
-function checkAnswer({ root, sectionById, optionNodes, withOptions, add }) {
+function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add }) {
   for (const ask of find(root, (n) => hasClass(n, 'ask'))) {
     if (!find(ask, (n) => n.tag === 'a' && n.attrs.href === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
   }
@@ -1197,7 +1224,8 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, add }) {
   const meta = find(root, (n) => hasClass(n, 'topbar-meta'))[0];
   const [pageId, revision] = meta ? find(meta, (n) => n.tag === 'code').map((n) => norm(textOf(n))) : [];
   const subject = form.attrs['data-subject'] ?? '';
-  if (pageId && revision && !(subject.includes(`page ${pageId}`) && subject.includes(`revision ${revision}`))) add('answer', `data-subject "${subject}" does not name page ${pageId} and revision ${revision} as the top bar does`);
+  const names = english ? [`page ${pageId}`, `revision ${revision}`] : [pageId, revision];
+  if (pageId && revision && !names.every((x) => subject.includes(x))) add('answer', `data-subject "${subject}" does not name page ${pageId} and revision ${revision} as the top bar does`);
   const groups = find(form, (n) => n.tag === 'fieldset' && hasClass(n, 'ans-q'));
   for (const g of groups) if (!g.children.some((c) => typeof c !== 'string' && c.tag === 'legend' && norm(textOf(c)))) add('answer', `the group "${g.attrs['data-q'] ?? ''}" has no legend`);
   const picksOf = (g, name) => find(g, (n) => n.tag === 'input' && n.attrs.type === 'radio' && n.attrs.name === name).map((input) => {
@@ -1206,7 +1234,7 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, add }) {
       input,
       text: label ? norm(proseOf(label, (n) => hasClass(n, 'tag') || hasClass(n, 'small'))) : '',
       name: label ? norm(textOf(find(label, (n) => n.tag === 'b')[0] ?? { children: [] })) : '',
-      suggested: !!label && find(label, (n) => hasClass(n, 'tag') && norm(textOf(n)) === 'suggested').length > 0,
+      suggested: !!label && find(label, (n) => hasClass(n, 'tag') && (english ? norm(textOf(n)) === 'suggested' : norm(textOf(n)) !== '')).length > 0,
       checked: input.attrs.checked !== undefined,
     };
   });
@@ -1219,7 +1247,9 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, add }) {
     const picks = picksOf(optGroup, 'option');
     const want = withOptions ? optionNodes.map((o) => ({ value: (o.attrs['data-option'] ?? '').toUpperCase(), name: norm(textOf(find(o, (n) => n.tag === 'h3')[0] ?? { children: [] })) })) : DESIGN_PICKS;
     const have = picks.map((p) => ({ value: p.input.attrs.value ?? '', name: p.name, say: norm(p.input.attrs['data-say'] ?? '') }));
-    const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && w.name === have[i].name && (!withOptions || `${w.value}. ${have[i].say}` === w.name));
+    // On a page in another language the two cards of one design are named in that language: their values bind, and a name.
+    const named = (w, h) => (english || withOptions ? w.name === h.name : h.name !== '');
+    const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && named(w, have[i]) && (!withOptions || `${w.value}. ${have[i].say}` === w.name));
     const show = (xs) => xs.map((x) => `${x.value} "${x.name}"`).join(', ') || 'none';
     if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: withOptions ? `${h.name}" say "${h.say}` : h.name })))}) differ from the page's (${show(want)})`);
     const sug = picks.filter((p) => p.suggested);
@@ -1359,6 +1389,7 @@ function checkViews({ how, screens, optionNodes, add }) {
 
 /** The parts of references/page-parts.md: thumbnails, map, chips, disclosures, glossary, tips, paths, data lines, mapping, revision. */
 function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
+  const english = inEnglish(root);
   const byId = new Map(find(root, (n) => n.attrs.id).map((n) => [n.attrs.id, n]));
   const full = new Map(drawings.filter((d) => d.attrs['data-zoom-of'] === undefined).map((d) => [d.attrs.id, d]));
   const pinsOf = (d) => new Set(find(d, (n) => n.attrs['data-note'] !== undefined).map((n) => n.attrs['data-note']));
@@ -1412,7 +1443,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   for (const chip of [...(topMeta ? find(topMeta, (n) => hasClass(n, 'chip')) : []), ...find(main, (n) => hasClass(n, 'chip'))]) {
     const state = chip.attrs['data-state'];
     if (!STATES.includes(state)) { add('chips', `a chip with state "${state ?? ''}"; one of ${STATES.join(', ')}`); continue; }
-    if (norm(textOf(chip)).toLowerCase() !== state) add('chips', `a chip reads "${norm(textOf(chip))}" but its state is ${state}`);
+    if (english ? norm(textOf(chip)).toLowerCase() !== state : !norm(textOf(chip))) add('chips', `a chip reads "${norm(textOf(chip))}" but its state is ${state}`);
     if (isScope(chip)) continue;
     if (scopeOf(chip)?.attrs['data-state'] === state) add('chips', `a chip repeats "${state}", which its heading already gives`);
     if (state === 'open' && (chip.tag !== 'a' || !questionIds.has((chip.attrs.href ?? '').replace(/^#/, '')))) add('chips', 'an open chip links to its open question (<a class="chip" href="#q-n">)');
@@ -1480,13 +1511,13 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   }
 
   checkFlow({ flowSec: sectionById.get('flow'), main, map, add });
-  checkStory({ main, how, add });
+  checkStory({ main, how, english, add });
   const guarantees = checkGuarantees({ sections: [...sectionById.values()], add });
   checkCue({ main, sections: [...sectionById.values()], screens, add });
   if (sectionById.has('mapping') && !sectionById.has('paths')) add('paths', 'the page changes an existing screen (a mapping section): it needs Paths with the Today column, two or three typical tasks, steps named by their pins');
   if (sectionById.has('paths') && !sectionById.has('mapping') && screens.length < 2) add('paths', 'a new single page has no Paths; they are for several screens or for a change to an existing page');
-  checkPaths({ paths: sectionById.get('paths'), changes: sectionById.has('mapping'), byId, main, add });
-  checkAddresses({ addresses: sectionById.get('addresses'), screens, changes: sectionById.has('mapping'), add });
+  checkPaths({ paths: sectionById.get('paths'), changes: sectionById.has('mapping'), byId, main, english, add });
+  checkAddresses({ addresses: sectionById.get('addresses'), screens, changes: sectionById.has('mapping'), english, add });
   const drawingById = firstBy(drawings, (x) => x.attrs.id);
   const pinsByDrawing = new Map();
   for (const ref of find(main, (n) => n.tag === 'a' && hasClass(n, 'pinref'))) {
@@ -1505,7 +1536,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   }
   for (const r of find(main, (n) => hasClass(n, 'reads'))) if (!find(r, (n) => hasClass(n, 'mark')).length) add('data', 'a data line without "exists today" or "needs a new data request" (.mark)');
 
-  checkMapping({ mapping: sectionById.get('mapping'), add });
+  checkMapping({ mapping: sectionById.get('mapping'), english, add });
   checkDensity({ sections: [...sectionById.values()], add });
   checkLinksAndIds({ root, byId, add });
 
@@ -1513,11 +1544,11 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   const head = sectionById.get('head');
   if (head) {
     const meta = topMeta;
-    const rev = /revision\s+r(\d+)/i.exec(meta ? textOf(meta) : '');
     const changed = find(head, (n) => hasClass(n, 'changed'))[0];
-    const n = rev ? Number(rev[1]) : 1;
+    const n = revisionOf(meta) ?? 1;
+    const since = (text) => (english ? text.startsWith(`Changed since r${n - 1}:`) : new RegExp(`(^|[^\\w])r${n - 1}\\s*:`).test(text));
     if (n > 1) {
-      if (!changed || !norm(textOf(changed)).startsWith(`Changed since r${n - 1}:`)) add('revision', `revision r${n} needs the line "Changed since r${n - 1}: ..." (.changed) in the head`);
+      if (!changed || !since(norm(textOf(changed)))) add('revision', `revision r${n} needs the line "Changed since r${n - 1}: ..." (.changed) in the head`);
       else {
         const links = find(changed, (x) => x.tag === 'a');
         if (!links.length) add('revision', 'the "Changed since" line links to the changed sections');
@@ -1614,7 +1645,7 @@ function checkFlow({ flowSec, main, map, add }) {
 }
 
 /** A storyboard (references/page-parts.md, "Storyboard"): three to six still frames of one screen, numbered captions, at a named width. */
-function checkStory({ main, how, add }) {
+function checkStory({ main, how, english, add }) {
   const options = how ? find(how, (n) => n.tag === 'section' && hasClass(n, 'option') && n.attrs['data-option'] !== undefined) : [];
   const withStory = options.filter((o) => find(o, (n) => n.tag === 'ol' && hasClass(n, 'story')).length);
   if (withStory.length && withStory.length < options.length) {
@@ -1632,7 +1663,7 @@ function checkStory({ main, how, add }) {
     const width = story.attrs['data-width'];
     const before = sibling(story, -1);
     if (!['phone', 'desktop'].includes(width)) add('storyboard', `${name} needs data-width="phone" or "desktop": the width it is drawn at`);
-    else if (!before || before.tag !== 'h4' || !hasClass(before, 'view-name') || !new RegExp(`on a ${width}`, 'i').test(textOf(before))) add('storyboard', `${name}: the heading right before it (h4.view-name) says "on a ${width}"`);
+    else if (!before || before.tag !== 'h4' || !hasClass(before, 'view-name') || !(english ? new RegExp(`on a ${width}`, 'i') : /\S/).test(textOf(before))) add('storyboard', `${name}: the heading right before it (h4.view-name) says "on a ${width}"`);
     const frames = story.children.filter((c) => typeof c !== 'string');
     if (frames.length < 3 || frames.length > 6) add('storyboard', `${name} has ${frames.length} frames; three to six`);
     frames.forEach((li, i) => {
@@ -1823,12 +1854,12 @@ function checkLinksAndIds({ root, byId, add }) {
 }
 
 /** The mapping of today's page: Part, Today, Proposed; a change mark on every row; a reason for a removal; the legend; today's page drawn in a disclosure. */
-function checkMapping({ mapping, add }) {
+function checkMapping({ mapping, english, add }) {
   if (!mapping) return;
   const table = find(mapping, (n) => n.tag === 'table' && hasClass(n, 'mapping'))[0];
   if (!table) { add('mapping', 'no mapping table (table.mapping)'); return; }
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
-  if (heads.join('|') !== 'Part|Today|Proposed') add('mapping', 'the mapping table has the columns Part, Today and Proposed');
+  if (english ? heads.join('|') !== 'Part|Today|Proposed' : heads.length !== 3) add('mapping', 'the mapping table has the columns Part, Today and Proposed');
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
   if (!rows.length) add('mapping', 'the mapping table has no part of today\'s page');
   const used = new Set();
@@ -1853,7 +1884,7 @@ function checkMapping({ mapping, add }) {
 }
 
 /** The paths table: a row per task, numbered step cells with the screen, the pin and what is used; today's way when an existing screen changes. */
-function checkPaths({ paths, changes, byId, main, add }) {
+function checkPaths({ paths, changes, byId, main, english, add }) {
   for (const m of find(main, (n) => hasClass(n, 'longer'))) {
     if (m.attrs['aria-hidden'] !== 'true' && !norm(m.attrs['aria-label'] ?? '')) add('paths', 'a "!" mark (.longer) without an aria-label saying what it means');
   }
@@ -1861,9 +1892,9 @@ function checkPaths({ paths, changes, byId, main, add }) {
   const table = find(paths, (n) => n.tag === 'table' && hasClass(n, 'paths-tbl'))[0];
   if (!table) { add('paths', 'no paths table (table.paths-tbl): a row per task, a numbered cell per step'); return; }
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
-  const hasToday = heads.includes('Today');
-  if (changes && !hasToday) add('paths', 'the page changes an existing screen; the paths table needs a Today column');
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
+  const hasToday = english ? heads.includes('Today') : rows.some((tr) => find(tr, (n) => n.tag === 'td' && hasClass(n, 'today')).length);
+  if (changes && !hasToday) add('paths', 'the page changes an existing screen; the paths table needs a Today column');
   if (!rows.length) add('paths', 'the paths table has no task');
   for (const tr of rows) {
     const th = find(tr, (n) => n.tag === 'th')[0];
@@ -1895,13 +1926,15 @@ function checkPaths({ paths, changes, byId, main, add }) {
 }
 
 /** The addresses: a row per screen with its address, the base lines when there is more than one base, today's same link when a screen changes, a closing note. */
-function checkAddresses({ addresses, screens, changes, add }) {
+function checkAddresses({ addresses, screens, changes, english, add }) {
   if (!addresses) return;
   const table = find(addresses, (n) => n.tag === 'table' && hasClass(n, 'addresses'))[0];
   if (!table) { add('addresses', 'no addresses table (table.addresses): a row per screen'); return; }
   const heads = find(table, (n) => n.tag === 'th' && inside(n, (a) => a.tag === 'thead')).map((n) => norm(textOf(n)));
-  for (const h of ['Screen', 'Address']) if (!heads.includes(h)) add('addresses', `the addresses table has no "${h}" column`);
-  if (changes && !heads.includes('Today the same link opens')) add('addresses', 'the page changes an existing screen; the table needs the column "Today the same link opens"');
+  if (english) for (const h of ['Screen', 'Address']) if (!heads.includes(h)) add('addresses', `the addresses table has no "${h}" column`);
+  if (!english && heads.length < 2) add('addresses', 'the addresses table has no screen and address columns');
+  const todayOpens = english ? heads.includes('Today the same link opens') : find(table, (n) => n.tag === 'td' && hasClass(n, 'today-opens')).length > 0;
+  if (changes && !todayOpens) add('addresses', 'the page changes an existing screen; the table needs the column "Today the same link opens"');
   const rows = find(table, (n) => n.tag === 'tr' && inside(n, (a) => a.tag === 'tbody'));
   const want = Math.max(screens.length, 1);
   if (rows.length < want) add('addresses', `${rows.length} address rows for ${want} screens; every screen has its row`);
