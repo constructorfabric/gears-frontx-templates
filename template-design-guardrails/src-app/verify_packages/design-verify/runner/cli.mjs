@@ -53,7 +53,7 @@ import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waiver
 const SWEEP_LINE = /\[design-defects\]/;
 /** The pause before a second look at a started command that the URL answered for. */
 const SERVER_EXIT_RECHECK_MS = 500;
-const VERIFY_PKG_FAILURE =/\[verify-packages\].*(none installed|failed to load)/;
+const VERIFY_PKG_FAILURE = /\[verify-packages\].*(none installed|failed to load)/;
 
 /** @param {string} base @param {string} route */
 function joinUrl(base, route) {
