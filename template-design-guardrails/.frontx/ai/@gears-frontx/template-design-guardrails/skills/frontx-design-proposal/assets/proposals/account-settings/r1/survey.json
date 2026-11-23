@@ -1,0 +1,417 @@
+{
+  "project": ".",
+  "appName": "Example App",
+  "nav": "top",
+  "chrome": {
+    "nav": "top",
+    "links": "end",
+    "active": "underline",
+    "phone": "rows",
+    "mark": "svg",
+    "initials": null,
+    "sources": {
+      "nav": "src-app/app/layout/Layout.tsx",
+      "active": "src-app/app/layout/Menu.module.css .link[data-active='true']::after",
+      "links": "src-app/app/layout/Header.module.css .bar",
+      "phone": "src-app/app/layout/Header.module.css .bar flex-direction: column, no menu button",
+      "mark": "the logo src-app/app/icons/AppLogoIcon.tsx (AppLogoIcon, imported by src-app/app/layout/Header.tsx), its SVG inlined without class"
+    }
+  },
+  "variants": {
+    "window": "d-app d-app--top",
+    "nav": "d-top d-top--end d-active--underline",
+    "phone": "d-top d-top--rows d-active--underline",
+    "brand": "d-brand d-brand--logo"
+  },
+  "brandMark": {
+    "kind": "svg",
+    "file": "src-app/app/icons/AppLogoIcon.tsx",
+    "why": "the logo src-app/app/icons/AppLogoIcon.tsx (AppLogoIcon, imported by src-app/app/layout/Header.tsx), its SVG inlined without class",
+    "svg": "<svg viewBox=\"0 0 32 32\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M4 4h24v24H4z\" opacity=\"0.3\"/><path d=\"M10 10h12v12H10z\"/></svg>"
+  },
+  "brandDefs": "<svg class=\"brand-defs\" aria-hidden=\"true\"><symbol id=\"brand-mark\" viewBox=\"0 0 32 32\" fill=\"currentColor\"><path d=\"M4 4h24v24H4z\" opacity=\"0.3\"/><path d=\"M10 10h12v12H10z\"/></symbol></svg>",
+  "brandHtml": "<span class=\"d-brand d-brand--logo\"><span class=\"d-logo\"><svg aria-hidden=\"true\"><use href=\"#brand-mark\"/></svg></span>Example App</span>",
+  "screens": [
+    {
+      "package": "home-mfe",
+      "route": "/home",
+      "label": "Home",
+      "order": 10,
+      "source": [
+        "src-app/mfe_packages/home-mfe/src/screens/home/"
+      ],
+      "kitComponents": [
+        "Badge",
+        "Button",
+        "Card",
+        "CardContent",
+        "Field",
+        "FieldLabel",
+        "Input",
+        "Label",
+        "Select",
+        "Switch"
+      ]
+    },
+    {
+      "package": "docs-mfe",
+      "route": "/docs",
+      "label": "Docs",
+      "order": 20,
+      "source": [
+        "src-app/mfe_packages/docs-mfe/src/screens/docs/"
+      ],
+      "kitComponents": [
+        "Button",
+        "Card",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow",
+        "Tabs",
+        "TabsList",
+        "TabsTrigger"
+      ]
+    }
+  ],
+  "links": {
+    "screens": [
+      {
+        "route": "/home",
+        "label": "Home",
+        "link": "/?screen=home",
+        "source": "src-app/app/layout/Menu.tsx `/?screen=${route.replace(/^\\//, '')}`"
+      },
+      {
+        "route": "/docs",
+        "label": "Docs",
+        "link": "/?screen=docs",
+        "source": "src-app/app/layout/Menu.tsx `/?screen=${route.replace(/^\\//, '')}`"
+      }
+    ],
+    "inCode": [],
+    "mismatch": true
+  },
+  "screenLooks": [
+    {
+      "route": "/home",
+      "label": "Home",
+      "heading": {
+        "size": "47px",
+        "real": "60px",
+        "phone": "40px",
+        "weight": "700",
+        "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .heroTitle (from 1024 px) font-size"
+      },
+      "section": {
+        "size": "31px",
+        "real": "40px",
+        "phone": "28px",
+        "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .sectionTitle (from 1024 px) font-size"
+      },
+      "bands": [
+        {
+          "name": ".hero",
+          "bg": "#2f6fd6",
+          "text": "#ffffff",
+          "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .hero background-color and color"
+        },
+        {
+          "name": ".closing",
+          "bg": "#1d2433",
+          "text": "#ffffff",
+          "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .closing background-color and color"
+        }
+      ]
+    },
+    {
+      "route": "/docs",
+      "label": "Docs"
+    }
+  ],
+  "notShown": [
+    {
+      "package": "_blank-mfe",
+      "route": "/blank-home",
+      "label": "Blank Home",
+      "reason": "a blank scaffold (its folder name starts with \"_\")"
+    },
+    {
+      "package": "demo-mfe",
+      "route": "/hello-world",
+      "label": "Hello World",
+      "reason": "a template example (templateExample: true in its mfe.json)"
+    },
+    {
+      "package": "demo-mfe",
+      "route": "/profile",
+      "label": "Profile",
+      "reason": "a template example (templateExample: true in its mfe.json)"
+    },
+    {
+      "package": "drafts-mfe",
+      "route": "/drafts",
+      "label": "Drafts",
+      "reason": "not in public/generated-mfe-manifests.json"
+    }
+  ],
+  "registry": "public/generated-mfe-manifests.json",
+  "services": [
+    {
+      "name": "AccountsApiService",
+      "file": "src-app/app/api/AccountsApiService.ts"
+    }
+  ],
+  "mocks": [
+    "src-app/app/api/mocks.ts"
+  ],
+  "designFiles": [
+    "DESIGN-RULES.md",
+    "DESIGN.md"
+  ],
+  "lookSources": {
+    "theme": "src-app/app/themes/default.ts",
+    "themeId": "default",
+    "appearance": "light",
+    "kitCss": "node_modules/@gears-frontx/ui-kit/dist/theme.css",
+    "pageCss": [
+      "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css",
+      "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css"
+    ],
+    "shellCss": [
+      "src-app/app/layout/Header.module.css",
+      "src-app/app/layout/Menu.module.css"
+    ]
+  },
+  "scale": {
+    "screen": 1440,
+    "window": 1120,
+    "rule": "A desktop size in pixels is drawn at round(px * 1120 / 1440), never below min(px, 16) px, so text stays readable; the phone window is 390 px like the phone, so phone sizes are drawn as they are; em values, weights and colours are not scaled."
+  },
+  "look": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "text": "#1d2433",
+    "muted": "#5b6475",
+    "subtle": "#f1f5f9",
+    "line": "#dfe3ea",
+    "accent": "#2f6fd6",
+    "accent-text": "#ffffff",
+    "ok": "#047857",
+    "ok-soft": "#e8f8f1",
+    "warn": "#92400e",
+    "warn-soft": "#fff7d6",
+    "danger": "#be123c",
+    "danger-soft": "#fff1f2",
+    "info": "#2563eb",
+    "info-soft": "#eaf2ff",
+    "nav-bg": "#1d2433",
+    "nav-text": "#e4e7ee",
+    "nav-active": "#2f6fd6",
+    "nav-active-text": "#ffffff",
+    "font": "'Inter', ui-sans-serif, system-ui, sans-serif",
+    "h1": "37px",
+    "h1-phone": "34px",
+    "h1-weight": "600",
+    "h1-track": "-0.02em",
+    "h2": "16px",
+    "lead": "16px",
+    "body": "15px",
+    "small": "12px",
+    "stat": "25px",
+    "radius": "12px",
+    "gutter": "50px",
+    "gutter-phone": "20px",
+    "max": "865px",
+    "top": "44px",
+    "top-phone": "40px",
+    "btn-h": "34px",
+    "btn-radius": "8px",
+    "th-case": "uppercase",
+    "tab-active": "#2f6fd6",
+    "nav-h": "53px",
+    "nav-pad": "37px",
+    "nav-gap": "17px",
+    "nav-size": "14px",
+    "brand-size": "16px",
+    "mark": "20px",
+    "nav-h-phone": "52px",
+    "navrow-h-phone": "44px",
+    "toplink": "#1d2433",
+    "toplink-active": "#2f6fd6",
+    "band-bg": "#2f6fd6",
+    "band-text": "#ffffff",
+    "band-alt-bg": "#1d2433",
+    "band-alt-text": "#ffffff",
+    "band-title": "47px",
+    "band-title-phone": "40px",
+    "band-title-weight": "700",
+    "section": "31px",
+    "section-phone": "28px",
+    "mark-color": "#2f6fd6"
+  },
+  "lookFrom": {
+    "bg": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color",
+    "surface": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --card",
+    "text": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --foreground",
+    "muted": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --muted-foreground",
+    "subtle": "kit theme.css --muted",
+    "line": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --border",
+    "accent": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --primary",
+    "accent-text": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --primary-foreground",
+    "ok": "kit theme.css --success-foreground",
+    "ok-soft": "kit theme.css --success-soft",
+    "warn": "kit theme.css --warning-foreground",
+    "warn-soft": "kit theme.css --warning-soft",
+    "danger": "kit theme.css --danger-foreground",
+    "danger-soft": "kit theme.css --danger-soft",
+    "info": "kit theme.css --info",
+    "info-soft": "kit theme.css --info-soft",
+    "nav-bg": "src-app/app/themes/default.ts --left-menu",
+    "nav-text": "src-app/app/themes/default.ts --left-menu-foreground",
+    "nav-active": "src-app/app/themes/default.ts --left-menu-selected",
+    "nav-active-text": "src-app/app/themes/default.ts --left-menu-selected-foreground",
+    "font": "kit theme.css --font-sans",
+    "h1": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle (from 1024 px) font-size",
+    "h1-phone": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle font-size",
+    "h1-weight": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle font-weight",
+    "h1-track": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle letter-spacing",
+    "h2": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .cardTitle font-size",
+    "lead": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageLead font-size",
+    "body": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .body font-size",
+    "small": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .label font-size",
+    "stat": "kit --text-kpi-size (the app sets none)",
+    "radius": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .card border-radius",
+    "gutter": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .column (from 1024 px) padding",
+    "gutter-phone": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .column padding",
+    "max": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .column max-width",
+    "top": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageHead (from 1024 px) padding-top",
+    "top-phone": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageHead padding-top",
+    "btn-h": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .cta --control-height-lg",
+    "btn-radius": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .cta --radius-lg",
+    "th-case": "kit node_modules/@gears-frontx/ui-kit/dist/chunks/table.css table head text-transform (the app sets none)",
+    "tab-active": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .tabsList .tabTrigger[data-active] color",
+    "nav-h": "src-app/app/layout/Header.module.css .bar (from 768 px) height",
+    "nav-pad": "src-app/app/layout/Header.module.css .bar (from 768 px) padding",
+    "nav-gap": "src-app/app/layout/Menu.module.css .list gap",
+    "nav-size": "src-app/app/layout/Menu.module.css .link font-size",
+    "brand-size": "src-app/app/layout/Header.module.css .name font-size",
+    "mark": "src-app/app/layout/Header.module.css .mark width",
+    "nav-h-phone": "src-app/app/layout/Header.module.css .brand height",
+    "navrow-h-phone": "src-app/app/layout/Header.module.css .navRow height",
+    "toplink": "src-app/app/layout/Menu.module.css .link color",
+    "toplink-active": "src-app/app/layout/Menu.module.css .link[data-active='true'] color",
+    "band-bg": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .hero background-color",
+    "band-text": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .hero color",
+    "band-alt-bg": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .closing background-color",
+    "band-alt-text": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .closing color",
+    "band-title": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .heroTitle (from 1024 px) font-size (the Home screen's own heading)",
+    "band-title-phone": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .heroTitle font-size (phone)",
+    "band-title-weight": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .heroTitle (from 1024 px) font-weight",
+    "section": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .sectionTitle (from 1024 px) font-size",
+    "section-phone": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .sectionTitle font-size (phone)",
+    "mark-color": "src-app/app/layout/Header.module.css .mark color"
+  },
+  "lookReal": {
+    "h1": "48px",
+    "h2": "20px",
+    "stat": "32px",
+    "gutter": "64px",
+    "max": "1112px",
+    "top": "56px",
+    "btn-h": "44px",
+    "nav-h": "68px",
+    "nav-pad": "48px",
+    "nav-gap": "22px",
+    "brand-size": "17px",
+    "mark": "26px",
+    "band-title": "60px",
+    "section": "40px"
+  },
+  "appOverKit": [
+    {
+      "key": "bg",
+      "kit": "#f1f5f9",
+      "app": "#ffffff",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color"
+    },
+    {
+      "key": "text",
+      "kit": "#0f172a",
+      "app": "#1d2433",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --foreground"
+    },
+    {
+      "key": "muted",
+      "kit": "#334155",
+      "app": "#5b6475",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --muted-foreground"
+    },
+    {
+      "key": "line",
+      "kit": "#e2e8f0",
+      "app": "#dfe3ea",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --border"
+    },
+    {
+      "key": "accent",
+      "kit": "#0065e3",
+      "app": "#2f6fd6",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --primary"
+    },
+    {
+      "key": "h1",
+      "kit": "16px",
+      "app": "37px",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle (from 1024 px) font-size"
+    },
+    {
+      "key": "h1-phone",
+      "kit": "20px",
+      "app": "34px",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle font-size"
+    },
+    {
+      "key": "h1-track",
+      "kit": "0px",
+      "app": "-0.02em",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageTitle letter-spacing"
+    },
+    {
+      "key": "lead",
+      "kit": "14px",
+      "app": "16px",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .pageLead font-size"
+    },
+    {
+      "key": "body",
+      "kit": "14px",
+      "app": "15px",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .body font-size"
+    },
+    {
+      "key": "radius",
+      "kit": "10px",
+      "app": "12px",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .card border-radius"
+    },
+    {
+      "key": "btn-h",
+      "kit": "28px",
+      "app": "34px",
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .cta --control-height-lg"
+    },
+    {
+      "key": "tab-active",
+      "kit": "#0f172a",
+      "app": "#2f6fd6",
+      "source": "src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css .tabsList .tabTrigger[data-active] color"
+    }
+  ],
+  "dropped": [],
+  "appLookCss": ".d-app {\n  --d-bg: #ffffff;\n  --d-surface: #ffffff;\n  --d-text: #1d2433;\n  --d-muted: #5b6475;\n  --d-subtle: #f1f5f9;\n  --d-line: #dfe3ea;\n  --d-accent: #2f6fd6;\n  --d-accent-text: #ffffff;\n  --d-ok: #047857;\n  --d-ok-soft: #e8f8f1;\n  --d-warn: #92400e;\n  --d-warn-soft: #fff7d6;\n  --d-danger: #be123c;\n  --d-danger-soft: #fff1f2;\n  --d-info: #2563eb;\n  --d-info-soft: #eaf2ff;\n  --d-nav-bg: #1d2433;\n  --d-nav-text: #e4e7ee;\n  --d-nav-active: #2f6fd6;\n  --d-nav-active-text: #ffffff;\n  --d-font: 'Inter', ui-sans-serif, system-ui, sans-serif;\n  --d-h1: 37px;\n  --d-h1-phone: 34px;\n  --d-h1-weight: 600;\n  --d-h1-track: -0.02em;\n  --d-h2: 16px;\n  --d-lead: 16px;\n  --d-body: 15px;\n  --d-small: 12px;\n  --d-stat: 25px;\n  --d-radius: 12px;\n  --d-gutter: 50px;\n  --d-gutter-phone: 20px;\n  --d-max: 865px;\n  --d-top: 44px;\n  --d-top-phone: 40px;\n  --d-btn-h: 34px;\n  --d-btn-radius: 8px;\n  --d-th-case: uppercase;\n  --d-tab-active: #2f6fd6;\n  --d-nav-h: 53px;\n  --d-nav-pad: 37px;\n  --d-nav-gap: 17px;\n  --d-nav-size: 14px;\n  --d-brand-size: 16px;\n  --d-mark: 20px;\n  --d-nav-h-phone: 52px;\n  --d-navrow-h-phone: 44px;\n  --d-toplink: #1d2433;\n  --d-toplink-active: #2f6fd6;\n  --d-band-bg: #2f6fd6;\n  --d-band-text: #ffffff;\n  --d-band-alt-bg: #1d2433;\n  --d-band-alt-text: #ffffff;\n  --d-band-title: 47px;\n  --d-band-title-phone: 40px;\n  --d-band-title-weight: 700;\n  --d-section: 31px;\n  --d-section-phone: 28px;\n  --d-mark-color: #2f6fd6;\n}",
+  "unresolved": [],
+  "skipped": []
+}

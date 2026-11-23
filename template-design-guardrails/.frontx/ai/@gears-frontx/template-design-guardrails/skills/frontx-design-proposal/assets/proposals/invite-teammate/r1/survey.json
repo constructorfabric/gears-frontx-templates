@@ -1,0 +1,217 @@
+{
+  "project": ".",
+  "appName": "Team Hub",
+  "nav": "side",
+  "chrome": {
+    "nav": "side",
+    "links": null,
+    "active": "filled",
+    "phone": "menu-button",
+    "mark": "initials",
+    "initials": "TH",
+    "sources": {
+      "nav": "src-app/app/layout/Layout.tsx",
+      "active": "the shell side menu fills the active link with --left-menu-selected",
+      "phone": "the shell folds the side menu into a menu button on a phone",
+      "mark": "no logo in src-app/app/layout: drawn as initials"
+    }
+  },
+  "variants": {
+    "window": "d-app",
+    "nav": "d-side d-active--filled",
+    "phone": "d-top",
+    "brand": "d-brand d-brand--initials"
+  },
+  "brandMark": {
+    "kind": "initials",
+    "file": null,
+    "why": "no logo in src-app/app/layout: drawn as initials"
+  },
+  "brandDefs": null,
+  "brandHtml": "<span class=\"d-brand d-brand--initials\"><span class=\"d-mark\">TH</span>Team Hub</span>",
+  "screens": [
+    {
+      "package": "team-mfe",
+      "route": "/home",
+      "label": "Home",
+      "order": 10,
+      "source": [
+        "src-app/mfe_packages/team-mfe/src/screens/home/"
+      ],
+      "kitComponents": [
+        "Button",
+        "Card",
+        "CardContent",
+        "CardHeader",
+        "CardTitle"
+      ]
+    },
+    {
+      "package": "team-mfe",
+      "route": "/docs",
+      "label": "Docs",
+      "order": 20,
+      "source": [
+        "src-app/mfe_packages/team-mfe/src/screens/docs/"
+      ],
+      "kitComponents": [
+        "Badge",
+        "Card",
+        "Input",
+        "Table",
+        "TableBody",
+        "TableCell",
+        "TableHead",
+        "TableHeader",
+        "TableRow"
+      ]
+    }
+  ],
+  "links": {
+    "screens": [
+      {
+        "route": "/home",
+        "label": "Home",
+        "link": "/home",
+        "source": "no link template in src-app/app/layout: the registered route"
+      },
+      {
+        "route": "/docs",
+        "label": "Docs",
+        "link": "/docs",
+        "source": "no link template in src-app/app/layout: the registered route"
+      }
+    ],
+    "inCode": [],
+    "mismatch": false
+  },
+  "screenLooks": [
+    {
+      "route": "/home",
+      "label": "Home"
+    },
+    {
+      "route": "/docs",
+      "label": "Docs"
+    }
+  ],
+  "notShown": [
+    {
+      "package": "_blank-mfe",
+      "route": "/blank",
+      "label": "Blank",
+      "reason": "a blank scaffold (its folder name starts with \"_\")"
+    }
+  ],
+  "registry": null,
+  "services": [
+    {
+      "name": "AccountsApiService",
+      "file": "src-app/app/api/AccountsApiService.ts"
+    },
+    {
+      "name": "DocsApiService",
+      "file": "src-app/mfe_packages/team-mfe/src/api/DocsApiService.ts"
+    }
+  ],
+  "mocks": [
+    "src-app/app/api/mocks.ts",
+    "src-app/mfe_packages/team-mfe/src/api/mocks.ts"
+  ],
+  "designFiles": [
+    "DESIGN.md"
+  ],
+  "lookSources": {
+    "theme": "src-app/app/themes/default.ts",
+    "themeId": "default",
+    "appearance": "light",
+    "kitCss": "node_modules/@gears-frontx/ui-kit/dist/theme.css",
+    "pageCss": [],
+    "shellCss": []
+  },
+  "scale": {
+    "screen": 1440,
+    "window": 1120,
+    "rule": "A desktop size in pixels is drawn at round(px * 1120 / 1440), never below min(px, 16) px, so text stays readable; the phone window is 390 px like the phone, so phone sizes are drawn as they are; em values, weights and colours are not scaled."
+  },
+  "look": {
+    "bg": "#f1f5f9",
+    "surface": "#ffffff",
+    "text": "#0f172a",
+    "muted": "#334155",
+    "subtle": "#f1f5f9",
+    "line": "#e2e8f0",
+    "accent": "#0065e3",
+    "accent-text": "#ffffff",
+    "ok": "#047857",
+    "ok-soft": "#e8f8f1",
+    "warn": "#92400e",
+    "warn-soft": "#fff7d6",
+    "danger": "#be123c",
+    "danger-soft": "#fff1f2",
+    "info": "#2563eb",
+    "info-soft": "#eaf2ff",
+    "nav-bg": "#0f172a",
+    "nav-text": "color-mix(in oklab, #f1f5f9 70%, #0f172a)",
+    "nav-active": "#0065e3",
+    "nav-active-text": "#ffffff",
+    "font": "'Inter', ui-sans-serif, system-ui, sans-serif",
+    "h1": "16px",
+    "h1-phone": "20px",
+    "h1-weight": "600",
+    "h1-track": "0px",
+    "h2": "16px",
+    "lead": "14px",
+    "body": "14px",
+    "small": "12px",
+    "stat": "25px",
+    "radius": "10px",
+    "btn-h": "28px",
+    "tab-active": "#0f172a"
+  },
+  "lookFrom": {
+    "bg": "kit theme.css --background",
+    "surface": "kit theme.css --card",
+    "text": "kit theme.css --foreground",
+    "muted": "kit theme.css --muted-foreground",
+    "subtle": "kit theme.css --muted",
+    "line": "kit theme.css --border",
+    "accent": "kit theme.css --primary",
+    "accent-text": "kit theme.css --primary-foreground",
+    "ok": "kit theme.css --success-foreground",
+    "ok-soft": "kit theme.css --success-soft",
+    "warn": "kit theme.css --warning-foreground",
+    "warn-soft": "kit theme.css --warning-soft",
+    "danger": "kit theme.css --danger-foreground",
+    "danger-soft": "kit theme.css --danger-soft",
+    "info": "kit theme.css --info",
+    "info-soft": "kit theme.css --info-soft",
+    "nav-bg": "src-app/app/themes/default.ts --left-menu",
+    "nav-text": "src-app/app/themes/default.ts --left-menu-foreground",
+    "nav-active": "src-app/app/themes/default.ts --left-menu-selected",
+    "nav-active-text": "src-app/app/themes/default.ts --left-menu-selected-foreground",
+    "font": "kit theme.css --font-sans",
+    "h1": "kit --text-heading-1-size (the app sets none)",
+    "h1-phone": "kit --text-heading-1-size (the app sets none)",
+    "h1-weight": "kit --text-heading-1-weight (the app sets none)",
+    "h1-track": "kit --text-heading-1-tracking (the app sets none)",
+    "h2": "kit --text-heading-2-size (the app sets none)",
+    "lead": "kit --text-body-size (the app sets none)",
+    "body": "kit --text-body-size (the app sets none)",
+    "small": "kit --text-meta-size (the app sets none)",
+    "stat": "kit --text-kpi-size (the app sets none)",
+    "radius": "kit --radius (the app sets none)",
+    "btn-h": "kit --control-height-md (the app sets none)",
+    "tab-active": "kit --secondary-foreground (the app sets none)"
+  },
+  "lookReal": {
+    "h1": "20px",
+    "stat": "32px",
+    "btn-h": "36px"
+  },
+  "appOverKit": [],
+  "dropped": [],
+  "appLookCss": ".d-app {\n  --d-bg: #f1f5f9;\n  --d-surface: #ffffff;\n  --d-text: #0f172a;\n  --d-muted: #334155;\n  --d-subtle: #f1f5f9;\n  --d-line: #e2e8f0;\n  --d-accent: #0065e3;\n  --d-accent-text: #ffffff;\n  --d-ok: #047857;\n  --d-ok-soft: #e8f8f1;\n  --d-warn: #92400e;\n  --d-warn-soft: #fff7d6;\n  --d-danger: #be123c;\n  --d-danger-soft: #fff1f2;\n  --d-info: #2563eb;\n  --d-info-soft: #eaf2ff;\n  --d-nav-bg: #0f172a;\n  --d-nav-text: color-mix(in oklab, #f1f5f9 70%, #0f172a);\n  --d-nav-active: #0065e3;\n  --d-nav-active-text: #ffffff;\n  --d-font: 'Inter', ui-sans-serif, system-ui, sans-serif;\n  --d-h1: 16px;\n  --d-h1-phone: 20px;\n  --d-h1-weight: 600;\n  --d-h1-track: 0px;\n  --d-h2: 16px;\n  --d-lead: 14px;\n  --d-body: 14px;\n  --d-small: 12px;\n  --d-stat: 25px;\n  --d-radius: 10px;\n  --d-btn-h: 28px;\n  --d-tab-active: #0f172a;\n}",
+  "unresolved": [],
+  "skipped": []
+}
