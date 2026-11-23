@@ -158,9 +158,18 @@ export async function choosePreviewPorts(
   return chosen;
 }
 
-/** The ports a moved preview may not take: every declared preview port, and the port the host serves on. */
-export function previewReservedPorts(packages: readonly MfeInfo[], hostPort: number): Set<number> {
-  return new Set([...packages.map((mfe) => mfe.port), hostPort]);
+/**
+ * The moved ports `dev:all` uses: a free port for each package in `taken`
+ * that is none of the declared preview ports of `packages` and not the port
+ * the host serves on.
+ */
+export function choosePreviewPortsBesideHost(
+  packages: readonly MfeInfo[],
+  taken: readonly MfeInfo[],
+  hostPort: number,
+  freePort: () => Promise<number> = systemFreePort,
+): Promise<Map<string, number>> {
+  return choosePreviewPorts(taken, new Set([...packages.map((mfe) => mfe.port), hostPort]), freePort);
 }
 
 /**

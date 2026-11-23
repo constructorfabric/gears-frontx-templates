@@ -24,7 +24,7 @@ import {
   type MfeInfo,
 } from './lib/mfe-tools.js';
 import {
-  choosePreviewPorts,
+  choosePreviewPortsBesideHost,
   findSharedPreviewPorts,
   findTakenPreviewPorts,
   isPortFree,
@@ -32,7 +32,6 @@ import {
   movedPreviewPortsMessage,
   previewCommand,
   previewPortsMovable,
-  previewReservedPorts,
   sharedPreviewPortsMessage,
   takenPreviewPortsMessage,
   type PreviewCommand,
@@ -154,7 +153,7 @@ async function main() {
       configRoot: process.cwd(),
       resolveConfigPort: viteConfigPort,
     });
-    movedPorts = await choosePreviewPorts(taken, previewReservedPorts(packages, hostPort));
+    movedPorts = await choosePreviewPortsBesideHost(packages, taken, hostPort);
     console.log(`${movedPreviewPortsMessage(taken, movedPorts, hostPort)}\n`);
   }
   if (hostEnv.port !== undefined && !(await isPortFree(hostEnv.port))) {

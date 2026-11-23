@@ -19,12 +19,12 @@ import { join, resolve } from 'node:path';
 import {
   PREVIEW_HOST,
   choosePreviewPorts,
+  choosePreviewPortsBesideHost,
   generatorPreviewPorts,
   isPortFree,
   movedPreviewPortsMessage,
   previewCommand,
   previewPortsMovable,
-  previewReservedPorts,
 } from '../scripts/lib/preview-ports';
 
 const SHELL_DIR = resolve(__dirname, '..');
@@ -142,19 +142,23 @@ describe('choosePreviewPorts', () => {
     ).rejects.toThrow('No free port found for the preview of a-mfe after 20 attempts.');
   });
 
-  it('never gives a moved preview the port the host serves on', async () => {
+  it('never gives a moved preview the port the host serves on, nor a declared preview port, even when they are free', async () => {
+    // The choice dev:all makes: every port offered before the last one is
+    // free, so only the reservation keeps the preview off the host port and
+    // the other package's declared port.
+    const hostPort = await holdPort();
+    const declared = await holdPort();
     const free = await holdPort();
-    await release(holders.pop()!);
-    const offers = [5791, 5791, free];
+    await Promise.all(holders.splice(0).map(release));
+    const offers = [hostPort, declared, free];
     const packages = [
       { name: 'a-mfe', port: 3001 },
-      { name: 'b-mfe', port: 3002 },
+      { name: 'b-mfe', port: declared },
     ];
 
-    const chosen = await choosePreviewPorts([packages[0]], previewReservedPorts(packages, 5791), async () => offers.shift()!);
+    const chosen = await choosePreviewPortsBesideHost(packages, [packages[0]], hostPort, async () => offers.shift()!);
 
     expect(chosen).toEqual(new Map([['a-mfe', free]]));
-    expect(previewReservedPorts(packages, 5791)).toEqual(new Set([3001, 3002, 5791]));
   });
 
   it('prints every moved package with its declared and chosen port, and the host port', () => {
