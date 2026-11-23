@@ -16,6 +16,7 @@
  * told the moved port of that package (`--preview-port <package>=<port>`).
  */
 
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 
@@ -157,11 +158,34 @@ export async function choosePreviewPorts(
   return chosen;
 }
 
-/** The lines `dev:all` prints for the previews it moved. */
-export function movedPreviewPortsMessage(taken: readonly MfeInfo[], chosen: ReadonlyMap<string, number>): string {
+/** The ports a moved preview may not take: every declared preview port, and the port the host serves on. */
+export function previewReservedPorts(packages: readonly MfeInfo[], hostPort: number): Set<number> {
+  return new Set([...packages.map((mfe) => mfe.port), hostPort]);
+}
+
+/**
+ * The moved ports the dev manifest generator is told about: only those of the
+ * packages it aggregates, the ones with an `mfe.json`. `dev:all` also starts a
+ * package that declares a `--port` without one; the generator would refuse its
+ * name, after every package was built.
+ */
+export function generatorPreviewPorts(
+  moved: ReadonlyMap<string, number>,
+  packagesDir: string = MFE_PACKAGES_DIR,
+): Map<string, number> {
+  return new Map([...moved].filter(([name]) => existsSync(join(packagesDir, name, 'mfe.json'))));
+}
+
+/** The lines `dev:all` prints for the previews it moved, and the host port they keep clear of. */
+export function movedPreviewPortsMessage(
+  taken: readonly MfeInfo[],
+  chosen: ReadonlyMap<string, number>,
+  hostPort: number,
+): string {
   return [
     `Preview port${taken.length === 1 ? '' : 's'} already in use, moved (${MOVE_PREVIEW_PORTS_ENV_VAR}=1):`,
     ...taken.map((mfe) => `  - ${mfe.name}: port ${mfe.port} -> ${chosen.get(mfe.name)}`),
+    `The host keeps port ${hostPort}.`,
   ].join('\n');
 }
 

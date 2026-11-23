@@ -28,9 +28,11 @@ import {
   findSharedPreviewPorts,
   findTakenPreviewPorts,
   isPortFree,
+  generatorPreviewPorts,
   movedPreviewPortsMessage,
   previewCommand,
   previewPortsMovable,
+  previewReservedPorts,
   sharedPreviewPortsMessage,
   takenPreviewPortsMessage,
   type PreviewCommand,
@@ -39,7 +41,7 @@ import {
 // that sets the variable; importing both keeps the two scripts on one name,
 // one set of accepted values and one message. The import is side-effect free:
 // that script runs its command only as the entry point.
-import { FRONTX_VERIFY_HOST_PORT, resolveEnvHostPort } from './verify-preflight.js';
+import { FRONTX_VERIFY_HOST_PORT, resolveEnvHostPort, resolveHostPort, viteConfigPort } from './verify-preflight.js';
 
 /**
  * The command the host (the shell itself) is started with. Without
@@ -144,10 +146,16 @@ async function main() {
     if (!previewPortsMovable()) {
       throw new Error(takenPreviewPortsMessage(taken));
     }
-    const reserved = new Set(packages.map((mfe) => mfe.port));
-    if (hostEnv.port !== undefined) reserved.add(hostEnv.port);
-    movedPorts = await choosePreviewPorts(taken, reserved);
-    console.log(`${movedPreviewPortsMessage(taken, movedPorts)}\n`);
+    // The port the host will serve on, resolved as the preflight resolves it:
+    // the variable, then the port of the project's Vite config, then 5173.
+    const { port: hostPort } = await resolveHostPort({
+      flagPort: undefined,
+      envPort: hostEnv.port,
+      configRoot: process.cwd(),
+      resolveConfigPort: viteConfigPort,
+    });
+    movedPorts = await choosePreviewPorts(taken, previewReservedPorts(packages, hostPort));
+    console.log(`${movedPreviewPortsMessage(taken, movedPorts, hostPort)}\n`);
   }
   if (hostEnv.port !== undefined && !(await isPortFree(hostEnv.port))) {
     throw new Error(
@@ -161,7 +169,7 @@ async function main() {
 
   // Step 2: Generate manifests (reads dist/mf-manifest.json, writes public/generated-mfe-manifests.json).
   // This child is also where the skipped-examples notice is printed, once per run.
-  await generateManifests(movedPorts);
+  await generateManifests(generatorPreviewPorts(movedPorts));
 
   // Step 3: Start host + MFE preview servers concurrently
   const commands = buildPreviewCommands(packages, hostCmd, movedPorts);
