@@ -42,7 +42,7 @@ import {
   parseDevtoolsEndpoint,
 } from '../runner/chrome.mjs';
 import { CdpSession } from '../runner/cdp.mjs';
-import { isUrlReachable } from '../runner/server.mjs';
+import { isUrlReachable, startServer } from '../runner/server.mjs';
 
 // The CLI's own wiring up to the first browser or server step: every input
 // it cannot honour exits 2 before the server wait and the Chrome lookup. A
@@ -54,6 +54,14 @@ describe('cli main: inputs checked before any browser work', () => {
     vi.restoreAllMocks();
     for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  async function freePort() {
+    const probe = http.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as AddressInfo;
+    await new Promise((resolve) => probe.close(resolve));
+    return port;
+  }
 
   async function runCli(files: Record<string, string>, args: string[]) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-cli-'));
@@ -158,6 +166,43 @@ describe('cli main: inputs checked before any browser work', () => {
     } finally {
       await new Promise((resolve) => running.close(resolve));
     }
+  });
+
+  // A start that fails says why: the server's own last words and its exit
+  // code, at once rather than after --server-timeout-ms.
+  it('stops waiting when the started server exits, and prints its last output and exit code', async () => {
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const command = `node -e "console.log('building'); console.error('Preview ports already in use: port 3001'); process.exit(1)"`;
+    const started = Date.now();
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
+    expect(result.code).toBe(2);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(result.errors).toMatch(/the server command exited with code 1 before .* answered/);
+    expect(result.errors).toMatch(/building\n.*Preview ports already in use: port 3001/);
+    expect(result.logged).not.toMatch(/launching headless Chrome/);
+  });
+
+  it('prints the output of a server that never answered once --server-timeout-ms passes', async () => {
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const command = `node -e "console.log('still booting'); setInterval(() => {}, 1000)"`;
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '1500']);
+    expect(result.code).toBe(2);
+    expect(result.errors).toMatch(/app URL never became reachable within 1500ms/);
+    expect(result.errors).toMatch(/still running.*\n.*still booting/);
+  });
+
+  // A healthy start stays quiet, and the server is stopped with the run.
+  it('keeps the output of a server that came up out of the run and stops it at the end', async () => {
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const command =
+      `node -e "console.log('SERVER' + ' NOISE'); require('http').createServer((q, s) => ` +
+      `{ s.statusCode = q.url.startsWith('/json/') ? 404 : 200; s.end(); }).listen(${port}, '127.0.0.1')"`;
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+    expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
+    expect(result.logged).toMatch(/starting dev server/);
+    expect(`${result.logged}\n${result.errors}`).not.toMatch(/SERVER NOISE/);
+    await vi.waitFor(async () => expect(await isUrlReachable(url)).toBe(false), { timeout: 5_000, interval: 100 });
   });
 });
 
@@ -769,6 +814,29 @@ describe('server', () => {
     await expect(
       isUrlReachable('http://x/', { fetchImpl: async () => { throw new Error('refused'); } }),
     ).resolves.toBe(false);
+  });
+
+  // The output is kept only as a tail, so a chatty server on a long run cannot
+  // fill memory: at most the last 40 lines and 8 KB, stdout and stderr both.
+  it('keeps a bounded tail of the server output and reports how it ended', async () => {
+    const script =
+      "for (let i = 0; i < 100; i += 1) console.log('line ' + i); " +
+      "console.log('x'.repeat(20000)); console.error('the cause'); process.exit(3)";
+    const server = startServer(`node -e "${script}"`);
+    await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    expect(server.ended()).toBe('exited with code 3');
+    const tail = server.output();
+    expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(8192);
+    expect(tail.split('\n').length).toBeLessThanOrEqual(40);
+    expect(tail).toMatch(/x{1000}\nthe cause$/);
+    expect(tail).not.toMatch(/line 0\b/);
+    server.stop();
+  });
+
+  it('keeps the last 40 lines when they are short', async () => {
+    const server = startServer(`node -e "for (let i = 0; i < 100; i += 1) console.log('line ' + i)"`);
+    await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    expect(server.output().split('\n')).toEqual(Array.from({ length: 40 }, (_, i) => `line ${i + 60}`));
   });
 });
 

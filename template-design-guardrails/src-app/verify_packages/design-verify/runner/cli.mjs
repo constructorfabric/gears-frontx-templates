@@ -168,6 +168,8 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const cleanups = [];
+  /** @type {ReturnType<typeof startServer> | undefined} */
+  let server;
   try {
     if (config.startServer) {
       if (await isUrlReachable(config.url)) {
@@ -187,11 +189,25 @@ export async function main(argv = process.argv.slice(2)) {
       }
       const serverCwd = resolveServerCwd(config);
       console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
-      const server = startServer(config.startServer, { cwd: serverCwd });
+      server = startServer(config.startServer, { cwd: serverCwd });
       cleanups.push(server.stop);
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
-    await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs });
+    try {
+      await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs, ended: server?.ended });
+    } catch (error) {
+      if (!server) throw error;
+      // The server's own words say why it never answered (a port in use, a
+      // failed build); a healthy start never prints them.
+      console.error(`design-verify: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(
+        (server.ended() === undefined
+          ? 'design-verify: the server command is still running and is stopped now; its last output:'
+          : "design-verify: the server command's last output:") +
+          `\n${server.output() || '(no output)'}`,
+      );
+      return 2;
+    }
 
     let endpoint = config.cdpUrl;
     if (!endpoint) {
