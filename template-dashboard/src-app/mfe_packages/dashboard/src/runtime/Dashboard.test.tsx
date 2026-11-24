@@ -1998,6 +1998,52 @@ describe('refresh and dispose of the root', () => {
   }, 15_000);
 
   it.each([
+    ['a refresh that replaces its cell', 'refresh'],
+    ['a switch to another dashboard', 'switch'],
+  ])('unmounts a widget whose mount was in flight at %s once the mount ends', async (_name, by) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const slowEntry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        await gate;
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: slowEntry, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const view = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    const slow = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    if (by === 'refresh') {
+      file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+      await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+      // The new cell runs, so the prune of the extension that left has started.
+      await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    } else {
+      await act(async () => view.rerender(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} />));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(root.registry?.getExtension(slow)).toBeDefined();
+    await act(async () => open());
+    await waitFor(() => expect(root.registry?.getExtension(slow)).toBeUndefined(), { timeout: 5000 });
+    // Only the widget that left unmounts: the cells of a dashboard switched to are other widgets of the same entry.
+    expect(counts.unmounted).toBe(1);
+    await act(async () => root.dispose());
+    expect(counts.mounted - counts.unmounted).toBe(0);
+  }, 15_000);
+
+  it.each([
     ['a failed first load', false],
     ['a refresh', true],
   ])('names the served file the first source of a base type a widget part redefines after %s', async (_name, byRefresh) => {

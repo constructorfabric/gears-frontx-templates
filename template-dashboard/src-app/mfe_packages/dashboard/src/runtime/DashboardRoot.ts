@@ -316,23 +316,7 @@ export class DashboardRoot {
     this.listeners.clear();
     for (const end of [...this.placing]) end();
     // A widget still mounting is unregistered once its mount ended, within the mount timeout, so its unmount runs.
-    const mounting = [...this.mountWaiters].filter(([, waiters]) => waiters.size > 0).map(([id]) => id);
-    const mountsEnded = Promise.all(
-      mounting.map(
-        (id) =>
-          new Promise<void>((resolve) => {
-            const ends = this.mountEnds.get(id) ?? new Set<() => void>();
-            this.mountEnds.set(id, ends);
-            const end = () => {
-              clearTimeout(timer);
-              ends.delete(end);
-              resolve();
-            };
-            const timer = setTimeout(end, MOUNT_TIMEOUT_MS);
-            ends.add(end);
-          }),
-      ),
-    );
+    const mountsEnded = Promise.all([...this.mountWaiters.keys()].map((id) => this.mountEnded(id)));
     for (const waiters of [...this.mountWaiters.values()]) for (const waiter of [...waiters]) waiter(new Error(DISPOSED));
     this.mountWaiters.clear();
     this.renderFallbacks.clear();
@@ -512,11 +496,36 @@ export class DashboardRoot {
     return this.unregister(dashboardId, stale);
   }
 
-  /** Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it. */
+  /**
+   * Resolves once the mount in flight of `id` ended, or the mount timeout passed; at once when no mount of it is in
+   * flight. The registry unmounts only an extension whose mount ended, so an unregister waits on this first.
+   */
+  private mountEnded(id: string): Promise<void> {
+    if (!this.mountWaiters.get(id)?.size) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const ends = this.mountEnds.get(id) ?? new Set<() => void>();
+      this.mountEnds.set(id, ends);
+      const end = () => {
+        clearTimeout(timer);
+        ends.delete(end);
+        resolve();
+      };
+      const timer = setTimeout(end, MOUNT_TIMEOUT_MS);
+      ends.add(end);
+    });
+  }
+
+  /**
+   * Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it.
+   * An extension still mounting is unregistered once its mount ended, within the mount timeout, so its unmount runs.
+   */
   private unregister(dashboardId: string, ids: readonly string[]): Promise<void> {
     const before = this.releasing.get(dashboardId) ?? Promise.resolve();
+    // Taken now: a dispose that comes before the release runs ends the mount waiters this reads.
+    const mountsEnded = ids.map((id) => this.mountEnded(id));
     const done = before.then(async () => {
-      for (const id of ids) {
+      for (const [at, id] of ids.entries()) {
+        await mountsEnded[at];
         this.leaving.add(id);
         await this.registry?.unregisterExtension(id).catch(() => undefined);
         this.leaving.delete(id);
