@@ -25,6 +25,7 @@ import {
   movedPreviewPortsMessage,
   previewCommand,
   previewPortsMovable,
+  systemFreePort,
 } from '../scripts/lib/preview-ports';
 
 const SHELL_DIR = resolve(__dirname, '..');
@@ -90,6 +91,16 @@ describe('previewCommand', () => {
     expect(previewCommand({ name: 'orders-mfe', port: 3010 }).cwd).toBe(
       join(process.cwd(), 'src-app', 'mfe_packages', 'orders-mfe'),
     );
+  });
+});
+
+describe('systemFreePort', () => {
+  it('asks 127.0.0.1 when the machine has no address for the host', async () => {
+    // 192.0.2.1 is a documentation address no machine has as its own.
+    const port = await systemFreePort('192.0.2.1');
+
+    expect(port).toBeGreaterThan(0);
+    expect(await isPortFree(port)).toBe(true);
   });
 });
 

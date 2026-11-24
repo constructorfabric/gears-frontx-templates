@@ -113,12 +113,26 @@ export function previewPortsMovable(env: NodeJS.ProcessEnv = process.env): boole
   return env[MOVE_PREVIEW_PORTS_ENV_VAR] === '1';
 }
 
-/** A port the system hands out as free right now on the host a preview listens on. */
-function systemFreePort(): Promise<number> {
+/** The loopback address asked when the machine has no address for the host a preview listens on. */
+const FALLBACK_LOOPBACK = '127.0.0.1';
+
+/**
+ * A port the system hands out as free right now on `host`, by default the host
+ * a preview listens on. A host this machine has no address for (`localhost`
+ * resolving to `::1` without IPv6) is asked again on 127.0.0.1, as
+ * `isPortInUseAt` treats such a host as holding nothing.
+ */
+export function systemFreePort(host: string = PREVIEW_HOST): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const server = createServer();
-    server.once('error', reject);
-    server.listen({ port: 0, host: PREVIEW_HOST, exclusive: true }, () => {
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (host !== FALLBACK_LOOPBACK && err.code !== undefined && ADDRESS_UNAVAILABLE.has(err.code)) {
+        resolvePromise(systemFreePort(FALLBACK_LOOPBACK));
+      } else {
+        reject(err);
+      }
+    });
+    server.listen({ port: 0, host, exclusive: true }, () => {
       const address = server.address();
       const port = address !== null && typeof address === 'object' ? address.port : 0;
       server.close(() => (port > 0 ? resolvePromise(port) : reject(new Error('The system gave no free port'))));
