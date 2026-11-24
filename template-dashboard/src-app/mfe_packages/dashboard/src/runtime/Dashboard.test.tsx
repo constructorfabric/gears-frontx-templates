@@ -1912,6 +1912,23 @@ describe('refresh and dispose of the root', () => {
     await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
   }, 15_000);
 
+  it('tells the next listener and resolves the refresh outcome when a listener throws a value that cannot be turned into text', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const told: string[] = [];
+    // Subscribed before a second listener; String() throws for a value with no prototype.
+    root.subscribe(() => {
+      throw Object.create(null);
+    });
+    root.subscribe(() => void told.push('after'));
+    file = fileOf([12]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(told).toEqual(['after']);
+    expect(errors.mock.calls.map(([line]) => String(line))).toEqual(['[dashboard] a refresh listener failed: listener threw a value that cannot be shown']);
+  }, 15_000);
+
   it('keeps the refreshed definitions when the first read of the served file answers after the refresh', async () => {
     let answerFirst!: (file: unknown) => void;
     const answers: (() => Promise<unknown>)[] = [() => new Promise((resolve) => (answerFirst = resolve)), async () => fileOf([12]), async () => fileOf([12])];
@@ -2108,6 +2125,8 @@ describe('refresh and dispose of the root', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(unregistering).not.toHaveBeenCalledWith(shared);
     expect(root.registry?.getExtension(shared)).toBeDefined();
+    // The cell of the third dashboard finishes mounting: its widget is drawn.
+    await waitFor(() => expect(shadowTexts(container).filter((text) => text.startsWith('theme light'))).toHaveLength(1), { timeout: 5000 });
   }, 15_000);
 
   it('keeps the extension of a widget another dashboard of the root holds when a refresh drops it from one', async () => {

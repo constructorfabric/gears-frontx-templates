@@ -300,7 +300,14 @@ export class DashboardRoot {
       try {
         listener();
       } catch (error) {
-        console.error(`[dashboard] ${escapeControls(`a refresh listener failed: ${String(error).split('\n')[0]}`)}`);
+        // String() itself throws for a value with no usable toString, such as Object.create(null).
+        let text: string;
+        try {
+          text = String(error).split('\n')[0];
+        } catch {
+          text = 'listener threw a value that cannot be shown';
+        }
+        console.error(`[dashboard] ${escapeControls(`a refresh listener failed: ${text}`)}`);
       }
     }
     return { ok: true };
