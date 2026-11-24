@@ -207,7 +207,29 @@ DEMO_DATA[widgetId('pie_chart', 13)] = { render: { radius: ['55%', '80%'], legen
 DEMO_DATA[widgetId('pie_chart', 14)] = { render: { radius: ['55%', '80%'], legend_position: 'right' } satisfies PieRender, data: pieOf(24) };
 DEMO_DATA[widgetId('cartesian_chart', 15)] = { render: stack10Render, data: stack10Data };
 
+// Twelve long category names on a bar chart, upright and horizontal, to check that each one keeps a label (?view=labels12, labels12h).
+const LONG_NAMES = [
+  'Customer onboarding service',
+  'Payments reconciliation worker',
+  'Identity and access gateway',
+  'Search indexing pipeline',
+  'Mobile push notification relay',
+  'Storage lifecycle manager',
+  'Messaging fan-out broker',
+  'Reports export scheduler',
+  'Support ticket triage bot',
+  'Platform configuration store',
+  'Data warehouse loader',
+  'Security audit collector',
+];
+const labelsRender = (orientation: 'vertical' | 'horizontal'): CartesianRender => ({ series: [{ name: 'Requests', type: 'bar' }], x_axis: { type: 'category' }, orientation });
+const labelsData: CartesianData = { series: [{ name: 'Requests', points: LONG_NAMES.map((x, i) => ({ x, y: 120 - i * 7 })) }] };
+DEMO_DATA[widgetId('cartesian_chart', 16)] = { render: labelsRender('vertical'), data: labelsData };
+DEMO_DATA[widgetId('cartesian_chart', 17)] = { render: labelsRender('horizontal'), data: labelsData };
+
 export const COLOUR_CELLS: Record<string, DashboardCell[]> = {
+  labels12: [cell('large', 'high', widgetId('cartesian_chart', 16), 'Requests by service (12 long names)')],
+  labels12h: [cell('large', 'high', widgetId('cartesian_chart', 17), 'Requests by service (12 long names, horizontal)')],
   pie12: [cell('large', 'high', widgetId('pie_chart', 13), 'Requests by team (12)')],
   pie24: [cell('large', 'high', widgetId('pie_chart', 14), 'Requests by team (24)')],
   stack10: [cell('large', 'high', widgetId('cartesian_chart', 15), 'Requests by team and quarter (10 stacked series)')],

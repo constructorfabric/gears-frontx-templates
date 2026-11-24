@@ -1,4 +1,4 @@
-import { Area, Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis, ZAxis, usePlotArea, useYAxisScale, type LabelProps } from 'recharts';
+import { Area, Bar, CartesianGrid, ComposedChart, LabelList, Line, ReferenceLine, Scatter, ScatterChart, Text, XAxis, YAxis, ZAxis, usePlotArea, useYAxisScale, type LabelProps, type TextProps } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@gears-frontx/ui-kit';
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
@@ -9,7 +9,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
-import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
+import { charsIn, cutLabel, FILL, MIN_LABEL_CHARS, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
 
@@ -17,8 +17,9 @@ import { isCompact, isLaidOut, useElementSize } from './size';
 const MIN_LABELLED_BAR = 28;
 const PRIMARY_AXIS_WIDTH = 44;
 const SECONDARY_AXIS_WIDTH = 44;
-// A rotated tick stays on one line: Recharts wraps tick text to the slot width, which breaks a rotated label into overlapping lines.
-const ROTATED_TICK = { ...TICK, width: 10_000 };
+// A rotated tick, and a category tick beside a horizontal chart, stays on one line: Recharts wraps tick text to the slot
+// width, which breaks a rotated label into overlapping lines; the category label is cut to its room instead.
+const ONE_LINE_TICK = { ...TICK, width: 10_000 };
 // The heights of a value label and of an end label line, at the micro text size, with the value label's offset.
 const VALUE_LABEL_HEIGHT = 12;
 const END_LABEL_HEIGHT = 12;
@@ -30,6 +31,19 @@ const DAY = 86_400_000;
 const BUBBLE_RADIUS = { min: 3, max: 18, compactMax: 9 };
 // The axis of a category value: a horizontal chart's categories stand on this y axis.
 const CATEGORY_AXIS = 'category';
+
+/**
+ * A category tick: its label cut to the room the tick has, and, when cut, the full text in an SVG title, which the
+ * browser shows on hover. Recharts measures the cut text, so it never drops a label for being long.
+ */
+function CategoryTick({ full, shown, ...props }: TextProps & { full: string; shown: string }) {
+  return (
+    <g>
+      {shown === full ? null : <title>{full}</title>}
+      <Text {...props}>{shown}</Text>
+    </g>
+  );
+}
 
 /**
  * A place on a time axis in epoch milliseconds: a number as it is, and a string by the widgets' one time reader (an
@@ -482,7 +496,7 @@ export function CartesianChart({
   const xAxisHeight = (longest: number) => (angle === 0 ? 30 : Math.ceil(longest * TICK_CHAR_WIDTH * sine) + 16) + xTitle;
   // A rotated label runs left of its tick: the first one's label can pass the y axis, so the chart keeps that room and the plot is narrower by it.
   const overhangOf = (firstLabel: number) => (angle === 0 ? 0 : Math.max(0, Math.ceil(firstLabel * TICK_CHAR_WIDTH * Math.cos((Math.abs(angle) * Math.PI) / 180)) - primaryWidth));
-  const xTick = { angle, tick: angle === 0 ? TICK : ROTATED_TICK, textAnchor: angle === 0 ? ('middle' as const) : ('end' as const) };
+  const xTick = { angle, tick: angle === 0 ? TICK : ONE_LINE_TICK, textAnchor: angle === 0 ? ('middle' as const) : ('end' as const) };
 
   // Scatter series on a value or time x axis carry their own x and y per point, so the chart draws each series on two value axes.
   // On a category axis they draw as points over the categories of the composed chart below.
@@ -646,9 +660,12 @@ export function CartesianChart({
   // Value labels: `auto` writes them when each bar is wide enough. Bars of one stack share a slot; Recharts gives the slots 80% of a category.
   const barSlots = new Set(data.series.map((series, index) => (typeOf(series.name) === 'bar' ? (optionOf(series.name)?.stack_group ?? `s${index}`) : null)).filter(Boolean)).size;
   // A rotated label runs left of its tick: the first category's label can pass the y axis, so the chart keeps that room and the plot is narrower by it.
-  const firstLabel = rows.length > 0 ? tickText(rows[0].x ?? null).length : 0;
+  // A turned label takes room along its own line, under the plot: at most a third of the chart's height, so a long
+  // category name is cut rather than growing the axis. A level label's room is its tick's slot, set further down.
+  const turnedChars = angle === 0 || axis !== 'category' ? Infinity : Math.max(MIN_LABEL_CHARS + 1, charsIn((height / 3 - 16 - xTitle) / sine));
+  const firstLabel = rows.length > 0 ? Math.min(turnedChars, tickText(rows[0].x ?? null).length) : 0;
   const rotatedOverhang = horizontal ? 0 : overhangOf(firstLabel);
-  const longest = rows.reduce((max, row) => Math.max(max, tickText(row.x ?? null).length), 0);
+  const longest = Math.min(turnedChars, rows.reduce((max, row) => Math.max(max, tickText(row.x ?? null).length), 0));
   // A horizontal chart writes its categories beside the plot: the axis takes their width, up to a third of the chart.
   const categoryWidth = Math.min(Math.ceil(longest * TICK_CHAR_WIDTH) + 12, Math.max(48, Math.round(width / 3))) + (render.x_axis?.label ? AXIS_TITLE : 0);
   // A value axis along a horizontal chart is as tall as its ticks, and its own title when it has one.
@@ -661,12 +678,20 @@ export function CartesianChart({
   // A horizontal bar needs the height of its value's line, a vertical one the width of a value.
   const showValues = barSlots > 0 && (labels === 'always' || (labels === 'auto' && barWidth >= (horizontal ? VALUE_LABEL_HEIGHT + 2 : MIN_LABELLED_BAR)));
 
-  // Tick labels: `every` labels each category and thins out to every 2nd, 3rd... when a category is narrower than a label needs.
-  // Only a category axis has a tick per row; a value or time axis draws its own few number ticks, which minTickGap keeps apart.
-  const every = axis === 'category' && render.x_axis?.tick_labels === 'every';
+  // Category tick labels: each category is labelled, its label cut with an ellipsis to the room its tick has (the slot's
+  // width on an upright chart, the category axis on a horizontal one, a third of the height when turned), with the full
+  // name on hover. Only where a slot cannot hold even a short label does the axis label every 2nd, 3rd... category.
+  // A value or time axis draws its own few number ticks, which minTickGap keeps apart.
+  const categories = axis === 'category';
   const slot = rows.length > 0 ? (horizontal ? plotHeight : plotWidth) / rows.length : 0;
-  const needed = horizontal ? TICK_TEXT_HEIGHT : angle === 0 ? longest * TICK_CHAR_WIDTH + 8 : TICK_TEXT_HEIGHT / sine;
+  const level = !horizontal && angle === 0;
+  const needed = horizontal ? TICK_TEXT_HEIGHT : level ? Math.min(longest, MIN_LABEL_CHARS + 1) * TICK_CHAR_WIDTH + 8 : TICK_TEXT_HEIGHT / sine;
   const tickStep = slot > 0 ? Math.max(1, Math.ceil(needed / slot)) : 1;
+  const labelChars = horizontal ? charsIn(categoryWidth - 12 - (render.x_axis?.label ? AXIS_TITLE : 0)) : level ? charsIn(tickStep * slot - 8) : turnedChars;
+  const categoryTick = (base: typeof TICK) => (props: TextProps & { payload?: { value?: string | number } }) => {
+    const full = tickText(props.payload?.value ?? null);
+    return <CategoryTick {...props} {...base} full={full} shown={cutLabel(full, labelChars)} />;
+  };
   // The row of a series' last drawn point, where its name goes; not the last row, which may hold only other series.
   const lastDrawn = (index: number) => rows.reduce((last, row, at) => (typeof row[`v${index}`] === 'number' ? at : last), -1);
   const hasEndLabel = data.series.some((series) => optionOf(series.name)?.label);
@@ -794,26 +819,27 @@ export function CartesianChart({
                   dataKey="x"
                   type="category"
                   width={categoryWidth}
-                  tick={TICK}
-                  tickFormatter={(value: string | number) => tickText(value)}
+                  tick={categoryTick(ONE_LINE_TICK)}
+                  tickFormatter={(value: string | number) => cutLabel(tickText(value), labelChars)}
                   label={titleOf(render.x_axis?.label, 'primary')}
                   tickLine={false}
                   axisLine={false}
-                  minTickGap={every ? 0 : 4}
-                  interval={every ? tickStep - 1 : undefined}
+                  minTickGap={0}
+                  interval={tickStep - 1}
                 />
               ) : (
                 <XAxis
                   dataKey="x"
                   type={axis === 'category' ? 'category' : 'number'}
                   domain={axis === 'category' ? undefined : ['dataMin', 'dataMax']}
-                  tickFormatter={(value: string | number) => tickText(value)}
+                  tickFormatter={(value: string | number) => (categories ? cutLabel(tickText(value), labelChars) : tickText(value))}
                   label={titleOf(render.x_axis?.label, 'x')}
                   tickLine={false}
                   axisLine={false}
-                  minTickGap={every ? 0 : 24}
-                  interval={every ? tickStep - 1 : undefined}
+                  minTickGap={categories ? 0 : 24}
+                  interval={categories ? tickStep - 1 : undefined}
                   {...xTick}
+                  {...(categories ? { tick: categoryTick(xTick.tick) } : {})}
                   height={xAxisHeight(longest)}
                 />
               )}

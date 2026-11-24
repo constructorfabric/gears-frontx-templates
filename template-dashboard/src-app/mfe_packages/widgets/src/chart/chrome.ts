@@ -21,3 +21,16 @@ export function pickIndexOf(state: { activeTooltipIndex?: number | string | null
   const index = Number(state.activeTooltipIndex);
   return Number.isInteger(index) && index >= 0 ? index : null;
 }
+
+/** The characters a category label keeps before its ellipsis at least: a tick with less room is left unlabelled. */
+export const MIN_LABEL_CHARS = 4;
+
+/** The characters of tick text that fit in `room` pixels at the tick size. */
+export const charsIn = (room: number) => Math.max(0, Math.floor(room / TICK_CHAR_WIDTH));
+
+/** `text` cut to at most `max` characters, the last of them an ellipsis; a text that fits stays whole. */
+export function cutLabel(text: string, max: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  return `${chars.slice(0, Math.max(1, max - 1)).join('').trimEnd()}…`;
+}

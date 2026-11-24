@@ -190,7 +190,7 @@
                     "every"
                   ],
                   "default": "auto",
-                  "description": "auto skips tick labels that would collide; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. Without it, auto."
+                  "description": "On a category axis both values label each category: a label longer than the room its tick has (the width of its slot on an upright chart, the category axis beside a horizontal chart, a third of the chart's height when turned) is cut with an ellipsis, and the full name shows on hover; only where a slot cannot hold even a few characters is every second, third and so on category labelled. On a value or time axis auto skips number labels that would collide, and every acts as auto. Without it, auto."
                 },
                 "tick_angle": {
                   "enum": [
@@ -199,7 +199,7 @@
                     -90
                   ],
                   "default": 0,
-                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them. Without it, 0."
+                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them, up to a third of the chart's height, past which a category label is cut. Without it, 0."
                 }
               }
             },

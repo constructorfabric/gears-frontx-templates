@@ -479,20 +479,69 @@ describe('cartesian_chart', () => {
     expect(container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').length).toBeGreaterThan(2);
   });
 
-  it('labels every category with tick_labels every, and every n-th one when the labels do not fit', () => {
-    const ticks = (labels: string[]) => {
-      const data: CartesianData = { series: [{ name: 'A', points: labels.map((x, index) => ({ x, y: index })) }] };
-      const { container, unmount } = render(<CartesianChart payload={{ render: { x_axis: { tick_labels: 'every' }, series: [{ name: 'A', type: 'bar' }] }, data }} />);
-      const count = container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').length;
+  describe('long category names', () => {
+    const LONG = [
+      'Customer onboarding service', 'Payments reconciliation worker', 'Identity and access gateway', 'Search indexing pipeline',
+      'Mobile push notification relay', 'Storage lifecycle manager', 'Messaging fan-out broker', 'Reports export scheduler',
+      'Support ticket triage bot', 'Platform configuration store', 'Data warehouse loader', 'Security audit collector',
+    ];
+    /** The category ticks of a bar chart of `labels`: the text each shows and the full name its title carries, if any. */
+    const ticksOf = (labels: string[], extra: Partial<CartesianRender> = {}, axis = extra.orientation === 'horizontal' ? 'yAxis' : 'xAxis') => {
+      const data: CartesianData = { series: [{ name: 'A', points: labels.map((x, index) => ({ x, y: index + 1 })) }] };
+      const { container, unmount } = render(<CartesianChart payload={{ render: { series: [{ name: 'A', type: 'bar' }], ...extra }, data }} />);
+      const ticks = [...container.querySelectorAll(`.recharts-${axis}-tick-labels .recharts-cartesian-axis-tick-label`)].map((tick) => ({
+        shown: tick.querySelector('.recharts-cartesian-axis-tick-value')?.textContent ?? '',
+        full: tick.querySelector('title')?.textContent ?? null,
+      }));
       unmount();
-      return count;
+      return ticks;
     };
-    expect(ticks(['a', 'b', 'c', 'd', 'e', 'f'])).toBe(6);
-    // 24 labels of 19 characters do not fit one per category on the 640px test chart, so they are thinned to fewer than half.
-    const long = Array.from({ length: 24 }, (_, index) => `Category number ${String(index).padStart(3, '0')}`);
-    const thinned = ticks(long);
-    expect(thinned).toBeGreaterThan(1);
-    expect(thinned).toBeLessThan(long.length / 2);
+
+    it.each([['auto', {}], ['every', { x_axis: { tick_labels: 'every' as const } }]])(
+      'labels each of 12 long names on an upright chart (tick_labels %s), cut to its slot, with the full name on hover',
+      (_mode, extra) => {
+        const ticks = ticksOf(LONG, extra);
+        expect(ticks).toHaveLength(12);
+        // The 640px test chart gives each of 12 categories about 49px: 6 characters, the last an ellipsis.
+        expect(ticks.map((tick) => tick.shown)).toEqual(LONG.map((name) => `${Array.from(name).slice(0, 5).join('').trimEnd()}\u2026`));
+        expect(ticks.map((tick) => tick.full)).toEqual(LONG);
+      },
+    );
+
+    it('keeps a name that fits its slot whole, with no title', () => {
+      expect(ticksOf(['Web', 'Data', 'Infra'])).toEqual([
+        { shown: 'Web', full: null },
+        { shown: 'Data', full: null },
+        { shown: 'Infra', full: null },
+      ]);
+    });
+
+    it('labels every 2nd of 24 names when a slot cannot hold a short label, each cut to the room of two slots', () => {
+      const long = Array.from({ length: 24 }, (_, index) => `Category number ${String(index).padStart(3, '0')}`);
+      const ticks = ticksOf(long, { x_axis: { tick_labels: 'every' } });
+      expect(ticks.map((tick) => tick.full)).toEqual(long.filter((_, index) => index % 2 === 0));
+      expect(ticks.every((tick) => tick.shown.endsWith('\u2026') && Array.from(tick.shown).length >= 5)).toBe(true);
+    });
+
+    it('cuts a name longer than a third of a horizontal chart beside the plot, on one line, with the full name on hover', () => {
+      const name = 'A very long category name that takes far more room than a third of the chart';
+      const ticks = ticksOf([name, 'Short'], { orientation: 'horizontal', x_axis: { type: 'category' } });
+      expect(ticks).toHaveLength(2);
+      expect(ticks[0].full).toBe(name);
+      expect(ticks[0].shown.endsWith('\u2026')).toBe(true);
+      // A third of the 640px chart, less the gap: about 30 characters.
+      expect(Array.from(ticks[0].shown).length).toBeLessThanOrEqual(31);
+      expect(ticks[1]).toEqual({ shown: 'Short', full: null });
+    });
+
+    it('cuts a turned name to a third of the chart height, with the full name on hover', () => {
+      const name = 'A very long category name that would make the turned axis taller than the plot itself';
+      const [tick] = ticksOf([name], { x_axis: { tick_angle: -45 } });
+      expect(tick.full).toBe(name);
+      expect(tick.shown.endsWith('\u2026')).toBe(true);
+      // 320 / 3 less the axis gap, along a 45 degree line: about 20 characters.
+      expect(Array.from(tick.shown).length).toBeLessThan(25);
+    });
   });
 
   // A guard on cost: it counts JSON.stringify calls on the values table, the content key the shell and the data view use.
