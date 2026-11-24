@@ -667,7 +667,10 @@ describe('the stamped render', () => {
   });
   const renderIds = (container: HTMLElement) =>
     [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.dataset.render ?? '');
-  const failureLines = (errors: { mock: { calls: unknown[][] } }) => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith('[dashboard] dashboard'));
+  // Only the lines of this test's dashboard and failing widget: the spy is on the shared console, where another root's
+  // late line could land while a test runs.
+  const failureLines = (errors: { mock: { calls: unknown[][] } }, dashboardId: string, widgetId: string) =>
+    errors.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith(`[dashboard] dashboard ${dashboardId}, widget ${widgetId} `));
 
   it('is the render type followed by a UUIDv5 of widget id, role and render, apart from the data stamp', () => {
     const id = renderStampIdOf(METRIC_RENDER, metric.widget.id, 'cell');
@@ -703,7 +706,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(2), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cells[1].widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0001');
     // The widget's own registration judges the render against the same render type the stamp uses, and fails first.
@@ -728,7 +731,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toEqual([stamp]), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, SECOND, named.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('a0b1');
     expect(lines[0]).toContain('the render carries the GTS field id');
@@ -746,7 +749,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cell.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0004');
     expect(lines[0]).toContain(`the render carries the GTS field ${name}`);
@@ -775,7 +778,7 @@ describe('the stamped render', () => {
     await waitFor(() => expect(renderIds(container)).toEqual([baseStamp, metricStamp]), { timeout: 5000 });
     rerender(<Dashboard root={root} dashboardId={SECOND} theme="light" language="en" />);
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, SECOND, named.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain(`the render carries the GTS field ${name}`);
     expect(renderIds(container).filter(Boolean)).toEqual([]);
@@ -790,7 +793,7 @@ describe('the stamped render', () => {
     const { container } = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} />);
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cell.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0008');
     // Judged against the metric_card render, not the open render base the field names.
@@ -847,7 +850,7 @@ describe('the stamped render', () => {
     const states: string[] = [];
     root.runCell({ dashboardId: DEMO_DASHBOARD_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
     await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0006');
     expect(lines[0]).toContain('the render cannot be read: Error: getter boom');
@@ -863,7 +866,7 @@ describe('the stamped render', () => {
     const states: string[] = [];
     root.runCell({ dashboardId: DEMO_DASHBOARD_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
     await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('000a');
     expect(lines[0]).toContain(`the render fails ${METRIC_RENDER}`);
@@ -879,7 +882,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, unknown.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('a0b2');
     expect(lines[0]).toContain('/render/id x-gts-instance-ref');
