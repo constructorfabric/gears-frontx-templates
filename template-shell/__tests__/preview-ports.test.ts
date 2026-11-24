@@ -15,6 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   PREVIEW_HOST,
@@ -27,6 +28,14 @@ import {
 } from '../scripts/lib/preview-ports';
 
 const SHELL_DIR = resolve(__dirname, '..');
+const TSX_LOADER = pathToFileURL(join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
+
+/**
+ * How a run whose servers are all stubs ends: the host's stub `vite` exits 3,
+ * `concurrently` stops the others, and dev:all exits 1 as the `concurrently`
+ * CLI does when a command failed, whichever command ends first.
+ */
+const EXIT_AFTER_STUB_SERVERS = 1;
 
 const holders: Server[] = [];
 
@@ -202,11 +211,39 @@ describe('dev:all Step 0 port checks', () => {
     delete env.FRONTX_VERIFY_HOST_PORT;
     delete env.FRONTX_VERIFY_MOVE_PREVIEW_PORTS;
     Object.assign(env, extraEnv);
-    return spawnSync(
-      process.execPath,
-      [join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(SHELL_DIR, 'scripts', 'dev-all.ts')],
-      { cwd: project, encoding: 'utf-8', env },
+    // spawnSync blocks the worker, so a stalled run is bounded here, not by the
+    // test timeout. tsx's loader runs the script in this one process: the tsx
+    // command would run it in a child that the kill of its parent leaves behind.
+    return spawnSync(process.execPath, ['--import', TSX_LOADER, join(SHELL_DIR, 'scripts', 'dev-all.ts')], {
+      cwd: project,
+      encoding: 'utf-8',
+      env,
+      timeout: 60_000,
+      killSignal: 'SIGKILL',
+    });
+  }
+
+  /**
+   * A run that goes all the way to the servers, every one of them a stub: the
+   * packages' local `vite` (build and preview) exits 0 and the host's `vite`,
+   * first on the fixture's PATH, exits 3 at once (npm runs offline, so nothing
+   * is fetched), and the generator script prints its arguments and exits 0.
+   * The first server to exit stops the others, so the run ends by itself.
+   */
+  function runDevAllToServers(extraEnv: NodeJS.ProcessEnv = {}) {
+    writeFileSync(join(project, 'gen.mjs'), "console.log('GENERATOR ARGS: ' + process.argv.slice(2).join(' '));\n");
+    mkdirSync(join(project, 'bin'));
+    writeFileSync(join(project, 'bin', 'vite'), '#!/bin/sh\nexit 3\n', { mode: 0o755 });
+    return runDevAll(
+      { npm_config_offline: 'true', PATH: `${join(project, 'bin')}:${process.env.PATH ?? ''}`, ...extraEnv },
+      { 'generate:mfe-manifests': 'node gen.mjs' },
     );
+  }
+
+  /** The `Running concurrently:` listing a run prints before it starts the servers. */
+  function listing(stdout: string): string {
+    expect(stdout).toContain('Running concurrently:');
+    return stdout.slice(stdout.indexOf('Running concurrently:'));
   }
 
   it('stops before building when two packages declare the same port, naming the port and both packages', async () => {
@@ -268,12 +305,7 @@ describe('dev:all Step 0 port checks', () => {
     expect(run.stdout).not.toContain('Building MFE packages');
   });
 
-  // A moved run goes all the way to the servers, every one of them a stub: the
-  // packages' local `vite` (build and preview) and the host's `vite`, first on
-  // the fixture's PATH, exit 0 at once (npm runs offline, so nothing is
-  // fetched), and the generator script prints its arguments and exits 0. The
-  // first server to exit stops the others, so the run ends by itself.
-  it('starts each moved preview on its moved port, prints the host port of the Vite config, and tells the generator only of packages with an mfe.json', async () => {
+  it('starts each moved preview on its moved port, pins the host to the port of the Vite config, and tells the generator only of packages with an mfe.json', async () => {
     const ordersPort = await holdPort();
     const loosePort = await holdPort();
     const hostPort = await holdPort();
@@ -284,35 +316,68 @@ describe('dev:all Step 0 port checks', () => {
     previewPackage('loose-mfe', loosePort, { mfeJson: false });
     previewPackage('free-mfe', freePort);
     writeFileSync(join(project, 'vite.config.mjs'), `export default { server: { port: ${hostPort} } };\n`);
-    writeFileSync(join(project, 'gen.mjs'), "console.log('GENERATOR ARGS: ' + process.argv.slice(2).join(' '));\n");
-    mkdirSync(join(project, 'bin'));
-    writeFileSync(join(project, 'bin', 'vite'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
 
-    const run = runDevAll(
-      {
-        FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1',
-        npm_config_offline: 'true',
-        PATH: `${join(project, 'bin')}:${process.env.PATH ?? ''}`,
-      },
-      { 'generate:mfe-manifests': 'node gen.mjs' },
-    );
+    const run = runDevAllToServers({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1' });
 
     expect(run.error).toBeUndefined();
+    expect(run.status).toBe(EXIT_AFTER_STUB_SERVERS);
     expect(run.stdout).toContain(`The host keeps port ${hostPort}.`);
     const movedLoose = new RegExp(`loose-mfe: port ${loosePort} -> (\\d+)`).exec(run.stdout)?.[1];
     const movedOrders = new RegExp(`orders-mfe: port ${ordersPort} -> (\\d+)`).exec(run.stdout)?.[1];
     expect(movedLoose).toBeDefined();
     expect(movedOrders).toBeDefined();
     expect(run.stdout).toMatch(new RegExp(`GENERATOR ARGS: --preview-port orders-mfe=${movedOrders}$`, 'm'));
-    const listing = run.stdout.slice(run.stdout.indexOf('Running concurrently:'));
-    expect(listing).toMatch(/\[0\] vite\n/);
-    expect(listing).toContain(
+    const servers = listing(run.stdout);
+    expect(servers).toContain(`[0] vite --port ${hostPort} --strictPort\n`);
+    expect(servers).toContain(
       `npm run preview -- --port ${movedLoose} --strictPort (in src-app/mfe_packages/loose-mfe)`,
     );
-    expect(listing).toContain(
+    expect(servers).toContain(
       `npm run preview -- --port ${movedOrders} --strictPort (in src-app/mfe_packages/orders-mfe)`,
     );
-    expect(listing).toContain('npm run preview -- --strictPort (in src-app/mfe_packages/free-mfe)');
+    expect(servers).toContain('npm run preview -- --strictPort (in src-app/mfe_packages/free-mfe)');
+  });
+
+  it('starts the host as plain vite when no preview was moved', async () => {
+    const previewPort = await holdPort();
+    await release(holders.pop()!);
+    previewPackage('orders-mfe', previewPort);
+
+    const run = runDevAllToServers();
+
+    expect(run.error).toBeUndefined();
+    expect(run.status).toBe(EXIT_AFTER_STUB_SERVERS);
+    expect(listing(run.stdout)).toContain('[0] vite\n');
+  });
+
+  it('stops a moved run before building when the host port of the Vite config is taken, naming the variable that picks another', async () => {
+    const previewPort = await holdPort();
+    const hostPort = await holdPort();
+    previewPackage('orders-mfe', previewPort);
+    writeFileSync(join(project, 'vite.config.mjs'), `export default { server: { port: ${hostPort} } };\n`);
+
+    const run = runDevAll({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1' });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(
+      `Host port ${hostPort} (the project's Vite config) is already in use; ` +
+        'stop the process holding it, or set FRONTX_VERIFY_HOST_PORT to a free port, and run dev:all again.',
+    );
+    expect(run.stdout).not.toContain('moved');
+    expect(run.stdout).not.toContain('Building MFE packages');
+  });
+
+  it("prints the fallback to Vite's default port under its own name in a moved run", async () => {
+    const previewPort = await holdPort();
+    previewPackage('orders-mfe', previewPort);
+    writeFileSync(join(project, 'vite.config.mjs'), "throw new Error('broken fixture config');\n");
+
+    // Whether 5173 is free on this machine decides how the run ends, not the line.
+    const run = runDevAllToServers({ FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1' });
+
+    expect(run.error).toBeUndefined();
+    expect(run.stdout).toContain("[dev-all] resolving the project's Vite config failed, using 5173:");
+    expect(run.stdout).not.toContain('[verify-preflight]');
   });
 
   it('stops before building when FRONTX_VERIFY_HOST_PORT is not a port, naming the variable and the value', async () => {

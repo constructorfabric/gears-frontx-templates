@@ -50,6 +50,8 @@ import { FRONTX_VERIFY_HOST_PORT, resolveEnvHostPort, resolveHostPort, viteConfi
  * `--port` then overrides the config so the host serves on exactly that port,
  * and `--strictPort` fails the run instead of drifting to the next free port
  * when the port is taken in between (the same rule the MFE previews run on).
+ * A run that moved a preview pins the host the same way, on the port it
+ * resolved without the variable.
  */
 function hostCommand(hostPort: number | undefined): string {
   return hostPort === undefined ? 'vite' : `vite --port ${hostPort} --strictPort`;
@@ -141,18 +143,32 @@ async function main() {
   }
   const taken = await findTakenPreviewPorts(packages);
   let movedPorts = new Map<string, number>();
+  let movedRunHostPort: number | undefined;
   if (taken.length > 0) {
     if (!previewPortsMovable()) {
       throw new Error(takenPreviewPortsMessage(taken));
     }
     // The port the host will serve on, resolved as the preflight resolves it:
     // the variable, then the port of the project's Vite config, then 5173.
-    const { port: hostPort } = await resolveHostPort({
+    const { port: hostPort, source } = await resolveHostPort({
       flagPort: undefined,
       envPort: hostEnv.port,
       configRoot: process.cwd(),
       resolveConfigPort: viteConfigPort,
+      scriptName: 'dev-all',
     });
+    // The moved run says the host keeps this port. The variable's port is
+    // probed and pinned below; any other is probed here and pinned too, since
+    // plain `vite` would drift off a taken port, maybe onto a moved preview's.
+    if (hostEnv.port === undefined) {
+      if (!(await isPortFree(hostPort))) {
+        throw new Error(
+          `Host port ${hostPort} (${source === 'config' ? "the project's Vite config" : "Vite's default"}) is already in use; ` +
+            `stop the process holding it, or set ${FRONTX_VERIFY_HOST_PORT} to a free port, and run dev:all again.`,
+        );
+      }
+      movedRunHostPort = hostPort;
+    }
     movedPorts = await choosePreviewPortsBesideHost(packages, taken, hostPort);
     console.log(`${movedPreviewPortsMessage(taken, movedPorts, hostPort)}\n`);
   }
@@ -161,7 +177,7 @@ async function main() {
       `Host port ${hostEnv.port} (${FRONTX_VERIFY_HOST_PORT}) is already in use; stop the process holding it and run dev:all again.`,
     );
   }
-  const hostCmd = hostCommand(hostEnv.port);
+  const hostCmd = hostCommand(hostEnv.port ?? movedRunHostPort);
 
   // Step 1: Build all MFEs (produces dist/ with mf-manifest.json)
   await buildMfesSequentially(packages);

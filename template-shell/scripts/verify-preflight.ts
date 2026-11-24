@@ -313,6 +313,8 @@ export interface HostPortResolutionInput {
    * says why the run fell to the default.
    */
   resolveConfigPort: ViteConfigPortResolver;
+  /** The script named at the start of the two fallback lines; verify-preflight by default. */
+  scriptName?: string;
 }
 
 /**
@@ -332,6 +334,7 @@ export interface HostPortResolutionInput {
  * an origin nothing serves on.
  */
 export async function resolveHostPort(input: HostPortResolutionInput): Promise<HostPortResolution> {
+  const scriptName = input.scriptName ?? SCRIPT_NAME;
   if (input.flagPort !== undefined) return { port: input.flagPort, source: 'flag' };
   if (input.envPort !== undefined) return { port: input.envPort, source: 'env' };
   let configPort: number | undefined;
@@ -339,13 +342,13 @@ export async function resolveHostPort(input: HostPortResolutionInput): Promise<H
     configPort = await input.resolveConfigPort(input.configRoot);
   } catch (error) {
     console.log(
-      `[${SCRIPT_NAME}] resolving the project's Vite config failed, using ${DEFAULT_HOST_PORT}: ${errorText(error)}`,
+      `[${scriptName}] resolving the project's Vite config failed, using ${DEFAULT_HOST_PORT}: ${errorText(error)}`,
     );
   }
   if (configPort !== undefined) {
     if (isValidPortNumber(configPort)) return { port: configPort, source: 'config' };
     console.log(
-      `[${SCRIPT_NAME}] the project's Vite config names port ${configPort}, which is not a port between 1 and 65535, using ${DEFAULT_HOST_PORT}`,
+      `[${scriptName}] the project's Vite config names port ${configPort}, which is not a port between 1 and 65535, using ${DEFAULT_HOST_PORT}`,
     );
   }
   return { port: DEFAULT_HOST_PORT, source: 'default' };
