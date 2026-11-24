@@ -80,6 +80,10 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
   }, [root, dashboardId, version]);
 
   const loaded = outcome?.id === dashboardId ? outcome.outcome : undefined;
+  // The cells of a new load took their place in this commit, and the ones it dropped have left: their extensions go.
+  useEffect(() => {
+    if (loaded?.ok) void root.prune(dashboardId, loaded.dashboard);
+  }, [root, dashboardId, loaded]);
   const frameTexts = texts?.frame ?? DEFAULT_FRAME_TEXTS;
   return (
     <div data-theme={kitScopeOf(theme)} lang={intlLocaleOf(language)} ref={setContainer} style={{ display: 'contents' }}>

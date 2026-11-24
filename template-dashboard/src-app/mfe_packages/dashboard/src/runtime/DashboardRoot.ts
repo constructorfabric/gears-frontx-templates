@@ -486,9 +486,37 @@ export class DashboardRoot {
   release(dashboardId: string): Promise<void> {
     const ids = this.extensions.get(dashboardId);
     this.extensions.delete(dashboardId);
+    return this.unregister(dashboardId, [...(ids ?? [])]);
+  }
+
+  /**
+   * After a load of a shown dashboard (a refresh's included): unregisters the generated extensions of that dashboard
+   * that no cell or larger view of `dashboard` names any more, a widget a refresh removed or whose type changed. The
+   * cells that showed them have left by then.
+   */
+  prune(dashboardId: string, dashboard: Dashboard): Promise<void> {
+    const ids = this.extensions.get(dashboardId);
+    if (!ids || this.disposed) return Promise.resolve();
+    const named = new Set<string>();
+    for (const cell of dashboard.layout.cells) {
+      for (const [widget, role] of [[cell.widget, 'cell'], [cell.larger_view, 'larger_view']] as const) {
+        try {
+          if (widget) named.add(extensionIdOf(widget.id, role, String(effectiveTraits(this.types, typeOfWidget(widget.id)).entry)));
+        } catch {
+          // A widget whose traits do not resolve runs no extension.
+        }
+      }
+    }
+    const stale = [...ids].filter((id) => !named.has(id));
+    for (const id of stale) ids.delete(id);
+    return this.unregister(dashboardId, stale);
+  }
+
+  /** Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it. */
+  private unregister(dashboardId: string, ids: readonly string[]): Promise<void> {
     const before = this.releasing.get(dashboardId) ?? Promise.resolve();
     const done = before.then(async () => {
-      for (const id of ids ?? []) {
+      for (const id of ids) {
         this.leaving.add(id);
         await this.registry?.unregisterExtension(id).catch(() => undefined);
         this.leaving.delete(id);

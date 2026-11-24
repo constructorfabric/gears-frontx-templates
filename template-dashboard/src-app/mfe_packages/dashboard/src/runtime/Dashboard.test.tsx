@@ -1959,6 +1959,27 @@ describe('refresh and dispose of the root', () => {
     expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
   }, 15_000);
 
+  it('loads the code of a widget whose type a refresh changed, and unregisters the extension of the cell that left', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...withCounts, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const before = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    expect(root.registry?.getExtension(before)).toBeDefined();
+    // The one cell of the dashboard becomes a widget of another type.
+    file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(counts.unmounted).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(root.registry?.getExtension(before)).toBeUndefined(), { timeout: 5000 });
+    expect(root.registry?.getExtension(extensionIdOf(markdown.widget.id, 'cell', MARKDOWN))).toBeDefined();
+  }, 15_000);
+
   it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let answerRefresh!: (file: unknown) => void;
