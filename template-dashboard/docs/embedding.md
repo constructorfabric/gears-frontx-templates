@@ -21,7 +21,9 @@ The packages export their TypeScript source, not built JavaScript (`exports` poi
 
 ## Embed the component
 
-Create one dashboard root for the application, then render `<Dashboard>` wherever a dashboard shows. One `<Dashboard>` per root is on screen at a time.
+Create one dashboard root for the application, then render `<Dashboard>` wherever a dashboard shows.
+
+One `<Dashboard>` per root is on screen at a time: two views on one root are not supported.
 
 ```tsx
 import '@gears-frontx/ui-kit/theme.css';

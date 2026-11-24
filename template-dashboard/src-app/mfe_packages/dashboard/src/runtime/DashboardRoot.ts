@@ -316,7 +316,7 @@ export class DashboardRoot {
    * A load or refresh in flight then resolves `{ ok: false }` with no console line, and a cell that was running shows
    * nothing more and leaves no widget behind.
    * After it, `load` and `refresh` resolve `{ ok: false }` with one console line, a cell run shows cannot-be-shown,
-   * `publish`, `publishOverlayContainer` and `attach` do nothing, and `subscribe` adds nothing. A second call returns
+   * `publish`, `publishOverlayContainer`, `withdrawOverlayContainer` and `attach` do nothing, and `subscribe` adds nothing. A second call returns
    * the first call's promise. A new root made after it works on its own.
    */
   dispose(): Promise<void> {
