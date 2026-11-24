@@ -1904,6 +1904,23 @@ describe('refresh and dispose of the root', () => {
     expect(calls.file).toBe(2);
   }, 15_000);
 
+  it('gives a load waiting on the first read of the served file the file a refresh read meanwhile', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let answerFirst!: (file: unknown) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((resolve) => (answerFirst = resolve)), async () => fileOf([12])];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const load = root.load(EDITED_ID);
+    await waitFor(() => expect(answerFirst).toBeTypeOf('function'));
+    expect(await root.refresh()).toEqual({ ok: true });
+    // The first read answers last, with older definitions.
+    answerFirst(fileOf([7]));
+    const outcome = await load;
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.dashboard.layout.cells.map((cell) => cell.widget.data)).toEqual([{ params: {}, transform: "{'value': 12}" }]);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it('ends a refresh in flight at dispose with the disposed reason and no console line', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let first = true;
@@ -2130,7 +2147,7 @@ describe('refresh and dispose of the root', () => {
     // A first load the registry fails on a base instance, or one that succeeds; then the base file again with a part.
     const answers: unknown[] = [byRefresh ? base : { ...base, instances: [...base.instances, brokenEntry] }, withRedefinedPie];
     const root = new DashboardRoot({ host: { loadFile: async () => answers.shift() as ServedFile, request: () => new Promise(() => undefined) }, entries, origin: 'http://localhost' });
-    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(!byRefresh ? false : true);
+    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(byRefresh);
     if (byRefresh) expect(await root.refresh()).toEqual({ ok: true });
     else expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(true);
     const lines = errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));

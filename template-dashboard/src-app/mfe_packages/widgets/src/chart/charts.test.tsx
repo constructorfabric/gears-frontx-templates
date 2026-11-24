@@ -2156,7 +2156,8 @@ describe('series colours past five', () => {
     expect(colours).toEqual(Array.from({ length: count }, (_, index) => seriesColor(index)));
     const hexes = hexesOf(colours);
     expect(hexes.every(Boolean)).toBe(true);
-    expect(new Set(hexes).size).toBe(count);
+    // Each theme on its own: two series that share a light or a dark colour look alike in that theme.
+    for (const theme of [0, 1]) expect(new Set(hexes.map((pair) => pair!.split(' ')[theme])).size).toBe(count);
   };
 
   it('gives each of 12 pie slices a colour of its own, the sixth unlike the first', () => {

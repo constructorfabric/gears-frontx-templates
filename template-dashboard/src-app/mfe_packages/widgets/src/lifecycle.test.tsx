@@ -341,6 +341,10 @@ describe('kit overlays with a host overlay container', () => {
     await otherBridge.send({ render: {} });
     const [oneHost, otherHost] = Array.from(outside.children);
     expect(outside.childElementCount).toBe(2);
+    expect(popupOf(oneHost.shadowRoot!)).toBeTruthy();
+    expect(popupOf(otherHost.shadowRoot!)).toBeTruthy();
+    expect(popupOf(onePoint.shadow)).toBeUndefined();
+    expect(popupOf(otherPoint.shadow)).toBeUndefined();
     await act(async () => one.unmount(onePoint.shadow));
     expect(Array.from(outside.children)).toEqual([otherHost]);
     expect(oneHost.isConnected).toBe(false);
@@ -352,7 +356,8 @@ describe('kit overlays with a host overlay container', () => {
   it.each([
     ['a selector string', '#overlays'],
     ['a plain object', { nodeType: 1, append: () => undefined }],
-  ])('takes %s as no host element: the widget draws and keeps its popup in its own shadow root', async (_name, value) => {
+  ])('takes %s as no host element: the widget keeps its popup in its own shadow root, and the page element #overlays stays empty', async (_name, value) => {
+    const target = Object.assign(pageElement(), { id: 'overlays' });
     const lifecycle = popupWidget();
     const { shadow } = ownMountPoint();
     const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: value });
@@ -360,6 +365,7 @@ describe('kit overlays with a host overlay container', () => {
     await send({ render: {} });
     expect(shadow.textContent).toContain('Details');
     expect(popupOf(shadow)).toBeTruthy();
+    expect(target.childElementCount).toBe(0);
     await act(async () => lifecycle.unmount(shadow));
   });
 });
