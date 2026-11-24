@@ -38,6 +38,25 @@ export function DashboardPage({ id, theme, language }: { id: string; theme: stri
 
 A theme or language change restyles the widgets in place; nothing is fetched again. A new `dashboardId` loads that dashboard. Leaving the page and coming back to the same dashboard runs its data requests again but does not fetch the served file again.
 
+## Refresh and dispose
+
+When the dashboard definitions change while the page is open (a user saved an edited dashboard, say), call `refresh()` on the root. It reads the served file again, and every shown `<Dashboard>` redraws from the new definitions; no new root and no page reload are needed.
+
+```tsx
+async function saveDashboard(edited: unknown) {
+  await fetch('/analytics/dashboards', { method: 'PUT', body: JSON.stringify(edited) });
+  const outcome = await dashboards.refresh();
+  if (!outcome.ok) showToast(`The dashboard was saved but cannot be redrawn: ${outcome.problem}`);
+}
+```
+
+- Widget code already loaded is not loaded again. A dashboard whose definition is unchanged keeps its cells as they are; a changed one runs its cells again, so their data requests go out again. A widget that changed its type loads the code of the new type if the page has not loaded it yet.
+- A dashboard missing from the new file shows "This dashboard cannot be shown".
+- A refresh that fails (the file request fails or times out, the base file is rejected, or the file defines otherwise a type the root already holds) resolves `{ ok: false, problem }` and writes one console line; the dashboards stay as they were drawn from the definitions read before. A widget type's definition changes only with a new root. A widget part left out is left out as on a first load and does not fail the refresh.
+- Calls do not pile up: a call made while another runs aborts the other's file request, and both resolve with the outcome of the later one.
+
+When the product is done with a root (the analytics area closes for good, the user signs out), unmount its `<Dashboard>` and call `dispose()`. It unmounts and unregisters every widget, removes their containers from the page, aborts the requests in flight, clears its timers and listeners, and disposes of its registry. After it, `load` and `refresh` resolve `{ ok: false }`, and a second `dispose()` returns the same promise. A new root works on its own. The widget code the page loaded stays in the page's module cache until a page reload, so a new root loads its own copy: keep one root for the page's life and refresh it rather than making new ones.
+
 ## Chart colours
 
 Every chart that colours by series, slice, tile or group (cartesian, pie, radar, treemap) takes the colour of the series' position, the first series the first colour. The template ships ten colours for the light theme and ten for the dark one, ordered so that neighbours differ in hue and lightness, each at 3:1 or more against the card surface. Past the tenth, a generator gives each next series the colour farthest from all the colours before it, so a series never takes an earlier series' colour (the generator runs out only after several hundred series).

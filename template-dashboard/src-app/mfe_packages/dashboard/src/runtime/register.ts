@@ -152,6 +152,23 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
 }
 
 /**
+ * The reason a base file read again cannot register, or nothing: its first type that `types` holds otherwise. The
+ * store keeps the first definition of a type and ignores a later one, so such a type would be dropped without a word.
+ * A type `fresh` (a new store with the bundle registered, as before a first load) holds already is the store's or the
+ * root's own, which a first load ignores too, and is skipped.
+ */
+export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin, base: unknown): string | undefined {
+  if (!isObject(base) || !Array.isArray(base.types)) return undefined;
+  for (const schema of base.types) {
+    if (!isObject(schema)) continue;
+    const id = idOf(schema);
+    const was = types.getSchema(id);
+    if (was && !fresh.getSchema(id) && canonical(was) !== canonical(schema)) return `its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
+  }
+  return undefined;
+}
+
+/**
  * A part's reason, with a throw turned into one: an in-code host can answer content JSON never carries (a BigInt, a
  * cycle, a getter that throws), which the content checks cannot read. Such a part is left out like any rejected one.
  */

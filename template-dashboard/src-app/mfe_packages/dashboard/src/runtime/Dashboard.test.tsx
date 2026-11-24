@@ -1667,3 +1667,214 @@ describe('variables from the host', () => {
     expect(calls).toBe(1);
   }, 15_000);
 });
+
+// Refresh and dispose: the host reads the definitions again without a new root, and releases a root it is done with.
+describe('refresh and dispose of the root', () => {
+  const METRIC = `${ENTRY}metric_card.v1`;
+  const demo = DEMO_SERVED_FILE.instances.find((instance) => instance.id === DEMO_DASHBOARD_ID) as { layout: { cells: { widget: { id: string } }[] } };
+  const metric = demo.layout.cells.find((cell) => cell.widget.id.includes('.metric_card.'))!;
+  const EDITED_ID = 'gts.frontx.dashboard.dashboard.dashboard.v1~3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a61';
+  const cellOf = (suffix: string, data: Record<string, unknown>) => ({ ...metric, widget: { ...metric.widget, id: metric.widget.id.replace(/[0-9a-f]{4}$/, suffix), render: {}, data } });
+  /** The served file with one more dashboard: one static cell per value, or one cell on `request` when given. */
+  const fileOf = (values: number[], request?: Record<string, unknown>): ServedFile => ({
+    ...DEMO_SERVED_FILE,
+    instances: [
+      ...DEMO_SERVED_FILE.instances,
+      {
+        id: EDITED_ID,
+        title: 'Edited',
+        layout: {
+          cells: request
+            ? [cellOf('c0ff', { request, transform: "{'value': response.value}" })]
+            : values.map((value, index) => cellOf(`c00${index}`, { params: {}, transform: `{'value': ${value}}` })),
+        },
+      },
+    ],
+  });
+  /** A host that answers the file `next()` gives at each call, counts the calls and hands out the data requests. */
+  const editingHost = (next: (signal: AbortSignal) => Promise<unknown>) => {
+    const calls = { file: 0, request: [] as AbortSignal[] };
+    const host: DashboardHost = {
+      loadFile: (signal) => ((calls.file += 1), next(signal) as Promise<ServedFile>),
+      // A data request is never answered: a pending request for the dispose test.
+      request: (_request, signal) => (calls.request.push(signal), new Promise(() => undefined)),
+    };
+    return { host, calls };
+  };
+  /** A metric entry that writes the value it receives, and counts how often its code is loaded, mounted and unmounted. */
+  const counting = () => {
+    const counts = { loaded: 0, mounted: 0, unmounted: 0 };
+    const entry = (): MfeEntryLifecycle => {
+      counts.loaded += 1;
+      let output: HTMLElement | undefined;
+      return {
+        mount(container, bridge) {
+          counts.mounted += 1;
+          output = document.createElement('output');
+          container.appendChild(output);
+          bridge.registerActionHandler(
+            RENDER_WIDGET_ACTION_ID,
+            ActionHandler.fromFunction(async (_type, payload) => {
+              output!.textContent = `value ${String((payload as { data?: { value?: unknown } }).data?.value)}`;
+            }),
+          );
+        },
+        unmount() {
+          counts.unmounted += 1;
+          output?.remove();
+        },
+      };
+    };
+    return { counts, entries: { ...entries, [METRIC]: entry } };
+  };
+  const values = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.textContent ?? '');
+  const refreshLines = (errors: { mock: { calls: unknown[][] } }) => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('cannot be refreshed'));
+
+  it('draws an edited definition after a refresh, with no new load of widget code, and keeps an unchanged dashboard as it is', async () => {
+    let file = fileOf([7, 8]);
+    const { host, calls } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7', 'value 8']), { timeout: 5000 });
+    const loadedBefore = counts.loaded;
+    expect(loadedBefore).toBe(2);
+    // A refresh of the same definitions keeps every cell: nothing unmounts.
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(calls.file).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    // The binding of the first cell changes, and a third cell of the same type joins.
+    file = fileOf([9, 8, 10]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 9', 'value 8', 'value 10']), { timeout: 5000 });
+    // The two cells shown before mount their loaded code again; only the new cell's extension loads its own.
+    expect(counts.loaded).toBe(loadedBefore + 1);
+    expect(root.version).toBe(2);
+  }, 15_000);
+
+  it('keeps the last good definitions drawn when a refresh fails, reports the problem, and takes the next good one', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: (() => Promise<unknown>)[] = [async () => fileOf([7]), async () => Promise.reject(new Error('offline')), async () => ({ instances: [] }), async () => fileOf([11])];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({ ok: false, problem: expect.stringMatching(/^the served file could not be loaded: .*offline/) });
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({ ok: false, problem: 'the served file: it has no types and instances lists' });
+    expect(refreshLines(errors)).toEqual([
+      expect.stringMatching(/^\[dashboard\] the dashboard definitions cannot be refreshed: the served file could not be loaded: .*offline/),
+      '[dashboard] the dashboard definitions cannot be refreshed: the served file: it has no types and instances lists',
+    ]);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(values(container)).toEqual(['value 7']);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 11']), { timeout: 5000 });
+  }, 15_000);
+
+  it('fails a refresh whose served file redefines a type the root holds, and keeps the type it holds', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const PIE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~';
+    const good = fileOf([7]);
+    const changed = { ...good, types: good.types.map((type) => (String(type.$id) === `gts://${PIE}` ? { ...type, description: 'otherwise' } : type)) };
+    expect(changed.types).not.toEqual(good.types);
+    const answers = [good, changed];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    await act(async () => expect(await root.refresh()).toEqual({ ok: false, problem: `the served file: its type ${PIE} is already defined otherwise, and a type changes only in a new dashboard root` }));
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.types.getSchema(PIE)).toEqual(good.types.find((type) => String(type.$id) === `gts://${PIE}`));
+  }, 15_000);
+
+  it('shows a dashboard missing from the refreshed file as one that cannot be shown', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    file = DEMO_SERVED_FILE;
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(await screen.findByText('This dashboard cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
+    expect(errors.mock.calls.some(([line]) => String(line).includes(`no dashboard ${EDITED_ID} in the served file`))).toBe(true);
+  }, 15_000);
+
+  it('lets the last of two refreshes win: the earlier file request is aborted and both calls resolve with the later outcome', async () => {
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    let first = true;
+    const { host } = editingHost(
+      (signal) =>
+        first
+          ? ((first = false), Promise.resolve(fileOf([7])))
+          : new Promise((resolve) => pending.push({ signal, answer: resolve })),
+    );
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const earlier = root.refresh();
+    const later = root.refresh();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[0].signal.aborted).toBe(true);
+    expect(pending[1].signal.aborted).toBe(false);
+    pending[1].answer(fileOf([12]));
+    // The earlier answer comes last and is dropped.
+    pending[0].answer(fileOf([99]));
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([{ ok: true }, { ok: true }]));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(values(container)).toEqual(['value 12']);
+    expect(root.version).toBe(1);
+  }, 15_000);
+
+  it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host, calls } = editingHost(async () => fileOf([], { method: 'GET', path: '/api/demo/teams/goals' }));
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const listener = vi.fn();
+    root.subscribe(listener);
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    // The cell's widget is mounted and its data request waits for an answer that never comes.
+    await waitFor(() => expect(counts.mounted).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(calls.request).toHaveLength(1));
+    expect(container.querySelectorAll('[data-widget-extension]').length + document.querySelectorAll('[data-widget-extension]').length).toBeGreaterThan(0);
+    const disposing = root.dispose();
+    expect(root.dispose()).toBe(disposing);
+    await act(async () => disposing);
+    expect(calls.request[0].aborted).toBe(true);
+    expect(counts.unmounted).toBe(1);
+    expect(document.querySelectorAll('[data-widget-extension]')).toHaveLength(0);
+    // Nothing of the running cell reports after the dispose.
+    expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
+    // Later calls have their own results: no file request, no listener call, no extension.
+    const filesBefore = calls.file;
+    expect(await root.refresh()).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(await root.load(EDITED_ID)).toEqual({ ok: false });
+    expect(calls.file).toBe(filesBefore);
+    expect(listener).not.toHaveBeenCalled();
+    root.publish('dark', 'de');
+    expect(root.subscribe(listener)).toBeTypeOf('function');
+    const states: string[] = [];
+    root.runCell({ dashboardId: EDITED_ID, widget: cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
+    await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
+    expect(errors.mock.calls.some(([line]) => String(line).includes('c001') && String(line).includes('the dashboard root is disposed'))).toBe(true);
+  }, 15_000);
+
+  it('runs a new root made after the dispose of the one before on its own', async () => {
+    const { host } = editingHost(async () => fileOf([7]));
+    const first = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const shown = render(<Dashboard root={first} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(shown.container)).toEqual(['value 7']), { timeout: 5000 });
+    shown.unmount();
+    await first.dispose();
+    const second = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={second} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+  }, 15_000);
+});

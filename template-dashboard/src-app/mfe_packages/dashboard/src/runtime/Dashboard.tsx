@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from 'react';
 
 import { intlLocaleOf, kitScopeOf, type DashboardCell, type WidgetInstance } from '../contract';
 import { DashboardArea, DEFAULT_DASHBOARD_TEXTS, type DashboardTexts } from '../DashboardArea';
@@ -53,6 +53,9 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const previous = useRef<string | undefined>(undefined);
+  // A refresh of the root that read new definitions loads the dashboard again; the one drawn stays until it settles.
+  const subscribe = useCallback((listener: () => void) => root.subscribe(listener), [root]);
+  const version = useSyncExternalStore(subscribe, () => root.version);
 
   useEffect(() => {
     let current = true;
@@ -74,7 +77,7 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
       // Unmounting while loading discards the load: the next mount starts a new one.
       if (!settled) root.forget(dashboardId, load);
     };
-  }, [root, dashboardId]);
+  }, [root, dashboardId, version]);
 
   const loaded = outcome?.id === dashboardId ? outcome.outcome : undefined;
   const frameTexts = texts?.frame ?? DEFAULT_FRAME_TEXTS;
