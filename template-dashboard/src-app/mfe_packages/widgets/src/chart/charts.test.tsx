@@ -1122,8 +1122,8 @@ describe('radar_chart', () => {
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: 1 }] })).toBeNull();
   });
 
-  // A radar takes one series per palette tone, which is why the bound is five; the distinct colours themselves are
-  // covered by 'draws one polygon per series in first-seen axis order'.
+  // A radar takes five series at most, as more overlapping polygons stop being readable; the distinct colours
+  // themselves are covered by 'draws one polygon per series in first-seen axis order'.
   it('fails the cell on more than 12 axes or 5 series, naming the point that crosses the bound', () => {
     const axes = Array.from({ length: 13 }, (_, index) => ({ axis: `a${index}`, series: null, value: 1 }));
     expect(checkRadar({ points: axes })).toBe('radar_chart: data.points[12].axis would be a 13th axis, and a radar takes at most 12');

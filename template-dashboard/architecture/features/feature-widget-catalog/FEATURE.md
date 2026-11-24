@@ -1637,7 +1637,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
           "type": "array",
           "minItems": 3,
           "maxItems": 120,
-          "description": "Three to 120 points in the delivered order. The widget shows 3 to 12 distinct axes and at most 5 distinct series, one per tone of the kit palette, and fails the cell outside them (a cross-check it runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks).",
+          "description": "Three to 120 points in the delivered order. The widget shows 3 to 12 distinct axes and at most 5 distinct series, as more overlapping polygons stop being readable, and fails the cell outside them (a cross-check it runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks).",
           "items": {
             "type": "object",
             "required": ["axis", "series", "value"],
