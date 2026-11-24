@@ -483,13 +483,14 @@ export class DashboardRoot {
 
   /**
    * Unregisters the generated extensions of a dashboard the viewer left for
-   * another one. A cell that starts before this finishes waits for it, so it
-   * never reuses an extension about to be unregistered.
+   * another one, except those another running cell or dashboard of the root
+   * holds. A cell that starts before this finishes waits for it, so it never
+   * reuses an extension about to be unregistered.
    */
   release(dashboardId: string): Promise<void> {
     const ids = this.extensions.get(dashboardId);
     this.extensions.delete(dashboardId);
-    return this.unregister(dashboardId, [...(ids ?? [])]);
+    return this.unregister(dashboardId, [...(ids ?? [])].filter((id) => !this.held(id)));
   }
 
   /**

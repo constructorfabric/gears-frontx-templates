@@ -2084,6 +2084,32 @@ describe('refresh and dispose of the root', () => {
     expect(root.registry?.getExtension(extensionIdOf(markdown.widget.id, 'cell', MARKDOWN))).toBeDefined();
   }, 15_000);
 
+  it('keeps the extension of a widget another dashboard of the root holds when the view leaves its dashboard for a third', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    const OTHER_ID = EDITED_ID.replace(/1$/, '2');
+    const THIRD_ID = EDITED_ID.replace(/1$/, '3');
+    const edited = fileOf([7]).instances.find((instance) => instance.id === EDITED_ID)!;
+    // Two dashboards of one file name the same widget; the third names another.
+    const file: ServedFile = { ...fileOf([7]), instances: [...fileOf([7]).instances, { ...edited, id: OTHER_ID }, { ...edited, id: THIRD_ID, layout: { cells: [markdown] } }] };
+    const { host } = editingHost(async () => file);
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...counting().entries, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const other = render(<Dashboard root={root} dashboardId={OTHER_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(other.container)).toEqual(['value 7']), { timeout: 5000 });
+    // Left without a switch: the other dashboard keeps its extensions for a return.
+    other.unmount();
+    const { container, rerender } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const shared = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension');
+    rerender(<Dashboard root={root} dashboardId={THIRD_ID} theme="light" language="en" />);
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(unregistering).not.toHaveBeenCalledWith(shared);
+    expect(root.registry?.getExtension(shared)).toBeDefined();
+  }, 15_000);
+
   it('keeps the extension of a widget another dashboard of the root holds when a refresh drops it from one', async () => {
     const MARKDOWN = `${ENTRY}markdown_card.v1`;
     const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
