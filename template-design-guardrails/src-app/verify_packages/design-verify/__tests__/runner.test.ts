@@ -51,10 +51,95 @@ import { isUrlReachable, startServer } from '../runner/server.mjs';
 // with a 1 ms wait and a missing --chrome keep that failure quick and loud.
 describe('cli main: inputs checked before any browser work', () => {
   const dirs: string[] = [];
+  // Every poll and delayed step a test schedules, cleared even when it fails.
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
     for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  function later(ms: number, then: () => void) {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      then();
+    }, ms);
+    timers.add(timer);
+  }
+
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** The PID a command wrote, once the file holds a whole one: never 0, which names this process group. */
+  function readPid(file: string): number | undefined {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      return undefined;
+    }
+    const pid = Number(text.trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  }
+
+  /** Kills a started command's process group (its PID leads it), or the process alone. */
+  function killGroup(pid: number) {
+    if (!(pid > 0) || !alive(pid)) return;
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  async function within<T>(promise: Promise<T>, ms: number): Promise<T | 'timed out'> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<'timed out'>((resolve) => {
+          timer = setTimeout(() => resolve('timed out'), ms);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Writes the line a command blocked on `read line < fifo` waits for. The
+   * open never blocks: with no reader yet it retries every 20 ms until
+   * `until`, and then gives up.
+   */
+  function releaseFifo(fifo: string, until = Date.now() + 5_000) {
+    let fd: number;
+    try {
+      fd = fs.openSync(fifo, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENXIO' && Date.now() < until) {
+        later(20, () => releaseFifo(fifo, until));
+      }
+      return;
+    }
+    try {
+      fs.writeSync(fd, 'x\n');
+    } catch {
+      /* the reader is gone */
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
 
   async function freePort() {
     const probe = http.createServer();
@@ -229,11 +314,8 @@ describe('cli main: inputs checked before any browser work', () => {
   }
 
   function whenExists(file: string, then: () => void) {
-    const poll = setInterval(() => {
-      if (!fs.existsSync(file)) return;
-      clearInterval(poll);
-      then();
-    }, 20);
+    if (fs.existsSync(file)) then();
+    else later(20, () => whenExists(file, then));
   }
 
   // The precheck gives up on a server that is slow to answer, so the run
@@ -262,24 +344,42 @@ describe('cli main: inputs checked before any browser work', () => {
     }
   });
 
-  // The command's exit can arrive just after the other server's answer: the
-  // run looks once more after a short pause. Here the server answers once the
-  // command waits on a pipe, and 50 ms later writes the line that lets it
-  // exit, with no new process in between.
-  it('refuses when the command it started exits just after --url answered', async () => {
+  /**
+   * The other server answers once the started command waits on a pipe, and
+   * `releaseAfterMs` later the test writes the line that lets the command exit,
+   * with no new process in between. The release is written once, and a
+   * command still waiting when the test ends is let go.
+   */
+  async function exitAfterAnswer(releaseAfterMs: number) {
     let ready = '';
     let release = '';
+    let released = false;
     const slow = await slowServer((done) =>
       whenExists(ready, () => {
         done();
-        setTimeout(() => void fs.promises.writeFile(release, 'x\n'), 50);
+        if (released) return;
+        released = true;
+        later(releaseAfterMs, () => releaseFifo(release));
       }),
     );
     ready = path.join(slow.dir, 'ready');
     release = path.join(slow.dir, 'release');
     execFileSync('mkfifo', [release]);
+    return {
+      slow,
+      command: `echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`,
+      close: async () => {
+        releaseFifo(release, 0);
+        await slow.close();
+      },
+    };
+  }
+
+  // The command's exit can arrive just after the other server's answer: the
+  // run looks once more after a short pause.
+  it('refuses when the command it started exits just after --url answered', async () => {
+    const { slow, command, close } = await exitAfterAnswer(50);
     try {
-      const command = `echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`;
       const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
       expect(result.thrown).toBeUndefined();
       expect(result.code).toBe(2);
@@ -288,7 +388,7 @@ describe('cli main: inputs checked before any browser work', () => {
           'so the answer came from a server this run did not start',
       );
     } finally {
-      await slow.close();
+      await close();
     }
   });
 
@@ -321,53 +421,66 @@ describe('cli main: inputs checked before any browser work', () => {
     cli.stderr.resume();
     const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
     let serverPid: number | undefined;
-    const alive = (pid: number) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
     try {
       await vi.waitFor(
         () => {
           expect(logged).toMatch(/waiting for/);
-          serverPid = Number(fs.readFileSync(pidFile, 'utf8'));
-          expect(alive(serverPid)).toBe(true);
+          serverPid = readPid(pidFile);
+          expect(serverPid).toBeDefined();
+          expect(alive(serverPid!)).toBe(true);
         },
         { timeout: 10_000, interval: 50 },
       );
       cli.kill(signal);
-      expect(await exited).toBe(exitCode);
+      expect(await within(exited, 5_000)).toBe(exitCode);
       await vi.waitFor(() => expect(alive(serverPid!)).toBe(false), { timeout: 5_000, interval: 50 });
     } finally {
       if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
-      if (serverPid !== undefined && alive(serverPid)) process.kill(serverPid, 'SIGKILL');
+      const pid = serverPid ?? readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
     }
   });
 
-  it('prints the output of a server that never answered once --server-timeout-ms passes', async () => {
+  it('prints the output of a server that never answered once --server-timeout-ms passes, and stops it', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-timeout-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
     const url = `http://127.0.0.1:${await freePort()}/`;
-    const command = `node -e "console.log('still booting'); setInterval(() => {}, 1000)"`;
-    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '1500']);
-    expect(result.code).toBe(2);
-    expect(result.errors).toMatch(/app URL never became reachable within 1500ms/);
-    expect(result.errors).toMatch(/still running.*\n.*still booting/);
+    const command = `echo $$ > '${pidFile}'; exec node -e "console.log('still booting'); setInterval(() => {}, 1000)"`;
+    try {
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '1500']);
+      expect(result.code).toBe(2);
+      expect(result.errors).toMatch(/app URL never became reachable within 1500ms/);
+      expect(result.errors).toMatch(/still running.*\n.*still booting/);
+      const pid = readPid(pidFile);
+      expect(pid).toBeDefined();
+      await vi.waitFor(() => expect(alive(pid!)).toBe(false), { timeout: 5_000, interval: 50 });
+    } finally {
+      const pid = readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
+    }
   });
 
   // A healthy start stays quiet, and the server is stopped with the run.
   it('keeps the output of a server that came up out of the run and stops it at the end', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-healthy-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
     const port = await freePort();
     const url = `http://127.0.0.1:${port}/`;
     const command =
-      `node -e "console.log('SERVER' + ' NOISE'); require('http').createServer((q, s) => ` +
+      `echo $$ > '${pidFile}'; exec node -e "console.log('SERVER' + ' NOISE'); require('http').createServer((q, s) => ` +
       `{ s.statusCode = q.url.startsWith('/json/') ? 404 : 200; s.end(); }).listen(${port}, '127.0.0.1')"`;
-    const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
-    expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
-    expect(result.logged).toMatch(/starting dev server/);
-    expect(`${result.logged}\n${result.errors}`).not.toMatch(/SERVER NOISE/);
-    await vi.waitFor(async () => expect(await isUrlReachable(url)).toBe(false), { timeout: 5_000, interval: 100 });
+    try {
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
+      expect(result.logged).toMatch(/starting dev server/);
+      expect(`${result.logged}\n${result.errors}`).not.toMatch(/SERVER NOISE/);
+      await vi.waitFor(async () => expect(await isUrlReachable(url)).toBe(false), { timeout: 5_000, interval: 100 });
+    } finally {
+      const pid = readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
+    }
   });
 });
 
