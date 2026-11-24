@@ -14,7 +14,7 @@ import { SharedRequests } from './binding';
 import { Dashboard, type DashboardProps } from './Dashboard';
 import { DashboardRoot, RENDER_RESERVED_FIELDS } from './DashboardRoot';
 import { fetchHost, type DashboardHost } from './host';
-import { renderStampIdOf, stampIdOf } from './ids';
+import { extensionIdOf, renderStampIdOf, stampIdOf } from './ids';
 
 /*
  * The runtime on the real FrontX registry and gts-plugin, in a simulated DOM:
@@ -1872,9 +1872,100 @@ describe('refresh and dispose of the root', () => {
     expect(calls.file).toBe(2);
   }, 15_000);
 
+  it('ends a refresh in flight at dispose with the disposed reason and no console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let first = true;
+    const { host } = editingHost((signal) => (first ? ((first = false), Promise.resolve(fileOf([7]))) : new Promise(() => void signal)));
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const refreshing = root.refresh();
+    await act(async () => root.dispose());
+    expect(await refreshing).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(refreshLines(errors)).toEqual([]);
+  }, 15_000);
+
+  it('ends a first read of the served file in flight at dispose: its request is aborted and the load fails with no console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    const { host } = editingHost((signal) => new Promise((resolve) => pending.push({ signal, answer: resolve })));
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const load = root.load(EDITED_ID);
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await root.dispose();
+    expect(pending[0].signal.aborted).toBe(true);
+    pending[0].answer(fileOf([7]));
+    expect(await load).toEqual({ ok: false });
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('settles a request whose signal aborts even when the host never answers, and leaves no abort listener behind', async () => {
+    const add = vi.spyOn(EventTarget.prototype, 'addEventListener');
+    const remove = vi.spyOn(EventTarget.prototype, 'removeEventListener');
+    const abortListeners = (spy: typeof add | typeof remove) => spy.mock.calls.filter(([type], at) => type === 'abort' && spy.mock.contexts[at] instanceof AbortSignal).length;
+    const root = new DashboardRoot({ host: { loadFile: () => new Promise(() => undefined), request: () => new Promise(() => undefined) }, entries, origin: 'http://localhost' });
+    const controller = new AbortController();
+    const answer = root.host.request({ method: 'GET', path: '/api/demo/teams/goals' }, controller.signal);
+    controller.abort();
+    await expect(answer).rejects.toThrow('the request was aborted');
+    // Every abort listener the request added on the root-wide disposal signal and on its own signal is removed.
+    expect(abortListeners(add) - abortListeners(remove)).toBe(0);
+  });
+
+  it('leaves no widget and no line of a cell started right before dispose', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const states: string[] = [];
+    const widget = cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget;
+    root.runCell({ dashboardId: EDITED_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
+    await act(async () => root.dispose());
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(counts.mounted - counts.unmounted).toBe(0);
+    expect(root.registry?.getExtension(extensionIdOf(widget.id, 'cell', METRIC))).toBeUndefined();
+    expect(states).not.toContain('cannot-be-shown');
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('c001'))).toEqual([]);
+  }, 15_000);
+
+  it('leaves no widget, no line and no failed cell for a widget still mounting at dispose', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const slowEntry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        await gate;
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: slowEntry }, origin: 'http://localhost' });
+    render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    const disposing = root.dispose();
+    open();
+    await act(async () => disposing);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(counts.mounted - counts.unmounted).toBe(0);
+    expect(screen.queryByText('This widget cannot be shown')).toBeNull();
+    expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
+  }, 15_000);
+
   it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const { host, calls } = editingHost(async () => fileOf([], { method: 'GET', path: '/api/demo/teams/goals' }));
+    let answerRefresh!: (file: unknown) => void;
+    let first = true;
+    const { host, calls } = editingHost(() =>
+      first ? ((first = false), Promise.resolve(fileOf([], { method: 'GET', path: '/api/demo/teams/goals' }))) : new Promise((resolve) => (answerRefresh = resolve)),
+    );
     const { counts, entries: withCounts } = counting();
     const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
     const listener = vi.fn();
@@ -1884,6 +1975,9 @@ describe('refresh and dispose of the root', () => {
     await waitFor(() => expect(counts.mounted).toBe(1), { timeout: 5000 });
     await waitFor(() => expect(calls.request).toHaveLength(1));
     expect(container.querySelectorAll('[data-widget-extension]').length + document.querySelectorAll('[data-widget-extension]').length).toBeGreaterThan(0);
+    // A refresh whose file answers only after the dispose.
+    const refreshing = root.refresh();
+    await waitFor(() => expect(answerRefresh).toBeTypeOf('function'));
     const disposing = root.dispose();
     expect(root.dispose()).toBe(disposing);
     await act(async () => disposing);
@@ -1892,14 +1986,23 @@ describe('refresh and dispose of the root', () => {
     expect(document.querySelectorAll('[data-widget-extension]')).toHaveLength(0);
     // Nothing of the running cell reports after the dispose.
     expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
-    // Later calls have their own results: no file request, no listener call, no extension.
+    answerRefresh(fileOf([12], undefined));
+    expect(await refreshing).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(listener).not.toHaveBeenCalled();
+    // The root holds no listener: the one added before the dispose is dropped, and one added after it is not kept.
+    const listeners = (root as unknown as { listeners: Set<unknown> }).listeners;
+    expect(listeners.size).toBe(0);
+    root.subscribe(listener);
+    expect(listeners.size).toBe(0);
+    // Later calls have their own results: no file request, no write to the domain, no extension.
     const filesBefore = calls.file;
     expect(await root.refresh()).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
     expect(await root.load(EDITED_ID)).toEqual({ ok: false });
     expect(calls.file).toBe(filesBefore);
-    expect(listener).not.toHaveBeenCalled();
+    const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
     root.publish('dark', 'de');
-    expect(root.subscribe(listener)).toBeTypeOf('function');
+    root.publishOverlayContainer(document.body);
+    expect(writes).not.toHaveBeenCalled();
     const states: string[] = [];
     root.runCell({ dashboardId: EDITED_ID, widget: cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
     await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));

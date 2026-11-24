@@ -49,14 +49,15 @@ export function isSameOriginPath(path: string, origin: string): boolean {
   }
 }
 
-/** Runs `run` with an abort signal that fires after `ms`; a late answer is a timeout failure. */
+/** Runs `run` with an abort signal that fires after `ms`, its reason the timeout failure; a late answer is that failure. */
 export async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      controller.abort();
-      reject(new RequestFailure(`no answer within ${ms} ms`));
+      const failure = new RequestFailure(`no answer within ${ms} ms`);
+      controller.abort(failure);
+      reject(failure);
     }, ms);
   });
   try {

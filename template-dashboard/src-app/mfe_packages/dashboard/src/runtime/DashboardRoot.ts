@@ -33,26 +33,29 @@ export type RefreshOutcome = { ok: true } | { ok: false; problem: string };
 const DISPOSED = 'the dashboard root is disposed';
 
 /**
- * Runs `run` with a signal that aborts when `signal` or `stop` aborts. `stop` rejects at once with `reason`, whether or
- * not the host heeds the signal, so nothing of the root waits on that answer after it. Both listeners go once `run`
- * settles.
+ * Runs `run` with a signal that aborts when `signal` or `stop` aborts. Either abort rejects at once, `stop` with
+ * `reason` and `signal` with its own reason, whether or not the host heeds the signal, so nothing of the root waits on
+ * that answer after it. Both listeners go once `run` settles or either signal aborts.
  */
 function untilStopped<T>(stop: AbortSignal, reason: string, signal: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   if (stop.aborted) return Promise.reject(new RequestFailure(reason));
   const controller = new AbortController();
   return new Promise<T>((resolve, reject) => {
-    const stopped = () => {
-      controller.abort();
-      reject(new RequestFailure(reason));
-    };
-    const aborted = () => controller.abort();
-    stop.addEventListener('abort', stopped, { once: true });
-    signal.addEventListener('abort', aborted, { once: true });
-    if (signal.aborted) controller.abort();
     const settled = () => {
       stop.removeEventListener('abort', stopped);
       signal.removeEventListener('abort', aborted);
     };
+    const end = (failure: RequestFailure) => {
+      settled();
+      controller.abort(failure);
+      reject(failure);
+    };
+    const stopped = () => end(new RequestFailure(reason));
+    const aborted = () => end(signal.reason instanceof RequestFailure ? signal.reason : new RequestFailure('the request was aborted'));
+    stop.addEventListener('abort', stopped, { once: true });
+    signal.addEventListener('abort', aborted, { once: true });
+    // A request aborted before it starts still reaches the host, its signal aborted, and fails at once.
+    if (signal.aborted) aborted();
     // A host that throws instead of returning a promise rejects like one that rejects.
     void Promise.resolve()
       .then(() => run(controller.signal))
@@ -141,6 +144,8 @@ export class DashboardRoot {
   private readonly bundleIds: Set<string>;
   private readonly containers = new Map<string, HTMLElement>();
   private readonly mountWaiters = new Map<string, Set<(error?: unknown) => void>>();
+  /** What `dispose` waits on for each mount in flight: the registry unmounts only an extension whose mount ended. */
+  private readonly mountEnds = new Map<string, Set<() => void>>();
   private readonly leaving = new Set<string>();
   private readonly renderFallbacks = new Map<string, () => void>();
   private file?: Promise<FileOutcome>;
@@ -183,6 +188,7 @@ export class DashboardRoot {
           // A fresh mount ends any leave the root asked for earlier and whose unmount never ran.
           this.leaving.delete(id);
           for (const waiter of [...(this.mountWaiters.get(id) ?? [])]) waiter(error ?? undefined);
+          for (const end of [...(this.mountEnds.get(id) ?? [])]) end();
         },
         unmounted: (id) => {
           if (this.leaving.delete(id)) return;
@@ -231,7 +237,8 @@ export class DashboardRoot {
    * is left out as on a first load and does not fail the refresh.
    *
    * The last call wins: a call made while another runs aborts the other's file request, and every earlier call
-   * resolves with the outcome of the latest one. After `dispose` it resolves `{ ok: false }` and reads nothing.
+   * resolves with the outcome of the latest one. After `dispose` it resolves `{ ok: false }` and reads nothing; a call
+   * still in flight when `dispose` runs resolves `{ ok: false }` with the disposed reason and writes no console line.
    */
   refresh(): Promise<RefreshOutcome> {
     if (this.disposed) return Promise.resolve(this.refreshFailed(DISPOSED));
@@ -255,11 +262,13 @@ export class DashboardRoot {
     try {
       answer = await withTimeout((timeout) => untilStopped(signal, 'a later refresh took over', timeout, (both) => this.host.loadFile(both)));
     } catch (error) {
+      // A refresh in flight when the root was disposed ends with that reason and reports nothing after the dispose.
+      if (this.disposed) return { ok: false, problem: DISPOSED };
       return latest() ?? this.refreshFailed(`the served file could not be loaded: ${String(error)}`);
     }
+    if (this.disposed) return { ok: false, problem: DISPOSED };
     const newer = latest();
     if (newer) return newer;
-    if (this.disposed) return this.refreshFailed(DISPOSED);
     let file: FileOutcome;
     try {
       const [base] = Array.isArray(answer) ? answer : [answer];
@@ -290,6 +299,8 @@ export class DashboardRoot {
    * listeners, loads and definitions. The widget code the page loaded stays in the page's module cache, which only a
    * page reload clears.
    *
+   * A load or refresh in flight then resolves `{ ok: false }` with no console line, and a cell that was running shows
+   * nothing more and leaves no widget behind.
    * After it, `load` and `refresh` resolve `{ ok: false }` with one console line, a cell run shows cannot-be-shown,
    * `publish`, `publishOverlayContainer` and `attach` do nothing, and `subscribe` adds nothing. A second call returns
    * the first call's promise. A new root made after it works on its own.
@@ -304,6 +315,24 @@ export class DashboardRoot {
     this.refreshing?.controller.abort();
     this.listeners.clear();
     for (const end of [...this.placing]) end();
+    // A widget still mounting is unregistered once its mount ended, within the mount timeout, so its unmount runs.
+    const mounting = [...this.mountWaiters].filter(([, waiters]) => waiters.size > 0).map(([id]) => id);
+    const mountsEnded = Promise.all(
+      mounting.map(
+        (id) =>
+          new Promise<void>((resolve) => {
+            const ends = this.mountEnds.get(id) ?? new Set<() => void>();
+            this.mountEnds.set(id, ends);
+            const end = () => {
+              clearTimeout(timer);
+              ends.delete(end);
+              resolve();
+            };
+            const timer = setTimeout(end, MOUNT_TIMEOUT_MS);
+            ends.add(end);
+          }),
+      ),
+    );
     for (const waiters of [...this.mountWaiters.values()]) for (const waiter of [...waiters]) waiter(new Error(DISPOSED));
     this.mountWaiters.clear();
     this.renderFallbacks.clear();
@@ -313,6 +342,7 @@ export class DashboardRoot {
     const ids = new Set([...this.extensions.values()].flatMap((set) => [...set]));
     this.extensions.clear();
     await Promise.all(this.releasing.values());
+    await mountsEnded;
     for (const id of ids) {
       this.leaving.add(id);
       await this.registry?.unregisterExtension(id).catch(() => undefined);
@@ -529,6 +559,8 @@ export class DashboardRoot {
     // A cell that runs on a disposed root fails with that reason; one that was running when the root was disposed
     // reports nothing more.
     const disposedAtStart = this.disposed;
+    // After every await of the run: a cell that left, or a root disposed since, goes no further.
+    const gone = () => !live || this.disposed;
     const fail = (problem: string, request = false) => {
       if (!deliver) ended = true;
       if (!live || (this.disposed && !disposedAtStart)) return;
@@ -572,17 +604,19 @@ export class DashboardRoot {
       const id = extensionIdOf(widget.id, role, entry);
       // Extension ids do not depend on the dashboard: a widget named by two dashboards waits for every running release.
       await Promise.all(this.releasing.values());
-      if (!live) return;
+      if (gone()) return;
       extensionId = id;
       try {
         if (!registry.getExtension(id)) await registry.registerExtension({ id, domain: WIDGETS_DOMAIN_ID, entry });
+        // The dispose took its list of extensions before this registration ended: this cell takes its own one back.
+        if (this.disposed) return void (await registry.unregisterExtension(id).catch(() => undefined));
         let ids = this.extensions.get(dashboardId);
         if (!ids) this.extensions.set(dashboardId, (ids = new Set()));
         ids.add(id);
       } catch (error) {
         return fail(`the generated extension is rejected: ${String(error)}`);
       }
-      if (!live) return;
+      if (gone()) return;
       const mounted = new Promise<void>((resolve, reject) => {
         // Each run waits on its own: a re-run of the same extension never takes over an earlier run's waiter.
         const waiters = this.mountWaiters.get(id) ?? new Set<(error?: unknown) => void>();
@@ -604,7 +638,7 @@ export class DashboardRoot {
       } catch (error) {
         return fail(`mount_ext failed: ${String(error)}`);
       }
-      if (!live) return;
+      if (gone()) return;
       // A fallback unmounted the extension: the cell stays cannot-be-shown until the dashboard loads again, and a run
       // still in flight is dropped.
       const fellBack = (problem: string) => {
