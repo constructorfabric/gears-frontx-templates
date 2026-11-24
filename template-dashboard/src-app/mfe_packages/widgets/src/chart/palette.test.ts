@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { contrast, distance, SERIES_TEN, seriesColor, seriesHex, SURFACE, type Scheme } from './palette';
+import { contrast, distance, hexOfOklch, SERIES_TEN, seriesColor, seriesHex, SURFACE, type Scheme } from './palette';
 
 const SCHEMES: Scheme[] = ['light', 'dark'];
 
@@ -26,13 +26,22 @@ describe('series palette', () => {
     expect(new Set(colours).size).toBe(200);
   });
 
-  it('gives the same colours on every call', () => {
-    expect(Array.from({ length: 30 }, (_, position) => seriesColor(position))).toEqual(Array.from({ length: 30 }, (_, position) => seriesColor(position)));
+  it('generates the same colours past the ten on every load', () => {
+    // Pinned values: a changed grid, order or tie-break moves the colours a dashboard already shows.
+    expect([10, 11, 23].map((position) => seriesHex(position, 'light'))).toEqual(['#026b13', '#115f82', '#a457ac']);
+    expect([10, 23, 99].map((position) => seriesHex(position, 'dark'))).toEqual(['#c798cb', '#0e8c41', '#51a5c0']);
   });
 
-  it('puts the host colour of the position first and the template colour of the same position behind it', () => {
-    // A host that sets three colours: positions 1 to 3 take them, position 4 and later take the template's colour
-    // of that position (the ten, then the generator), never the host's first colour again.
+  it('gives the grey of the lightness for an OKLCH colour of chroma 0', () => {
+    expect(hexOfOklch(0.5, 0, 120)).toBe('#636363');
+    expect(hexOfOklch(1, 0, 0)).toBe('#ffffff');
+    expect(hexOfOklch(0, 0, 0)).toBe('#000000');
+  });
+
+  it('writes each position as its host custom property with the template colour of the same position as the fallback', () => {
+    // The CSS the charts receive: a host that sets three colours gives positions 1 to 3 their colour, and position 4
+    // and later fall back to the template's colour of that position (the ten, then the generator), never to the
+    // host's first colour. jsdom does not resolve var() or light-dark(), so this checks the expression itself.
     expect(seriesColor(0)).toBe(`var(--dashboard-chart-1, light-dark(${SERIES_TEN.light[0]}, ${SERIES_TEN.dark[0]}))`);
     expect(seriesColor(3)).toBe(`var(--dashboard-chart-4, light-dark(${SERIES_TEN.light[3]}, ${SERIES_TEN.dark[3]}))`);
     expect(seriesColor(14)).toBe(`var(--dashboard-chart-15, light-dark(${seriesHex(14, 'light')}, ${seriesHex(14, 'dark')}))`);

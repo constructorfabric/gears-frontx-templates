@@ -66,8 +66,8 @@ export function contrast(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
-/** An OKLCH colour as `#rrggbb`, its chroma lowered until it fits sRGB. */
-function hexOfOklch(lightness: number, chroma: number, hue: number): string {
+/** An OKLCH colour as `#rrggbb`, its chroma lowered until it fits sRGB; at chroma 0 it is the grey of its lightness. */
+export function hexOfOklch(lightness: number, chroma: number, hue: number): string {
   for (let c = chroma; c > 0; c -= 0.002) {
     const [a, b] = [c * Math.cos((hue * Math.PI) / 180), c * Math.sin((hue * Math.PI) / 180)];
     const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
@@ -76,7 +76,9 @@ function hexOfOklch(lightness: number, chroma: number, hue: number): string {
     const linear = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
     if (linear.every((v) => v >= -1e-6 && v <= 1 + 1e-6)) return hexOf(linear);
   }
-  return hexOfOklch(lightness, 0, hue);
+  // Achromatic: a = b = 0, so l = m = s = L^3, and the three linear sRGB channels equal it.
+  const grey = Math.min(1, Math.max(0, lightness)) ** 3;
+  return hexOf([grey, grey, grey]);
 }
 
 /** The generated colours of a theme, in order, computed once: the grid by farthest-point picking after the ten. */

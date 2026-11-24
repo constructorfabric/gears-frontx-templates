@@ -472,8 +472,9 @@ export function CartesianChart({
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
   // The long form becomes named series here, before the checks; everything below draws the series form.
   const form = seriesFormOf(render, delivered);
-  const problem = typeof form === 'string' ? form : checkSeriesForm(render, form);
-  if (problem || typeof form === 'string') return <WidgetCannotBeShown texts={texts} problem={problem ?? ''} />;
+  if (typeof form === 'string') return <WidgetCannotBeShown texts={texts} problem={form} />;
+  const problem = checkSeriesForm(render, form);
+  if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   const { data } = form;
   if (data.series.length === 0 || data.series.every((series) => series.points.length === 0)) return <WidgetEmpty texts={texts} />;
 
