@@ -49,13 +49,20 @@ export interface DashboardProps {
 export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
   // The values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
-  useLayoutEffect(() => root.publishOverlayContainer(overlayContainer ?? null), [root, overlayContainer]);
+  // On unmount the root keeps no element of a page the host may remove. A changed container is published by the next
+  // effect of the same commit, and a widget's own state settles on that last value.
+  useLayoutEffect(() => {
+    root.publishOverlayContainer(overlayContainer ?? null);
+    return () => root.publishOverlayContainer(null);
+  }, [root, overlayContainer]);
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const previous = useRef<string | undefined>(undefined);
   // A refresh of the root that read new definitions loads the dashboard again; the one drawn stays until it settles.
   const subscribe = useCallback((listener: () => void) => root.subscribe(listener), [root]);
-  const version = useSyncExternalStore(subscribe, () => root.version);
+  const getVersion = useCallback(() => root.version, [root]);
+  // The same getter on a server render: the version is a plain counter.
+  const version = useSyncExternalStore(subscribe, getVersion, getVersion);
 
   useEffect(() => {
     let current = true;

@@ -1,9 +1,10 @@
 import { StrictMode, useState } from 'react';
+import { renderToString } from 'react-dom/server';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ActionHandler, MfeHandlerMF, type ChildMfeBridge, type MfeEntryLifecycle } from '@gears-frontx/mfes';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
-import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type ServedFile } from '../contract';
+import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, WIDGETS_DOMAIN_ID, type ServedFile } from '../contract';
 import { BUNDLE_TYPES, IN_BUNDLE_PARTS, WIDGET_ENTRIES } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { createMockHost, DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
@@ -420,6 +421,22 @@ describe('Dashboard on the real registry', () => {
     view.unmount();
     overlayHost.remove();
   }, 15_000);
+
+  it('publishes no overlay container once the Dashboard that passed one unmounts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const overlayHost = document.body.appendChild(document.createElement('div'));
+    onTestFinished(() => overlayHost.remove());
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    const view = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={overlayHost} />);
+    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBe(overlayHost);
+    view.unmount();
+    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+  });
+
+  it('renders on a server without throwing on the refresh version it reads', () => {
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    expect(() => renderToString(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" />)).not.toThrow();
+  });
 
   it('retries the served file after a failed load', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
