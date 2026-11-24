@@ -368,4 +368,17 @@ describe('kit overlays with a host overlay container', () => {
     expect(target.childElementCount).toBe(0);
     await act(async () => lifecycle.unmount(shadow));
   });
+
+  it('takes an element of another document as no host element: the widget keeps its popup in its own shadow root', async () => {
+    const foreign = document.implementation.createHTMLDocument();
+    const outside = foreign.body.appendChild(foreign.createElement('div'));
+    const lifecycle = popupWidget();
+    const { shadow } = ownMountPoint();
+    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside });
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    expect(popupOf(shadow)).toBeTruthy();
+    expect(outside.childElementCount).toBe(0);
+    await act(async () => lifecycle.unmount(shadow));
+  });
 });

@@ -99,8 +99,11 @@ function Drawn({ render, payload, context }: { render: WidgetRenderer; payload: 
   return <>{render(payload, context)}</>;
 }
 
-/** The host's overlay container as the shared property carries it: an element, or none for anything else. */
-const elementOf = (value: unknown): HTMLElement | null => (value instanceof HTMLElement ? value : null);
+/**
+ * The host's overlay container as the shared property carries it: an element of the widget's own document, or none for
+ * anything else (an element of another document included).
+ */
+const elementOf = (value: unknown, own: Document): HTMLElement | null => (value instanceof HTMLElement && value.ownerDocument === own ? value : null);
 
 /**
  * A shadow root inside the host's overlay container for this widget's overlays, or null without a container. It
@@ -184,7 +187,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
       }
       theme.set(bridge.getProperty(THEME_PROPERTY_ID)?.value as string | undefined);
       language.set(bridge.getProperty(LANGUAGE_PROPERTY_ID)?.value as string | undefined);
-      overlayContainer.set(elementOf(bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value));
+      overlayContainer.set(elementOf(bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value, container.ownerDocument));
       // A mount after a failed one comes with no unmount between them: drop the earlier subscriptions and React root first.
       for (const stop of unsubscribe) stop();
       root?.unmount();
@@ -192,7 +195,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
       unsubscribe = [
         bridge.subscribeToProperty(THEME_PROPERTY_ID, (property) => theme.set(property.value as string)),
         bridge.subscribeToProperty(LANGUAGE_PROPERTY_ID, (property) => language.set(property.value as string)),
-        bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => overlayContainer.set(elementOf(property.value))),
+        bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => overlayContainer.set(elementOf(property.value, container.ownerDocument))),
       ];
       // `:scope` matches nothing on a shadow root, so the root's own children are looked at instead.
       if (!Array.from(container.children).some((child) => child.matches('style[data-kit-tokens]'))) {
