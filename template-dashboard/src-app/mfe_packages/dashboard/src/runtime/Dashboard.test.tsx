@@ -1853,6 +1853,8 @@ describe('refresh and dispose of the root', () => {
     const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
     await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
     const earlier = root.refresh();
+    // The earlier request reaches the host before the later call aborts it.
+    await waitFor(() => expect(pending).toHaveLength(1));
     const later = root.refresh();
     await waitFor(() => expect(pending).toHaveLength(2));
     expect(pending[0].signal.aborted).toBe(true);
@@ -1865,6 +1867,49 @@ describe('refresh and dispose of the root', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(values(container)).toEqual(['value 12']);
     expect(root.version).toBe(1);
+  }, 15_000);
+
+  it('does not call the host for a file request a later refresh aborted before it went out', async () => {
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    let first = true;
+    const { host } = editingHost(
+      (signal) =>
+        first
+          ? ((first = false), Promise.resolve(fileOf([7])))
+          : new Promise((resolve) => pending.push({ signal, answer: resolve })),
+    );
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    // Both calls in one turn: the earlier request is aborted before the host is called.
+    const earlier = root.refresh();
+    const later = root.refresh();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(pending).toHaveLength(1);
+    expect(pending[0].signal.aborted).toBe(false);
+    pending[0].answer(fileOf([12]));
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([{ ok: true }, { ok: true }]));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+  }, 15_000);
+
+  it('tells every listener and resolves the refresh outcome when one listener throws, with one console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const told: string[] = [];
+    root.subscribe(() => {
+      throw new Error('listener broke');
+    });
+    root.subscribe(() => void told.push('after'));
+    file = fileOf([12]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(told).toEqual(['after']);
+    expect(errors.mock.calls.map(([line]) => String(line))).toEqual(['[dashboard] a refresh listener failed: Error: listener broke']);
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
   }, 15_000);
 
   it('keeps the refreshed definitions when the first read of the served file answers after the refresh', async () => {

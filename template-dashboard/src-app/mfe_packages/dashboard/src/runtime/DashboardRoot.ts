@@ -35,7 +35,8 @@ const DISPOSED = 'the dashboard root is disposed';
 /**
  * Runs `run` with a signal that aborts when `signal` or `stop` aborts. Either abort rejects at once, `stop` with
  * `reason` and `signal` with its own reason, whether or not the host heeds the signal, so nothing of the root waits on
- * that answer after it. Both listeners go once `run` settles or either signal aborts.
+ * that answer after it. Both listeners go once `run` settles or either signal aborts. `run` is called in the next
+ * microtask, and not at all when either signal aborted before then.
  */
 function untilStopped<T>(stop: AbortSignal, reason: string, signal: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   if (stop.aborted) return Promise.reject(new RequestFailure(reason));
@@ -54,11 +55,15 @@ function untilStopped<T>(stop: AbortSignal, reason: string, signal: AbortSignal,
     const aborted = () => end(signal.reason instanceof RequestFailure ? signal.reason : new RequestFailure('the request was aborted'));
     stop.addEventListener('abort', stopped, { once: true });
     signal.addEventListener('abort', aborted, { once: true });
-    // A request aborted before it starts still reaches the host, its signal aborted, and fails at once.
+    // A request aborted before it starts fails at once.
     if (signal.aborted) aborted();
-    // A host that throws instead of returning a promise rejects like one that rejects.
+    // A host that throws instead of returning a promise rejects like one that rejects. An abort that came before the
+    // host is called keeps the host from being called.
     void Promise.resolve()
-      .then(() => run(controller.signal))
+      .then(() => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        return run(controller.signal);
+      })
       .then(resolve, reject)
       .finally(settled);
   });
@@ -290,7 +295,14 @@ export class DashboardRoot {
     this.file = Promise.resolve(file);
     this.loads.clear();
     this.refreshed += 1;
-    for (const listener of [...this.listeners]) listener();
+    // A listener that throws is written as one line; the others are still told, and the outcome stays.
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        console.error(`[dashboard] ${escapeControls(`a refresh listener failed: ${String(error).split('\n')[0]}`)}`);
+      }
+    }
     return { ok: true };
   }
 
