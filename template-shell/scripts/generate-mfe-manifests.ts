@@ -198,6 +198,25 @@ interface OutMfeManifestConfig {
   labelDictionaries?: Array<{ language: string; file: string }>;
 }
 
+/** Remove the aggregate at `outputFile` after a failed run (see `ManifestGenerator.discardAggregate`). */
+function discardAggregate(outputFile: string): void {
+  try {
+    // `force` makes a missing file a no-op, which is the common case: most
+    // failures happen on a tree that never generated successfully.
+    rmSync(outputFile, { force: true });
+  } catch (err) {
+    // A failure to unlink (a read-only mount, a directory in the file's place)
+    // must not replace the error that is already on its way to the operator -
+    // that one names the id or the package to fix, this one would only name
+    // the path. Reported as a warning and swallowed so the original throws.
+    console.error(
+      `Warning: could not remove ${outputFile} after a failed run ` +
+        `(${err instanceof Error ? err.message : String(err)}). ` +
+        `It may hold the output of an earlier run - delete it before trusting it.`
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ManifestGenerator — class-based implementation
 // ---------------------------------------------------------------------------
@@ -290,21 +309,7 @@ export class ManifestGenerator {
    * aggregate either.
    */
   private discardAggregate(): void {
-    try {
-      // `force` makes a missing file a no-op, which is the common case: most
-      // failures happen on a tree that never generated successfully.
-      rmSync(this.outputFile, { force: true });
-    } catch (err) {
-      // A failure to unlink (a read-only mount, a directory in the file's place)
-      // must not replace the error that is already on its way to the operator -
-      // that one names the id or the package to fix, this one would only name
-      // the path. Reported as a warning and swallowed so the original throws.
-      console.error(
-        `Warning: could not remove ${this.outputFile} after a failed run ` +
-          `(${err instanceof Error ? err.message : String(err)}). ` +
-          `It may hold the output of an earlier run - delete it before trusting it.`
-      );
-    }
+    discardAggregate(this.outputFile);
   }
 
   private discoverPackages(): string[] {
@@ -795,7 +800,8 @@ function parseArgs(argv: string[]): { baseUrl: string | null; previewPorts: Map<
   argv.forEach((arg, i) => {
     if (arg !== '--preview-port') return;
     const value = argv[i + 1] ?? '';
-    const match = /^([^=]+)=(\d+)$/.exec(value);
+    // The port follows the last "=": a package directory name may hold one.
+    const match = /^(.+)=(\d+)$/.exec(value);
     const port = match ? Number(match[2]) : 0;
     if (!match || port < 1 || port > 65535) {
       throw new Error(`--preview-port expects <package>=<port> with a port between 1 and 65535, got "${value}"`);
@@ -841,8 +847,16 @@ if (isProcessEntryPoint) {
   const outputFile = join(process.cwd(), 'public/generated-mfe-manifests.json');
 
   try {
-    const { baseUrl, previewPorts } = parseArgs(process.argv.slice(2));
-    new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, baseUrl, previewPorts).run();
+    let args: ReturnType<typeof parseArgs>;
+    try {
+      args = parseArgs(process.argv.slice(2));
+    } catch (err) {
+      // A refused command line fails the run like a refusal inside `run()`:
+      // the aggregate of an earlier run does not stay behind either.
+      discardAggregate(outputFile);
+      throw err;
+    }
+    new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, args.baseUrl, args.previewPorts).run();
   } catch (err) {
     console.error('Error generating MFE manifests:', err instanceof Error ? err.message : String(err));
     process.exit(1);

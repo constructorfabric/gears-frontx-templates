@@ -12,16 +12,22 @@
  * built publicPath left at Module Federation's "auto" placeholder, as the
  * template's own packages build today. The address then comes from the
  * remoteEntry origin, whichever of the two files the generator reads it from.
+ *
+ * The fixture is laid out as a project (`src-app/mfe_packages/<name>`,
+ * `public/`), so the same packages also serve the cases that run the real
+ * script with its command line, as `dev:all` does.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { ManifestGenerator } from '../scripts/generate-mfe-manifests';
 
 const MFE_MANIFEST_PATH = 'dist/mfe-manifest.json';
+const SHELL_DIR = resolve(__dirname, '..');
 
 let workspace: string;
 let mfePackagesDir: string;
@@ -29,20 +35,20 @@ let outputFile: string;
 
 beforeEach(() => {
   workspace = mkdtempSync(join(tmpdir(), 'mfe-preview-ports-'));
-  mfePackagesDir = join(workspace, 'mfe_packages');
-  outputFile = join(workspace, 'generated-mfe-manifests.json');
-  mkdirSync(mfePackagesDir);
+  mfePackagesDir = join(workspace, 'src-app', 'mfe_packages');
+  outputFile = join(workspace, 'public', 'generated-mfe-manifests.json');
+  mkdirSync(mfePackagesDir, { recursive: true });
+  mkdirSync(join(workspace, 'public'));
 });
 
 afterEach(() => {
   rmSync(workspace, { recursive: true, force: true });
 });
 
-/** One built package addressed at `remoteEntry`, named `<name>` in every id. */
-function builtPackage(name: string, remoteEntry: string | undefined): void {
+/** One built package addressed at `remoteEntry`, named `<token>` (by default `<name>`) in every id. */
+function builtPackage(name: string, remoteEntry: string | undefined, token = name.replace(/-/g, '_')): void {
   const packagePath = join(mfePackagesDir, name);
   mkdirSync(join(packagePath, 'dist'), { recursive: true });
-  const token = name.replace(/-/g, '_');
   const manifestId = `gts.frontx.mfes.mfe.mf_manifest.v1~fixture.${token}.mfe.manifest.v1`;
   const entryId = `gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~fixture.${token}.mfe.home.v1`;
   writeFileSync(
@@ -154,4 +160,62 @@ describe('the dev manifest with a moved preview', () => {
     );
     expect(existsSync(outputFile)).toBe(false);
   });
+});
+
+describe('the generator run with its command line', () => {
+  /** The real script, run in the fixture project the way `dev:all` runs it. */
+  function runGenerator(...args: string[]) {
+    const env = { ...process.env };
+    delete env.FRONTX_INCLUDE_TEMPLATE_EXAMPLES;
+    return spawnSync(
+      process.execPath,
+      [
+        join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        join(SHELL_DIR, 'scripts', 'generate-mfe-manifests.ts'),
+        ...args,
+      ],
+      { cwd: workspace, encoding: 'utf-8', env },
+    );
+  }
+
+  it('addresses the package named by --preview-port at that port', () => {
+    builtPackage('billing-mfe', 'http://localhost:3010/assets/remoteEntry.js');
+    builtPackage('orders-mfe', 'http://localhost:3011/assets/remoteEntry.js');
+
+    const run = runGenerator('--preview-port', 'orders-mfe=51234');
+
+    expect(run.stderr).toBe('');
+    expect(run.status).toBe(0);
+    expect(publicPaths(readFileSync(outputFile, 'utf-8'))).toEqual([
+      'http://localhost:3010/',
+      'http://localhost:51234/',
+    ]);
+  });
+
+  it('takes the port after the last "=", so a package directory name may hold one', () => {
+    builtPackage('odd=name-mfe', 'http://localhost:3010/assets/remoteEntry.js', 'odd_name_mfe');
+
+    const run = runGenerator('--preview-port', 'odd=name-mfe=51234');
+
+    expect(run.stderr).toBe('');
+    expect(run.status).toBe(0);
+    expect(publicPaths(readFileSync(outputFile, 'utf-8'))).toEqual(['http://localhost:51234/']);
+  });
+
+  it.each(['billing-mfe=0', 'billing-mfe=65536', 'billing-mfe=next', 'billing-mfe'])(
+    'refuses --preview-port %s, naming the value, and removes the aggregate an earlier run wrote',
+    (value) => {
+      builtPackage('billing-mfe', 'http://localhost:3010/assets/remoteEntry.js');
+      expect(runGenerator().status).toBe(0);
+      expect(existsSync(outputFile)).toBe(true);
+
+      const run = runGenerator('--preview-port', value);
+
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(
+        `--preview-port expects <package>=<port> with a port between 1 and 65535, got "${value}"`,
+      );
+      expect(existsSync(outputFile)).toBe(false);
+    },
+  );
 });
