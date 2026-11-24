@@ -55,21 +55,22 @@ async function saveDashboard(edited: unknown) {
 - A refresh that fails (the file request fails or times out, the base file is rejected, or the file defines otherwise a type the root already holds) resolves `{ ok: false, problem }` and writes one console line; the dashboards stay as they were drawn from the definitions read before. A served file that changes a base type the root already holds is refused this way, and a host that needs such a change makes a new root. A widget type's definition changes only with a new root. A widget part left out is left out as on a first load and does not fail the refresh.
 - Calls do not pile up: a call made while another runs aborts the other's file request, and both resolve with the outcome of the later one.
 
-When the product is done with a root (the analytics area closes for good, the user signs out), unmount its `<Dashboard>` and call `dispose()`. It unmounts and unregisters every widget, removes their containers from the page, aborts the requests in flight, clears its timers and listeners, and disposes of its registry. After it, `load` and `refresh` resolve `{ ok: false }`, and a second `dispose()` returns the same promise. A new root works on its own. The widget code the page loaded stays in the page's module cache until a page reload, so a new root loads its own copy: keep one root for the page's life and refresh it rather than making new ones.
+When the product is done with a root (the analytics area closes for good, the user signs out), unmount its `<Dashboard>` and call `dispose()`. It unmounts and unregisters every widget, removes their containers from the page, aborts the requests in flight, clears its timers and listeners, and disposes of its registry. A `load` or a `refresh` still in flight then resolves `{ ok: false }`, and so does every later one; a second `dispose()` returns the same promise. A new root works on its own. The widget code the page loaded stays in the page's module cache until a page reload, so a new root loads its own copy: keep one root for the page's life and refresh it rather than making new ones.
 
 ## Chart colours
 
 Every chart that colours by series, slice, tile or group (cartesian, pie, radar, treemap) takes the colour of the series' position, the first series the first colour. The template ships ten colours for the light theme and ten for the dark one, ordered so that neighbours differ in hue and lightness, each at 3:1 or more against the card surface. Past the tenth, a generator gives each next series the colour farthest from all the colours before it, so a series never takes an earlier series' colour (the generator runs out only after several hundred series).
 
-A host sets its own colours with the CSS custom properties `--dashboard-chart-1`, `--dashboard-chart-2` and so on, on any element around `<Dashboard>`. They inherit into the widgets, which keep each widget in its own shadow root. The theme the host passes picks the light or dark scope on the dashboard's element (`data-theme="light"` or `"dark"`), so a host gives each theme its own values with that attribute:
+A host sets its own colours with the CSS custom properties `--dashboard-chart-1`, `--dashboard-chart-2` and so on. They inherit into the widgets, which keep each widget in its own shadow root, but only down the page tree: set them on an element that holds the dashboard and, when the host passes an `overlayContainer` outside the dashboard's element, that container too, such as `:root`. Set only on an element around `<Dashboard>`, they do not reach a larger view that opens in `document.body`, and its chart draws the template's colours while the cell draws the host's. The theme the host passes picks the light or dark scope on the dashboard's element (`data-theme="light"` or `"dark"`), and a host with an `overlayContainer` keeps the same `data-theme` on that container or an ancestor (see [Where overlays open](#where-overlays-open)), so a host gives each theme its own values with that attribute. These rules hold in both cases:
 
 ```css
-.analytics {
+:root,
+[data-theme='light'] {
   --dashboard-chart-1: #1f6feb;
   --dashboard-chart-2: #d1242f;
   --dashboard-chart-3: #1a7f37;
 }
-.analytics [data-theme='dark'] {
+[data-theme='dark'] {
   --dashboard-chart-1: #58a6ff;
   --dashboard-chart-2: #ff7b72;
   --dashboard-chart-3: #3fb950;
@@ -77,6 +78,8 @@ A host sets its own colours with the CSS custom properties `--dashboard-chart-1`
 ```
 
 A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. A host palette shorter than the number of series continues with the template's colour of the same position, so a host colour can come out close to a later template colour, and a host avoids that by setting as many colours as it has series. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
+
+The template's colours are written with the CSS `light-dark()` function, which picks the light or the dark colour by the `color-scheme` the kit sets on each theme scope. It needs a current browser: in an older one without it, a series whose colour the host does not set draws without a palette colour.
 
 ## Where overlays open
 
@@ -86,7 +89,7 @@ A cell's larger view opens in an overlay that mounts inside the dashboard's own 
 <Dashboard root={dashboards} dashboardId={id} theme={theme} language={language} overlayContainer={document.body} />
 ```
 
-Outside the dashboard's element the overlay takes its kit theme scope and `lang` from the given element and its ancestors, not from the dashboard: keep `data-theme` (`light` or `dark`, the scope the theme id gives) and `lang` on that element or an ancestor such as `<html>`. Without `overlayContainer`, or with `null`, the overlay stays inside the dashboard.
+Outside the dashboard's element the overlay takes its kit theme scope and `lang` from the given element and its ancestors, not from the dashboard: keep `data-theme` (`light` or `dark`, the scope the theme id gives) and `lang` on that element or an ancestor such as `<html>`. Without `overlayContainer`, or with `null`, the overlay stays inside the dashboard. Pass an element of the dashboard's own document: the widgets take no element of another window or frame, and their overlays then stay inside the widgets.
 
 The widgets open their own overlays (a menu or a popover a widget draws through the kit) in the same element. Each widget keeps its overlays in a shadow root of their own inside that element, which holds copies of the widget's stylesheets and carries the widget's theme scope and language, so they look as they do inside the widget and the page's styles do not reach them. Without `overlayContainer` they open inside the widget's own shadow root. A chart's tooltip is not an overlay: it is drawn inside the chart and stays there.
 
