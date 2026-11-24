@@ -152,6 +152,8 @@ export class DashboardRoot {
   private readonly loads = new Map<string, Promise<LoadOutcome>>();
   /** The generated extensions registered for each dashboard id. */
   private readonly extensions = new Map<string, Set<string>>();
+  /** How many cells that have not left name each extension id, from the start of their registration. */
+  private readonly cells = new Map<string, number>();
   /** The last theme id and language the `widgets` domain accepted, each on its own. */
   private readonly published: { theme?: string; language?: string; overlays?: HTMLElement | null } = {};
   /** The release still running for a dashboard id. */
@@ -475,8 +477,8 @@ export class DashboardRoot {
 
   /**
    * After a load of a shown dashboard (a refresh's included): unregisters the generated extensions of that dashboard
-   * that no cell or larger view of `dashboard` names any more, a widget a refresh removed or whose type changed. The
-   * cells that showed them have left by then.
+   * that no cell or larger view of `dashboard` names any more, a widget a refresh removed or whose type changed, and that
+   * no other running cell or dashboard of the root holds. The cells that showed them have left by then.
    */
   prune(dashboardId: string, dashboard: Dashboard): Promise<void> {
     const ids = this.extensions.get(dashboardId);
@@ -493,7 +495,13 @@ export class DashboardRoot {
     }
     const stale = [...ids].filter((id) => !named.has(id));
     for (const id of stale) ids.delete(id);
-    return this.unregister(dashboardId, stale);
+    // Extension ids do not depend on the dashboard: one another dashboard of the root still holds stays registered.
+    return this.unregister(dashboardId, stale.filter((id) => !this.held(id)));
+  }
+
+  /** Whether a running cell names the extension id, or a dashboard of the root holds it. */
+  private held(id: string): boolean {
+    return (this.cells.get(id) ?? 0) > 0 || [...this.extensions.values()].some((ids) => ids.has(id));
   }
 
   /**
@@ -643,10 +651,18 @@ export class DashboardRoot {
       await Promise.all(this.releasing.values());
       if (gone()) return;
       extensionId = id;
+      this.cells.set(id, (this.cells.get(id) ?? 0) + 1);
       try {
-        if (!registry.getExtension(id)) await registry.registerExtension({ id, domain: WIDGETS_DOMAIN_ID, entry });
+        const registers = !registry.getExtension(id);
+        if (registers) await registry.registerExtension({ id, domain: WIDGETS_DOMAIN_ID, entry });
         // The dispose took its list of extensions before this registration ended: this cell takes its own one back.
         if (this.disposed) return void (await registry.unregisterExtension(id).catch(() => undefined));
+        // The cell left while it registered, so the prune after its leave did not see the id: it records nothing, and
+        // takes back the extension it registered unless another cell or a dashboard of the root holds the id.
+        if (!live) {
+          if (registers && !this.held(id)) await registry.unregisterExtension(id).catch(() => undefined);
+          return;
+        }
         let ids = this.extensions.get(dashboardId);
         if (!ids) this.extensions.set(dashboardId, (ids = new Set()));
         ids.add(id);
@@ -705,6 +721,11 @@ export class DashboardRoot {
 
     return {
       leave: () => {
+        if (live && extensionId) {
+          const others = (this.cells.get(extensionId) ?? 1) - 1;
+          if (others > 0) this.cells.set(extensionId, others);
+          else this.cells.delete(extensionId);
+        }
         live = false;
         // A disposed root unmounted every widget already.
         if (!registry || !extensionId || this.disposed) return;

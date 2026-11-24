@@ -1929,20 +1929,30 @@ describe('refresh and dispose of the root', () => {
     expect(abortListeners(add) - abortListeners(remove)).toBe(0);
   });
 
-  it('leaves no widget and no line of a cell started right before dispose', async () => {
+  it('leaves no widget and no line of a cell whose registration ends after dispose', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { host } = editingHost(async () => fileOf([7]));
     const { counts, entries: withCounts } = counting();
     const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
     const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
     await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const register = root.registry!.registerExtension.bind(root.registry);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const registering = vi.spyOn(root.registry!, 'registerExtension').mockImplementationOnce(async (extension) => (await gate, register(extension)));
     const states: string[] = [];
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension');
     const widget = cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget;
     root.runCell({ dashboardId: EDITED_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
-    await act(async () => root.dispose());
+    // The dispose takes its list of extensions while the cell's registration is in flight.
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(1));
+    const disposing = root.dispose();
+    open();
+    await act(async () => disposing);
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(counts.mounted - counts.unmounted).toBe(0);
-    expect(root.registry?.getExtension(extensionIdOf(widget.id, 'cell', METRIC))).toBeUndefined();
+    // The cell takes back the extension it registered after the dispose took its list.
+    expect(unregistering).toHaveBeenCalledWith(extensionIdOf(widget.id, 'cell', METRIC));
     expect(states).not.toContain('cannot-be-shown');
     expect(errors.mock.calls.filter(([line]) => String(line).includes('c001'))).toEqual([]);
   }, 15_000);
@@ -1995,6 +2005,54 @@ describe('refresh and dispose of the root', () => {
     await waitFor(() => expect(counts.unmounted).toBe(1), { timeout: 5000 });
     await waitFor(() => expect(root.registry?.getExtension(before)).toBeUndefined(), { timeout: 5000 });
     expect(root.registry?.getExtension(extensionIdOf(markdown.widget.id, 'cell', MARKDOWN))).toBeDefined();
+  }, 15_000);
+
+  it('keeps the extension of a widget another dashboard of the root holds when a refresh drops it from one', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    const OTHER_ID = EDITED_ID.replace(/1$/, '2');
+    // Two dashboards of one file name the same widget.
+    const withOther = (served: ServedFile): ServedFile => ({ ...served, instances: [...served.instances, { ...fileOf([7]).instances.find((instance) => instance.id === EDITED_ID)!, id: OTHER_ID }] });
+    let file = withOther(fileOf([7]));
+    const { host } = editingHost(async () => file);
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...counting().entries, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const other = render(<Dashboard root={root} dashboardId={OTHER_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(other.container)).toEqual(['value 7']), { timeout: 5000 });
+    other.unmount();
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const shared = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    // The refresh drops the widget from the shown dashboard only.
+    file = withOther({ ...fileOf([7]), instances: fileOf([7]).instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) });
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(root.registry?.getExtension(shared)).toBeDefined();
+  }, 15_000);
+
+  it('takes back the extension a cell registered after it left, and mounts nothing of it', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: { ...withCounts, [MARKDOWN]: () => probeEntry() }, origin: 'http://localhost' });
+    const register = root.registry!.registerExtension.bind(root.registry);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    // The first registration, the metric cell's, ends only once the gate opens.
+    const registering = vi.spyOn(root.registry!, 'registerExtension').mockImplementationOnce(async (extension) => (await gate, register(extension)));
+    render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(1), { timeout: 5000 });
+    const left = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    // The cell leaves while it registers: the refresh replaces it, and the prune after it runs before the gate opens.
+    file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(2), { timeout: 5000 });
+    await act(async () => open());
+    await waitFor(() => expect(root.registry?.getExtension(left)).toBeUndefined(), { timeout: 5000 });
+    expect(counts.mounted).toBe(0);
   }, 15_000);
 
   it.each([
