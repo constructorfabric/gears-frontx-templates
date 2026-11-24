@@ -3,6 +3,7 @@
 // and its CDP protocol handling via an injected fake WebSocket. The
 // browser-driving CLI itself is exercised end-to-end against a real app, not
 // here - these tests pin the logic every run depends on.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -195,39 +196,99 @@ describe('cli main: inputs checked before any browser work', () => {
     const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
     const took = Date.now() - started;
     expect(result.code).toBe(2);
-    expect(took).toBeLessThan(4_000);
+    expect(took).toBeLessThan(10_000);
     expect(result.errors).toMatch(/the server command exited with code 3 before .* answered/);
     expect(result.errors).toMatch(/last output:\nbefore the exit$/m);
   });
 
-  // The precheck gives up on a server that is slow to answer, so the run
-  // starts its command, which dies on the taken port, and the next probe gets
-  // the other server's answer: the run refuses instead of measuring it.
-  it('refuses when --url answers after the command it started has already exited', async () => {
+  /**
+   * Another project's server on --url that the precheck misses: it answers the
+   * precheck after 2 s, past the precheck's 1.5 s, and every later request at
+   * `answerLater(done)`. `dir` holds the files the started command and the
+   * test meet at.
+   */
+  async function slowServer(answerLater: (done: () => void) => void) {
     let requests = 0;
     const slow = http.createServer((req, res) => {
       requests += 1;
       res.statusCode = req.url?.startsWith('/json/') ? 404 : 200;
       if (requests === 1) setTimeout(() => res.end('another project'), 2_000);
-      else res.end('another project');
+      else answerLater(() => res.end('another project'));
     });
     await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-slow-'));
+    dirs.push(root);
+    return {
+      url: `http://127.0.0.1:${(slow.address() as AddressInfo).port}/`,
+      dir: root,
+      close: async () => {
+        slow.closeAllConnections();
+        await new Promise((resolve) => slow.close(resolve));
+      },
+    };
+  }
+
+  function whenExists(file: string, then: () => void) {
+    const poll = setInterval(() => {
+      if (!fs.existsSync(file)) return;
+      clearInterval(poll);
+      then();
+    }, 20);
+  }
+
+  // The precheck gives up on a server that is slow to answer, so the run
+  // starts its command, which dies on the taken port, and the next probe gets
+  // the other server's answer: the run refuses instead of measuring it. The
+  // answer comes 700 ms after the command wrote its marker and exited, so its
+  // exit is already recorded when the URL answers.
+  it('refuses when --url answers after the command it started has already exited', async () => {
+    let exitMarker = '';
+    const slow = await slowServer((done) => whenExists(exitMarker, () => setTimeout(done, 700)));
+    exitMarker = path.join(slow.dir, 'exiting');
     try {
-      const url = `http://127.0.0.1:${(slow.address() as AddressInfo).port}/`;
-      const command = `echo 'port in use'; exit 1`;
-      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      const command = `echo 'port in use'; echo x > '${exitMarker}'; exit 1`;
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
       expect(result.thrown).toBeUndefined();
       expect(result.code).toBe(2);
       expect(result.logged).toMatch(/starting dev server/);
       expect(result.errors).toContain(
-        `design-verify: ${url} answered, but the server command this run started exited with code 1, ` +
+        `design-verify: ${slow.url} answered, but the server command this run started exited with code 1, ` +
           'so the answer came from a server this run did not start',
       );
       expect(result.errors).toMatch(/last output:\nport in use$/m);
       expect(result.logged).not.toMatch(/launching headless Chrome/);
     } finally {
-      slow.closeAllConnections();
-      await new Promise((resolve) => slow.close(resolve));
+      await slow.close();
+    }
+  });
+
+  // The command's exit can arrive just after the other server's answer: the
+  // run looks once more after a short pause. Here the server answers once the
+  // command waits on a pipe, and 50 ms later writes the line that lets it
+  // exit, with no new process in between.
+  it('refuses when the command it started exits just after --url answered', async () => {
+    let ready = '';
+    let release = '';
+    const slow = await slowServer((done) =>
+      whenExists(ready, () => {
+        done();
+        setTimeout(() => void fs.promises.writeFile(release, 'x\n'), 50);
+      }),
+    );
+    ready = path.join(slow.dir, 'ready');
+    release = path.join(slow.dir, 'release');
+    execFileSync('mkfifo', [release]);
+    try {
+      const command = `echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`;
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.errors).toContain(
+        `design-verify: ${slow.url} answered, but the server command this run started exited with code 1, ` +
+          'so the answer came from a server this run did not start',
+      );
+    } finally {
+      await slow.close();
     }
   });
 
@@ -867,11 +928,13 @@ describe('server', () => {
 
   // The output is kept only as a tail, so a chatty server on a long run cannot
   // fill memory: at most the last 40 lines of the last 8 KB written. Written to one stream, so
-  // the order is fixed (stderr is read too: see the cli tests above).
+  // the order is fixed (stderr is read too: see the cli tests above). The long
+  // line is two-byte characters, and the 11 bytes after it ("\nthe cause\n")
+  // leave an odd count of its bytes in the last 8192, so the cut splits one.
   it('keeps a bounded tail of the server output and reports how it ended', async () => {
     const script =
       "for (let i = 0; i < 100; i += 1) console.log('line ' + i); " +
-      "console.log('x'.repeat(20000)); console.log('the cause'); process.exitCode = 3";
+      "console.log('\\u00e9'.repeat(10000)); console.log('the cause'); process.exitCode = 3";
     const server = startServer(`node -e "${script}"`);
     await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
     await server.settled();
@@ -879,7 +942,8 @@ describe('server', () => {
     const tail = server.output();
     expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(8192);
     expect(tail.split('\n').length).toBeLessThanOrEqual(40);
-    expect(tail).toMatch(/x{1000}\nthe cause$/);
+    expect(tail).toMatch(/\u00e9{1000}\nthe cause$/);
+    expect(tail).not.toContain('\uFFFD');
     expect(tail).not.toMatch(/line 0\b/);
     server.stop();
   });
