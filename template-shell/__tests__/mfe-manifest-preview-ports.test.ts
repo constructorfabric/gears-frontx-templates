@@ -45,8 +45,17 @@ afterEach(() => {
   rmSync(workspace, { recursive: true, force: true });
 });
 
-/** One built package addressed at `remoteEntry`, named `<token>` (by default `<name>`) in every id. */
-function builtPackage(name: string, remoteEntry: string | undefined, token = name.replace(/-/g, '_')): void {
+/**
+ * One built package addressed at `remoteEntry`, named `<token>` (by default
+ * `<name>`) in every id, whose built manifest names `publicPath` (by default
+ * the build's "auto").
+ */
+function builtPackage(
+  name: string,
+  remoteEntry: string | undefined,
+  token = name.replace(/-/g, '_'),
+  publicPath = 'auto',
+): void {
   const packagePath = join(mfePackagesDir, name);
   mkdirSync(join(packagePath, 'dist'), { recursive: true });
   const manifestId = `gts.frontx.mfes.mfe.mf_manifest.v1~fixture.${token}.mfe.manifest.v1`;
@@ -68,7 +77,7 @@ function builtPackage(name: string, remoteEntry: string | undefined, token = nam
           buildInfo: { buildVersion: '0', buildName: name },
           remoteEntry: { name: 'remoteEntry.js', path: 'assets', type: 'module' },
           globalName: name,
-          publicPath: 'auto',
+          publicPath,
         },
         shared: [],
       },
@@ -156,9 +165,19 @@ describe('the dev manifest with a moved preview', () => {
     expect(existsSync(outputFile)).toBe(true);
 
     expect(() => generate(new Map([['billing-mfe', 51234]]))).toThrow(
-      '[billing-mfe] --preview-port 51234 was given, but the package\'s publicPath "/" is not an absolute URL',
+      '[billing-mfe] --preview-port 51234 was given, but the package\'s publicPath "/" is not an absolute URL, ' +
+        'so it names no port to move. Set manifest.remoteEntry in its mfe.json to the address of its preview server.',
     );
     expect(existsSync(outputFile)).toBe(false);
+  });
+
+  it('refuses a moved port for a package whose built manifest names a relative publicPath, naming that field', () => {
+    builtPackage('billing-mfe', 'http://localhost:3010/assets/remoteEntry.js', 'billing_mfe', '/billing/');
+
+    expect(() => generate(new Map([['billing-mfe', 51234]]))).toThrow(
+      'publicPath "/billing/" is not an absolute URL, so it names no port to move. It comes from ' +
+        'metaData.publicPath in its built dist/mfe-manifest.json, which wins over manifest.remoteEntry',
+    );
   });
 });
 

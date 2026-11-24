@@ -702,10 +702,19 @@ export class ManifestGenerator {
     try {
       url = new URL(publicPath);
     } catch {
+      // Name the field resolvePublicPath took the address from: only "/" is
+      // its fallback for a package without a usable manifest.remoteEntry.
+      const fix =
+        this.globalBaseUrl !== null
+          ? 'It comes from --base-url: pass the absolute address of the preview server there.'
+          : publicPath === '/'
+            ? 'Set manifest.remoteEntry in its mfe.json to the address of its preview server.'
+            : `It comes from metaData.publicPath in its built ${this.mfeManifestPath}, which wins over ` +
+              `manifest.remoteEntry: make it the absolute address of the preview server, or leave it "auto" ` +
+              `so the origin of manifest.remoteEntry in its mfe.json is used.`;
       throw new Error(
         `[${packageDir}] --preview-port ${port} was given, but the package's publicPath "${publicPath}" ` +
-          `is not an absolute URL, so it names no port to move. Set manifest.remoteEntry in its mfe.json ` +
-          `to the address of its preview server.`
+          `is not an absolute URL, so it names no port to move. ${fix}`
       );
     }
     url.port = String(port);
