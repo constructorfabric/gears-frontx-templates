@@ -59,7 +59,7 @@ A host sets its own colours with the CSS custom properties `--dashboard-chart-1`
 
 A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
 
-## Where the larger view opens
+## Where overlays open
 
 A cell's larger view opens in an overlay that mounts inside the dashboard's own element. When the product's page content sits in its own stacking context (an ancestor with `isolation: isolate`, a `transform`, or a positioned element with a `z-index`) under a fixed part of the page, such as a sidebar, that part covers the overlay. Pass the element the overlay mounts in as `overlayContainer`, usually `document.body`:
 
@@ -68,6 +68,8 @@ A cell's larger view opens in an overlay that mounts inside the dashboard's own 
 ```
 
 Outside the dashboard's element the overlay takes its kit theme scope and `lang` from the given element and its ancestors, not from the dashboard: keep `data-theme` (`light` or `dark`, the scope the theme id gives) and `lang` on that element or an ancestor such as `<html>`. Without `overlayContainer`, or with `null`, the overlay stays inside the dashboard.
+
+The widgets open their own overlays (a menu or a popover a widget draws through the kit) in the same element. Each widget keeps its overlays in a shadow root of their own inside that element, which holds copies of the widget's stylesheets and carries the widget's theme scope and language, so they look as they do inside the widget and the page's styles do not reach them. Without `overlayContainer` they open inside the widget's own shadow root. A chart's tooltip is not an overlay: it is drawn inside the chart and stays there.
 
 ## Variables
 

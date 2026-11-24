@@ -1,4 +1,5 @@
-import { Component, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Component, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ActionHandler, ChildMfeBridge, MfeEntryLifecycle } from '@gears-frontx/mfes';
 import kitThemeCss from '@gears-frontx/ui-kit/theme.css?inline';
@@ -6,6 +7,7 @@ import {
   intlLocaleOf,
   kitScopeOf,
   LANGUAGE_PROPERTY_ID,
+  OVERLAY_CONTAINER_PROPERTY_ID,
   RENDER_WIDGET_ACTION_ID,
   THEME_PROPERTY_ID,
   type RenderWidgetPayload,
@@ -28,9 +30,11 @@ export interface WidgetContext {
   /** The host language. */
   locale: string;
   /**
-   * An element inside this widget's shadow root that carries the kit theme
-   * scope: kit overlays (Dialog, Tooltip, Select, Popover, DropdownMenu)
-   * open here, so they keep the widget's styles and theme.
+   * The element kit overlays (Dialog, Tooltip, Select, Popover, DropdownMenu)
+   * open in, carrying the kit theme scope and the language. Without a host
+   * overlay container it sits inside this widget's shadow root; with one, in a
+   * shadow root of its own inside the host's element, which holds copies of the
+   * widget's stylesheets. Either way the overlay keeps the widget's styles.
    */
   container: HTMLElement | null;
 }
@@ -95,11 +99,54 @@ function Drawn({ render, payload, context }: { render: WidgetRenderer; payload: 
   return <>{render(payload, context)}</>;
 }
 
-function WidgetHost({ payload, theme, language, render }: { payload: Store<RenderWidgetPayload | undefined>; theme: Store<string | undefined>; language: Store<string | undefined>; render: WidgetRenderer }) {
+/** The host's overlay container as the shared property carries it: an element, or none for anything else. */
+const elementOf = (value: unknown): HTMLElement | null => (value instanceof HTMLElement ? value : null);
+
+/**
+ * A shadow root inside the host's overlay container for this widget's overlays, or null without a container. It
+ * holds copies of the stylesheets of the widget's own shadow root (the kit tokens, the kit component CSS and the
+ * widget CSS the bundle brings), so an overlay drawn there is styled as inside the widget, and the page's styles stay
+ * out. It is removed when the widget unmounts or the host names another container.
+ */
+function useOverlayRoot(outside: HTMLElement | null, styled: Element | ShadowRoot): ShadowRoot | null {
+  const [overlayRoot, setOverlayRoot] = useState<ShadowRoot | null>(null);
+  useLayoutEffect(() => {
+    if (!outside) return setOverlayRoot(null);
+    const host = document.createElement('div');
+    host.dataset.widgetOverlays = '';
+    const shadow = host.attachShadow({ mode: 'open' });
+    for (const sheet of Array.from(styled.children)) if (sheet.matches('style, link[rel="stylesheet"]')) shadow.append(sheet.cloneNode(true));
+    if ('adoptedStyleSheets' in styled) shadow.adoptedStyleSheets = [...styled.adoptedStyleSheets];
+    outside.append(host);
+    setOverlayRoot(shadow);
+    return () => host.remove();
+  }, [outside, styled]);
+  return overlayRoot;
+}
+
+function WidgetHost({
+  payload,
+  theme,
+  language,
+  overlayContainer,
+  styled,
+  render,
+}: {
+  payload: Store<RenderWidgetPayload | undefined>;
+  theme: Store<string | undefined>;
+  language: Store<string | undefined>;
+  overlayContainer: Store<HTMLElement | null>;
+  styled: Element | ShadowRoot;
+  render: WidgetRenderer;
+}) {
   const current = useSyncExternalStore(payload.subscribe, payload.get);
   const scope = kitScopeOf(useSyncExternalStore(theme.subscribe, theme.get));
   const locale = intlLocaleOf(useSyncExternalStore(language.subscribe, language.get));
+  const overlayRoot = useOverlayRoot(useSyncExternalStore(overlayContainer.subscribe, overlayContainer.get), styled);
   const [overlays, setOverlays] = useState<HTMLElement | null>(null);
+  // Kit overlays open in this layer, in the theme scope and the language. Each overlay gets it as an explicit
+  // `container`, which wins over any portal container the kit itself provides.
+  const layer = <div ref={setOverlays} data-theme={scope} lang={locale} />;
   return (
     <div data-theme={scope} lang={locale} className={styles.widgetRoot}>
       {current ? (
@@ -107,9 +154,7 @@ function WidgetHost({ payload, theme, language, render }: { payload: Store<Rende
           <Drawn render={render} payload={current} context={{ locale, container: overlays }} />
         </DrawingBoundary>
       ) : null}
-      {/* Kit overlays open here, inside the shadow root and the theme scope. gears-frontx#763 adds PortalContainerProvider /
-          usePortalContainer() to ui-kit 0.6.0; an explicit `container` keeps winning over it, so this stays valid after that. */}
-      <div ref={setOverlays} data-theme={scope} />
+      {overlayRoot ? createPortal(layer, overlayRoot) : layer}
     </div>
   );
 }
@@ -119,6 +164,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
   const payload = new Store<RenderWidgetPayload | undefined>(undefined);
   const theme = new Store<string | undefined>(undefined);
   const language = new Store<string | undefined>(undefined);
+  const overlayContainer = new Store<HTMLElement | null>(null);
   let root: Root | undefined;
   // The bridge the handler is registered on. The FrontX MF handler keeps one lifecycle per extension id for the page's
   // life, and an extension registered again (a dashboard left and opened again) comes with a new bridge.
@@ -138,6 +184,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
       }
       theme.set(bridge.getProperty(THEME_PROPERTY_ID)?.value as string | undefined);
       language.set(bridge.getProperty(LANGUAGE_PROPERTY_ID)?.value as string | undefined);
+      overlayContainer.set(elementOf(bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value));
       // A mount after a failed one comes with no unmount between them: drop the earlier subscriptions and React root first.
       for (const stop of unsubscribe) stop();
       root?.unmount();
@@ -145,6 +192,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
       unsubscribe = [
         bridge.subscribeToProperty(THEME_PROPERTY_ID, (property) => theme.set(property.value as string)),
         bridge.subscribeToProperty(LANGUAGE_PROPERTY_ID, (property) => language.set(property.value as string)),
+        bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => overlayContainer.set(elementOf(property.value))),
       ];
       // `:scope` matches nothing on a shadow root, so the root's own children are looked at instead.
       if (!Array.from(container.children).some((child) => child.matches('style[data-kit-tokens]'))) {
@@ -154,7 +202,7 @@ export function createWidgetLifecycle(render: WidgetRenderer): MfeEntryLifecycle
         container.prepend(tokens);
       }
       root = createRoot(container);
-      root.render(<WidgetHost payload={payload} theme={theme} language={language} render={render} />);
+      root.render(<WidgetHost payload={payload} theme={theme} language={language} overlayContainer={overlayContainer} styled={container} render={render} />);
     },
     unmount() {
       // A remount shows nothing until the root sends its next render_widget, never the last mount's payload.

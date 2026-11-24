@@ -1,6 +1,6 @@
 import { act } from '@testing-library/react';
 import type { ActionHandler, ChildMfeBridge } from '@gears-frontx/mfes';
-import { LANGUAGE_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID } from '@gears-frontx/frontx-dashboard-root/contract';
+import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID } from '@gears-frontx/frontx-dashboard-root/contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Popover, PopoverContent, PopoverTrigger } from '@gears-frontx/ui-kit';
 
@@ -21,7 +21,7 @@ function mountPoint() {
 }
 
 /** A child bridge stub: shared properties start from `properties`, and `change` calls back their subscribers as the host would. */
-function bridge(properties: Record<string, string> = {}) {
+function bridge(properties: Record<string, unknown> = {}) {
   const handlers = new Map<string, ActionHandler>();
   const subscribers = new Map<string, (property: { value: unknown }) => void>();
   const child = {
@@ -33,7 +33,7 @@ function bridge(properties: Record<string, string> = {}) {
     },
   } as unknown as ChildMfeBridge;
   const send = (payload: unknown) => act(async () => handlers.get(RENDER_WIDGET_ACTION_ID)!.handleAction(RENDER_WIDGET_ACTION_ID, payload as Record<string, unknown>));
-  const change = (id: string, value: string) => act(async () => subscribers.get(id)?.({ value }));
+  const change = (id: string, value: unknown) => act(async () => subscribers.get(id)?.({ value }));
   return { child, send, change };
 }
 
@@ -125,7 +125,8 @@ describe('the property subscriptions', () => {
     await act(async () => lifecycle.mount(shadow, child));
     expect(stopped).not.toHaveBeenCalled();
     await act(async () => lifecycle.mount(document.createElement('div').attachShadow({ mode: 'open' }), child));
-    expect(stopped).toHaveBeenCalledTimes(2);
+    // The theme, the language and the overlay container.
+    expect(stopped).toHaveBeenCalledTimes(3);
   });
 
   it('draws again in the new theme scope and language when they change after mount', async () => {
@@ -248,5 +249,61 @@ describe('kit overlays', () => {
     expect(document.body.textContent).not.toContain('Popup text');
     expect(host.textContent).toBe('');
     await act(async () => lifecycle.unmount(shadow));
+  });
+});
+
+describe('kit overlays with a host overlay container', () => {
+  const popupOf = (root: ParentNode) => Array.from(root.querySelectorAll('*')).find((node) => node.textContent === 'Popup text' && node.children.length === 0);
+
+  it('opens a kit popup in a shadow root of its own inside the host element, with the widget styles, theme and language', async () => {
+    const outside = document.body.appendChild(document.createElement('div'));
+    const lifecycle = createWidgetLifecycle((_payload, { container }) => (
+      <Popover defaultOpen>
+        <PopoverTrigger>Details</PopoverTrigger>
+        <PopoverContent container={container ?? undefined}>Popup text</PopoverContent>
+      </Popover>
+    ));
+    const { shadow } = mountPoint();
+    // A stylesheet the FrontX handler puts into the widget's shadow root before it mounts the widget.
+    shadow.append(Object.assign(document.createElement('style'), { id: 'widget-css', textContent: '.popup { color: red; }' }));
+    const { child, send } = bridge({ [THEME_PROPERTY_ID]: 'dark', [LANGUAGE_PROPERTY_ID]: 'de', [OVERLAY_CONTAINER_PROPERTY_ID]: outside });
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    const overlayRoot = outside.firstElementChild?.shadowRoot;
+    expect(overlayRoot).toBeTruthy();
+    expect(popupOf(overlayRoot!)).toBeTruthy();
+    expect(popupOf(shadow)).toBeUndefined();
+    const layer = popupOf(overlayRoot!)?.closest('[data-theme]');
+    expect(layer?.getAttribute('data-theme')).toBe('dark');
+    expect(layer?.getAttribute('lang')).toBe('de');
+    // The widget's stylesheets come along: the kit tokens and the bundle's own CSS.
+    expect(overlayRoot!.querySelector('style[data-kit-tokens]')?.textContent).toContain(':host');
+    expect(overlayRoot!.querySelector('style#widget-css')?.textContent).toBe('.popup { color: red; }');
+    await act(async () => lifecycle.unmount(shadow));
+    expect(outside.childElementCount).toBe(0);
+    outside.remove();
+  });
+
+  it('moves an open popup out to the host element when the host names one, and back into the widget shadow root when it drops it', async () => {
+    const outside = document.body.appendChild(document.createElement('div'));
+    const lifecycle = createWidgetLifecycle((_payload, { container }) => (
+      <Popover defaultOpen>
+        <PopoverTrigger>Details</PopoverTrigger>
+        <PopoverContent container={container ?? undefined}>Popup text</PopoverContent>
+      </Popover>
+    ));
+    const { shadow } = mountPoint();
+    const { child, send, change } = bridge();
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    expect(popupOf(shadow)).toBeTruthy();
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, outside);
+    expect(popupOf(outside.firstElementChild!.shadowRoot!)).toBeTruthy();
+    expect(popupOf(shadow)).toBeUndefined();
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, null);
+    expect(outside.childElementCount).toBe(0);
+    expect(popupOf(shadow)).toBeTruthy();
+    await act(async () => lifecycle.unmount(shadow));
+    outside.remove();
   });
 });

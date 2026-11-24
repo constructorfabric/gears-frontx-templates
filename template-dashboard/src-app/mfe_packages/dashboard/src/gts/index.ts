@@ -9,7 +9,7 @@ import widgetData from './widget_data.v1.schema.json';
 import widgetExt from './widget_ext.v1.schema.json';
 import widget from './widget.v1.schema.json';
 import widgetsDomain from './widgets_domain.v1.json';
-import { ENTRY_MF_TYPE_ID, LANGUAGE_PROPERTY_ID, THEME_PROPERTY_ID } from '../contract';
+import { ENTRY_MF_TYPE_ID, LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, THEME_PROPERTY_ID } from '../contract';
 
 /**
  * The bundle schemas the dashboard root registers at start, before it loads
@@ -30,17 +30,23 @@ export const BUNDLE_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [widget, d
 export const WIDGETS_DOMAIN = widgetsDomain;
 
 /**
- * The FrontX theme and language shared-property types. FrontX refers to them
- * by id but does not define them; a FrontX shell registers its own. The root
- * registers these only where the type store has none, so a host without a
- * shell can register the `widgets` domain and the widget entries, which name
- * both properties.
+ * The shared-property types of the `widgets` domain. FrontX refers to the theme
+ * and language ones by id but does not define them; a FrontX shell registers
+ * its own. The root registers each of these only where the type store has
+ * none, so a host without a shell can register the `widgets` domain and the
+ * widget entries, which name the theme and the language. The overlay
+ * container's value is a page element or null, passed by reference; the type
+ * store reads an element as no JSON value at all, so its type leaves the value
+ * open and each widget takes only an element from it.
  */
-export const SHARED_PROPERTY_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [THEME_PROPERTY_ID, LANGUAGE_PROPERTY_ID].map((id) => ({
+export const SHARED_PROPERTY_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [
+  ...[THEME_PROPERTY_ID, LANGUAGE_PROPERTY_ID].map((id) => ({ id, value: { type: 'string', minLength: 1 } })),
+  { id: OVERLAY_CONTAINER_PROPERTY_ID, value: {} },
+].map(({ id, value }) => ({
   $id: `gts://${id}`,
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   allOf: [{ $ref: 'gts://gts.frontx.mfes.comm.shared_property.v1~' }],
-  properties: { value: { type: 'string', minLength: 1 } },
+  properties: { value },
 }));
 
 const STAND_IN_MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.stand_in.manifest.v1';

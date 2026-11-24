@@ -3,6 +3,7 @@ import type { MfeRegistry, TypeSystemPlugin } from '@gears-frontx/mfes';
 
 import {
   LANGUAGE_PROPERTY_ID,
+  OVERLAY_CONTAINER_PROPERTY_ID,
   RENDER_WIDGET_ACTION_ID,
   THEME_PROPERTY_ID,
   WIDGETS_DOMAIN_ID,
@@ -112,7 +113,7 @@ export class DashboardRoot {
   /** The generated extensions registered for each dashboard id. */
   private readonly extensions = new Map<string, Set<string>>();
   /** The last theme id and language the `widgets` domain accepted, each on its own. */
-  private readonly published: { theme?: string; language?: string } = {};
+  private readonly published: { theme?: string; language?: string; overlays?: HTMLElement | null } = {};
   /** The release still running for a dashboard id. */
   private readonly releasing = new Map<string, Promise<void>>();
 
@@ -151,7 +152,21 @@ export class DashboardRoot {
   }
 
   /**
-   * Publishes one of the two properties. The host can pass anything; a value the property type rejects keeps the last
+   * Publishes the element the widgets open their overlays in (the host's `overlayContainer`), or null for none, on the
+   * `widgets` domain. Each widget then moves its overlays there; with null they stay inside its own shadow root.
+   */
+  publishOverlayContainer(element: HTMLElement | null): void {
+    if (!this.registry || (this.published.overlays ?? null) === element) return;
+    try {
+      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element);
+      this.published.overlays = element;
+    } catch (error) {
+      console.error(`[dashboard] ${escapeControls(`the overlay container cannot be published: ${String(error).split('\n')[0]}`)}`);
+    }
+  }
+
+  /**
+   * Publishes the theme or the language. The host can pass anything; a value the property type rejects keeps the last
    * one of that property, never stops the other one and never breaks the render.
    */
   private publishOne(name: 'theme' | 'language', propertyId: string, value: string): void {

@@ -39,14 +39,17 @@ export interface DashboardProps {
   /**
    * The element the larger-view overlay mounts in; without it, the dashboard's own element. A host whose page content
    * sits in its own stacking context, under a fixed sidebar for example, passes `document.body`. The overlay then takes
-   * its kit theme scope (`data-theme`) and `lang` from that element and its ancestors, not from the dashboard.
+   * its kit theme scope (`data-theme`) and `lang` from that element and its ancestors, not from the dashboard. The
+   * widgets open their own overlays (the sort menu of a table, for one) in the same element, each in a shadow root of
+   * its own that carries the widget's styles, theme scope and language.
    */
   overlayContainer?: HTMLElement | null;
 }
 
 export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
-  // Both values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
+  // The values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
+  useLayoutEffect(() => root.publishOverlayContainer(overlayContainer ?? null), [root, overlayContainer]);
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const previous = useRef<string | undefined>(undefined);

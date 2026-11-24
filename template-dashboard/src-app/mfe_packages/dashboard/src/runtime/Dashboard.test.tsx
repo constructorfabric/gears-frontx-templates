@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { ActionHandler, MfeHandlerMF, type ChildMfeBridge, type MfeEntryLifecycle } from '@gears-frontx/mfes';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { LANGUAGE_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type ServedFile } from '../contract';
+import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type ServedFile } from '../contract';
 import { BUNDLE_TYPES, IN_BUNDLE_PARTS, WIDGET_ENTRIES } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { createMockHost, DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
@@ -385,6 +385,38 @@ describe('Dashboard on the real registry', () => {
     const dialog = await screen.findByRole('dialog');
     expect(overlayHost.contains(dialog), `overlay host should hold the dialog: ${name}`).toBe(given);
     expect(view.container.firstElementChild?.contains(dialog), `dashboard element should hold the dialog: ${name}`).toBe(!given);
+    view.unmount();
+    overlayHost.remove();
+  }, 15_000);
+
+  it('gives every widget the overlayContainer the host passes, and null once the host drops it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const overlayHost = document.body.appendChild(document.createElement('div'));
+    // Each widget's latest overlay container, by extension: as it reads it on mount and as the domain updates it.
+    const seen = new Map<string, unknown>();
+    let count = 0;
+    const overlayEntry = (): MfeEntryLifecycle => {
+      const id = String(count++);
+      let stop: (() => void) | undefined;
+      return {
+        mount(_container, bridge) {
+          seen.set(id, bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value);
+          stop = bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => seen.set(id, property.value));
+          bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+        },
+        unmount() {
+          stop?.();
+        },
+      };
+    };
+    const overlayEntries = Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, overlayEntry]));
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+    const props = { root, dashboardId: DEMO_DASHBOARD_ID, theme: 'light', language: 'en', variables: DEMO_VARIABLES };
+    const view = render(<Dashboard {...props} overlayContainer={overlayHost} />);
+    await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+    expect([...new Set(seen.values())]).toEqual([overlayHost]);
+    view.rerender(<Dashboard {...props} />);
+    expect([...new Set(seen.values())]).toEqual([null]);
     view.unmount();
     overlayHost.remove();
   }, 15_000);

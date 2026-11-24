@@ -592,7 +592,7 @@ The system **MUST** ship the `widgets` extension type `gts.frontx.mfes.ext.exten
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-widget-contract-domain`
 
-The system **MUST** ship the `widgets` domain instance `gts.frontx.mfes.ext.domain.v1~frontx.dashboard.mfe.widgets.v1` with `sharedProperties` theme and language, `actions` `mount_ext` and `unmount_ext`, `extensionsActions` `render_widget`, `extensionsTypeId` the `widget_ext` extension type, `defaultActionTimeout` 30000 ms, and both lifecycle-stage lists empty. The domain has no `route`: generated extensions are not routed.
+The system **MUST** ship the `widgets` domain instance `gts.frontx.mfes.ext.domain.v1~frontx.dashboard.mfe.widgets.v1` with `sharedProperties` theme, language and overlay container, `actions` `mount_ext` and `unmount_ext`, `extensionsActions` `render_widget`, `extensionsTypeId` the `widget_ext` extension type, `defaultActionTimeout` 30000 ms, and both lifecycle-stage lists empty. The domain has no `route`: generated extensions are not routed.
 
 **Instance**:
 
@@ -601,7 +601,8 @@ The system **MUST** ship the `widgets` domain instance `gts.frontx.mfes.ext.doma
   "id": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard.mfe.widgets.v1",
   "sharedProperties": [
     "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
-    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~",
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.dashboard.mfe.overlay_container.v1~"
   ],
   "actions": [
     "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",
@@ -659,10 +660,12 @@ The root generates one extension per cell (and per larger view). The extension i
 
 The `widgets` domain shares the host's theme and language through the FrontX shared properties `gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~` and `gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~`, and every widget entry requires both. FrontX refers to these ids but does not define their types, so the template carries a minimal schema for each (a non-empty string `value`, derived from the FrontX shared-property base) and the root registers it only when the type store has no schema under that id: a host without a FrontX shell can then register the domain and the entries. The root keeps a type store of its own, so it never reads a shell's store: a schema already registered under that id in the root's store is kept, and a shell's own validation of theme and language does not apply inside the dashboard. The theme value is the host theme id, which the widget helpers fold to the light or dark ui-kit scope (an unknown id gives light); the language value is the host language.
 
+The domain also shares the template's own property `gts.frontx.mfes.comm.shared_property.v1~frontx.dashboard.mfe.overlay_container.v1~`: the element the host passes as `overlayContainer`, or null for none. No entry requires it. Its value is a page element passed by reference, which the type store does not read as JSON, so its schema leaves `value` open and the widget helpers take only an element from it. The root registers this schema the same way, only when the type store has none under that id. With an element, the widget helpers open the widget's kit overlays (the layer `WidgetContext.container` names) in a shadow root of their own inside that element, which holds copies of the stylesheets of the widget's own shadow root (the kit tokens, the kit component CSS and the widget CSS) and carries the widget's theme scope and language; with null they open inside the widget's shadow root.
+
 **Implements**: `cpt-frontx-dashboard-interface-contract` (shared properties every entry requires).
 
 **Touches**:
-- Entities: Theme shared property, Language shared property
+- Entities: Theme shared property, Language shared property, Overlay container shared property
 
 ### Entry declaration
 
@@ -800,7 +803,7 @@ A walkthrough with someone who did not build the template verifies the guide. A 
 - [ ] The root resolves effective traits as the RFC 7396 merge along the `$id` chain, with defaults filled; a schema missing along the type chain is a failure, never a partial result.
 - [ ] The `render_widget` action carries a single `target` (a `widget_ext` extension) and a closed payload of `{render, value_format?, data?}`: the stamped render instance (of the render base, its `id` naming a registered render instance) and, for a data widget, its `value_format` (of the value_format type) and the stamped data instance. It carries no widget id, title or binding.
 - [ ] The `widgets` extension type narrows `domain` to the `widgets` domain id and adds no field; a generated extension's `entry` is the entry named by the widget type's `entry` trait.
-- [ ] The `widgets` domain instance declares `sharedProperties` theme and language, `actions` `mount_ext` and `unmount_ext`, `extensionsActions` `render_widget`, `extensionsTypeId` the `widget_ext` extension type, `defaultActionTimeout` 30000, and both lifecycle-stage lists empty.
+- [ ] The `widgets` domain instance declares `sharedProperties` theme, language and overlay container, `actions` `mount_ext` and `unmount_ext`, `extensionsActions` `render_widget`, `extensionsTypeId` the `widget_ext` extension type, `defaultActionTimeout` 30000, and both lifecycle-stage lists empty.
 - [ ] The domain and every entry refer to the FrontX theme and language ids; the root registers the template's minimal schema for each only when the type store has none under that id, and never replaces a schema already registered.
 - [ ] In each bundle's `mfe.json` the widget author writes the manifest's `id` and `remoteEntry`; the FrontX manifest pipeline produces the rest of the manifest and adds the entry's `exposeAssets` when the bundle is built.
 - [ ] A generated extension id is the `widget_ext` type followed by `UUIDv5(namespace, widget id | role | entry id)`; a stamped data id is the data type followed by `UUIDv5(namespace, widget id | role)`; a stamped render id is the render type (or the render base) followed by `UUIDv5(namespace, widget id | role | render)`; name parts are joined with `|`, in UTF-8, with ids in lowercase; ids are never persisted.

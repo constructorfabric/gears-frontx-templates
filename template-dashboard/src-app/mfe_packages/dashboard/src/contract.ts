@@ -90,6 +90,12 @@ export const ENTRY_MF_TYPE_ID = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.en
 /** The FrontX theme and language shared properties the `widgets` domain shares; every widget entry requires both. */
 export const THEME_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~';
 export const LANGUAGE_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~';
+/**
+ * The element a host names for overlays (the `overlayContainer` of `<Dashboard>`), or null for none. The `widgets`
+ * domain shares it like the theme and the language; a widget opens its overlays (menus, popovers, dialogs) there, and
+ * inside its own shadow root without one. No widget entry requires it.
+ */
+export const OVERLAY_CONTAINER_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~frontx.dashboard.mfe.overlay_container.v1~';
 
 /** Host theme ids whose palette is dark; any other id maps to the kit's light scope. */
 export const DARK_THEMES = new Set(['dark', 'dracula', 'dracula-large']);
