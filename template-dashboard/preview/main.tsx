@@ -53,7 +53,11 @@ function Cell({ cell }: { cell: DashboardCell }) {
 function Preview() {
   const view = params.get('view') ?? '';
   const grid500 = view === 'grid500';
-  const cells = grid500 ? GRID_500_CELLS : (Object.hasOwn(COLOUR_CELLS, view) ? COLOUR_CELLS[view] : DEMO_CELLS);
+  // A colour view shows one chart in a tall box, so a long legend shows in full.
+  const colourView = !grid500 && Object.hasOwn(COLOUR_CELLS, view);
+  let cells = DEMO_CELLS;
+  if (grid500) cells = GRID_500_CELLS;
+  else if (colourView) cells = COLOUR_CELLS[view];
   const [mounted, setMounted] = useState(!grid500);
   return (
     <main className={params.get('palette') === 'host' ? 'preview preview-host-palette' : 'preview'}>
@@ -63,14 +67,12 @@ function Preview() {
           Mount grid
         </button>
       ) : null}
-      {cells !== DEMO_CELLS && !grid500 ? (
-        // One chart in a tall box, so a long legend shows in full.
-        <div className="preview-tall" style={view === 'pie24' ? { blockSize: 960 } : undefined}>
+      {colourView ? (
+        <div className={view === 'pie24' ? 'preview-tall preview-tall-xl' : 'preview-tall'}>
           <Cell cell={cells[0]} />
         </div>
-      ) : mounted ? (
-        <DashboardArea layout={{ cells }} renderCell={(cell) => <Cell cell={cell} />} />
       ) : null}
+      {!colourView && mounted ? <DashboardArea layout={{ cells }} renderCell={(cell) => <Cell cell={cell} />} /> : null}
     </main>
   );
 }

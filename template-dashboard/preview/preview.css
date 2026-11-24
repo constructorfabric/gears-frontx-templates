@@ -13,7 +13,16 @@
   block-size: 760px;
 }
 
-/* A host palette of three colours, as docs/embedding.md shows it: series 4 on take the template's colours. */
+.preview-tall-xl {
+  block-size: 960px;
+}
+
+/*
+ * A host palette of three colours, after the one docs/embedding.md shows: series 4 on take the template's colours.
+ * The preview draws cells without a dashboard theme scope, so the dark rule is keyed on the data-theme that
+ * ?theme=dark sets on the page root (an ancestor, as for a host that passes overlayContainer), and without ?theme
+ * the light values apply.
+ */
 .preview-host-palette {
   --dashboard-chart-1: #1f6feb;
   --dashboard-chart-2: #d1242f;
