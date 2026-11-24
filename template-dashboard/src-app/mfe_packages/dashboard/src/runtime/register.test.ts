@@ -206,6 +206,32 @@ describe('registration order under reference lookup', () => {
     expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/render\/columns\/0/);
   });
 
+  it('accepts a cartesian_chart render with series_default, and fails one whose series_default carries a field it does not declare', () => {
+    const type = shipped.find((id) => id.endsWith('.cartesian_chart.v1~'))!;
+    const chart = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const withDefault = (uuid: string, seriesDefault: unknown) => ({ ...chart, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...chart.render, series_default: seriesDefault } });
+    const { types } = loaded();
+    const result = registerDashboard(types, dashboardOf([
+      { size: 'small', widget: withDefault('30', { type: 'bar', y_axis: 'secondary', stack_group: 'runs' }) },
+      { size: 'small', widget: withDefault('31', { stack_group: 'runs', label: 'Target' }) },
+    ]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(1, 'cell')]);
+  });
+
+  it('accepts cartesian_chart data in the series form or the long form, and fails data with both, neither, or a point without its series', () => {
+    const DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~';
+    const { types } = loaded();
+    const stamped = (uuid: string, data: Record<string, unknown>) => () => types.register({ ...data, id: `${DATA}1a2b3c4d-0000-4000-8000-0000000000${uuid}` });
+    const series = [{ name: 'ok', points: [{ x: 'Mon', y: 10 }] }];
+    const points = [{ x: 'Mon', y: 10, series: 'ok' }, { x: 'Mon', y: 1, series: 'failed' }, { x: 'Tue', y: 2, series: null, size: 3 }];
+    expect(stamped('40', { series })).not.toThrow();
+    expect(stamped('41', { points })).not.toThrow();
+    expect(stamped('42', { series, points })).toThrow();
+    expect(stamped('43', {})).toThrow();
+    expect(stamped('44', { points: [{ x: 'Mon', y: 10 }] })).toThrow();
+    expect(stamped('45', { points: [{ x: 'Mon', y: 10, series: 'ok', name: 'ok' }] })).toThrow();
+  });
+
   it('accepts a metric_card render with better neutral, and fails one with a direction outside the catalog values', () => {
     const type = shipped.find((id) => id.endsWith('.metric_card.v1~'))!;
     const metric = demoWidgets.find((widget) => widget.id.startsWith(type))!;

@@ -29,8 +29,16 @@ export interface ReferenceLineOption {
 
 export type LegendPosition = 'top' | 'right' | 'bottom' | 'left' | 'none';
 
+/** How every data series without an entry of its own in `series` is drawn; each field left out takes its own default. */
+export interface CartesianSeriesDefault {
+  type?: CartesianSeriesOption['type'];
+  y_axis?: CartesianSeriesOption['y_axis'];
+  stack_group?: string;
+}
+
 export interface CartesianRender {
   series?: CartesianSeriesOption[];
+  series_default?: CartesianSeriesDefault;
   x_axis?: {
     type?: 'category' | 'value' | 'time';
     label?: string;
@@ -61,9 +69,22 @@ export interface CartesianPoint {
   size?: number | null;
 }
 
-export interface CartesianData {
+/** A point of the long form: it names the series it belongs to. */
+export interface CartesianLongPoint extends CartesianPoint {
+  series: string | null;
+}
+
+/** The series form: named series, each with its points. */
+export interface CartesianSeriesData {
   series: { name: string | null; points: CartesianPoint[] }[];
 }
+
+/**
+ * The data of a cartesian chart: the series form, or the long form, whose points each name their series. Exactly one
+ * of the two. The widget builds the series of the long form before its checks: the series with an entry of their own
+ * in `render.series` first, in the order of those entries, then the others in the order their names first appear.
+ */
+export type CartesianData = (CartesianSeriesData & { points?: never }) | { points: CartesianLongPoint[]; series?: never };
 
 export interface PieRender {
   /** Outer radius, or inner and outer radius, each `<n>%` or `<n>px`. Two items make a donut. */

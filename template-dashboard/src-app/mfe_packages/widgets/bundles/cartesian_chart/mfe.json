@@ -24,20 +24,17 @@
       "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "title": "CartesianChartData",
-      "description": "Data of a cartesian_chart widget, in long format.",
+      "description": "Data of a cartesian_chart widget: named series, each with its points, or long-form points that each name their series. Exactly one of the two.",
       "allOf": [
         {
           "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
         },
         {
           "type": "object",
-          "required": [
-            "series"
-          ],
           "properties": {
             "series": {
               "type": "array",
-              "description": "One entry per series, each with its name and points.",
+              "description": "One entry per series, each with its name and points. The series form; with it, no points.",
               "items": {
                 "type": "object",
                 "required": [
@@ -90,8 +87,65 @@
                   }
                 }
               }
+            },
+            "points": {
+              "type": "array",
+              "description": "The long form: one entry per point, each naming its series; with it, no series. The widget builds one series per distinct name. Series order (which sets colours, stack order and legend order): the series that have an entry of their own in render.series first, in the order of those entries, then the others in the order their names first appear in the points. A check that fails on a point names the point's index here.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "series"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ],
+                    "description": "On a value axis, a number. On a time axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds. On a category axis, any value. A mismatch is checked by the widget."
+                  },
+                  "y": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "On a series of a log y axis, above zero. A y not above zero there is checked by the widget."
+                  },
+                  "series": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The name of the series the point belongs to. The widget gathers the points of one name into one series, in the order of the points; a series' points keep their order."
+                  },
+                  "size": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "description": "A scatter series only (on another type, a cross-check the widget runs): the point's size; its area grows in proportion to it, within the radius range the widget sets. Null or absent draws the smallest point."
+                  }
+                }
+              }
             }
-          }
+          },
+          "oneOf": [
+            {
+              "required": [
+                "series"
+              ]
+            },
+            {
+              "required": [
+                "points"
+              ]
+            }
+          ]
         }
       ],
       "unevaluatedProperties": false
@@ -110,7 +164,7 @@
           "properties": {
             "series": {
               "type": "array",
-              "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis.",
+              "description": "How each data series is drawn. A data series without an entry here draws by series_default, or, without it, as bars on the primary y axis.",
               "items": {
                 "type": "object",
                 "required": [
@@ -164,6 +218,35 @@
                     ],
                     "description": "A line or area only (on another type, a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks): a mark with its value on the series' lowest point, highest point, or both; of equal values, the first point in axis order (the drawn order), skipping nulls."
                   }
+                }
+              }
+            },
+            "series_default": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "How every data series without an entry of its own in series is drawn, so a chart whose series names arrive with the data can still stack them. Each field left out takes its own default.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "bar",
+                    "line",
+                    "area",
+                    "scatter"
+                  ],
+                  "description": "How such a series is drawn. Without it, bars.",
+                  "default": "bar"
+                },
+                "y_axis": {
+                  "enum": [
+                    "primary",
+                    "secondary"
+                  ],
+                  "default": "primary",
+                  "description": "Which y axis such a series uses. Without it, the primary axis."
+                },
+                "stack_group": {
+                  "type": "string",
+                  "description": "The stack group of such a series. Series with the same stack group on the same y axis are stacked in series order."
                 }
               }
             },

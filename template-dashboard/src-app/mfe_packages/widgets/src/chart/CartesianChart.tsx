@@ -6,7 +6,7 @@ import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format'
 import { legendOf, seriesColor } from './legend';
 import { dateFormatOf, timeOf as timeOfText } from '../time';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
-import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
+import type { CartesianData, CartesianRender, CartesianSeriesData, CartesianSeriesOption, ReferenceLineOption } from '../types';
 import styles from '../widgets.module.css';
 import { ChartShell } from './ChartShell';
 import { charsIn, cutLabel, FILL, MIN_LABEL_CHARS, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
@@ -57,38 +57,96 @@ const placeOf = (x: string | number | null, axis: 'category' | 'value' | 'time')
 /** The key of an x place: its kind and text, so "1" and 1 stay apart. */
 const placeKey = (x: string | number | null) => `${typeof x}:${String(x)}`;
 
+/**
+ * The option a data series draws by: its own entry in `render.series`, else `series_default` under its name, else none
+ * (bars on the primary axis).
+ */
+const optionsOf =
+  (render: CartesianRender) =>
+  (name: string | null): CartesianSeriesOption | undefined =>
+    render.series?.find((option) => option.name === name) ??
+    (render.series_default ? { ...render.series_default, name: name ?? '', type: render.series_default.type ?? 'bar' } : undefined);
+
+/**
+ * The order of the series the long form builds, which sets their colours, their stack order and their legend order:
+ * the names with an entry of their own in `render.series` first, in the order of those entries, then the others in the
+ * order they first appear in the points. The one place this order is decided; `seriesFormOf` is its one caller.
+ */
+function orderOfSeries(render: CartesianRender, firstSeen: (string | null)[]): (string | null)[] {
+  const listed = (render.series ?? []).map((option) => option.name).filter((name, index, all) => firstSeen.includes(name) && all.indexOf(name) === index);
+  return [...listed, ...firstSeen.filter((name) => name === null || !listed.includes(name))];
+}
+
+/** The data in the series form, with how a problem names a point and a series of it in the data as delivered. */
+interface SeriesForm {
+  data: CartesianSeriesData;
+  pointAt: (series: number, point: number) => string;
+  seriesAt: (series: number) => string;
+}
+
+/**
+ * The delivered data in the series form, or the problem with its form: exactly one of `series` and `points`. The series
+ * form is taken as delivered. The long form becomes one series per distinct `series` name, in the order
+ * `orderOfSeries` gives, each with its points in delivered order; a problem then names a point by its index in `points`.
+ */
+function seriesFormOf(render: CartesianRender, data: CartesianData): SeriesForm | string {
+  // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-form
+  const hasSeries = data.series !== undefined;
+  if (hasSeries === (data.points !== undefined)) return `cartesian_chart: the data has ${hasSeries ? 'both series and points' : 'neither series nor points'}, and takes exactly one of them`;
+  // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-form
+  if (data.series !== undefined) return { data, pointAt: (series, point) => `series ${series} point ${point}`, seriesAt: (series) => `series ${series}` };
+  const groups = new Map<string | null, { points: CartesianSeriesData['series'][number]['points']; from: number[] }>();
+  (data.points ?? []).forEach(({ series, ...point }, index) => {
+    const group = groups.get(series) ?? { points: [], from: [] };
+    groups.set(series, group);
+    group.points.push(point);
+    group.from.push(index);
+  });
+  const built = orderOfSeries(render, [...groups.keys()]).map((name) => ({ name, ...groups.get(name)! }));
+  return {
+    data: { series: built.map(({ name, points }) => ({ name, points })) },
+    pointAt: (series, point) => `point ${built[series].from[point]}`,
+    seriesAt: (series) => `the series of point ${built[series].from[0]}`,
+  };
+}
+
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2
-/** The chart's own check of x values against the x axis type: the first problem found, or null. */
+/** The chart's own check of its data against its render, in either data form: the first problem found, or null. */
 export function checkCartesian(render: CartesianRender, data: CartesianData): string | null {
+  const form = seriesFormOf(render, data);
+  return typeof form === 'string' ? form : checkSeriesForm(render, form);
+}
+
+function checkSeriesForm(render: CartesianRender, { data, pointAt, seriesAt }: SeriesForm): string | null {
   const axis = render.x_axis?.type ?? 'category';
   // The problem names the series and the point by position: series names are delivered data, which the console never gets.
   for (const [seriesIndex, series] of data.series.entries()) {
     for (const [index, point] of series.points.entries()) {
       if (point.x === null) continue;
       // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-value-x
-      if (axis === 'value' && typeof point.x !== 'number') return `cartesian_chart: series ${seriesIndex} point ${index} needs a number x`;
+      if (axis === 'value' && typeof point.x !== 'number') return `cartesian_chart: ${pointAt(seriesIndex, index)} needs a number x`;
       // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-value-x
       // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-time-x
       // A number must also be a time a date can hold.
       if (axis === 'time' && !Number.isFinite(timeOf(point.x))) {
-        return `cartesian_chart: series ${seriesIndex} point ${index} needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds`;
+        return `cartesian_chart: ${pointAt(seriesIndex, index)} needs an ISO 8601 date-time, a YYYY-MM-DD date or epoch milliseconds`;
       }
       // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-time-x
     }
   }
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-log-y
   for (const [seriesIndex, series] of data.series.entries()) {
-    const secondary = render.series?.find((option) => option.name === series.name)?.y_axis === 'secondary';
+    const secondary = optionsOf(render)(series.name)?.y_axis === 'secondary';
     if ((secondary ? render.y_axis_secondary?.type : render.y_axis?.type) !== 'log') continue;
     // On a value or time axis a point with a null x is not drawn, so its y is not checked.
     const index = series.points.findIndex((point) => (axis === 'category' || point.x !== null) && point.y !== null && !(point.y > 0));
-    if (index >= 0) return `cartesian_chart: series ${seriesIndex} point ${index} needs a y above zero on its log axis`;
+    if (index >= 0) return `cartesian_chart: ${pointAt(seriesIndex, index)} needs a y above zero on its log axis`;
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-log-y
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-orientation
   if (render.orientation === 'horizontal' && axis !== 'category') return `cartesian_chart: orientation horizontal needs a category x axis, and the x axis is ${axis}`;
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-orientation
-  const optionOf = (name: string | null) => render.series?.find((option) => option.name === name);
+  const optionOf = optionsOf(render);
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-extremes
   for (const [index, option] of (render.series ?? []).entries())
     if (option.mark_extremes !== undefined && option.type !== 'line' && option.type !== 'area')
@@ -99,7 +157,7 @@ export function checkCartesian(render: CartesianRender, data: CartesianData): st
   for (const [seriesIndex, series] of data.series.entries()) {
     if ((optionOf(series.name)?.type ?? 'bar') === 'scatter') continue;
     const index = series.points.findIndex((point) => point.size !== undefined && point.size !== null);
-    if (index >= 0) return `cartesian_chart: series ${seriesIndex} point ${index} has a size, and only a scatter series takes one`;
+    if (index >= 0) return `cartesian_chart: ${pointAt(seriesIndex, index)} has a size, and only a scatter series takes one`;
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-size
   const sideOf = (name: string | null) => (optionOf(name)?.y_axis === 'secondary' ? 'secondary' : 'primary');
@@ -111,9 +169,9 @@ export function checkCartesian(render: CartesianRender, data: CartesianData): st
     // Every series drawn on a percent axis must be one of a group.
     for (const [seriesIndex, series] of data.series.entries()) {
       if (!percentSides.has(sideOf(series.name))) continue;
-      if (!stacked(series.name)) return `cartesian_chart: series ${seriesIndex} is on a percent stacked axis without a stack group`;
+      if (!stacked(series.name)) return `cartesian_chart: ${seriesAt(seriesIndex)} is on a percent stacked axis without a stack group`;
       const index = series.points.findIndex((point) => point.y !== null && point.y < 0);
-      if (index >= 0) return `cartesian_chart: series ${seriesIndex} point ${index} is negative, and a percent stack takes no negative value`;
+      if (index >= 0) return `cartesian_chart: ${pointAt(seriesIndex, index)} is negative, and a percent stack takes no negative value`;
     }
   }
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-percent
@@ -280,7 +338,7 @@ type Row = Record<string, string | number | null>;
 // where a point with a null x has no position and is left out. The key keeps "1" and 1 apart, and a
 // series that repeats an x gets one row per repeat, so no delivered point is overwritten. `v<i>` holds
 // a series' delivered value, `s<i>` the value it is drawn at (see `drawnValues`).
-function rowsOf(data: CartesianData, axis: 'category' | 'value' | 'time'): Row[] {
+function rowsOf(data: CartesianSeriesData, axis: 'category' | 'value' | 'time'): Row[] {
   const rows = new Map<string, Row>();
   data.series.forEach((series, index) => {
     const repeats = new Map<string, number>();
@@ -311,7 +369,7 @@ function rowsOf(data: CartesianData, axis: 'category' | 'value' | 'time'): Row[]
  */
 function drawnValues(
   rows: Row[],
-  data: CartesianData,
+  data: CartesianSeriesData,
   axis: 'category' | 'value' | 'time',
   optionOf: (name: string | null) => CartesianSeriesOption | undefined,
   logAxis: (index: number) => boolean,
@@ -404,20 +462,23 @@ export function CartesianChart({
   label?: string;
   container?: HTMLElement | ShadowRoot | null;
 }) {
-  const { render, data, value_format } = payload;
+  const { render, data: delivered, value_format } = payload;
   const label = labelProp ?? texts.chart;
   const [measure, { width, height }] = useElementSize();
   const laidOut = isLaidOut({ width, height });
   const compact = isCompact(height);
-  if (!data) return <WidgetCannotBeShown texts={texts} problem="cartesian_chart: no data" />;
+  if (!delivered) return <WidgetCannotBeShown texts={texts} problem="cartesian_chart: no data" />;
   const nonFinite = nonFiniteProblemOf('cartesian_chart', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
-  const problem = checkCartesian(render, data);
-  if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
+  // The long form becomes named series here, before the checks; everything below draws the series form.
+  const form = seriesFormOf(render, delivered);
+  const problem = typeof form === 'string' ? form : checkSeriesForm(render, form);
+  if (problem || typeof form === 'string') return <WidgetCannotBeShown texts={texts} problem={problem ?? ''} />;
+  const { data } = form;
   if (data.series.length === 0 || data.series.every((series) => series.points.length === 0)) return <WidgetEmpty texts={texts} />;
 
   const axis = render.x_axis?.type ?? 'category';
-  const optionOf = (name: string | null): CartesianSeriesOption | undefined => render.series?.find((series) => series.name === name);
+  const optionOf = optionsOf(render);
   const typeOf = (name: string | null) => optionOf(name)?.type ?? 'bar';
   const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: seriesColor(index) }]));
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));

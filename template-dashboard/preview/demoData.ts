@@ -227,7 +227,21 @@ const labelsData: CartesianData = { series: [{ name: 'Requests', points: LONG_NA
 DEMO_DATA[widgetId('cartesian_chart', 16)] = { render: labelsRender('vertical'), data: labelsData };
 DEMO_DATA[widgetId('cartesian_chart', 17)] = { render: labelsRender('horizontal'), data: labelsData };
 
+// Eight rows of a CI API, two outcomes over four days, stacked by the outcome column through the long form (?view=stackcolumn).
+const RUN_DAYS = ['Mon', 'Tue', 'Wed', 'Thu'];
+const stackColumnData: CartesianData = {
+  points: RUN_DAYS.flatMap((x, day) => [
+    { x, y: 40 + day * 6, series: 'ok' },
+    { x, y: 6 + ((day * 5) % 9), series: 'failed' },
+  ]),
+};
+DEMO_DATA[widgetId('cartesian_chart', 18)] = {
+  render: { series_default: { type: 'bar', stack_group: 'runs' }, x_axis: { type: 'category', label: 'Day' }, legend_position: 'bottom' },
+  data: stackColumnData,
+};
+
 export const COLOUR_CELLS: Record<string, DashboardCell[]> = {
+  stackcolumn: [cell('large', 'high', widgetId('cartesian_chart', 18), 'CI runs by outcome per day (stacked by a column)')],
   labels12: [cell('large', 'high', widgetId('cartesian_chart', 16), 'Requests by service (12 long names)')],
   labels12h: [cell('large', 'high', widgetId('cartesian_chart', 17), 'Requests by service (12 long names, horizontal)')],
   pie12: [cell('large', 'high', widgetId('pie_chart', 13), 'Requests by team (12)')],

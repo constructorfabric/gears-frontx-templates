@@ -13,7 +13,8 @@ import './preview.css';
  * be checked in a real browser. Not part of the template.
  * Query: ?theme=dark|light, ?view=grid500 (one 500-row grid, mounted by a button), ?view=pie12|pie24|stack10 (one chart
  * with many slices or stacked series, for the series colours), ?view=labels12|labels12h (a bar chart of twelve long
- * category names, upright or horizontal), ?palette=host (a host palette of three colours).
+ * category names, upright or horizontal), ?view=stackcolumn (eight rows stacked by an outcome column, long form),
+ * ?palette=host (a host palette of three colours).
  */
 
 const params = new URLSearchParams(location.search);

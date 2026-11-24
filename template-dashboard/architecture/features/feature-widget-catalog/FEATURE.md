@@ -224,16 +224,17 @@ The heatmap widget runs this check itself, each time it accepts a `render_widget
 The chart widget runs this check itself, each time it accepts a `render_widget` payload and before it draws, with the same outcome as `cpt-frontx-dashboard-algo-widget-catalog-grid-checks`: on a failure, it shows its own cannot-be-shown state in its cell and writes the problem to the browser console (never data content).
 
 **Steps**:
-1. [ ] - `p1` - **FOR EACH** point with a non-null `x` - `inst-wc-cart-for-point`
+1. [ ] - `p1` - **IF** the data has both `series` and `points`, or neither, **RETURN** failure naming that. The long form (`points`) becomes the series form first: one series per distinct `series` name, each with its points in delivered order, the series with an entry of their own in `render.series` first in the order of those entries and the others in the order their names first appear. Every later step runs on that series form; for the long form, a failure that names a series and a point names the point's index in `points` instead, and one that names a series names the index of its first point. - `inst-wc-cart-form`
+2. [ ] - `p1` - **FOR EACH** point with a non-null `x` - `inst-wc-cart-for-point`
    1. [ ] - `p1` - **IF** the x axis is `value` and `x` is not a number, **RETURN** failure naming the series and the point index. - `inst-wc-cart-value-x`
    2. [ ] - `p1` - **IF** the x axis is `time` and `x` is neither an ISO 8601 date-time string whose date part is a day of the calendar and whose time of day is 00:00 to 23:59 (hour 24, which would read as the next day, fails), nor a bare `YYYY-MM-DD` date of the calendar by the heatmap calendar's rule (2026-02-30 fails, alone or before a time of day), nor a number of epoch milliseconds, each a time a date can hold (at most 8.64e15 from 1970), **RETURN** failure naming the series and the point index. - `inst-wc-cart-time-x`
-2. [ ] - `p1` - **FOR EACH** series drawn on a `log` y axis (the primary axis, or the secondary one for a series option with `y_axis: secondary`), **IF** one of its drawn points (on a `value` or `time` x axis, a point with a null `x` is not drawn) has a non-null `y` that is not above zero, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-log-y`
-3. [ ] - `p1` - **IF** `orientation` is `horizontal` and the x axis is not `category`, **RETURN** failure naming the x axis type. - `inst-wc-cart-orientation`
-4. [ ] - `p1` - **IF** a series option sets `mark_extremes` and its `type` is neither `line` nor `area`, **RETURN** failure naming the option index and its type (the schema requires `type`; an option that reaches the widget without one draws as bars and is named `bar`). - `inst-wc-cart-extremes`
-5. [ ] - `p1` - **FOR EACH** series that is not drawn as `scatter` (a series without an option draws as bars), **IF** one of its points has a non-null `size`, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-size`
-6. [ ] - `p1` - **IF** `stack_mode` is `percent`, **FOR EACH** series on a y axis that carries a stack group (a bar, line or area series with a `stack_group`): **IF** the series has no stack group or is a scatter series, **RETURN** failure naming the series; **IF** one of its `y` values is negative, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-percent`
-7. [ ] - `p1` - **FOR EACH** reference line, its `axis` `y` when absent: **IF** the axis is `y_secondary` and no series uses the secondary axis, **RETURN** failure naming the line index; **IF** its `value` is a string and the axis is not a `category` x axis, **RETURN** failure naming the line index; **IF** its `value` is a number and the axis is a `category` x axis, **RETURN** failure naming the line index; **IF** the axis is a `time` x axis and its `value` is neither an ISO 8601 date-time string whose date part is a day of the calendar and whose time of day is 00:00 to 23:59, nor a bare `YYYY-MM-DD` date of the calendar, nor a number, each a time a date can hold (the bound of a point's x, `inst-wc-cart-time-x`), **RETURN** failure naming the line index; **IF** the axis is a value axis that carries a stack group under a percent stack and its `value` is outside 0 to 1, **RETURN** failure naming the line index; **IF** the axis is a `log` value axis (and no percent axis) and its `value` is not above zero, **RETURN** failure naming the line index. - `inst-wc-cart-reference`
-8. [ ] - `p1` - **RETURN** pass. A `category` axis accepts every `x`. - `inst-wc-cart-pass`
+3. [ ] - `p1` - **FOR EACH** series drawn on a `log` y axis (the primary axis, or the secondary one for a series option with `y_axis: secondary`), **IF** one of its drawn points (on a `value` or `time` x axis, a point with a null `x` is not drawn) has a non-null `y` that is not above zero, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-log-y`
+4. [ ] - `p1` - **IF** `orientation` is `horizontal` and the x axis is not `category`, **RETURN** failure naming the x axis type. - `inst-wc-cart-orientation`
+5. [ ] - `p1` - **IF** a series option sets `mark_extremes` and its `type` is neither `line` nor `area`, **RETURN** failure naming the option index and its type (the schema requires `type`; an option that reaches the widget without one draws as bars and is named `bar`). - `inst-wc-cart-extremes`
+6. [ ] - `p1` - **FOR EACH** series that is not drawn as `scatter` (a series without an option of its own draws by `series_default`, or, without it, as bars), **IF** one of its points has a non-null `size`, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-size`
+7. [ ] - `p1` - **IF** `stack_mode` is `percent`, **FOR EACH** series on a y axis that carries a stack group (a bar, line or area series with a `stack_group`): **IF** the series has no stack group or is a scatter series, **RETURN** failure naming the series; **IF** one of its `y` values is negative, **RETURN** failure naming the series and the first such point index. - `inst-wc-cart-percent`
+8. [ ] - `p1` - **FOR EACH** reference line, its `axis` `y` when absent: **IF** the axis is `y_secondary` and no series uses the secondary axis, **RETURN** failure naming the line index; **IF** its `value` is a string and the axis is not a `category` x axis, **RETURN** failure naming the line index; **IF** its `value` is a number and the axis is a `category` x axis, **RETURN** failure naming the line index; **IF** the axis is a `time` x axis and its `value` is neither an ISO 8601 date-time string whose date part is a day of the calendar and whose time of day is 00:00 to 23:59, nor a bare `YYYY-MM-DD` date of the calendar, nor a number, each a time a date can hold (the bound of a point's x, `inst-wc-cart-time-x`), **RETURN** failure naming the line index; **IF** the axis is a value axis that carries a stack group under a percent stack and its `value` is outside 0 to 1, **RETURN** failure naming the line index; **IF** the axis is a `log` value axis (and no percent axis) and its `value` is not above zero, **RETURN** failure naming the line index. - `inst-wc-cart-reference`
+9. [ ] - `p1` - **RETURN** pass. A `category` axis accepts every `x`. - `inst-wc-cart-pass`
 
 ### Check the pie centre, the radar points, the waterfall sum and the feed times
 
@@ -1335,7 +1336,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
       "properties": {
         "series": {
           "type": "array",
-          "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis.",
+          "description": "How each data series is drawn. A data series without an entry here draws by series_default, or, without it, as bars on the primary y axis.",
           "items": {
             "type": "object",
             "required": ["name", "type"],
@@ -1349,6 +1350,16 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
               "line_style": { "enum": ["solid", "dashed"], "default": "solid", "description": "A line or area only. Without it, solid." },
               "mark_extremes": { "enum": ["min", "max", "both"], "description": "A line or area only (on another type, a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks): a mark with its value on the series' lowest point, highest point, or both; of equal values, the first point in axis order (the drawn order), skipping nulls." }
             }
+          }
+        },
+        "series_default": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How every data series without an entry of its own in series is drawn, so a chart whose series names arrive with the data can still stack them. Each field left out takes its own default.",
+          "properties": {
+            "type": { "enum": ["bar", "line", "area", "scatter"], "default": "bar", "description": "How such a series is drawn. Without it, bars." },
+            "y_axis": { "enum": ["primary", "secondary"], "default": "primary", "description": "Which y axis such a series uses. Without it, the primary axis." },
+            "stack_group": { "type": "string", "description": "The stack group of such a series. Series with the same stack group on the same y axis are stacked in series order." }
           }
         },
         "x_axis": {
@@ -1415,16 +1426,16 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
   "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CartesianChartData",
-  "description": "Data of a cartesian_chart widget, in long format.",
+  "description": "Data of a cartesian_chart widget: named series, each with its points, or long-form points that each name their series. Exactly one of the two.",
   "allOf": [
     { "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~" },
     {
       "type": "object",
-      "required": ["series"],
+      "oneOf": [{ "required": ["series"] }, { "required": ["points"] }],
       "properties": {
         "series": {
           "type": "array",
-          "description": "One entry per series, each with its name and points.",
+          "description": "One entry per series, each with its name and points. The series form; with it, no points.",
           "items": {
             "type": "object",
             "required": ["name", "points"],
@@ -1446,6 +1457,21 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
               }
             }
           }
+        },
+        "points": {
+          "type": "array",
+          "description": "The long form: one entry per point, each naming its series; with it, no series. The widget builds one series per distinct name. Series order (which sets colours, stack order and legend order): the series that have an entry of their own in render.series first, in the order of those entries, then the others in the order their names first appear in the points. A check that fails on a point names the point's index here.",
+          "items": {
+            "type": "object",
+            "required": ["x", "y", "series"],
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": ["string", "number", "null"], "description": "On a value axis, a number. On a time axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds. On a category axis, any value. A mismatch is checked by the widget." },
+              "y": { "type": ["number", "null"], "description": "On a series of a log y axis, above zero. A y not above zero there is checked by the widget." },
+              "series": { "type": ["string", "null"], "description": "The name of the series the point belongs to. The widget gathers the points of one name into one series, in the order of the points; a series' points keep their order." },
+              "size": { "type": ["number", "null"], "minimum": 0, "description": "A scatter series only (on another type, a cross-check the widget runs): the point's size; its area grows in proportion to it, within the radius range the widget sets. Null or absent draws the smallest point." }
+            }
+          }
         }
       }
     }
@@ -1460,6 +1486,7 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 - Chart colours: the series colours come from the series palette of the active scope, the grid lines, axes, tooltip and legend are kit tokens of it (`cpt-frontx-dashboard-algo-widget-catalog-chart-theme`, ADR-0004).
 - Render options: `value_labels` writes each bar's value at its end, above a bar that grows up and below one that grows down (a zero bar has none), formatted by `value_format`; `auto` writes them only when every bar is wide enough, so a larger-view widget can set `auto` and show them where a cell has no room. `tick_labels` and `tick_angle` shape the x axis; a long category name is cut with an ellipsis to the room its tick has and shows whole on hover, so no category loses its label for being long; a value or time axis keeps its own number ticks apart. A series with `label` shows that name at its last point, so a target line is named on the chart. A secondary axis shows `unit` after its tick values. `drill_down` follows the drill-down rule in [Per-type rendering rules](#per-type-rendering-rules).
 - Orientation: `orientation` `horizontal` draws the chart turned: the categories down the vertical axis in delivered order (the first at the top), written level beside the plot in a column up to a third of the chart wide, and the values along the horizontal axis, the primary axis at the bottom and the secondary one at the top. Every series type turns with it: bars grow to the right, lines and areas run down the categories, scatter points stand at their category's row. `x_axis.label` is written along the category axis, `y_axis.label` under the bottom axis and `y_axis_secondary.label` over the top one; value labels stand right of the bars' ends and a series `label` right of its last point. `tick_angle` does not apply to a horizontal chart, whose categories are always level. It needs a `category` x axis.
+- Long form and series_default: the data is either named `series` or long-form `points`, each point naming its `series`, exactly one of the two. The widget gathers the points of one name into one series before its checks. The series order sets the colours, the stack order and the legend order: the series with an entry of their own in `render.series` come first, in the order of those entries (an entry that names no series of the data takes no place), then the others in the order their names first appear in the points; the series form keeps its delivered order. `series_default` (`type`, `y_axis`, `stack_group`) draws every data series without an entry of its own, in either form, so the rows of an API with a column of outcomes stack into one bar per category with no series named in advance: a transform maps each row to `{x, y, series}` and `series_default` names the stack group.
 - Percent stack: with `stack_mode` `percent`, each stack group is drawn as shares of 100% at each x: bars and areas of a group together, lines of a group together, as they stack. The axis that carries the groups runs from 0% to 100% with percent ticks, the tooltip shows each delivered value followed by its share, and the value labels, the text alternative and the data view keep the delivered values. An x where a group sums to 0 draws 0% for every member, and the tooltip shows their values and 0%. Every series on that axis must be in a stack group, and a negative value in a stacked series fails the widget's own check, with the same outcome as the other cartesian checks; the other axis keeps its own values. Under `absolute`, the default, stacks draw as before.
 - Extreme marks: `mark_extremes` on a line or area series draws a dot in the series colour with the formatted value on its lowest point (`min`), its highest point (`max`) or both; of equal values, the first point in axis order (the drawn order) takes the mark; nulls are skipped, and a series with no value has no mark. The highest value stands above its dot and the lowest below (right and left of them on a horizontal chart); a label that would leave the plot moves to the dot's other side, and on a vertical chart a series `label` at the same point moves clear of it. On a bar or scatter series it fails the widget's own check.
 - Reference lines: up to 8 `reference_lines` are drawn across the plot at their value, 1.5 px wide, in the muted tone of the axes (the kit's muted foreground), dashed unless `line_style` is `solid`. `axis` `y` and `y_secondary` lines run across the plot at a value of that axis (upright on a horizontal chart); an `x` line stands at its category, or at its number on a value or time axis (epoch milliseconds on a time axis). A value outside the data extends the axis so the line stays inside the plot. The `label` stands at the line's end: above its right end for a line across, right of its top for an upright one, in the same muted tone. On a time x axis the value is an ISO 8601 date-time string, a bare `YYYY-MM-DD` date (its UTC midnight) or a number of epoch milliseconds, as a point's x there, and the line stands where a point with that x stands. On a percent stacked axis the value is a share from 0 to 1, and on a log axis it is above zero. On any other value axis a very large value stretches the axis to hold it; that is not checked. A `y_secondary` line with no series on the secondary axis, a category on a y axis or a value x axis, a number on a category x axis, a value on a time x axis that is no date-time or past the times a date holds, a value outside 0 to 1 on a percent axis, and a value at or below zero on a log axis each fail the widget's own check.
@@ -2259,7 +2286,10 @@ One `entry_mf` instance per widget type, each in its own widget bundle (`widgets
 - [ ] Given a `grid` column whose `overflow` is `truncate` and a value longer than the column, when it renders, then the cell keeps one line, ends in an ellipsis and carries the full value as its title.
 - [ ] Given a `grid` whose `columns` has two entries with the same `key`, whose `column_groups` names a key that is not a column, whose group columns are not contiguous, whose column is in two groups, whose `row_color` is not a column key, or whose member is repeated within one group, when the widget receives `render_widget`, then in each case the widget draws no rows, shows its own cannot-be-shown state in its cell, and writes the problem to the browser console; the other cells are unaffected. Given a `grid` whose data has a row with fewer or more values than `columns`, when the widget receives `render_widget`, then the widget shows its own cannot-be-shown state in the same way.
 - [ ] Given a `cartesian_chart` with a category x axis, when it renders, then the x positions follow the delivered order. With a value or time x axis, points are placed by value. A null value is a gap; a null x or series name is an empty label. Every series is named in the legend and the tooltip.
-- [ ] Given a `cartesian_chart` whose data has a series with no entry in `render.series`, when it renders, then that series draws as bars on the primary axis.
+- [ ] Given a `cartesian_chart` whose data has a series with no entry in `render.series`, when it renders, then that series draws by `series_default`, or, without it, as bars on the primary axis.
+- [ ] Given a `cartesian_chart` with `series_default` `{type: bar, stack_group: runs}` and eight long-form points of two outcomes, "ok" first, over four days, when it renders, then it draws four bars of two stacked parts and a legend of two entries, "ok" then "failed"; with `stack_mode` `percent` each bar fills the plot to 100%; with twelve outcomes each takes a colour of its own.
+- [ ] Given a `cartesian_chart` whose long-form points name the series c, a, b, d in that first-seen order and whose `render.series` lists b and then a, when it renders, then the series order, in the legend, the colours and the stacks, is b, a, c, d.
+- [ ] Given a `cartesian_chart` whose data carries both `series` and `points`, or neither, when the root stamps the data, then the data fails its type and the cell shows the cannot-be-shown state; the widget's own check fails such data too. A long-form point that fails a widget check is named by its index in `points`.
 - [ ] Given a `cartesian_chart` with two series and a `render.series` entry for each, one drawn as bars and one as a line on the secondary y axis, when it renders, then the legend names both series and a null value is a gap in the line.
 - [ ] Given a `cartesian_chart` with a `time` x axis and points whose `x` values are "2026-10-01T00:00:00Z", 1790899200000 (epoch milliseconds for 2026-10-02T00:00:00Z), and "2026-10-03T12:00:00+02:00", when it renders, then each point is placed at its time.
 - [ ] Given a `cartesian_chart` with a `time` x axis, a line "Requests" with points at 10:00, 10:05 and 10:10, and a line "Errors" with points at 10:02 and 10:07 of one day, when it renders, then each line is drawn unbroken through its own points, the ticks show times of day, and the tooltip, the text alternative and the data view show the date and time of each point, with no value for a series at a time it has no point.

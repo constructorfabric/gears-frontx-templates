@@ -76,7 +76,7 @@ A host sets its own colours with the CSS custom properties `--dashboard-chart-1`
 }
 ```
 
-A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
+A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. A host palette shorter than the number of series continues with the template's colour of the same position, so a host colour can come out close to a later template colour, and a host avoids that by setting as many colours as it has series. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
 
 ## Where overlays open
 
