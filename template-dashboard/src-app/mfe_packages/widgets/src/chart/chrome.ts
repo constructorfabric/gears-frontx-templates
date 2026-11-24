@@ -31,9 +31,15 @@ export const MIN_LABEL_CHARS = 4;
 /** The characters of tick text that fit in `room` pixels at the tick size. */
 export const charsIn = (room: number) => Math.max(0, Math.floor(room / TICK_CHAR_WIDTH));
 
+/** One grapheme segmenter for every label, made on first use. */
+let graphemes: Intl.Segmenter | undefined;
+
 /** The user-perceived characters of `text`: a letter with its combining marks, or an emoji sequence, is one. */
-const charactersOf = (text: string): string[] =>
-  typeof Intl.Segmenter === 'function' ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), ({ segment }) => segment) : Array.from(text);
+const charactersOf = (text: string): string[] => {
+  if (typeof Intl.Segmenter !== 'function') return Array.from(text);
+  graphemes ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  return Array.from(graphemes.segment(text), ({ segment }) => segment);
+};
 
 /**
  * `text` cut to at most `max` characters, the last of them an ellipsis; a text that fits stays whole. A character is
@@ -41,6 +47,8 @@ const charactersOf = (text: string): string[] =>
  * with `max` 0 or less the empty string.
  */
 export function cutLabel(text: string, max: number): string {
+  // A UTF-16 length is never below the count of characters, so a text this short fits with no segmenting.
+  if (text.length <= max) return text;
   const chars = charactersOf(text);
   if (chars.length <= max) return text;
   if (max < 2) return max === 1 ? '…' : '';
