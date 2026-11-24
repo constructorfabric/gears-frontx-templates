@@ -5,7 +5,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 import { formatValue, nonFiniteProblemOf, textOf } from '../format';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { RadarData, RadarRender } from '../types';
-import { PALETTE, legendOf } from './legend';
+import { legendOf, seriesColor } from './legend';
 import { ChartShell } from './ChartShell';
 import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
@@ -16,8 +16,8 @@ import styles from '../widgets.module.css';
 /** The bounds the widget checks itself, as the data type cannot count the distinct axes and series of the long format. */
 const MIN_AXES = 3;
 const MAX_AXES = 12;
-// One series per tone of the palette: polygons overlap by design, so no two series may share a colour.
-const MAX_SERIES = PALETTE.length;
+// Five series at most: polygons overlap by design, so more would hide each other.
+const MAX_SERIES = 5;
 
 // The area of a series, over its stroke of the same tone, when `fill` keeps it.
 const AREA_OPACITY = 0.25;
@@ -167,7 +167,7 @@ export function RadarChart({
   const byAxis = new Map(rows.map((row) => [row.axis, row]));
   for (const point of data.points) byAxis.get(point.axis)![`s${names.findIndex((name) => name === point.series)}`] = point.value;
 
-  const config: ChartConfig = Object.fromEntries(names.map((name, index) => [`s${index}`, { label: name ?? texts.columns.series, color: PALETTE[index % PALETTE.length] }]));
+  const config: ChartConfig = Object.fromEntries(names.map((name, index) => [`s${index}`, { label: name ?? texts.columns.series, color: seriesColor(index) }]));
   const table: ValuesTable = {
     columns: [texts.radar.axis, ...names.map((name) => name ?? texts.columns.series)],
     rows: rows.map(({ axis, ...values }) => [axis, ...names.map((_, index) => values[`s${index}`] ?? null)]),

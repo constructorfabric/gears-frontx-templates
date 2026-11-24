@@ -38,6 +38,27 @@ export function DashboardPage({ id, theme, language }: { id: string; theme: stri
 
 A theme or language change restyles the widgets in place; nothing is fetched again. A new `dashboardId` loads that dashboard. Leaving the page and coming back to the same dashboard runs its data requests again but does not fetch the served file again.
 
+## Chart colours
+
+Every chart that colours by series, slice, tile or group (cartesian, pie, radar, treemap) takes the colour of the series' position, the first series the first colour. The template ships ten colours for the light theme and ten for the dark one, ordered so that neighbours differ in hue and lightness, each at 3:1 or more against the card surface. Past the tenth, a generator gives each next series the colour farthest from all the colours before it, so a series never takes an earlier series' colour (the generator runs out only after several hundred series).
+
+A host sets its own colours with the CSS custom properties `--dashboard-chart-1`, `--dashboard-chart-2` and so on, on any element around `<Dashboard>`. They inherit into the widgets, which keep each widget in its own shadow root. The theme the host passes picks the light or dark scope on the dashboard's element (`data-theme="light"` or `"dark"`), so a host gives each theme its own values with that attribute:
+
+```css
+.analytics {
+  --dashboard-chart-1: #1f6feb;
+  --dashboard-chart-2: #d1242f;
+  --dashboard-chart-3: #1a7f37;
+}
+.analytics [data-theme='dark'] {
+  --dashboard-chart-1: #58a6ff;
+  --dashboard-chart-2: #ff7b72;
+  --dashboard-chart-3: #3fb950;
+}
+```
+
+A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
+
 ## Variables
 
 The product owns its variables, such as a period: the dashboard JSON declares none. A request names the variables it depends on, and the product passes their values through the `variables` input of `<Dashboard>`:

@@ -8,7 +8,7 @@ import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, typ
 import type { TreemapData, TreemapRender } from '../types';
 import { ChartShell } from './ChartShell';
 import type { ValuesTable } from './DataView';
-import { PALETTE } from './palette';
+import { seriesColor } from './palette';
 import { isLaidOut, useElementSize } from './size';
 import { estimateWidth } from '../textFit';
 import styles from '../widgets.module.css';
@@ -204,7 +204,6 @@ export function TreemapChart({
   // A group writes its raw sum while it is finite, and with show_share its share, which its units give.
   const groupShareOf = (group: { units: number }) => percentOf(group.units / unitTotal);
   const grouped = items.some((item) => item.group !== null);
-  const colourOf = (position: number) => PALETTE[position % PALETTE.length];
   const whole: TileBox = { x: 0, y: 0, width: box.width, height: box.height };
 
   // The tiles, laid out in the measured box: flat by item, or one level deep by group. A value of 0 or null draws
@@ -219,7 +218,7 @@ export function TreemapChart({
       const name = item.group ?? texts.treemap.other;
       let group = nested.find((candidate) => candidate.key === item.group);
       if (!group) {
-        group = { key: item.group, name, colour: colourOf(nested.length), total: 0, units: 0, tiles: [] };
+        group = { key: item.group, name, colour: seriesColor(nested.length), total: 0, units: 0, tiles: [] };
         nested.push(group);
       }
       group.total += value;
@@ -253,7 +252,7 @@ export function TreemapChart({
       whole,
     );
     for (const [position, { index, label: itemLabel, value }] of positive.entries()) {
-      flat.push({ index, label: itemLabel, value, box: boxes[position], colour: colourOf(position) });
+      flat.push({ index, label: itemLabel, value, box: boxes[position], colour: seriesColor(position) });
     }
   }
 

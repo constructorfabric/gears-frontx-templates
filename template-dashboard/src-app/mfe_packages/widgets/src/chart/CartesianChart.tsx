@@ -3,7 +3,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/contract';
 
 import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format';
-import { legendOf, PALETTE } from './legend';
+import { legendOf, seriesColor } from './legend';
 import { dateFormatOf, timeOf as timeOfText } from '../time';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
@@ -405,7 +405,7 @@ export function CartesianChart({
   const axis = render.x_axis?.type ?? 'category';
   const optionOf = (name: string | null): CartesianSeriesOption | undefined => render.series?.find((series) => series.name === name);
   const typeOf = (name: string | null) => optionOf(name)?.type ?? 'bar';
-  const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: PALETTE[index % PALETTE.length] }]));
+  const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: seriesColor(index) }]));
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   const unit = render.y_axis_secondary?.unit ?? '';
   // A series on the secondary axis shows plain numbers with that axis's unit; the others follow value_format.

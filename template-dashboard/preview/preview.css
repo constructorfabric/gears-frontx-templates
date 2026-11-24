@@ -7,3 +7,21 @@
   margin: 0 0 var(--space-4);
   font-size: var(--text-title-size);
 }
+
+.preview-tall {
+  display: grid;
+  block-size: 760px;
+}
+
+/* A host palette of three colours, as docs/embedding.md shows it: series 4 on take the template's colours. */
+.preview-host-palette {
+  --dashboard-chart-1: #1f6feb;
+  --dashboard-chart-2: #d1242f;
+  --dashboard-chart-3: #1a7f37;
+}
+
+[data-theme='dark'] .preview-host-palette {
+  --dashboard-chart-1: #58a6ff;
+  --dashboard-chart-2: #ff7b72;
+  --dashboard-chart-3: #3fb950;
+}

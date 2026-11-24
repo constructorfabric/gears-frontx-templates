@@ -6,7 +6,7 @@ import styles from '../widgets.module.css';
 
 // The series palette of every chart that draws with it, in one place (`palette.ts`): this module carries the
 // ui-kit chart legend, which a widget drawn without a chart library imports nothing of.
-export { PALETTE } from './palette';
+export { seriesColor } from './palette';
 
 // Room between the plot and a legend beside it, so an x tick centred on the plot's edge stays clear of the legend.
 const LEGEND_GAP = 16;

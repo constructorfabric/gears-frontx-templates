@@ -4,14 +4,15 @@ import '@gears-frontx/ui-kit/theme.css';
 import { CellFrame, DashboardArea, type DashboardCell, type WidgetInstance } from '@gears-frontx/frontx-dashboard-root';
 import { CartesianChart, GridWidget, PieChart } from '@gears-frontx/frontx-dashboard-widgets';
 
-import { DEMO_CELLS, DEMO_DATA, GRID_500_CELLS, typeOf } from './demoData';
+import { COLOUR_CELLS, DEMO_CELLS, DEMO_DATA, GRID_500_CELLS, typeOf } from './demoData';
 import './preview.css';
 
 /*
  * Dev preview of template-dashboard: mounts the dashboard root's area and
  * frame with the catalog widgets over invented demo data, so the packages can
  * be checked in a real browser. Not part of the template.
- * Query: ?theme=dark|light, ?view=grid500 (one 500-row grid, mounted by a button).
+ * Query: ?theme=dark|light, ?view=grid500 (one 500-row grid, mounted by a button), ?view=pie12|pie24|stack10 (one chart
+ * with many slices or stacked series, for the series colours), ?palette=host (a host palette of three colours).
  */
 
 const params = new URLSearchParams(location.search);
@@ -48,17 +49,26 @@ function Cell({ cell }: { cell: DashboardCell }) {
 }
 
 function Preview() {
-  const grid500 = params.get('view') === 'grid500';
+  const view = params.get('view') ?? '';
+  const grid500 = view === 'grid500';
+  const cells = grid500 ? GRID_500_CELLS : (Object.hasOwn(COLOUR_CELLS, view) ? COLOUR_CELLS[view] : DEMO_CELLS);
   const [mounted, setMounted] = useState(!grid500);
   return (
-    <main className="preview">
+    <main className={params.get('palette') === 'host' ? 'preview preview-host-palette' : 'preview'}>
       <h1 className="preview-title">Dashboard preview</h1>
       {grid500 && !mounted ? (
         <button type="button" id="mount" onClick={() => setMounted(true)}>
           Mount grid
         </button>
       ) : null}
-      {mounted ? <DashboardArea layout={{ cells: grid500 ? GRID_500_CELLS : DEMO_CELLS }} renderCell={(cell) => <Cell cell={cell} />} /> : null}
+      {cells !== DEMO_CELLS && !grid500 ? (
+        // One chart in a tall box, so a long legend shows in full.
+        <div className="preview-tall" style={view === 'pie24' ? { blockSize: 960 } : undefined}>
+          <Cell cell={cells[0]} />
+        </div>
+      ) : mounted ? (
+        <DashboardArea layout={{ cells }} renderCell={(cell) => <Cell cell={cell} />} />
+      ) : null}
     </main>
   );
 }

@@ -11,6 +11,7 @@ import { FunnelChart, checkFunnel } from './FunnelChart';
 import { RadarChart, checkRadar } from './RadarChart';
 import { TreemapChart, checkTreemap } from './TreemapChart';
 import { WaterfallChart, checkWaterfall } from './WaterfallChart';
+import { seriesColor } from './palette';
 
 const DATA: CartesianData = {
   series: [
@@ -1292,7 +1293,7 @@ describe('treemap_chart', () => {
     for (const [name, box] of unsorted) for (const [side, value] of box.entries()) expect(value).toBeCloseTo(sorted.get(name)![side], 6);
     // The delivered order stays for the colours, the text alternative and the data view, whatever the sizes are.
     const { container } = draw(items, { drill_down: true });
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2), seriesColor(3), seriesColor(4)]);
     expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['p', 'q', 'r', 's', 't']);
     await user.click(screen.getByRole('button', { name: 'Show data' }));
     const region = await screen.findByRole('region', { name: 'Data of Commits' });
@@ -1395,7 +1396,7 @@ describe('treemap_chart', () => {
     const { container } = draw(ITEMS);
     expect(tiles(container).map((tile) => tile.getAttribute('aria-label'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
     expect(tiles(container).map((tile) => tile.getAttribute('title'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2)]);
   });
 
   it('formats the values with value_format, in the tiles and the text alternative', () => {
@@ -1453,8 +1454,8 @@ describe('treemap_chart', () => {
       { label: 'b', value: 1, group: null },
     ]);
     expect(faces(container)).toHaveLength(2);
-    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1)]);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1)]);
     expect(tiles(container).map((tile) => tile.getAttribute('data-share'))).toEqual(['66.67', '33.33']);
   });
 
@@ -1470,7 +1471,7 @@ describe('treemap_chart', () => {
     expect(heads(container).map((head) => head.textContent)).toEqual(['Web, 6', 'Other, 3', 'Data, 1']);
     expect(heads(container).map((head) => head.getAttribute('title'))).toEqual(['Web: 6', 'Other: 3', 'Data: 1']);
     expect(faces(container)).toHaveLength(3);
-    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2)]);
     // Every tile sits inside its group's face, in that group's colour.
     for (const face of faces(container)) {
       const [left, top, width, height] = boxOf(face);
@@ -2089,5 +2090,44 @@ describe('waterfall_chart', () => {
     const { container } = draw(STEPS);
     expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
     expect(container.querySelector('[class*="clickable"]')).toBeNull();
+  });
+});
+
+describe('series colours past five', () => {
+  // The `--color-<key>` values the kit chart style writes for the chart, in key order.
+  const configColours = (container: HTMLElement, prefix: string) => {
+    const text = [...container.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const light = text.split('[data-theme=')[0];
+    return [...light.matchAll(new RegExp(`--color-${prefix}(\\d+): ([^;]+);`, 'g'))].sort((a, b) => Number(a[1]) - Number(b[1])).map((match) => match[2]);
+  };
+
+  it('gives each of 12 pie slices a colour of its own, the sixth unlike the first', () => {
+    const slices = Array.from({ length: 12 }, (_, index) => ({ label: `s${index}`, value: 12 - index }));
+    const { container } = render(<PieChart payload={{ render: {}, data: { slices } }} label="Share" />);
+    const colours = configColours(container, 'p');
+    expect(colours).toHaveLength(12);
+    expect(new Set(colours).size).toBe(12);
+    expect(colours[5]).not.toBe(colours[0]);
+  });
+
+  it('gives each of 10 stacked bar series a colour of its own', () => {
+    const names = Array.from({ length: 10 }, (_, index) => `team ${index}`);
+    const payload = {
+      render: { series: names.map((name) => ({ name, type: 'bar' as const, stack_group: 'all' })), x_axis: { type: 'category' as const } },
+      data: { series: names.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }, { x: 'Q2', y: index + 2 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Stack" />);
+    const colours = configColours(container, 's');
+    expect(colours).toHaveLength(10);
+    expect(new Set(colours).size).toBe(10);
+    expect(colours).toEqual(names.map((_, index) => seriesColor(index)));
+  });
+
+  it('gives each of 12 treemap tiles a colour of its own', () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({ label: `t${index}`, value: 12 - index, group: null }));
+    const { container } = render(<TreemapChart payload={{ render: {}, data: { items } }} label="Tiles" />);
+    const colours = [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')].map((tile) => tile.style.getPropertyValue('--tile'));
+    expect(colours).toHaveLength(12);
+    expect(new Set(colours).size).toBe(12);
   });
 });

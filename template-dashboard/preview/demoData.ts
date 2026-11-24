@@ -193,4 +193,24 @@ export const DEMO_CELLS: DashboardCell[] = [
   cell('large', 'high', widgetId('grid', 8), 'Open requests', widgetId('grid', 9)),
 ];
 
+// Many slices and many stacked series, to check that each one takes a colour of its own (?view=pie12, pie24, stack10).
+const TEAMS = ['Billing', 'Mobile', 'Web', 'Search', 'Payments', 'Identity', 'Storage', 'Messaging', 'Reports', 'Support', 'Platform', 'Data', 'Security', 'Design', 'Docs', 'Growth', 'Infra', 'Legal', 'Maps', 'Media', 'Network', 'Ops', 'Sales', 'Travel'];
+const pieOf = (count: number): PieData => ({ slices: TEAMS.slice(0, count).map((label, i) => ({ label, value: 40 - i })) });
+const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
+const stack10Render: CartesianRender = {
+  series: TEAMS.slice(0, 10).map((name) => ({ name, type: 'bar' as const, stack_group: 'teams' })),
+  x_axis: { type: 'category', label: 'Quarter' },
+  legend_position: 'right',
+};
+const stack10Data: CartesianData = { series: TEAMS.slice(0, 10).map((name, s) => ({ name, points: QUARTERS.map((x, q) => ({ x, y: 20 + ((s * 7 + q * 5) % 13) })) })) };
+DEMO_DATA[widgetId('pie_chart', 13)] = { render: { radius: ['55%', '80%'], legend_position: 'right' } satisfies PieRender, data: pieOf(12) };
+DEMO_DATA[widgetId('pie_chart', 14)] = { render: { radius: ['55%', '80%'], legend_position: 'right' } satisfies PieRender, data: pieOf(24) };
+DEMO_DATA[widgetId('cartesian_chart', 15)] = { render: stack10Render, data: stack10Data };
+
+export const COLOUR_CELLS: Record<string, DashboardCell[]> = {
+  pie12: [cell('large', 'high', widgetId('pie_chart', 13), 'Requests by team (12)')],
+  pie24: [cell('large', 'high', widgetId('pie_chart', 14), 'Requests by team (24)')],
+  stack10: [cell('large', 'high', widgetId('cartesian_chart', 15), 'Requests by team and quarter (10 stacked series)')],
+};
+
 export const GRID_500_CELLS: DashboardCell[] = [cell('large', 'high', widgetId('grid', 10), 'Requests (500 rows)')];

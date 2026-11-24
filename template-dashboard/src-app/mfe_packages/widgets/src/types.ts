@@ -282,7 +282,7 @@ export interface RadarRender {
 export interface RadarData {
   /**
    * The values of the spokes in the long format of the cartesian chart: one point per series value, 3 to 120 of
-   * them. The axes keep their first-seen order (3 to 12 of them), and so do the series (1 to 5, one per palette tone); a null series is
+   * them. The axes keep their first-seen order (3 to 12 of them), and so do the series (1 to 5); a null series is
    * the one unnamed series, and a null value is a gap on that axis.
    */
   points: { axis: string; series: string | null; value: number | null }[];
