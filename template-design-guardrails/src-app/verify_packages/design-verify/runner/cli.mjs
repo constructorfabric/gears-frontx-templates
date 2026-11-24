@@ -53,6 +53,10 @@ import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waiver
 const SWEEP_LINE = /\[design-defects\]/;
 /** The pause before a second look at a started command that the URL answered for. */
 const SERVER_EXIT_RECHECK_MS = 500;
+/** How long a headless Chrome may take to announce its DevTools endpoint. */
+const CHROME_LAUNCH_TIMEOUT_MS = 20_000;
+/** The exit code a shell reports for a death by each signal the run stops on. */
+const SIGNAL_EXIT_CODES = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 const VERIFY_PKG_FAILURE = /\[verify-packages\].*(none installed|failed to load)/;
 
 /** @param {string} base @param {string} route */
@@ -172,6 +176,8 @@ export async function main(argv = process.argv.slice(2)) {
   const cleanups = [];
   /** @type {ReturnType<typeof startServer> | undefined} */
   let server;
+  /** @type {ReturnType<typeof launchChrome> | undefined} */
+  let chromeLaunch;
   try {
     if (config.startServer) {
       if (await isUrlReachable(config.url)) {
@@ -196,17 +202,26 @@ export async function main(argv = process.argv.slice(2)) {
       // The command runs in its own process group, which a Ctrl-C at the
       // terminal does not reach, and a signal ends this process without the
       // finally below: left running, the server would keep --url, and the
-      // next run would refuse it. Stop it here, then exit as a shell reports
-      // a death by that signal.
-      const stopOnSignal = (signal) => {
+      // next run would refuse it. Stop it here at once. A Chrome still starting
+      // is not in the cleanups yet: wait for its launch to settle (a failed or
+      // timed-out launch stops its own Chrome) and stop what it started, with
+      // its temporary profile. Then exit as a shell reports a death by that
+      // signal. The handlers go with the first cleanup, so a second signal
+      // during the wait ends the run at once.
+      const stopOnSignal = async (signal) => {
         for (const cleanup of [...cleanups].reverse()) cleanup();
-        process.exit(signal === 'SIGINT' ? 130 : 143);
+        if (chromeLaunch) {
+          const launched = await Promise.race([
+            chromeLaunch.catch(() => undefined),
+            new Promise((r) => setTimeout(r, CHROME_LAUNCH_TIMEOUT_MS + 1_000)),
+          ]);
+          launched?.stop();
+        }
+        process.exit(SIGNAL_EXIT_CODES[signal]);
       };
-      process.once('SIGINT', stopOnSignal);
-      process.once('SIGTERM', stopOnSignal);
+      for (const signal of Object.keys(SIGNAL_EXIT_CODES)) process.once(signal, stopOnSignal);
       cleanups.push(() => {
-        process.off('SIGINT', stopOnSignal);
-        process.off('SIGTERM', stopOnSignal);
+        for (const signal of Object.keys(SIGNAL_EXIT_CODES)) process.off(signal, stopOnSignal);
       });
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
@@ -252,7 +267,8 @@ export async function main(argv = process.argv.slice(2)) {
     if (!endpoint) {
       const execPath = findChrome({ chromePath: config.chromePath });
       console.log(`design-verify: launching headless Chrome: ${execPath}`);
-      const chrome = await launchChrome(execPath);
+      chromeLaunch = launchChrome(execPath, { timeoutMs: CHROME_LAUNCH_TIMEOUT_MS });
+      const chrome = await chromeLaunch;
       cleanups.push(chrome.stop);
       endpoint = chrome.endpoint;
     }

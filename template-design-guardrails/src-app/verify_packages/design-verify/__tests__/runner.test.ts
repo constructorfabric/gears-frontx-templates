@@ -141,6 +141,38 @@ describe('cli main: inputs checked before any browser work', () => {
     }
   }
 
+  /**
+   * A Chrome stand-in that announces `endpointPort` as its DevTools endpoint
+   * `announceAfterMs` after it starts, and then runs until it is killed. It
+   * writes its temporary profile directory and its PID where the test reads
+   * them.
+   */
+  function fakeChrome(dir: string, announceAfterMs: number, endpointPort: number) {
+    const file = path.join(dir, 'fake-chrome');
+    const pidFile = path.join(dir, 'chrome.pid');
+    const profileFile = path.join(dir, 'chrome.profile');
+    fs.writeFileSync(
+      file,
+      [
+        `#!${process.execPath}`,
+        "const fs = require('fs');",
+        "const profile = process.argv.find((arg) => arg.startsWith('--user-data-dir='));",
+        `fs.writeFileSync(${JSON.stringify(profileFile)}, profile.slice('--user-data-dir='.length));`,
+        `fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+        'process.stderr.on(\'error\', () => {});',
+        `setTimeout(() => process.stderr.write('DevTools listening on ws://127.0.0.1:${endpointPort}/devtools/browser/fake\\n'), ${announceAfterMs});`,
+        'setInterval(() => {}, 1000);',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    return {
+      file,
+      pid: () => readPid(pidFile),
+      profile: () => (fs.existsSync(profileFile) ? fs.readFileSync(profileFile, 'utf8') : undefined),
+    };
+  }
+
   async function freePort() {
     const probe = http.createServer();
     await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
@@ -396,6 +428,7 @@ describe('cli main: inputs checked before any browser work', () => {
   // does not reach: the run stops it itself when it is interrupted, so the
   // server does not stay on --url and make the next run refuse.
   it.each([
+    ['SIGHUP', 129],
     ['SIGINT', 130],
     ['SIGTERM', 143],
   ] as const)('stops the command it started when it gets %s, and exits %i', async (signal, exitCode) => {
@@ -438,6 +471,55 @@ describe('cli main: inputs checked before any browser work', () => {
       if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
       const pid = serverPid ?? readPid(pidFile);
       if (pid !== undefined) killGroup(pid);
+    }
+  });
+
+  // A signal while Chrome is still starting: the run waits for the launch to
+  // settle and stops that Chrome too, with its temporary profile.
+  it('stops a Chrome that is still starting when it gets SIGINT, and removes its profile', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const serverPidFile = path.join(root, 'server.pid');
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const chrome = fakeChrome(root, 3_000, port);
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--chrome',
+        chrome.file,
+        '--start-server',
+        `echo $$ > '${serverPidFile}'; exec node -e "require('http').createServer((q, s) => s.end()).listen(${port}, '127.0.0.1')"`,
+      ],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    );
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let profile: string | undefined;
+    try {
+      let chromePid: number | undefined;
+      await vi.waitFor(
+        () => {
+          chromePid = chrome.pid();
+          profile = chrome.profile();
+          expect(chromePid).toBeDefined();
+          expect(profile && fs.existsSync(profile)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill('SIGINT');
+      expect(await within(exited, 10_000)).toBe(130);
+      await vi.waitFor(() => expect(alive(chromePid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      expect(fs.existsSync(profile!)).toBe(false);
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      const chromePid = chrome.pid();
+      if (chromePid !== undefined && alive(chromePid)) process.kill(chromePid, 'SIGKILL');
+      const serverPid = readPid(serverPidFile);
+      if (serverPid !== undefined) killGroup(serverPid);
+      if (profile) fs.rmSync(profile, { recursive: true, force: true });
     }
   });
 
