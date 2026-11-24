@@ -13,7 +13,7 @@ import {
 import { CellFailure, RequestFailed, SharedRequests, formOf, runBinding, type Binding, type BindingResult, type VariableValues } from './binding';
 import { RequestFailure, withTimeout, type DashboardHost } from './host';
 import { extensionIdOf, renderStampIdOf, stampIdOf, type Role } from './ids';
-import { baseTypeChanged, effectiveTraits, escapeControls, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome } from './register';
+import { baseTypeChanged, effectiveTraits, escapeControls, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome, type TypeSources } from './register';
 import { createWidgetsRegistry, WidgetEntryHandler, type WidgetEntries } from './registry';
 
 /*
@@ -151,6 +151,8 @@ export class DashboardRoot {
   private readonly published: { theme?: string; language?: string; overlays?: HTMLElement | null } = {};
   /** The release still running for a dashboard id. */
   private readonly releasing = new Map<string, Promise<void>>();
+  /** The first source of each type the served file brought, kept over every read of the file. */
+  private readonly sources: TypeSources = new Map();
   /** Aborted by `dispose`: every request of the root in flight fails with it. */
   private readonly disposal = new AbortController();
   private disposing?: Promise<void>;
@@ -269,7 +271,7 @@ export class DashboardRoot {
       if (changed) return this.refreshFailed(`the served file: ${changed}`);
       const tried = registerServedFile(trial, base, trialBundle);
       if (!tried.ok) return this.refreshFailed(tried.problem);
-      file = registerServedFile(this.types, answer, this.bundleIds);
+      file = registerServedFile(this.types, answer, this.bundleIds, this.sources);
     } catch (error) {
       return this.refreshFailed(`the served file cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}`);
     }
@@ -381,7 +383,7 @@ export class DashboardRoot {
     if (this.disposed) return fail(DISPOSED);
     if (!this.registry) return fail('the widgets domain was rejected at start');
     this.file ??= withTimeout((signal) => this.host.loadFile(signal)).then(
-      (file) => registerServedFile(this.types, file, this.bundleIds),
+      (file) => registerServedFile(this.types, file, this.bundleIds, this.sources),
       (error) => ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` }) as const,
     );
     let file: FileOutcome;

@@ -759,11 +759,27 @@ describe('the served file in parts', () => {
     ]);
   });
 
+  it('names no source in the line of a part left out for a type the type store holds by itself, which a base file carries alike', () => {
+    // The type store brings the shared-property base type by itself, before the root registers anything; the base
+    // file carries an identical copy of it, and a later part brings it otherwise. The store's own definition was
+    // first, so the base file is no source of the type, and the line names none.
+    const SHARED = 'gts.frontx.mfes.comm.shared_property.v1~';
+    const own = new GtsPlugin({ isolated: true }).getSchema(SHARED) as Record<string, unknown>;
+    expect(own).toBeDefined();
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, own] };
+    const loadedFile = loadedParts([base, { types: [{ ...own, description: 'otherwise' }], instances: [] }]);
+    expect(loadedFile.lines).toEqual([
+      expect.stringMatching(
+        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type ${SHARED.replace(/[.~]/g, '\\$&')} is already defined otherwise$`),
+      ),
+    ]);
+  });
+
   it('names the served file the source of a base type the store holds from a failed earlier call', () => {
     // The first call fails on a base instance the registry rejects: the base types are in the store, and the root
-    // drops the file and calls again on the same store. The second call's base file registers the types the store
-    // already holds, so the store holds their content from this source, and a part that redefines one of them is
-    // left out with a line naming the served file.
+    // drops the file and calls again on the same store with the same record of first sources, as the root does. The
+    // first call registered the base types, so they keep the served file as their source, and a part that redefines
+    // one of them is left out with a line naming the served file.
     const types = new GtsPlugin({ isolated: true });
     const bundleIds = registerBundle(types);
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -771,9 +787,10 @@ describe('the served file in parts', () => {
     const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, catalogPie] };
     const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
     const broken = { ...base, instances: [...base.instances, brokenEntry] };
-    const first = registerServedFile(types, broken, bundleIds);
+    const sources = new Map<string, string>();
+    const first = registerServedFile(types, broken, bundleIds, sources);
     const redefined = { ...catalogPie, description: 'otherwise' };
-    const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds);
+    const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds, sources);
     const lines = errors.mock.calls.map(([line]) => String(line));
     errors.mockRestore();
     expect(first).toMatchObject({ ok: false, problem: expect.stringMatching(/the registry rejected it: /) });

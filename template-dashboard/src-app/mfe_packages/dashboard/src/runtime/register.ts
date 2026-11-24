@@ -61,11 +61,11 @@ const canonical = (value: unknown) =>
   JSON.stringify(value, (_key, item: unknown) => (isObject(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : item));
 
 /**
- * The ids of the shared-property types the root registers itself before the served file (the same constant
- * registerBundle registers from): the store holds a definition of each from before the file, so no file that
- * carries a copy of one is a source of the type.
+ * Each type id a served file or part registered first, with the phrase naming that source: the served file or the
+ * widget part. The root keeps one for its whole life and passes it to every `registerServedFile` call on its store, so
+ * a type keeps its first source over a retry of a failed call and a refresh.
  */
-const ROOT_TYPE_IDS: ReadonlySet<string> = new Set(SHARED_PROPERTY_SCHEMAS.map(idOf));
+export type TypeSources = Map<string, string>;
 
 /**
  * What the served file brought so far: the base file and every widget part that registered whole, with the source
@@ -75,8 +75,8 @@ interface Held {
   /** Each manifest and entry id with its canonical content. */
   instances: Map<string, string>;
   dashboards: Map<string, Dashboard>;
-  /** Each type id in the store with the phrase naming the source that registered it first: the served file or the widget part. */
-  sources: Map<string, string>;
+  /** Each type id a served file or part registered first, with the phrase naming that source. */
+  sources: TypeSources;
 }
 
 const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?? '');
@@ -84,10 +84,11 @@ const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?
 /**
  * The reason a served file or part cannot register, or nothing. A widget part is checked whole against what is held
  * before anything of it registers; past that check, the store keeps what the part registered before a failing item.
- * Only a part that registers whole adds its manifests, entries and dashboards to `held`. Every type id the served
- * file or part registers is recorded in `held.sources` under `source` when the store holds the definition it
- * registered, its first source, except a type the root registers itself: the store keeps those types when the part
- * is left out later, so the first source stays theirs.
+ * Only a part that registers whole adds its manifests, entries and dashboards to `held`. A type id the served file
+ * or part registers is recorded in `held.sources` under `source` when the store lacked the type before and holds this
+ * definition after: a type the store held before (its own, the root's, or one an earlier call or part brought) keeps
+ * the source it has, or none. The store keeps the types a part registered when the part is left out later, so the
+ * first source stays theirs.
  */
 function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean, source: string): string | undefined {
   const served = part as Partial<ServedFile> | null;
@@ -130,17 +131,14 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   }
   try {
     for (const schema of served.types) {
-      // Recorded per type once it registers, when `held.sources` has no entry for the id and the schema the store
-      // holds for it equals the registered one in content (the store holds this source's own definition): a base
-      // file re-registering on a retry of a failed call, whose types the store already holds, names the served
-      // file again. A type the root registers itself before the file (a shared-property type, say) is never given
-      // a source: the store holds its definition from before the file, so a file that carries a copy of it, alike
-      // or otherwise, names no source of the type. The `held.sources` check keeps the first source: the store
-      // keeps the types that registered when a later item of the same part fails, so they keep this source as
-      // their first one.
+      // Recorded once the type registers, only when the store lacked it before: a type the store held before any file
+      // (its own, such as the shared-property base, or one the root registers, such as the theme type) has no file as
+      // its source even when a file carries an identical copy, and a type a failed earlier call or part brought keeps
+      // that source, since `held.sources` lasts as long as the root.
       const id = idOf(schema);
+      const had = types.getSchema(id) !== undefined;
       types.registerSchema(schema);
-      if (!ROOT_TYPE_IDS.has(id) && !held.sources.has(id) && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
+      if (!had && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
     }
     for (const instance of instances) types.register(instance);
   } catch (error) {
@@ -208,14 +206,14 @@ const partName = (ids: string[], index: number) => {
  * and the type ids of a left-out part, and fails a cell by its widget type, a
  * type it extends, its entry, its render type or its data type with that part's line.
  */
-export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>): FileOutcome {
+export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>, sources: TypeSources = new Map()): FileOutcome {
   const [base, ...parts] = Array.isArray(file) ? file : [file];
   // The stand-in records and the plugin's lifecycle stages, in the store before the file, count as held, so no part replaces them.
   const before = [...STAND_IN.instances, ...(loadLifecycleStages() as unknown as Record<string, unknown>[])];
   const held: Held = {
     instances: new Map(before.map((instance) => [idOfInstance(instance), canonical(instance)])),
     dashboards: new Map(),
-    sources: new Map(),
+    sources,
   };
   const problem = guarded(() => registerPart(types, base, bundleIds, held, true, 'the served file'));
   if (problem) return { ok: false, problem: `the served file: ${problem}` };
