@@ -211,13 +211,16 @@ export async function main(argv = process.argv.slice(2)) {
       // during the wait ends the run at once.
       const stopOnSignal = async (signal) => {
         interrupted = true;
-        for (const cleanup of [...cleanups].reverse()) cleanup();
+        const ran = [...cleanups].reverse();
+        for (const cleanup of ran) cleanup();
         if (chromeLaunch) {
           const launched = await Promise.race([
             chromeLaunch.catch(() => undefined),
             new Promise((r) => setTimeout(r, CHROME_LAUNCH_TIMEOUT_MS + 1_000)),
           ]);
-          launched?.stop();
+          // A launch that settled before the signal put its stop among the
+          // cleanups that just ran.
+          if (launched && !ran.includes(launched.stop)) launched.stop();
         }
         process.exit(SIGNAL_EXIT_CODES[signal]);
       };
@@ -271,7 +274,13 @@ export async function main(argv = process.argv.slice(2)) {
       const execPath = findChrome({ chromePath: config.chromePath });
       console.log(`design-verify: launching headless Chrome: ${execPath}`);
       chromeLaunch = launchChrome(execPath, { timeoutMs: CHROME_LAUNCH_TIMEOUT_MS });
-      const chrome = await chromeLaunch;
+      const chrome = await chromeLaunch.catch((error) => {
+        if (!interrupted) throw error;
+      });
+      // The only await the signal handler waits on with this path: once a
+      // signal was taken, the handler stops what started and owns the exit
+      // code, so this path must not return or throw ahead of it.
+      if (interrupted) await new Promise(() => {});
       cleanups.push(chrome.stop);
       endpoint = chrome.endpoint;
     }

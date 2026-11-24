@@ -142,12 +142,13 @@ describe('cli main: inputs checked before any browser work', () => {
   }
 
   /**
-   * A Chrome stand-in that announces `endpointPort` as its DevTools endpoint
-   * `announceAfterMs` after it starts, and then runs until it is killed. It
-   * writes its temporary profile directory and its PID where the test reads
-   * them.
+   * A Chrome stand-in that writes its temporary profile directory and its PID
+   * where the test reads them, runs `start` and then runs until it is killed.
+   * In `start`, `announce()` prints `endpointPort` as its DevTools endpoint,
+   * and `once(test, then)` runs `then` when `test()` first holds (polled every
+   * 20 ms).
    */
-  function fakeChrome(dir: string, announceAfterMs: number, endpointPort: number) {
+  function fakeChrome(dir: string, endpointPort: number, start: string) {
     const file = path.join(dir, 'fake-chrome');
     const pidFile = path.join(dir, 'chrome.pid');
     const profileFile = path.join(dir, 'chrome.profile');
@@ -160,7 +161,9 @@ describe('cli main: inputs checked before any browser work', () => {
         `fs.writeFileSync(${JSON.stringify(profileFile)}, profile.slice('--user-data-dir='.length));`,
         `fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
         'process.stderr.on(\'error\', () => {});',
-        `setTimeout(() => process.stderr.write('DevTools listening on ws://127.0.0.1:${endpointPort}/devtools/browser/fake\\n'), ${announceAfterMs});`,
+        `const announce = () => process.stderr.write('DevTools listening on ws://127.0.0.1:${endpointPort}/devtools/browser/fake\\n');`,
+        'const once = (test, then) => { const poll = setInterval(() => { if (test()) { clearInterval(poll); then(); } }, 20); };',
+        start,
         'setInterval(() => {}, 1000);',
         '',
       ].join('\n'),
@@ -434,7 +437,7 @@ describe('cli main: inputs checked before any browser work', () => {
   // here the command exits 700 ms after the answer, while Chrome is starting.
   it('refuses when the command it started exits after the pause, before the browser attaches', async () => {
     const { slow, command, close } = await exitAfterAnswer(700);
-    const chrome = fakeChrome(slow.dir, 1_500, slow.port);
+    const chrome = fakeChrome(slow.dir, slow.port, 'setTimeout(announce, 1500);');
     try {
       const result = await runCli({}, ['--url', slow.url, '--start-server', command], chrome.file);
       expect(result.thrown).toBeUndefined();
@@ -506,7 +509,7 @@ describe('cli main: inputs checked before any browser work', () => {
     const serverPidFile = path.join(root, 'server.pid');
     const port = await freePort();
     const url = `http://127.0.0.1:${port}/`;
-    const chrome = fakeChrome(root, 3_000, port);
+    const chrome = fakeChrome(root, port, 'setTimeout(announce, 3000);');
     const cli = spawn(
       process.execPath,
       [
@@ -535,6 +538,63 @@ describe('cli main: inputs checked before any browser work', () => {
       );
       cli.kill('SIGINT');
       expect(await within(exited, 10_000)).toBe(130);
+      await vi.waitFor(() => expect(alive(chromePid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      expect(fs.existsSync(profile!)).toBe(false);
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      const chromePid = chrome.pid();
+      if (chromePid !== undefined && alive(chromePid)) process.kill(chromePid, 'SIGKILL');
+      const serverPid = readPid(serverPidFile);
+      if (serverPid !== undefined) killGroup(serverPid);
+      if (profile) fs.rmSync(profile, { recursive: true, force: true });
+    }
+  });
+
+  // A signal while Chrome is starting, and then the launch fails: the run
+  // still ends with the signal's code, not with the failed launch's 2. The
+  // fake Chrome exits with 1 only after the run took the signal, which the
+  // test sees as the started command stopped.
+  it("exits with the signal's code when the Chrome it was starting fails after SIGTERM", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const serverPidFile = path.join(root, 'server.pid');
+    const failNow = path.join(root, 'fail-now');
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const chrome = fakeChrome(root, port, `once(() => fs.existsSync(${JSON.stringify(failNow)}), () => process.exit(1));`);
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--chrome',
+        chrome.file,
+        '--start-server',
+        `echo $$ > '${serverPidFile}'; exec node -e "require('http').createServer((q, s) => s.end()).listen(${port}, '127.0.0.1')"`,
+      ],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    );
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let profile: string | undefined;
+    try {
+      let chromePid: number | undefined;
+      let serverPid: number | undefined;
+      await vi.waitFor(
+        () => {
+          chromePid = chrome.pid();
+          profile = chrome.profile();
+          serverPid = readPid(serverPidFile);
+          expect(chromePid).toBeDefined();
+          expect(serverPid).toBeDefined();
+          expect(profile && fs.existsSync(profile)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill('SIGTERM');
+      await vi.waitFor(() => expect(alive(serverPid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      fs.writeFileSync(failNow, '');
+      expect(await within(exited, 10_000)).toBe(143);
       await vi.waitFor(() => expect(alive(chromePid!)).toBe(false), { timeout: 5_000, interval: 50 });
       expect(fs.existsSync(profile!)).toBe(false);
     } finally {
