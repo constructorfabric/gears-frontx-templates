@@ -145,8 +145,9 @@ describe('cli main: inputs checked before any browser work', () => {
    * A Chrome stand-in that writes its temporary profile directory and its PID
    * where the test reads them, runs `start` and then runs until it is killed.
    * In `start`, `announce()` prints `endpointPort` as its DevTools endpoint,
-   * and `once(test, then)` runs `then` when `test()` first holds (polled every
-   * 20 ms).
+   * `once(test, then)` runs `then` when `test()` first holds (polled every
+   * 20 ms), and `gone(pidFile)` says the process whose PID that file holds has
+   * ended and been reaped.
    */
   function fakeChrome(dir: string, endpointPort: number, start: string) {
     const file = path.join(dir, 'fake-chrome');
@@ -163,6 +164,11 @@ describe('cli main: inputs checked before any browser work', () => {
         'process.stderr.on(\'error\', () => {});',
         `const announce = () => process.stderr.write('DevTools listening on ws://127.0.0.1:${endpointPort}/devtools/browser/fake\\n');`,
         'const once = (test, then) => { const poll = setInterval(() => { if (test()) { clearInterval(poll); then(); } }, 20); };',
+        'const gone = (pidFile) => {',
+        "  const pid = Number(fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8').trim() : '');",
+        '  if (!(Number.isInteger(pid) && pid > 0)) return false;',
+        "  try { process.kill(pid, 0); return false; } catch (error) { return error.code === 'ESRCH'; }",
+        '};',
         start,
         'setInterval(() => {}, 1000);',
         '',
@@ -390,11 +396,12 @@ describe('cli main: inputs checked before any browser work', () => {
 
   /**
    * The other server answers once the started command waits on a pipe, and
-   * `releaseAfterMs` later the test writes the line that lets the command exit,
-   * with no new process in between. The release is written once, and a
-   * command still waiting when the test ends is let go.
+   * after that answer `releaseWhen` schedules `release()`, which writes the
+   * line that lets the command exit, with no new process in between. The
+   * command writes its PID to `serverPidFile` first. The release is written
+   * once, and a command still waiting when the test ends is let go.
    */
-  async function exitAfterAnswer(releaseAfterMs: number) {
+  async function exitAfterAnswer(releaseWhen: (release: () => void, dir: string) => void) {
     let ready = '';
     let release = '';
     let released = false;
@@ -403,15 +410,17 @@ describe('cli main: inputs checked before any browser work', () => {
         done();
         if (released) return;
         released = true;
-        later(releaseAfterMs, () => releaseFifo(release));
+        releaseWhen(() => releaseFifo(release), slow.dir);
       }),
     );
     ready = path.join(slow.dir, 'ready');
     release = path.join(slow.dir, 'release');
+    const serverPidFile = path.join(slow.dir, 'server.pid');
     execFileSync('mkfifo', [release]);
     return {
       slow,
-      command: `echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`,
+      serverPidFile,
+      command: `echo $$ > '${serverPidFile}'; echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`,
       close: async () => {
         releaseFifo(release, 0);
         await slow.close();
@@ -422,7 +431,7 @@ describe('cli main: inputs checked before any browser work', () => {
   // The command's exit can arrive just after the other server's answer: the
   // run looks once more after a short pause.
   it('refuses when the command it started exits just after --url answered', async () => {
-    const { slow, command, close } = await exitAfterAnswer(50);
+    const { slow, command, close } = await exitAfterAnswer((release) => later(50, release));
     try {
       const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
       expect(result.thrown).toBeUndefined();
@@ -433,11 +442,16 @@ describe('cli main: inputs checked before any browser work', () => {
     }
   });
 
-  // An exit later than that pause is still caught before the browser attaches:
-  // here the command exits 700 ms after the answer, while Chrome is starting.
+  // An exit later than that pause is still caught before the browser attaches.
+  // Ordered by events, not by time: Chrome is launched only after the first
+  // check passed, so the command is let go once the fake Chrome wrote its PID,
+  // and the fake announces its endpoint only once the command is gone and
+  // reaped, which records its exit in the run.
   it('refuses when the command it started exits after the pause, before the browser attaches', async () => {
-    const { slow, command, close } = await exitAfterAnswer(700);
-    const chrome = fakeChrome(slow.dir, slow.port, 'setTimeout(announce, 1500);');
+    let chromePidFile = '';
+    const { slow, serverPidFile, command, close } = await exitAfterAnswer((release) => whenExists(chromePidFile, release));
+    chromePidFile = path.join(slow.dir, 'chrome.pid');
+    const chrome = fakeChrome(slow.dir, slow.port, `once(() => gone(${JSON.stringify(serverPidFile)}), announce);`);
     try {
       const result = await runCli({}, ['--url', slow.url, '--start-server', command], chrome.file);
       expect(result.thrown).toBeUndefined();
