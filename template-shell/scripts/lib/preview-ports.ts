@@ -218,8 +218,9 @@ export interface PreviewCommand {
 /**
  * The command `dev:all` starts a package's preview server with, in the
  * package's directory. A moved preview gets `--port` after the package's own
- * script arguments: Vite's CLI keeps the last value of an option given twice,
- * so the package's `vite preview --port <declared>` serves on the moved port.
+ * script arguments. Vite's CLI keeps the last value of an option given twice,
+ * so the package's `vite preview --port <declared>` serves on the moved port;
+ * that was checked by hand against Vite 6, and no test here runs a real Vite.
  */
 export function previewCommand(mfe: MfeInfo, movedPort?: number): PreviewCommand {
   const port = movedPort === undefined ? '' : `--port ${movedPort} `;

@@ -81,7 +81,7 @@ describe('previewCommand', () => {
     expect(previewCommand({ name: 'orders-mfe', port: 3010 }).command).toBe('npm run preview -- --strictPort');
   });
 
-  it('starts a moved preview on the moved port, after the package script so it wins, and still strict', () => {
+  it('puts the moved port after the package script arguments, and keeps the preview strict', () => {
     expect(previewCommand({ name: 'orders-mfe', port: 3010 }, 51234).command).toBe(
       'npm run preview -- --port 51234 --strictPort',
     );

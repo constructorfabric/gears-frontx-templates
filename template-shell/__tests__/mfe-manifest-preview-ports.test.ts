@@ -23,11 +23,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { ManifestGenerator } from '../scripts/generate-mfe-manifests';
 
 const MFE_MANIFEST_PATH = 'dist/mfe-manifest.json';
 const SHELL_DIR = resolve(__dirname, '..');
+const TSX_LOADER = pathToFileURL(join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
 
 let workspace: string;
 let mfePackagesDir: string;
@@ -186,15 +188,16 @@ describe('the generator run with its command line', () => {
   function runGenerator(...args: string[]) {
     const env = { ...process.env };
     delete env.FRONTX_INCLUDE_TEMPLATE_EXAMPLES;
-    return spawnSync(
+    // spawnSync blocks the worker, so a stalled run is bounded here, not by the
+    // test timeout. tsx's loader runs the script in this one process: the tsx
+    // command would run it in a child that the kill of its parent leaves behind.
+    const result = spawnSync(
       process.execPath,
-      [
-        join(SHELL_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-        join(SHELL_DIR, 'scripts', 'generate-mfe-manifests.ts'),
-        ...args,
-      ],
-      { cwd: workspace, encoding: 'utf-8', env },
+      ['--import', TSX_LOADER, join(SHELL_DIR, 'scripts', 'generate-mfe-manifests.ts'), ...args],
+      { cwd: workspace, encoding: 'utf-8', env, timeout: 30_000, killSignal: 'SIGKILL' },
     );
+    if (result.error) throw result.error;
+    return result;
   }
 
   it('addresses the package named by --preview-port at that port', () => {
