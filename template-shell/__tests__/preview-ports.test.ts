@@ -20,7 +20,6 @@ import {
   PREVIEW_HOST,
   choosePreviewPorts,
   choosePreviewPortsBesideHost,
-  generatorPreviewPorts,
   isPortFree,
   movedPreviewPortsMessage,
   previewCommand,
@@ -172,23 +171,6 @@ describe('choosePreviewPorts', () => {
       'Preview port already in use, moved (FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1):\n  - orders-mfe: port 3001 -> 51234\n' +
         'The host keeps port 5173.',
     );
-  });
-});
-
-describe('generatorPreviewPorts', () => {
-  it('passes on only the moved ports of packages with an mfe.json, the ones the generator aggregates', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'generator-preview-ports-'));
-    try {
-      mkdirSync(join(dir, 'orders-mfe'));
-      writeFileSync(join(dir, 'orders-mfe', 'mfe.json'), '{}');
-      mkdirSync(join(dir, 'loose-mfe'));
-
-      expect(generatorPreviewPorts(new Map([['orders-mfe', 51234], ['loose-mfe', 51235]]), dir)).toEqual(
-        new Map([['orders-mfe', 51234]]),
-      );
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 

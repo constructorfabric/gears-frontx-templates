@@ -178,11 +178,8 @@ export function choosePreviewPortsBesideHost(
  * package that declares a `--port` without one; the generator would refuse its
  * name, after every package was built.
  */
-export function generatorPreviewPorts(
-  moved: ReadonlyMap<string, number>,
-  packagesDir: string = MFE_PACKAGES_DIR,
-): Map<string, number> {
-  return new Map([...moved].filter(([name]) => existsSync(join(packagesDir, name, 'mfe.json'))));
+export function generatorPreviewPorts(moved: ReadonlyMap<string, number>): Map<string, number> {
+  return new Map([...moved].filter(([name]) => existsSync(join(MFE_PACKAGES_DIR, name, 'mfe.json'))));
 }
 
 /** The lines `dev:all` prints for the previews it moved, and the host port they keep clear of. */
