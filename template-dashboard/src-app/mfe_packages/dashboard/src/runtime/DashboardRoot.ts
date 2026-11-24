@@ -534,7 +534,7 @@ export class DashboardRoot {
    */
   private unregister(dashboardId: string, ids: readonly string[]): Promise<void> {
     const before = this.releasing.get(dashboardId) ?? Promise.resolve();
-    // Taken now: a dispose that comes before the release runs ends the mount waiters this reads.
+    // Taken at the call: a dispose that comes before the release runs ends the mount waiters this reads.
     const mountsEnded = ids.map((id) => this.mountEnded(id));
     const done = before.then(async () => {
       for (const [at, id] of ids.entries()) {
