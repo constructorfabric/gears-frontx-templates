@@ -375,26 +375,27 @@ export class DashboardRoot {
   }
 
   private async loadOnce(dashboardId: string): Promise<LoadOutcome> {
+    const disposedAtStart = this.disposed;
     const fail = (problem: string): LoadOutcome => {
+      // A load that was in flight when the root was disposed reports nothing after the dispose.
+      if (this.disposed && !disposedAtStart) return { ok: false };
       // A part may bring the dashboard and the ids the problem quotes, so the line is escaped as the part line is.
       console.error(`[dashboard] ${escapeControls(`dashboard ${dashboardId} cannot be shown: ${problem}`)}`);
       return { ok: false };
     };
-    if (this.disposed) return fail(DISPOSED);
+    if (disposedAtStart) return fail(DISPOSED);
     if (!this.registry) return fail('the widgets domain was rejected at start');
-    this.file ??= withTimeout((signal) => this.host.loadFile(signal)).then(
-      (file) => registerServedFile(this.types, file, this.bundleIds, this.sources),
-      (error) => ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` }) as const,
-    );
+    const pending = (this.file ??= this.readFile());
     let file: FileOutcome;
     try {
-      file = await this.file;
+      file = await pending;
     } catch (error) {
       // An answer the registration cannot even read: the file is dropped like a failed one, so the next load retries.
       file = { ok: false, problem: `the served file cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}` };
     }
     if (!file.ok) {
-      this.file = undefined;
+      // Only the file this load awaited is dropped: a refresh that read a file since keeps it.
+      if (this.file === pending) this.file = undefined;
       return fail(file.problem);
     }
     const dashboard = file.dashboards.get(dashboardId);
@@ -422,6 +423,24 @@ export class DashboardRoot {
     if (before?.key === key) return before.outcome;
     this.given.set(dashboardId, { key, outcome: loaded });
     return loaded;
+  }
+
+  /**
+   * The served file's first read. A refresh that reads a file while this one is in flight takes over: this answer,
+   * or its failure, then registers nothing and gives the file the refresh read, so the store and the loads keep the
+   * newer definitions.
+   */
+  private readFile(): Promise<FileOutcome> {
+    const pending: Promise<FileOutcome> = withTimeout((signal) => this.host.loadFile(signal)).then(
+      (file) => (this.file === pending ? registerServedFile(this.types, file, this.bundleIds, this.sources) : this.newerFile()),
+      (error) => (this.file === pending ? ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` } as const) : this.newerFile()),
+    );
+    return pending;
+  }
+
+  /** The file a refresh read after a first read took over, or the disposed reason once `dispose` dropped it. */
+  private newerFile(): Promise<FileOutcome> | FileOutcome {
+    return this.file ?? { ok: false, problem: DISPOSED };
   }
 
   /** Drops a load that has not settled, so the next mount of that id starts a new one (the owner state Loading to Started). */

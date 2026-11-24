@@ -1835,6 +1835,43 @@ describe('refresh and dispose of the root', () => {
     expect(root.version).toBe(1);
   }, 15_000);
 
+  it('keeps the refreshed definitions when the first read of the served file answers after the refresh', async () => {
+    let answerFirst!: (file: unknown) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((resolve) => (answerFirst = resolve)), async () => fileOf([12]), async () => fileOf([12])];
+    const { host } = editingHost(() => answers.shift()!());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(answerFirst).toBeTypeOf('function'));
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    // The first read answers last, with older definitions: they register nothing and the loads keep the refreshed ones.
+    await act(async () => answerFirst(fileOf([7])));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const unmountedBefore = counts.unmounted;
+    // A refresh of the same definitions then keeps every cell.
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(unmountedBefore);
+    expect(values(container)).toEqual(['value 12']);
+  }, 15_000);
+
+  it('keeps the refreshed file when the first read of the served file fails after the refresh', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let failFirst!: (error: Error) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((_, reject) => (failFirst = reject)), async () => fileOf([12])];
+    const { host, calls } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(failFirst).toBeTypeOf('function'));
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    await act(async () => failFirst(new Error('late failure')));
+    // Another dashboard loads from the file the refresh read: the served file is not requested again.
+    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(true);
+    expect(calls.file).toBe(2);
+  }, 15_000);
+
   it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { host, calls } = editingHost(async () => fileOf([], { method: 'GET', path: '/api/demo/teams/goals' }));
