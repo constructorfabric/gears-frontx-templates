@@ -3,7 +3,7 @@
 // and its CDP protocol handling via an injected fake WebSocket. The
 // browser-driving CLI itself is exercised end-to-end against a real app, not
 // here - these tests pin the logic every run depends on.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -289,6 +289,61 @@ describe('cli main: inputs checked before any browser work', () => {
       );
     } finally {
       await slow.close();
+    }
+  });
+
+  // The command runs in its own process group, which a Ctrl-C at the terminal
+  // does not reach: the run stops it itself when it is interrupted, so the
+  // server does not stay on --url and make the next run refuse.
+  it.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('stops the command it started when it gets %s, and exits %i', async (signal, exitCode) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--server-timeout-ms',
+        '60000',
+        '--start-server',
+        `echo $$ > '${pidFile}'; exec sleep 47`,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    let logged = '';
+    cli.stdout.on('data', (chunk) => (logged += chunk));
+    cli.stderr.resume();
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let serverPid: number | undefined;
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    try {
+      await vi.waitFor(
+        () => {
+          expect(logged).toMatch(/waiting for/);
+          serverPid = Number(fs.readFileSync(pidFile, 'utf8'));
+          expect(alive(serverPid)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill(signal);
+      expect(await exited).toBe(exitCode);
+      await vi.waitFor(() => expect(alive(serverPid!)).toBe(false), { timeout: 5_000, interval: 50 });
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      if (serverPid !== undefined && alive(serverPid)) process.kill(serverPid, 'SIGKILL');
     }
   });
 

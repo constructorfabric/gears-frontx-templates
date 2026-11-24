@@ -193,6 +193,21 @@ export async function main(argv = process.argv.slice(2)) {
       console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
       server = startServer(config.startServer, { cwd: serverCwd });
       cleanups.push(server.stop);
+      // The command runs in its own process group, which a Ctrl-C at the
+      // terminal does not reach, and a signal ends this process without the
+      // finally below: left running, the server would keep --url, and the
+      // next run would refuse it. Stop it here, then exit as a shell reports
+      // a death by that signal.
+      const stopOnSignal = (signal) => {
+        for (const cleanup of [...cleanups].reverse()) cleanup();
+        process.exit(signal === 'SIGINT' ? 130 : 143);
+      };
+      process.once('SIGINT', stopOnSignal);
+      process.once('SIGTERM', stopOnSignal);
+      cleanups.push(() => {
+        process.off('SIGINT', stopOnSignal);
+        process.off('SIGTERM', stopOnSignal);
+      });
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
     // The server's own words say why it never answered (a port in use, a
