@@ -592,6 +592,15 @@ describe('cartesian_chart long form and series_default', () => {
     expect(c[0].y + c[0].height).toBeCloseTo(a[0].y, 5);
   });
 
+  it('keeps the points of a null series name as one unnamed series in its first-seen place, apart from a series named "null"', () => {
+    const points = ['a', null, 'b', null, 'null', 'a'].map((series, index) => ({ x: `x${index % 2}`, y: index + 1, series }));
+    const payload = { render: { series: [{ name: 'b', type: 'bar' as const }], series_default: { type: 'bar' as const }, legend_position: 'bottom' as const }, data: { points } };
+    const { container } = render(<CartesianChart payload={payload} label="Unnamed" />);
+    // b has an entry of its own and comes first; then a, the unnamed series and "null" as they first appear.
+    expect(legendItems(container)).toEqual(['b', 'a', '', 'null']);
+    expect(colours(container)).toEqual([0, 1, 2, 3].map((index) => seriesColor(index)));
+  });
+
   it('keeps the series form in delivered order, whatever the order of the render entries', () => {
     const payload = {
       render: { series: [{ name: 'B', type: 'bar' as const }, { name: 'A', type: 'bar' as const }], legend_position: 'bottom' as const },

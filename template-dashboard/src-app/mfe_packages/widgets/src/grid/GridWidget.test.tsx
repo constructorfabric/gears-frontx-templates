@@ -513,5 +513,12 @@ describe('GridWidget', () => {
       await user.type(screen.getByRole('searchbox'), '12.5%');
       await vi.waitFor(() => expect(cellsOf(0)).toEqual(['Mobile']));
     });
+
+    it('names the values of a sparkline column in its own value_format, not the widget one', async () => {
+      const render_: GridRender = { columns: [{ key: 'team' }, { key: 'trend', kind: 'sparkline', value_format: { value_type: 'percent' } }] };
+      render(<GridWidget payload={{ render: render_, data: { rows: [['Web', [0.25, 0.5, 0.1]]] }, value_format: { value_type: 'number' } }} />);
+      await screen.findByText('Web');
+      expect(screen.getByRole('img').getAttribute('aria-label')?.replace(/\s/g, ' ')).toBe('First 25%, last 10%, lowest 10%, highest 50%');
+    });
   });
 });

@@ -2149,14 +2149,22 @@ describe('series colours past five', () => {
     const light = text.split('[data-theme=')[0];
     return [...light.matchAll(new RegExp(`--color-${prefix}(\\d+): ([^;]+);`, 'g'))].sort((a, b) => Number(a[1]) - Number(b[1])).map((match) => match[2]);
   };
+  // The colours themselves in each theme, read out of `light-dark(<light>, <dark>)`, not the custom property names
+  // around them, which differ by position whatever the colour.
+  const hexesOf = (colours: string[]) => colours.map((colour) => /light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/.exec(colour)?.slice(1).join(' '));
+  const expectOwnColours = (colours: string[], count: number) => {
+    expect(colours).toEqual(Array.from({ length: count }, (_, index) => seriesColor(index)));
+    const hexes = hexesOf(colours);
+    expect(hexes.every(Boolean)).toBe(true);
+    expect(new Set(hexes).size).toBe(count);
+  };
 
   it('gives each of 12 pie slices a colour of its own, the sixth unlike the first', () => {
     const slices = Array.from({ length: 12 }, (_, index) => ({ label: `s${index}`, value: 12 - index }));
     const { container } = render(<PieChart payload={{ render: {}, data: { slices } }} label="Share" />);
     const colours = configColours(container, 'p');
-    expect(colours).toHaveLength(12);
-    expect(new Set(colours).size).toBe(12);
-    expect(colours[5]).not.toBe(colours[0]);
+    expectOwnColours(colours, 12);
+    expect(hexesOf(colours)[5]).not.toBe(hexesOf(colours)[0]);
   });
 
   it('gives each of 10 stacked bar series a colour of its own', () => {
@@ -2167,17 +2175,14 @@ describe('series colours past five', () => {
     };
     const { container } = render(<CartesianChart payload={payload} label="Stack" />);
     const colours = configColours(container, 's');
-    expect(colours).toHaveLength(10);
-    expect(new Set(colours).size).toBe(10);
-    expect(colours).toEqual(names.map((_, index) => seriesColor(index)));
+    expectOwnColours(colours, 10);
   });
 
   it('gives each of 12 treemap tiles a colour of its own', () => {
     const items = Array.from({ length: 12 }, (_, index) => ({ label: `t${index}`, value: 12 - index, group: null }));
     const { container } = render(<TreemapChart payload={{ render: {}, data: { items } }} label="Tiles" />);
     const colours = [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')].map((tile) => tile.style.getPropertyValue('--tile'));
-    expect(colours).toHaveLength(12);
-    expect(new Set(colours).size).toBe(12);
+    expectOwnColours(colours, 12);
   });
 });
 

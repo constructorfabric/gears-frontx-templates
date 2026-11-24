@@ -1997,6 +1997,27 @@ describe('refresh and dispose of the root', () => {
     expect(root.registry?.getExtension(extensionIdOf(markdown.widget.id, 'cell', MARKDOWN))).toBeDefined();
   }, 15_000);
 
+  it.each([
+    ['a failed first load', false],
+    ['a refresh', true],
+  ])('names the served file the first source of a base type a widget part redefines after %s', async (_name, byRefresh) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const PIE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~';
+    const catalogPie = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    // The catalog pie type comes in the base file, so the root registers it from the served file.
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, catalogPie] };
+    const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
+    const withRedefinedPie = [base, { types: [{ ...catalogPie, description: 'otherwise' }], instances: [] }];
+    // A first load the registry fails on a base instance, or one that succeeds; then the base file again with a part.
+    const answers: unknown[] = [byRefresh ? base : { ...base, instances: [...base.instances, brokenEntry] }, withRedefinedPie];
+    const root = new DashboardRoot({ host: { loadFile: async () => answers.shift() as ServedFile, request: () => new Promise(() => undefined) }, entries, origin: 'http://localhost' });
+    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(!byRefresh ? false : true);
+    if (byRefresh) expect(await root.refresh()).toEqual({ ok: true });
+    else expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(true);
+    const lines = errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(lines).toEqual([expect.stringMatching(/the widget part number 2 of the answer \(the served file is number 1\) is left out: its type .*pie_chart\.v1~ is already defined otherwise by the served file$/)]);
+  });
+
   it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let answerRefresh!: (file: unknown) => void;

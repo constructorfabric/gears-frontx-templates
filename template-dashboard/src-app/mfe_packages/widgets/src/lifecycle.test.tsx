@@ -1,7 +1,7 @@
 import { act } from '@testing-library/react';
 import type { ActionHandler, ChildMfeBridge } from '@gears-frontx/mfes';
 import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID } from '@gears-frontx/frontx-dashboard-root/contract';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Popover, PopoverContent, PopoverTrigger } from '@gears-frontx/ui-kit';
 
 import { formatValue } from './format';
@@ -254,16 +254,30 @@ describe('kit overlays', () => {
 
 describe('kit overlays with a host overlay container', () => {
   const popupOf = (root: ParentNode) => Array.from(root.querySelectorAll('*')).find((node) => node.textContent === 'Popup text' && node.children.length === 0);
-
-  it('opens a kit popup in a shadow root of its own inside the host element, with the widget styles, theme and language', async () => {
-    const outside = document.body.appendChild(document.createElement('div'));
-    const lifecycle = createWidgetLifecycle((_payload, { container }) => (
+  const popupWidget = () =>
+    createWidgetLifecycle((_payload, { container }) => (
       <Popover defaultOpen>
         <PopoverTrigger>Details</PopoverTrigger>
         <PopoverContent container={container ?? undefined}>Popup text</PopoverContent>
       </Popover>
     ));
-    const { shadow } = mountPoint();
+  /** An element in the page body, removed when the test ends, whether it passes or not. */
+  const pageElement = () => {
+    const element = document.body.appendChild(document.createElement('div'));
+    onTestFinished(() => element.remove());
+    return element;
+  };
+  /** A widget mount point whose host element leaves the page when the test ends. */
+  const ownMountPoint = () => {
+    const point = mountPoint();
+    onTestFinished(() => point.host.remove());
+    return point;
+  };
+
+  it('opens a kit popup in a shadow root of its own inside the host element, with the widget styles, theme and language', async () => {
+    const outside = pageElement();
+    const lifecycle = popupWidget();
+    const { shadow } = ownMountPoint();
     // A stylesheet the FrontX handler puts into the widget's shadow root before it mounts the widget.
     shadow.append(Object.assign(document.createElement('style'), { id: 'widget-css', textContent: '.popup { color: red; }' }));
     const { child, send } = bridge({ [THEME_PROPERTY_ID]: 'dark', [LANGUAGE_PROPERTY_ID]: 'de', [OVERLAY_CONTAINER_PROPERTY_ID]: outside });
@@ -281,18 +295,12 @@ describe('kit overlays with a host overlay container', () => {
     expect(overlayRoot!.querySelector('style#widget-css')?.textContent).toBe('.popup { color: red; }');
     await act(async () => lifecycle.unmount(shadow));
     expect(outside.childElementCount).toBe(0);
-    outside.remove();
   });
 
   it('moves an open popup out to the host element when the host names one, and back into the widget shadow root when it drops it', async () => {
-    const outside = document.body.appendChild(document.createElement('div'));
-    const lifecycle = createWidgetLifecycle((_payload, { container }) => (
-      <Popover defaultOpen>
-        <PopoverTrigger>Details</PopoverTrigger>
-        <PopoverContent container={container ?? undefined}>Popup text</PopoverContent>
-      </Popover>
-    ));
-    const { shadow } = mountPoint();
+    const outside = pageElement();
+    const lifecycle = popupWidget();
+    const { shadow } = ownMountPoint();
     const { child, send, change } = bridge();
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
@@ -304,6 +312,54 @@ describe('kit overlays with a host overlay container', () => {
     expect(outside.childElementCount).toBe(0);
     expect(popupOf(shadow)).toBeTruthy();
     await act(async () => lifecycle.unmount(shadow));
-    outside.remove();
+  });
+
+  it('moves the popup from one host element to the next when the host names another, leaving nothing in the first', async () => {
+    const [first, second] = [pageElement(), pageElement()];
+    const lifecycle = popupWidget();
+    const { shadow } = ownMountPoint();
+    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: first });
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    expect(popupOf(first.firstElementChild!.shadowRoot!)).toBeTruthy();
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, second);
+    expect(first.childElementCount).toBe(0);
+    expect(popupOf(second.firstElementChild!.shadowRoot!)).toBeTruthy();
+    expect(popupOf(shadow)).toBeUndefined();
+    await act(async () => lifecycle.unmount(shadow));
+    expect(second.childElementCount).toBe(0);
+  });
+
+  it('gives two widgets sharing one host element a shadow root each, and removes only its own on unmount', async () => {
+    const outside = pageElement();
+    const [one, other] = [popupWidget(), popupWidget()];
+    const [onePoint, otherPoint] = [ownMountPoint(), ownMountPoint()];
+    const [oneBridge, otherBridge] = [bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside }), bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside })];
+    await act(async () => one.mount(onePoint.shadow, oneBridge.child));
+    await act(async () => other.mount(otherPoint.shadow, otherBridge.child));
+    await oneBridge.send({ render: {} });
+    await otherBridge.send({ render: {} });
+    const [oneHost, otherHost] = Array.from(outside.children);
+    expect(outside.childElementCount).toBe(2);
+    await act(async () => one.unmount(onePoint.shadow));
+    expect(Array.from(outside.children)).toEqual([otherHost]);
+    expect(oneHost.isConnected).toBe(false);
+    expect(popupOf(otherHost.shadowRoot!)).toBeTruthy();
+    await act(async () => other.unmount(otherPoint.shadow));
+    expect(outside.childElementCount).toBe(0);
+  });
+
+  it.each([
+    ['a selector string', '#overlays'],
+    ['a plain object', { nodeType: 1, append: () => undefined }],
+  ])('takes %s as no host element: the widget draws and keeps its popup in its own shadow root', async (_name, value) => {
+    const lifecycle = popupWidget();
+    const { shadow } = ownMountPoint();
+    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: value });
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    expect(shadow.textContent).toContain('Details');
+    expect(popupOf(shadow)).toBeTruthy();
+    await act(async () => lifecycle.unmount(shadow));
   });
 });
