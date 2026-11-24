@@ -12,8 +12,14 @@ export { seriesColor } from './palette';
 const LEGEND_GAP = 16;
 
 /**
+ * The rank of a legend item by the number of its series or slice key (`s0`, `s1` ... `s10`, `p0` ... `p10`): the
+ * series or slice order. The library's own sorting compares the keys as text, which lists `p10` before `p2`.
+ */
+const byKeyNumber = (item: LegendPayload) => Number(/(\d+)$/.exec(String(item.value ?? ''))?.[1] ?? Number.MAX_SAFE_INTEGER);
+
+/**
  * The chart legend at the asked position, or none. Its items follow `order` when given (the rank of each item), and
- * the library's alphabetical order of the names otherwise.
+ * the series or slice order otherwise.
  */
 export function legendOf(position: LegendPosition | undefined, nameKey?: string, order?: (item: LegendPayload) => number) {
   const at = position ?? 'bottom';
@@ -24,7 +30,7 @@ export function legendOf(position: LegendPosition | undefined, nameKey?: string,
       layout={side ? 'vertical' : 'horizontal'}
       align={side ? at : 'center'}
       verticalAlign={side ? 'middle' : at}
-      itemSorter={order ?? 'value'}
+      itemSorter={order ?? byKeyNumber}
       // A legend never takes more than half the chart, so the plot or the pie keeps room in a short cell; the rest scrolls.
       wrapperStyle={side ? { maxInlineSize: '50%', maxBlockSize: '100%', overflowY: 'auto', [at === 'right' ? 'paddingInlineStart' : 'paddingInlineEnd']: LEGEND_GAP } : { maxBlockSize: '50%', overflowY: 'auto' }}
       content={<ChartLegendContent nameKey={nameKey} className={side ? `${styles.legend} ${styles.legendSide}` : styles.legend} />}

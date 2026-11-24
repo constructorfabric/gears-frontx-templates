@@ -2180,3 +2180,34 @@ describe('series colours past five', () => {
     expect(new Set(colours).size).toBe(12);
   });
 });
+
+describe('legend order', () => {
+  const legendItems = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
+  const NAMES = Array.from({ length: 12 }, (_, index) => `Team ${String.fromCharCode(76 - index)}`);
+
+  it('lists the 12 slices of a pie in slice order, not in the string order of their keys', async () => {
+    const slices = NAMES.map((label, index) => ({ label, value: 12 - index }));
+    const { container } = render(<PieChart payload={{ render: { legend_position: 'bottom' }, data: { slices } }} label="Share" />);
+    // A pie legend item carries the slice's label and its value.
+    await waitFor(() => expect(legendItems(container)).toEqual(NAMES.map((name, index) => `${name} ${12 - index}`)));
+  });
+
+  it('lists the 12 series of a bar chart in series order', () => {
+    const payload = {
+      render: { series: NAMES.map((name) => ({ name, type: 'bar' as const, stack_group: 'all' })), x_axis: { type: 'category' as const } },
+      data: { series: NAMES.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Stack" />);
+    expect(legendItems(container)).toEqual(NAMES);
+  });
+
+  it('lists the series of a mixed chart in series order, whatever their types', () => {
+    const names = ['Target', 'Actual', 'Forecast'];
+    const payload = {
+      render: { series: [{ name: 'Target', type: 'line' as const }, { name: 'Actual', type: 'bar' as const }, { name: 'Forecast', type: 'area' as const }], x_axis: { type: 'category' as const } },
+      data: { series: names.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }, { x: 'Q2', y: index + 2 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Mixed" />);
+    expect(legendItems(container)).toEqual(names);
+  });
+});
