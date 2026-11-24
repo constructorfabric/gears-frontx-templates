@@ -181,7 +181,7 @@ describe('cli main: inputs checked before any browser work', () => {
     return port;
   }
 
-  async function runCli(files: Record<string, string>, args: string[]) {
+  async function runCli(files: Record<string, string>, args: string[], chrome?: string) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-cli-'));
     dirs.push(root);
     for (const [file, text] of Object.entries(files)) fs.writeFileSync(path.join(root, file), text);
@@ -192,7 +192,11 @@ describe('cli main: inputs checked before any browser work', () => {
     let code: number | undefined;
     let thrown: unknown;
     try {
-      code = await main([...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)), '--chrome', at('no-chrome')]);
+      code = await main([
+        ...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)),
+        '--chrome',
+        chrome ?? at('no-chrome'),
+      ]);
     } catch (error) {
       thrown = error;
     }
@@ -335,8 +339,10 @@ describe('cli main: inputs checked before any browser work', () => {
     await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-slow-'));
     dirs.push(root);
+    const { port } = slow.address() as AddressInfo;
     return {
-      url: `http://127.0.0.1:${(slow.address() as AddressInfo).port}/`,
+      url: `http://127.0.0.1:${port}/`,
+      port,
       dir: root,
       close: async () => {
         slow.closeAllConnections();
@@ -349,6 +355,12 @@ describe('cli main: inputs checked before any browser work', () => {
     if (fs.existsSync(file)) then();
     else later(20, () => whenExists(file, then));
   }
+
+  /** The refusal once the command the run started has ended, beginning with the URL. */
+  const endedRefusal = (url: string, ended: string) =>
+    `design-verify: ${url} answered, but after the answer the server command this run started ` +
+    `was found ended (${ended}): nothing this run started serves ${url} now, so it is not measured. ` +
+    'Run again, or pass --url with a free port';
 
   // The precheck gives up on a server that is slow to answer, so the run
   // starts its command, which dies on the taken port, and the next probe gets
@@ -365,10 +377,7 @@ describe('cli main: inputs checked before any browser work', () => {
       expect(result.thrown).toBeUndefined();
       expect(result.code).toBe(2);
       expect(result.logged).toMatch(/starting dev server/);
-      expect(result.errors).toContain(
-        `design-verify: ${slow.url} answered, but the server command this run started exited with code 1, ` +
-          'so the answer came from a server this run did not start',
-      );
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
       expect(result.errors).toMatch(/last output:\nport in use$/m);
       expect(result.logged).not.toMatch(/launching headless Chrome/);
     } finally {
@@ -415,11 +424,26 @@ describe('cli main: inputs checked before any browser work', () => {
       const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
       expect(result.thrown).toBeUndefined();
       expect(result.code).toBe(2);
-      expect(result.errors).toContain(
-        `design-verify: ${slow.url} answered, but the server command this run started exited with code 1, ` +
-          'so the answer came from a server this run did not start',
-      );
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
     } finally {
+      await close();
+    }
+  });
+
+  // An exit later than that pause is still caught before the browser attaches:
+  // here the command exits 700 ms after the answer, while Chrome is starting.
+  it('refuses when the command it started exits after the pause, before the browser attaches', async () => {
+    const { slow, command, close } = await exitAfterAnswer(700);
+    const chrome = fakeChrome(slow.dir, 1_500, slow.port);
+    try {
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command], chrome.file);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.logged).toMatch(/launching headless Chrome/);
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
+    } finally {
+      const pid = chrome.pid();
+      if (pid !== undefined) killGroup(pid);
       await close();
     }
   });

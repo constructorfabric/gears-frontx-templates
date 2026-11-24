@@ -206,9 +206,9 @@ Usage: node runner/cli.mjs [flags]
                             a free --url, or drop --start-server to measure
                             the running server on purpose. The command must
                             keep running: when it exits before --url answers,
-                            the wait ends at once, and when --url answers
-                            after it exited, the answer came from a server
-                            the run did not start. Then, or when the wait
+                            the wait ends at once, and when it is found
+                            ended after --url answered, nothing the run
+                            started serves --url. Then, or when the wait
                             times out, the run prints at most the last 40
                             lines of the last 8 KB the command wrote, and
                             exits 2

@@ -178,6 +178,7 @@ export async function main(argv = process.argv.slice(2)) {
   let server;
   /** @type {ReturnType<typeof launchChrome> | undefined} */
   let chromeLaunch;
+  let interrupted = false;
   try {
     if (config.startServer) {
       if (await isUrlReachable(config.url)) {
@@ -209,6 +210,7 @@ export async function main(argv = process.argv.slice(2)) {
       // signal. The handlers go with the first cleanup, so a second signal
       // during the wait ends the run at once.
       const stopOnSignal = async (signal) => {
+        interrupted = true;
         for (const cleanup of [...cleanups].reverse()) cleanup();
         if (chromeLaunch) {
           const launched = await Promise.race([
@@ -245,23 +247,24 @@ export async function main(argv = process.argv.slice(2)) {
       await printServerOutput();
       return 2;
     }
-    if (server) {
-      // The URL answered, but the precheck above can miss a slow server that
-      // already held it: a command that died on the taken port then leaves
-      // that server to be measured. Its exit can arrive just after the answer,
-      // so the check is made once more after a short pause.
-      if (server.ended() === undefined) await new Promise((r) => setTimeout(r, SERVER_EXIT_RECHECK_MS));
-      const ended = server.ended();
-      if (ended !== undefined) {
-        console.error(
-          `design-verify: ${config.url} answered, but the server command this run started ${ended}, ` +
-            `so the answer came from a server this run did not start and is not measured. ` +
-            `Stop the server holding ${config.url}, or pass --url with a free port, and run again`,
-        );
-        await printServerOutput();
-        return 2;
-      }
-    }
+    // The URL answered, but the precheck above can miss a slow server that
+    // already held it: a command that died on the taken port then leaves that
+    // server to be measured. The run refuses once its own command has ended.
+    const refuseIfServerEnded = async () => {
+      const ended = server && !interrupted ? server.ended() : undefined;
+      if (ended === undefined) return false;
+      console.error(
+        `design-verify: ${config.url} answered, but after the answer the server command this run started ` +
+          `was found ended (${ended}): nothing this run started serves ${config.url} now, so it is not measured. ` +
+          `Run again, or pass --url with a free port`,
+      );
+      await printServerOutput();
+      return true;
+    };
+    // Its exit can arrive just after the answer, so the check is made once
+    // more after a short pause, and again right before the browser attaches.
+    if (server && server.ended() === undefined) await new Promise((r) => setTimeout(r, SERVER_EXIT_RECHECK_MS));
+    if (await refuseIfServerEnded()) return 2;
 
     let endpoint = config.cdpUrl;
     if (!endpoint) {
@@ -272,6 +275,7 @@ export async function main(argv = process.argv.slice(2)) {
       cleanups.push(chrome.stop);
       endpoint = chrome.endpoint;
     }
+    if (await refuseIfServerEnded()) return 2;
     const session = new CdpSession(await newTarget(endpoint));
     cleanups.push(() => session.close());
     await session.connect();
