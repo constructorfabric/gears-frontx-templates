@@ -1,3 +1,5 @@
+import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
+
 /*
  * The render options and data shapes of the catalog widget types this package
  * draws, as the widget catalog FEATURE declares them. The widget type and data
@@ -84,6 +86,11 @@ export interface GridColumn {
   /** Width in pixels; the table is at least the sum of the widths (a floor for a column without one) and scrolls sideways in a narrower cell. */
   width?: number;
   format?: { notation?: 'standard' | 'compact' };
+  /**
+   * The value format of this column's numbers (a text or badge cell's number, a sparkline's text alternative); without
+   * it, the widget's `value_format`. A progress column shows a percent and takes none.
+   */
+  value_format?: ValueFormat;
   align?: 'start' | 'end' | 'center';
   sortable?: boolean;
   /** `truncate` keeps one line per cell; the full text stays in the cell's title. */

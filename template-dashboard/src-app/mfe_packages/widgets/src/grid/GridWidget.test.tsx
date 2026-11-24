@@ -467,5 +467,51 @@ describe('GridWidget', () => {
       expect(warn).toHaveBeenCalledWith(`[widget] a link is shown as text: ${kind}`);
     });
   });
-});
 
+  describe('a format per column', () => {
+    // A share of each team next to plain counts: the share column formats as a percent, the others take the widget's format.
+    const COLUMNS: GridRender = {
+      columns: [
+        { key: 'team', title: 'Team' },
+        { key: 'runs', title: 'Runs', align: 'end' },
+        { key: 'share', title: 'Share', align: 'end', value_format: { value_type: 'percent', decimals: 1 } },
+      ],
+    };
+    const ROWS: GridData = { rows: [['Web', 1200, 0.5], ['Data', 800, 0.0875], ['Mobile', 400, 0.125]] };
+    // The host language may put a no-break space between a number and its unit; it reads as a space here.
+    const cellsOf = (column: number) => bodyRows().map((row) => within(row).getAllByRole('cell')[column].textContent?.replace(/\s/g, ' '));
+
+    it('formats a column by its own value_format and the others by the widget value_format', async () => {
+      render(<GridWidget payload={{ render: COLUMNS, data: ROWS, value_format: { value_type: 'number', unit_label: 'runs' } }} />);
+      await screen.findByText('Web');
+      expect(cellsOf(1)).toEqual(['1,200 runs', '800 runs', '400 runs']);
+      expect(cellsOf(2)).toEqual(['50.0%', '8.8%', '12.5%']);
+    });
+
+    it('formats every column by the widget value_format when no column has its own', async () => {
+      render(<GridWidget payload={{ render: { columns: COLUMNS.columns.map(({ value_format: _, ...column }) => column) }, data: ROWS, value_format: { value_type: 'percent' } }} />);
+      await screen.findByText('Web');
+      expect(cellsOf(1)).toEqual(['120,000%', '80,000%', '40,000%']);
+      expect(cellsOf(2)).toEqual(['50%', '8.75%', '12.5%']);
+    });
+
+    it('sorts a percent column by its numbers, not by the text it shows', async () => {
+      const user = userEvent.setup();
+      render(<GridWidget payload={{ render: COLUMNS, data: ROWS }} />);
+      await screen.findByText('Web');
+      await user.click(screen.getByRole('button', { name: "Change sorting of 'Share' column" }));
+      // Descending first; as text, 8.8% would come before 50.0% and 12.5%.
+      await vi.waitFor(() => expect(cellsOf(2)).toEqual(['50.0%', '12.5%', '8.8%']));
+      await user.click(screen.getAllByRole('button', { name: "Change sorting of 'Share' column" })[0]);
+      await vi.waitFor(() => expect(cellsOf(2)).toEqual(['8.8%', '12.5%', '50.0%']));
+    });
+
+    it('searches a column by the text its own format shows', async () => {
+      const user = userEvent.setup();
+      render(<GridWidget payload={{ render: { ...COLUMNS, search: true }, data: ROWS }} />);
+      await screen.findByText('Web');
+      await user.type(screen.getByRole('searchbox'), '12.5%');
+      await vi.waitFor(() => expect(cellsOf(0)).toEqual(['Mobile']));
+    });
+  });
+});

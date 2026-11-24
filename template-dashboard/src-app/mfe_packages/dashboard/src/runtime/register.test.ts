@@ -188,6 +188,24 @@ describe('registration order under reference lookup', () => {
     expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/value_format\/value_type/);
   });
 
+  it('accepts a grid column with a value_format of its own, and fails one whose value_format breaks the value_format type', () => {
+    const type = shipped.find((id) => id.endsWith('.grid.v1~'))!;
+    const grid = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const columns = grid.render.columns as Record<string, unknown>[];
+    const withColumnFormat = (uuid: string, valueFormat: unknown) => ({
+      ...grid,
+      id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`,
+      render: { ...grid.render, columns: [{ ...columns[0], value_format: valueFormat }, ...columns.slice(1)] },
+    });
+    const { types } = loaded();
+    const result = registerDashboard(types, dashboardOf([
+      { size: 'small', widget: withColumnFormat('20', { value_type: 'percent', decimals: 1 }) },
+      { size: 'small', widget: withColumnFormat('21', { value_type: 'duration' }) },
+    ]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(1, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/render\/columns\/0/);
+  });
+
   it('accepts a metric_card render with better neutral, and fails one with a direction outside the catalog values', () => {
     const type = shipped.find((id) => id.endsWith('.metric_card.v1~'))!;
     const metric = demoWidgets.find((widget) => widget.id.startsWith(type))!;
