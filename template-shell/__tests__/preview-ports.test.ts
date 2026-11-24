@@ -268,30 +268,51 @@ describe('dev:all Step 0 port checks', () => {
     expect(run.stdout).not.toContain('Building MFE packages');
   });
 
-  // A moved run reaches the build and the generator. Both are stubs here: the
-  // package's local `vite` exits 0 at once (npm runs offline, so nothing is
-  // fetched), and the generator script prints its arguments and exits 9, so
-  // the run stops there and starts no server.
-  it('keeps the host port of the Vite config clear, and tells the generator only of packages with an mfe.json', async () => {
+  // A moved run goes all the way to the servers, every one of them a stub: the
+  // packages' local `vite` (build and preview) and the host's `vite`, first on
+  // the fixture's PATH, exit 0 at once (npm runs offline, so nothing is
+  // fetched), and the generator script prints its arguments and exits 0. The
+  // first server to exit stops the others, so the run ends by itself.
+  it('starts each moved preview on its moved port, prints the host port of the Vite config, and tells the generator only of packages with an mfe.json', async () => {
     const ordersPort = await holdPort();
     const loosePort = await holdPort();
     const hostPort = await holdPort();
+    const freePort = await holdPort();
+    await release(holders.pop()!);
     await release(holders.pop()!);
     previewPackage('orders-mfe', ordersPort);
     previewPackage('loose-mfe', loosePort, { mfeJson: false });
+    previewPackage('free-mfe', freePort);
     writeFileSync(join(project, 'vite.config.mjs'), `export default { server: { port: ${hostPort} } };\n`);
-    writeFileSync(join(project, 'gen.mjs'), "console.log('GENERATOR ARGS: ' + process.argv.slice(2).join(' ')); process.exit(9);\n");
+    writeFileSync(join(project, 'gen.mjs'), "console.log('GENERATOR ARGS: ' + process.argv.slice(2).join(' '));\n");
+    mkdirSync(join(project, 'bin'));
+    writeFileSync(join(project, 'bin', 'vite'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
 
     const run = runDevAll(
-      { FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1', npm_config_offline: 'true' },
+      {
+        FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1',
+        npm_config_offline: 'true',
+        PATH: `${join(project, 'bin')}:${process.env.PATH ?? ''}`,
+      },
       { 'generate:mfe-manifests': 'node gen.mjs' },
     );
 
+    expect(run.error).toBeUndefined();
     expect(run.stdout).toContain(`The host keeps port ${hostPort}.`);
-    expect(run.stdout).toMatch(new RegExp(`loose-mfe: port ${loosePort} -> \\d+`));
-    expect(run.stdout).toMatch(/GENERATOR ARGS: --preview-port orders-mfe=\d+$/m);
-    expect(run.stderr).toContain('Manifest generation failed with exit code 9');
-    expect(run.status).toBe(1);
+    const movedLoose = new RegExp(`loose-mfe: port ${loosePort} -> (\\d+)`).exec(run.stdout)?.[1];
+    const movedOrders = new RegExp(`orders-mfe: port ${ordersPort} -> (\\d+)`).exec(run.stdout)?.[1];
+    expect(movedLoose).toBeDefined();
+    expect(movedOrders).toBeDefined();
+    expect(run.stdout).toMatch(new RegExp(`GENERATOR ARGS: --preview-port orders-mfe=${movedOrders}$`, 'm'));
+    const listing = run.stdout.slice(run.stdout.indexOf('Running concurrently:'));
+    expect(listing).toMatch(/\[0\] vite\n/);
+    expect(listing).toContain(
+      `npm run preview -- --port ${movedLoose} --strictPort (in src-app/mfe_packages/loose-mfe)`,
+    );
+    expect(listing).toContain(
+      `npm run preview -- --port ${movedOrders} --strictPort (in src-app/mfe_packages/orders-mfe)`,
+    );
+    expect(listing).toContain('npm run preview -- --strictPort (in src-app/mfe_packages/free-mfe)');
   });
 
   it('stops before building when FRONTX_VERIFY_HOST_PORT is not a port, naming the variable and the value', async () => {
