@@ -433,6 +433,21 @@ describe('Dashboard on the real registry', () => {
     expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
   });
 
+  it('keeps the overlay container another Dashboard on the root still shows when one unmounts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const [oneHost, otherHost] = [0, 1].map(() => document.body.appendChild(document.createElement('div')));
+    onTestFinished(() => [oneHost, otherHost].forEach((element) => element.remove()));
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    const property = () => root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID);
+    const one = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={oneHost} />);
+    const other = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={otherHost} />);
+    expect(property()).toBe(otherHost);
+    one.unmount();
+    expect(property()).toBe(otherHost);
+    other.unmount();
+    expect(property()).toBeNull();
+  });
+
   it('renders on a server without throwing on the refresh version it reads', () => {
     const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
     expect(() => renderToString(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" />)).not.toThrow();

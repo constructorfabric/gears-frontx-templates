@@ -359,6 +359,11 @@ export class DashboardRoot {
     }
   }
 
+  /** Publishes null in place of `element` while it is still the element published: one another view published since stays. */
+  withdrawOverlayContainer(element: HTMLElement | null): void {
+    if ((this.published.overlays ?? null) === element) this.publishOverlayContainer(null);
+  }
+
   /**
    * Publishes the theme or the language. The host can pass anything; a value the property type rejects keeps the last
    * one of that property, never stops the other one and never breaks the render.

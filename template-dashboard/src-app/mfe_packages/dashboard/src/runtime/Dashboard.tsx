@@ -49,11 +49,12 @@ export interface DashboardProps {
 export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
   // The values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
-  // On unmount the root keeps no element of a page the host may remove. A changed container is published by the next
-  // effect of the same commit, and a widget's own state settles on that last value.
+  // On unmount the root keeps no element of a page the host may remove, unless another view on the root published its
+  // own since. A changed container is published by the next effect of the same commit, and a widget's own state settles
+  // on that last value.
   useLayoutEffect(() => {
     root.publishOverlayContainer(overlayContainer ?? null);
-    return () => root.publishOverlayContainer(null);
+    return () => root.withdrawOverlayContainer(overlayContainer ?? null);
   }, [root, overlayContainer]);
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
   const [container, setContainer] = useState<HTMLElement | null>(null);
