@@ -415,6 +415,13 @@ export function withoutBlocks(text, open, close) {
 
 /** The most attributes one tag of a logo may carry; a tag with more is refused, not read. */
 export const SVG_ATTR_CAP = 100;
+/**
+ * The most <use> elements one cleaned SVG may hold. The shipped templates and
+ * the drawn brand mark hold a few; each <use> a browser expands into its
+ * target's subtree, so groups of uses that draw groups of uses grow past any
+ * size while the source itself stays small.
+ */
+export const SVG_USE_CAP = 16;
 const isWs = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 const isNameStart = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 const isNameChar = (c) => isNameStart(c) || (c >= '0' && c <= '9') || c === '_' || c === ':' || c === '-';
@@ -568,7 +575,9 @@ function writeSvg(out) {
 /**
  * Cleans an SVG (markup or JSX) to the elements and attributes the drawing
  * may inline. Returns { svg, removed } or { error }. Linear in the length of
- * the source: each tag is read once (readSvgTag).
+ * the source: each tag is read once (readSvgTag). An SVG holding more than
+ * SVG_USE_CAP <use> elements is refused: each one a browser expands into its
+ * target's subtree, and groups that draw groups grow past any size.
  */
 export function sanitizeSvg(source) {
   const text = withoutBlocks(withoutBlocks(String(source), '<!--', '-->'), '/*', '*/');
@@ -579,6 +588,7 @@ export function sanitizeSvg(source) {
   const open = [];
   let skip = 0;
   let shapes = 0;
+  let uses = 0;
   let at = start;
   for (;;) {
     const tag = readSvgTag(text, at);
@@ -636,6 +646,10 @@ export function sanitizeSvg(source) {
     }
     // A use is counted below, once the ids the logo defines are known.
     if (SVG_SHAPES.has(name) && name !== 'use') shapes += 1;
+    if (name === 'use') {
+      uses += 1;
+      if (uses > SVG_USE_CAP) return { error: `the SVG holds more than ${SVG_USE_CAP} <use> elements` };
+    }
     out.push({ tag: outTag, attrs, end: selfClose ? '/>' : '>' });
     if (!selfClose) open.push({ name: outTag, skipped: false });
     if (selfClose && !open.length) break;

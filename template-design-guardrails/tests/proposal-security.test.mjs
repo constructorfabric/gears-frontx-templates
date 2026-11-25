@@ -299,6 +299,19 @@ describe('survey-app.mjs embeds a logo only from inside the project', { timeout:
     expect(survey.sanitizeSvg(source)).toEqual({ error: 'the SVG draws no shape' });
   });
 
+  it('refuses an SVG with more uses than the cap holds, however small its source, and keeps a few uses', () => {
+    // Each level is a group the level above draws 10 times: a browser expands level 3 into a thousand elements
+    // and 10 levels into ten billion, while the source itself stays under the byte cap.
+    const nested = (levels) => {
+      let inner = '<g id="g0"><path d="M0 0h1v1z"/></g>';
+      for (let l = 1; l <= levels; l += 1) inner = `${inner}<g id="g${l}">${Array.from({ length: 10 }, () => `<use href="#g${l - 1}"/>`).join('')}</g>`;
+      return `<svg viewBox="0 0 1 1">${inner}</svg>`;
+    };
+    expect(survey.sanitizeSvg(nested(3)).error).toBe(`the SVG holds more than ${survey.SVG_USE_CAP} <use> elements`);
+    const few = '<svg viewBox="0 0 1 1"><defs><g id="g"><path d="M0 0h1v1z"/></g></defs><use href="#g"/><use href="#g"/></svg>';
+    expect(survey.sanitizeSvg(few).svg).toBe(few.replace('viewBox="0 0 1 1">', 'viewBox="0 0 1 1" aria-hidden="true">'));
+  });
+
   // The path is a shape of its own; the use row proves the use of a group or symbol that holds one is not refused.
   it.each([
     ['a group holding a path', '<svg viewBox="0 0 1 1"><defs><g id="g"><path d="M0 0h1v1z"/></g></defs><use href="#g"/></svg>'],
