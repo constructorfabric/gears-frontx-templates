@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Ady4vXVfjuiBTokABgwAEUQkUJqe2f8rBiI8QYFRRBo=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-szqzYFvKRD1WNfC1COdVPeaUs0v4phxROgenBlNzq34=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proposal: {{PAGE_TITLE}}</title>
 <style id="frame">
@@ -825,8 +825,10 @@ dialog button:hover { background: var(--raise); }
     }
   }
   function hot(figure, n, on) {
-    const list = document.querySelector(`.notes[data-for="${figure.id}"]`);
-    for (const el of [...figure.querySelectorAll(`[data-note="${n}"], .pin[data-n="${n}"], .lead[data-n="${n}"]`), ...(list ? list.querySelectorAll(`li[data-n="${n}"]`) : [])]) el.classList.toggle('is-hot', on);
+    const id = CSS.escape(figure.id);
+    const k = CSS.escape(n);
+    const list = document.querySelector(`.notes[data-for="${id}"]`);
+    for (const el of [...figure.querySelectorAll(`[data-note="${k}"], .pin[data-n="${k}"], .lead[data-n="${k}"]`), ...(list ? list.querySelectorAll(`li[data-n="${k}"]`) : [])]) el.classList.toggle('is-hot', on);
   }
   // A thumbnail is a scaled copy of the first app window of a full drawing,
   // so the map and the overview cannot drift from the sections.

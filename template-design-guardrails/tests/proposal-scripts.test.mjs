@@ -1,5 +1,5 @@
 /**
- * The two scripts of the frontx-design-proposal skill:
+ * The two scripts of the frontx-design-proposal skill and the hover of its page:
  * - survey-app.mjs against a small app with Home and Docs written into a temp
  *   folder (tests/proposal-fixture.mjs), whose survey is the worked example's
  *   survey.json;
@@ -7,8 +7,11 @@
  *   (tests/proposal-fixture.mjs): the screens it shows, its chrome and its
  *   own page values over the kit's;
  * - check-proposal.mjs on the worked example (r1 replaced, r2 awaiting, the
- *   r2 record selected) and on broken copies, one per finding kind; the
- *   page parts have their own file, proposal-parts.test.mjs.
+ *   r2 record selected) and on broken copies, one per finding kind, a pin
+ *   number that is not digits included; the page parts have their own file,
+ *   proposal-parts.test.mjs;
+ * - the hover of the skeleton's frame script on a pin numbered 1": its
+ *   selectors escape the number, so the pin and its note light up.
  */
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -168,6 +171,12 @@ describe('check-proposal.mjs on broken copies', () => {
   ])('reports %s: %s', (kind, message, html) => {
     const found = kinds(html);
     expect(found.filter((f) => f.startsWith(`[${kind}]`) && f.includes(message)), found.join('\n')).toHaveLength(1);
+  });
+
+  it('reports a pin and its note numbered 1&quot; though they match: the hover finds a note by a number of digits only', () => {
+    const html = swap(' data-note="1">Tasks <span class="d-new">', ' data-note="1&quot;">Tasks <span class="d-new">')
+      .replaceOrFail('<ol class="notes" data-for="draw-place">\n<li data-n="1">', '<ol class="notes" data-for="draw-place">\n<li data-n="1&quot;">');
+    expect(kinds(html)).toEqual(['[pins] <span data-note="1\\"">: a pin or note number is digits only', '[pins] <li data-n="1\\"">: a pin or note number is digits only']);
   });
 
   it('reports a recommendation and option fields on a one-design page', () => {
@@ -338,5 +347,49 @@ describe('the record lookup in references/build.md', () => {
   it('names another skill\'s steps by what they do, never by a number that can go stale', () => {
     const docs = ['SKILL.md', ...readdirSync(path.join(skill, 'references')).filter((f) => f.endsWith('.md')).map((f) => `references/${f}`)];
     for (const doc of docs) expect(readFileSync(path.join(skill, doc), 'utf8'), doc).not.toMatch(/add-mfe-package[^.]*\bsteps? \d/i);
+  });
+});
+
+describe('the hover of the page script (frame-js of templates/proposal.html)', () => {
+  const js = /<script id="frame-js">([\s\S]*?)<\/script>/.exec(readFileSync(path.join(skill, 'templates/proposal.html'), 'utf8'))[1];
+  // The pattern follows the skeleton's layout (two-space indent, the function closed by "  }").
+  const src = /\n {2}function hot\(figure, n, on\) \{[\s\S]*?\n {2}\}\n/.exec(js)?.[0];
+  /** CSS.escape as CSSOM defines it. */
+  const cssEscape = (s) => [...String(s)].map((ch, i, all) => {
+    const c = ch.codePointAt(0);
+    if (c === 0) return '\ufffd';
+    if ((c >= 1 && c <= 0x1f) || c === 0x7f || (i === 0 && /\d/.test(ch)) || (i === 1 && /\d/.test(ch) && all[0] === '-')) return `\\${c.toString(16)} `;
+    if (i === 0 && ch === '-' && all.length === 1) return '\\-';
+    return c >= 0x80 || /[-\w]/.test(ch) ? ch : `\\${ch}`;
+  }).join('');
+  /**
+   * querySelectorAll of a stand-in: a list of [name="value"] parts, each with an optional tag or .class before it and
+   * the value in CSS string escapes. Anything else throws the SyntaxError a browser throws on a selector it cannot read.
+   */
+  const select = (els, selector) => {
+    const parts = [];
+    const part = /\s*(?:([a-z]+)|\.([\w-]+))?\[([\w-]+)="((?:\\[\s\S]|[^"\\])*)"\]\s*(?:,|$)/y;
+    while (part.lastIndex < selector.length) {
+      const m = part.exec(selector);
+      if (!m) throw new SyntaxError(`'${selector}' is not a valid selector`);
+      parts.push({ tag: m[1], cls: m[2], name: m[3], value: m[4].replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?|\\([\s\S])/g, (_, hex, ch) => (hex ? String.fromCodePoint(parseInt(hex, 16)) : ch)) });
+    }
+    return els.filter((el) => parts.some((p) => (!p.tag || el.tag === p.tag) && (!p.cls || el.cls === p.cls) && el.attrs[p.name] === p.value));
+  };
+  const el = (tag, cls, attrs) => {
+    const node = { tag, cls, attrs, hot: false };
+    node.classList = { toggle: (name, on) => { if (name === 'is-hot') node.hot = on; } };
+    return node;
+  };
+
+  it('lights a pin numbered 1" and its note, and nothing else, without a selector error', () => {
+    if (!src) throw new Error('the frame script of templates/proposal.html has no function hot');
+    const [pin, other, note, otherNote] = [el('span', 'd-btn', { 'data-note': '1"' }), el('span', 'd-btn', { 'data-note': '2' }), el('li', undefined, { 'data-n': '1"' }), el('li', undefined, { 'data-n': '2' })];
+    const list = { ...el('ol', 'notes', { 'data-for': 'draw-place' }), querySelectorAll: (s) => select([note, otherNote], s) };
+    const figure = { id: 'draw-place', querySelectorAll: (s) => select([pin, other], s) };
+    const doc = { querySelector: (s) => select([list], s)[0] ?? null };
+    const hot = new Function('document', 'CSS', `${src}\nreturn hot;`)(doc, { escape: cssEscape });
+    hot(figure, '1"', true);
+    expect([pin.hot, note.hot, other.hot, otherNote.hot]).toEqual([true, true, false, false]);
   });
 });

@@ -111,7 +111,8 @@
  *   that holds its thumbnail and its name, the link's target exists, and the
  *   thumbnail's drawing exists;
  * - pins: every data-note in a drawing has a note, every note a pin, numbers
- *   unique per drawing, every notes list belongs to a drawing;
+ *   unique per drawing and digits only (data-note and data-n in a drawing, a
+ *   notes list or a pin reference), every notes list belongs to a drawing;
  * - drawing: a class that is not in templates/draw/draw.css, a style that
  *   sets anything but --cols, --w or --h, a raw colour, an img, svg, canvas,
  *   p, h1-h6 or style element inside a drawing, a text run of more than 16
@@ -1104,6 +1105,19 @@ export function checkPage(html, { survey = null } = {}) {
   const drawingIds = new Set(drawings.map((d) => d.attrs.id));
   const drawingById = firstBy(drawings, (d) => d.attrs.id);
   const noteLists = find(main, (n) => n.tag === 'ol' && hasClass(n, 'notes'));
+  // The hover script finds a pin, its note and its references by this number: the numbers it reads are in a drawing,
+  // a notes list and a pin reference (a.pinref).
+  const numbered = new Set([
+    ...drawings.flatMap((d) => find(d, (x) => x.attrs['data-note'] !== undefined || x.attrs['data-n'] !== undefined)),
+    ...noteLists.flatMap((l) => find(l, (x) => x.tag === 'li' && x.attrs['data-n'] !== undefined)),
+    ...find(main, (x) => x.tag === 'a' && hasClass(x, 'pinref') && x.attrs['data-n'] !== undefined),
+  ]);
+  for (const n of numbered) {
+    for (const key of ['data-note', 'data-n']) {
+      const v = n.attrs[key];
+      if (v !== undefined && !/^\d+$/.test(v)) add('pins', `<${n.tag} ${key}=${JSON.stringify(v)}>: a pin or note number is digits only`);
+    }
+  }
   const notesFor = firstBy(noteLists, (n) => n.attrs['data-for']);
   for (const [id, count] of countBy(noteLists, (n) => n.attrs['data-for'])) {
     if (id !== undefined && count > 1) add('pins', `${count === 2 ? 'two' : count} notes lists for #${id}; a drawing has one`);
