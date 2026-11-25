@@ -372,7 +372,7 @@ describe('the rules a stylesheet yields', () => {
   it('reads a min-width @media with a MAX-WIDTH in upper case as media other: no rule from that width', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@media (min-width: 600px) and (MAX-WIDTH: 900px) { .kpi { font-size: 33px; } }\n${t}` }));
     expect(result.skipped).toEqual([]);
-    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
+    expect([result.look.stat, result.lookFrom.stat]).toEqual(['25px', 'kit --text-kpi-size (the app sets none)']);
   });
 
   // A quoted string of an at-statement also ends at an unescaped newline, as a bad string: the file reads on from
@@ -407,7 +407,7 @@ describe('the rules a stylesheet yields', () => {
     ['an unclosed @media', (t) => `${t}\n@media (min-width: 600px) { .kpi { font-size: 33px; }`, UNCLOSED_BLOCK],
   ])('does not read the rules of %s at the end of the file, and lists the file under skipped', (_, edit, why) => {
     const result = survey.survey(topApp({ [HOME_CSS]: edit }));
-    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
+    expect([result.look.stat, result.lookFrom.stat]).toEqual(['25px', 'kit --text-kpi-size (the app sets none)']);
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
     expect(result.skipped.filter((s) => s.file === HOME_CSS)).toEqual([{ file: HOME_CSS, why: expect.stringMatching(why) }]);
     expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
@@ -461,7 +461,7 @@ describe('the rules a stylesheet yields', () => {
   it('does not read a rule inside a @layer inside a min-width @media as a rule from that width', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@media (min-width: 600px) { @layer a { .kpi { font-size: 33px; } } }\n${t}` }));
     expect(result.skipped).toEqual([]);
-    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
+    expect([result.look.stat, result.lookFrom.stat]).toEqual(['25px', 'kit --text-kpi-size (the app sets none)']);
   });
 
   // A frame opened inside a frame with media 'other' gets media 'other' too, whatever its own selector says.
@@ -472,7 +472,7 @@ describe('the rules a stylesheet yields', () => {
   ])('does not read a min-width @media inside %s as a rule from that width', (_, block) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${t}\n${block}` }));
     expect(result.skipped).toEqual([]);
-    expect(result.lookFrom.stat).not.toContain('.kpi (from 700 px)');
+    expect([result.look.stat, result.lookFrom.stat]).toEqual(['25px', 'kit --text-kpi-size (the app sets none)']);
   });
 
   it.each([

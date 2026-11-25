@@ -169,6 +169,12 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
     writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), "export const $tokens = { '--primary': '#abcdef' };\n");
     expect(accentOf(themeWith(root, '...$tokens', "import { $tokens } from './pal';\n"))).toEqual(['#abcdef', 'src-app/app/themes/pal.ts --primary']);
   });
+
+  it('leaves the colour keys unresolved for a spread of a spread: the survey follows one level', () => {
+    const result = survey.survey(themeWith(realApp(), '...outer', "const inner = { '--primary': '#aa0000' };\nconst outer = { ...inner, '--card': '#ffffff' };\n"));
+    expect(COLOUR_ROLES.map((k) => result.look[k])).toEqual(COLOUR_ROLES.map(() => survey.UNRESOLVED));
+    expect(result.lookFrom.accent).toBe('src-app/app/themes/default.ts spreads outer from src-app/app/themes/default.ts, which spreads another object: the survey follows one level, so the colours of the theme are not known');
+  });
 });
 
 const BLOCKED = 'src-app/app/themes/default.ts spreads brand from @acme/palette, which the survey does not read: the colours of the theme are not known';
@@ -282,22 +288,20 @@ describe('survey-app.mjs reads theme spreads in time linear in their number', { 
 });
 
 describe('survey-app.mjs on the stock shell', () => {
-  it('reads the unchanged stock shell and scaffold: the title from .title, the background unresolved, the router address, the menu\'s logo colour', () => {
+  // Each fact of the unchanged stock shell has one owner test: the title and the background here, then the logo colour,
+  // the nav and the router address, each in its own test below.
+  it('reads the unchanged stock shell and scaffold: the title from .title, the background unresolved', () => {
     const result = survey.survey(realApp());
-    // A1: the scaffold's .title is the title; its .screen sets no background, so the background is unresolved, naming the file.
+    // The scaffold's .title is the title; its .screen sets no background, so the background is unresolved, naming the file.
     expect([result.lookFrom.h1, result.lookFrom['h1-weight'], result.lookFrom.lead]).toEqual([`${SCREEN_CSS} .title font-size`, `${SCREEN_CSS} .title font-weight`, `${SCREEN_CSS} .description font-size`]);
     expect([result.look.bg, result.unresolved]).toEqual([survey.UNRESOLVED, ['look.bg']]);
     expect(result.lookFrom.bg).toBe(`no page background (.root or .screen background-color or background) in ${SCREEN_CSS}`);
-    // A2: the menu builds no link, so the address is the one the shell's router writes.
-    expect([result.nav, result.links.screens.map((x) => x.link)]).toEqual(['side', ['/?screen=blank-home']]);
-    // A5: the SVG logo takes --left-menu-foreground from the menu's own CSS module.
-    expect([result.look['mark-color'], result.look['nav-text']]).toEqual(['color-mix(in oklab, #f1f5f9 70%, #0f172a)', 'color-mix(in oklab, #f1f5f9 70%, #0f172a)']);
-    expect(result.lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color');
   });
   it('colours the logo from the menu\'s own CSS module, --left-menu-foreground, not the accent', () => {
     const result = survey.survey(realApp());
     expect(result.brandMark.kind).toBe('svg');
-    expect(result.look['mark-color']).toBe('color-mix(in oklab, #f1f5f9 70%, #0f172a)');
+    // The SVG logo takes --left-menu-foreground from the menu's own CSS module: the colour of the menu's text.
+    expect([result.look['mark-color'], result.look['nav-text']]).toEqual(['color-mix(in oklab, #f1f5f9 70%, #0f172a)', 'color-mix(in oklab, #f1f5f9 70%, #0f172a)']);
     expect(result.lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color');
   });
   it('reads nav from <Menu />, not from the right-hand <Sidebar />: without the menu the header is the nav', () => {

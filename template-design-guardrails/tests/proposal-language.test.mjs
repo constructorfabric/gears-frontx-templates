@@ -180,16 +180,8 @@ describe('a page in a language written without spaces', () => {
     const page = japanese();
     expect(page).toContain('<h1 class="topbar-title">提案：アカウント設定</h1>');
     expect(page).toMatch(/<p class="takeaway">[^<]*。<\/p>/);
-    expect(findings(page)).toEqual([]);
-  });
-
-  it.each([
-    ['a takeaway ending in 。', 'one sentence'],
-    ['the title 提案：…', 'the title must read'],
-    ['a data-say of one Japanese sentence', 'a data-say of fewer than five words'],
-    ['a .why of one Japanese sentence', 'gives no reason for its suggested answer'],
-  ])('no longer reports %s', (_, message) => {
-    expect(findings(japanese()).filter((f) => f.includes(message))).toEqual([]);
+    expect(findings(page), 'no finding: not "one sentence" for a takeaway ending in 。, not "the title must read" for 提案：…, '
+      + 'not "a data-say of fewer than five words" or "gives no reason for its suggested answer" for one Japanese sentence').toEqual([]);
   });
 
   it('takes the full-width colon with a space after it too', () => {
