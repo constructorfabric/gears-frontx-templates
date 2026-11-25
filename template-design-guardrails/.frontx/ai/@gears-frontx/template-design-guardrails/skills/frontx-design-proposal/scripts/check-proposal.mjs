@@ -41,7 +41,7 @@
  *   these on every element, whatever its namespace;
  * - frame: a raw NUL character (U+0000) anywhere in the page, reported first,
  *   as a browser rewrites it by where it stands; the frame, draw, frame-js or answer-js block is missing or differs from
- *   templates/proposal.html (the two scripts byte for byte, since the
+ *   templates/proposal.html in its attributes (the exact set and values) or its text (the two scripts byte for byte, since the
  *   Content-Security-Policy allows them by their hashes), the
  *   Content-Security-Policy meta is missing, doubled, outside the head,
  *   differs from the skeleton's or comes after anything but the doctype,
@@ -1009,6 +1009,13 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
     const theirs = block(tpl, tag, id) ?? '';
     if (mine === null) add('frame', `the ${id} block is missing`);
     else if (tag === 'script' ? mine !== theirs : norm(mine) !== norm(theirs)) add('frame', `the ${id} block differs from templates/proposal.html; do not restyle the frame or the drawing kit${tag === 'script' ? ', and keep its script byte for byte: the Content-Security-Policy allows it by its hash' : ''}`);
+    // The attributes too, the exact set and values: media="print" or type="text/plain" keeps a browser from using
+    // a block whose text is the skeleton's.
+    if (mine !== null) {
+      const attrsOf = (r) => (find(r, (n) => n.tag === tag && n.attrs.id === id)[0]?.list ?? []).map(([k, v]) => `${k}="${v}"`).sort().join(' ');
+      const [have, want] = [attrsOf(root), attrsOf(tpl)];
+      if (have !== want) add('frame', `the ${id} block has the attributes ${have}; templates/proposal.html gives it ${want} and nothing else, as an attribute changes how a browser reads the block`);
+    }
   }
   const isCsp = (n) => n.tag === 'meta' && (n.attrs['http-equiv'] ?? '').toLowerCase() === 'content-security-policy';
   const csps = find(root, isCsp);
