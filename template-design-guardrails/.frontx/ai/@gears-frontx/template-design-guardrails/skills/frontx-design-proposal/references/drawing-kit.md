@@ -8,7 +8,7 @@ Every colour, size and spacing of a block comes from a `--d-*` property on `.d-a
 
 | Property | Read from (app first, kit last) | Used for |
 |---|---|---|
-| `--d-bg` | what the page shows, with the kind of its source (screen, shell, theme): the shown screen root's background, else the shell's page background behind the screen (`.screen` of `layout/Screen.module.css`, then `html`, `body` or `#root` of `globals.css`), else the active theme's `--background` | the page area |
+| `--d-bg` | what the page shows, with the kind of its source (screen, shell, theme or kit): the shown screen root's background, else the shell's page background behind the screen (`.screen` of `layout/Screen.module.css`, then `#root`, then `body`, then `html` of `globals.css`), else the active theme's `--background`, or the kit's when the theme sets none | the page area |
 | `--d-surface`, `--d-text`, `--d-muted`, `--d-subtle`, `--d-line` | `--card`, `--foreground`, `--muted-foreground`, `--muted`, `--border` | cards, text, secondary text, quiet fills, lines |
 | `--d-accent`, `--d-accent-text` | `--primary`, `--primary-foreground` | primary button, active tab, underline, bars |
 | `--d-ok`, `--d-warn`, `--d-danger`, `--d-info` and their `-soft` | the kit's status tokens | status badges and alerts |
