@@ -324,6 +324,27 @@ describe('survey-app.mjs on the stock shell', () => {
     const result = survey.survey(root);
     expect([result.look.bg, result.lookFrom.bg]).toEqual(['#101010', 'src-app/app/themes/default.ts --background (theme)']);
   });
+  const SHELL_BG = '  background-color: var(--background);\n';
+  it('takes the last of two shell rules for the same element, as CSS does', () => {
+    const root = edit(realApp(), 'src-app/app/layout/Screen.module.css', SHELL_BG, '');
+    const result = survey.survey(addCss(root, 'src-app/app/globals.css', 'body {background-color:#111111}\nbody {background-color:#eeeeee}'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#eeeeee', 'src-app/app/globals.css body background-color (shell)']);
+  });
+  it('shows the body behind a shell .screen whose background is transparent', () => {
+    const root = edit(realApp(), 'src-app/app/layout/Screen.module.css', SHELL_BG, '  background: transparent;\n');
+    const result = survey.survey(addCss(root, 'src-app/app/globals.css', 'body {background-color:#222222}'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#222222', 'src-app/app/globals.css body background-color (shell)']);
+  });
+  it('names where --background is found when neither the screen nor the shell paints: the kit, or the screen\'s own bridge', () => {
+    const kit = survey.survey(edit(realApp(), 'src-app/app/layout/Screen.module.css', SHELL_BG, ''));
+    expect([kit.look.bg, kit.lookFrom.bg]).toEqual(['#f1f5f9', 'kit theme.css --background (kit)']);
+    const bridged = survey.survey(edit(edit(realApp(), 'src-app/app/layout/Screen.module.css', SHELL_BG, ''), SCREEN_CSS, '.screen {\n', '.screen {\n  --background: #123456;\n'));
+    expect([bridged.look.bg, bridged.lookFrom.bg]).toEqual(['#123456', `${SCREEN_CSS} .screen --background (screen)`]);
+  });
+  it('leaves the logo colour unresolved, naming the rule, when the shell\'s .logo colour cannot be resolved', () => {
+    const result = survey.survey(edit(realApp(), 'src-app/app/components/ui/sidebar.module.css', /^/, '.logo { color: var(--nope); }\n'));
+    expect([result.look['mark-color'], result.lookFrom['mark-color']]).toEqual([survey.UNRESOLVED, 'src-app/app/components/ui/sidebar.module.css .logo color: a value the survey cannot resolve']);
+  });
   it('colours the logo from the menu\'s own CSS module, --left-menu-foreground, not the accent', () => {
     const result = survey.survey(realApp());
     expect(result.brandMark.kind).toBe('svg');

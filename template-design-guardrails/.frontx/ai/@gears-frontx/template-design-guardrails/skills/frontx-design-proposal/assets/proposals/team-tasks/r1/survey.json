@@ -170,7 +170,7 @@
     "tab-active": "#0f172a"
   },
   "lookFrom": {
-    "bg": "kit theme.css --background (theme)",
+    "bg": "kit theme.css --background (kit)",
     "surface": "kit theme.css --card",
     "text": "kit theme.css --foreground",
     "muted": "kit theme.css --muted-foreground",

@@ -186,9 +186,11 @@ const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.t
 const PAGE_ROOT = /\.(root|screen)(?![\w-])/;
 /**
  * The shell's own page background behind the screen, innermost first: the stock shell's layout/Screen.module.css
- * .screen (background-color: var(--background)) wraps every screen; the global CSS's html, body or #root is under it.
+ * .screen (background-color: var(--background)) wraps every screen; the global CSS's #root, body and html are under it,
+ * in that order.
  */
-const SHELL_PAGE = [['src-app/app/layout/Screen.module.css', PAGE_ROOT], ['src-app/app/globals.css', /(^|,)\s*(html|body|#root)\s*(?=,|$)/]];
+const globalElement = (name) => new RegExp(`(^|,)\\s*${name}\\s*(?=,|$)`);
+const SHELL_PAGE = [['src-app/app/layout/Screen.module.css', PAGE_ROOT], ...['#root', 'body', 'html'].map((name) => ['src-app/app/globals.css', globalElement(name)])];
 /** The roles the scaffold names: with the shown screens' CSS Modules read, no match leaves them unresolved, not the kit's. */
 const SCAFFOLD_ROLES = new Set(['h1', 'h1-phone', 'h1-weight', 'h1-track']);
 const COLUMN = [/\.column\b/, /\.container\b/, /\.content\b/, /\.page\b/];
@@ -1791,6 +1793,8 @@ function readLook(root, screens, chromeOf) {
   /** The reason a colour read from a rule is unresolved, after its source. */
   const because = (source, why) => (why ? `${source}: ${why}` : source);
   const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
+  /** The kind of where whereToken finds a name: the screen's own bridge, the theme's variables, else the kit. */
+  const tokenKind = (name) => (bridge.has(name) ? 'screen' : theme?.variables.has(name) ? 'theme' : 'kit');
   const { chrome, rules: shellRules, shellCss, brand, menuRules } = chromeOf(appLookup);
 
   const look = {};
@@ -1826,6 +1830,7 @@ function readLook(root, screens, chromeOf) {
     let source = null;
     let kitValue = null;
     let why = null;
+    let found = null;
     // A theme spread the survey cannot follow may set any colour: only a value the screens give without the theme stands.
     const colour = key !== 'font';
     for (const token of tokens) {
@@ -1833,25 +1838,34 @@ function readLook(root, screens, chromeOf) {
       kitValue = resolveIn(`var(${token})`, { bridged: false }).value;
       // A token the theme builds in code is unknown: the next token in the list does not stand for it.
       if (why) break;
-      if (value) { source = whereToken(token); break; }
+      if (value) { source = whereToken(token); found = token; break; }
     }
     if (key === 'bg') {
-      // What the page really shows, with the kind of its source: a shown screen's own background, else the shell's page
-      // background behind the screen, else the active theme's --background (the token loop above).
+      // What the page really shows, front to back, with the kind of its source: a shown screen's own background, else the
+      // shell's page background behind the screen (SHELL_PAGE), else the token loop above, named by where the token is
+      // found. In each layer the last rule of its file wins, as in CSS; a transparent background shows the layer behind.
       const paints = (r) => r.media === null && (r.decls.has('background-color') || r.decls.has('background'));
-      const page = pageRules.find((r) => paints(r) && PAGE_ROOT.test(r.selector));
-      const shell = page ? null : SHELL_PAGE.flatMap(([f, sel]) => (exists(path.join(root, f)) ? cssRules(path.join(root, f), f) : [])
-        .filter((r) => sel.test(r.selector))).find(paints);
-      const hit = page ?? shell;
-      if (hit) {
+      const lastOfFile = (rules) => rules.filter((r) => r.file === rules[0]?.file).at(-1);
+      const layers = [{ kind: 'screen', rules: pageRules.filter((r) => PAGE_ROOT.test(r.selector)) }, ...SHELL_PAGE.map(([f, sel]) => ({
+        kind: 'shell', rules: (exists(path.join(root, f)) ? cssRules(path.join(root, f), f) : []).filter((r) => sel.test(r.selector)),
+      }))];
+      let shown = false;
+      let blocked = false;
+      for (const layer of layers) {
+        const hit = lastOfFile(layer.rules.filter(paints));
+        if (!hit) continue;
         const prop = hit.decls.has('background-color') ? 'background-color' : 'background';
-        const at = `${hit.file} ${hit.selector} ${prop} (${page ? 'screen' : 'shell'})`;
+        const at = `${hit.file} ${hit.selector} ${prop} (${layer.kind})`;
         // The screen's own kit tokens reach its own background only; the shell's element is outside the screen.
-        const got = resolveIn(hit.decls.get(prop), { colour, bridged: Boolean(page) });
-        if (!got.value) { set(key, UNRESOLVED, because(at, got.why ?? 'a value the survey cannot resolve')); continue; }
-        if (shell && !shellCss.includes(shell.file)) shellCss.push(shell.file);
-        value = got.value; source = at; why = null;
-      } else if (source) source = `${source} (theme)`;
+        const got = resolveIn(hit.decls.get(prop), { colour, bridged: layer.kind === 'screen' });
+        if (!got.value) { set(key, UNRESOLVED, because(at, got.why ?? 'a value the survey cannot resolve')); blocked = true; break; }
+        if (/^(?:transparent|none)$/i.test(got.value)) continue;
+        if (layer.kind === 'shell' && !shellCss.includes(hit.file)) shellCss.push(hit.file);
+        value = got.value; source = at; why = null; shown = true;
+        break;
+      }
+      if (blocked) continue;
+      if (!shown && source) source = `${source} (${tokenKind(found)})`;
     }
     set(key, value ?? UNRESOLVED, why ?? source ?? 'none', kitValue);
   }
@@ -1981,7 +1995,7 @@ function readLook(root, screens, chromeOf) {
     const markRule = shellRules.find((r) => /\.(mark|logo)(?![\w-])/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'))
       ?? [/\.(mark|logo)(?![\w-])/, /\.(brand|header|headerRow)(?![\w-])/, /\.(sidebar|menu|nav)(?![\w-])/].map((p) => menuRules.find((r) => plain(r) && p.test(r.selector))).find(Boolean);
     const got = markRule ? resolveIn(markRule.decls.get('color'), { colour: true }) : { value: null, why: null };
-    if (got.value || got.why) set('mark-color', got.value ?? UNRESOLVED, because(`${markRule.file} ${markRule.selector} color`, got.why));
+    if (markRule) set('mark-color', got.value ?? UNRESOLVED, because(`${markRule.file} ${markRule.selector} color`, got.value ? null : got.why ?? 'a value the survey cannot resolve'));
     else set('mark-color', look.accent, 'the accent (the shell gives the mark no colour of its own)');
   }
   return {
