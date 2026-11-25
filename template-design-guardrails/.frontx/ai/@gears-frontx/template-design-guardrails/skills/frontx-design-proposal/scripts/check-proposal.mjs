@@ -302,8 +302,15 @@ const addressForm = (lt, gt) => {
 };
 const ADDRESS_FORM_HTML = addressForm('&lt;', '&gt;');
 const ADDRESS_FORM_TEXT = addressForm('<', '>');
-/** The text with each address written with a named part (addressForm) replaced by a space. */
-const dropAddresses = (text, form) => text.replace(form.address, (m) => (form.part.test(m) ? ' ' : m));
+/**
+ * The text with each address written with a named part (addressForm) replaced by a space. A ";" part whose name or
+ * value holds a TODO or REPLACE marker is no address part: the address ends before it and the rest stays text.
+ */
+const dropAddresses = (text, form) => text.replace(form.address, (m) => {
+  const marker = m.search(/;[^;]*\b(?:TODO|REPLACE)\b/);
+  const head = marker < 0 ? m : m.slice(0, marker);
+  return (form.part.test(head) ? ' ' : head) + m.slice(head.length);
+});
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'are', 'it', 'its', 'with', 'each', 'every', 'this', 'that', 'what', 'where', 'how', 'goes', 'go']);
 const ALLOWED_STYLE_PROPS = new Set(['--cols', '--w', '--h']);
 const FORBIDDEN_IN_DRAWING = new Set(['img', 'svg', 'canvas', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'style', 'script', 'iframe']);

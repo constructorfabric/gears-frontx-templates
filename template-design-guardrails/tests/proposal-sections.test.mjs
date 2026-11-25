@@ -129,6 +129,15 @@ describe('words, labels, ids, links and the glossary', () => {
     expect(text('The app\'s links carry one task at /?screen=tasks;route=&lt;id&gt;')).toEqual([]);
     expect(text('The app\'s links carry one task at /?screen=tasks;route=TSK-128;tab=open')).toEqual([]);
   });
+
+  it('takes no name=value part whose name or value is a TODO or REPLACE marker into the address, so the marker is found', () => {
+    const NOTE = 'The app\'s links carry the screen in the address (/?screen=docs)';
+    const text = (note) => findings(edit(docs, NOTE, note)).filter((f) => f.startsWith('[text]'));
+    expect(text('The app\'s links carry the screen in the address /?screen=&lt;route&gt;;TODO=x')).toEqual(['[text] template text "TODO" left in the page']);
+    expect(text('The app\'s links carry the screen in the address /?screen=&lt;route&gt;;REPLACE=&lt;id&gt;')).toEqual(['[text] template text "REPLACE" left in the page']);
+    expect(text('The app\'s links carry one task at /tasks/&lt;id&gt;;tab=TODO')).toEqual(['[text] template text "TODO" left in the page']);
+    expect(text('The app\'s links carry one task at /?screen=tasks;route=TSK-128;tab=open')).toEqual([]);
+  });
 });
 
 describe('the Decisions field of CHOICE.md', () => {
