@@ -1880,18 +1880,45 @@ function proseOf(node, skip = () => false) {
 const shownText = (raw) => decodeHtml(raw.replace(/&([a-zA-Z]{2,20});/g, (m, name) => (Object.hasOwn(ARROW_REFS, name) ? ARROW_REFS[name] : m)));
 /** Abbreviations whose period ends no sentence. */
 const ABBREVIATIONS = /\b(?:e\.g|i\.e|etc|vs|cf|approx|incl|Dr|Mr|Mrs|Ms|St|No)\.(?=\s)/g;
+/** The sentence ends of Chinese and Japanese text (。．｡！？) and the ellipsis "…". */
+const WIDE_END = '\u3002\uff0e\uff61\uff01\uff1f\u2026';
+/** The brackets and quotes that open a part an end mark inside does not break, and those that close it or follow an end. */
+const WIDE_OPEN = '\u300c\u300e\uff08(\uff3b\u3010';
+const WIDE_CLOSE = '\u300d\u300f\uff09)\uff3d\u3011"\'\u201d\u2019';
+const WIDE_ENDING = new RegExp(`[${WIDE_END}][${WIDE_CLOSE}]*$`);
 /**
- * One sentence: it ends with ".", "!" or "?", or their full-width forms "。",
- * "！" and "？", and no break stands inside it. A break is ".", "!" or "?"
- * before more text, whatever starts it (a capital, a lower-case word, a
- * number); a period after a common abbreviation is no break. A run of periods
- * (an ellipsis) is a break only before a capital: "counts... then" is one
- * sentence, "counts... Then" two. A full-width end before more text is a
- * break, with or without a space between, as such text puts none.
+ * Whether a wide end mark breaks the text in two, in one pass: an end mark outside every bracket or quote WIDE_OPEN
+ * opens, then the run of end marks and of the closing brackets and quotes after it, then more text, with or without a
+ * space between, as such text puts none. An ellipsis before a lower-case letter is no break, as "..." is not.
+ */
+const wideBreak = (t) => {
+  let depth = 0;
+  for (let i = 0; i < t.length; i += 1) {
+    const c = t[i];
+    if (WIDE_OPEN.includes(c)) depth += 1;
+    else if (WIDE_CLOSE.includes(c)) depth = Math.max(0, depth - 1);
+    else if (WIDE_END.includes(c) && depth === 0) {
+      let j = i + 1;
+      while (j < t.length && (WIDE_END.includes(t[j]) || WIDE_CLOSE.includes(t[j]))) j += 1;
+      while (j < t.length && /\s/.test(t[j])) j += 1;
+      if (j < t.length && !(c === '…' && /\p{Ll}/u.test(t[j]))) return true;
+      i = j - 1;
+    }
+  }
+  return false;
+};
+/**
+ * One sentence: it ends with ".", "!" or "?", or with a wide end (WIDE_END) and the closing brackets and quotes after
+ * it, and no break stands inside it. A break is ".", "!" or "?" before more text, whatever starts it (a capital, a
+ * lower-case word, a number); a period after a common abbreviation is no break. A run of periods (an ellipsis) is a
+ * break only before a capital: "counts... then" is one sentence, "counts... Then" two. A wide end breaks as wideBreak
+ * reads it: an end mark inside 「...」 or (...) is no break, and a closing bracket or quote right after an end mark
+ * belongs to its sentence.
  */
 const sentenceFindings = (t) => {
   const plain = t.replace(ABBREVIATIONS, (m) => m.slice(0, -1));
-  return !/[.!?\u3002\uff01\uff1f]$/.test(t) || /(?:(?<!\.)\.|[!?])\s+\S|\.\.\s+\p{Lu}|[\u3002\uff01\uff1f]\s*\S/u.test(plain) ? 'is not one sentence' : null;
+  const ends = /[.!?]$/.test(t) || WIDE_ENDING.test(t);
+  return !ends || /(?:(?<!\.)\.|[!?])\s+\S|\.\.\s+\p{Lu}/u.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
 };
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 

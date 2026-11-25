@@ -205,6 +205,29 @@ describe('a page in a language written without spaces', () => {
     expect(findings(page.replaceOrFail(/<span class="small why">[^<]*<\/span>/, '<span class="small why">はい</span>'))).toContain('[answer] open question 1 gives no reason for its suggested answer (.why)');
   });
 
+  const BUILT = 'ホームのページが使っているカード、入力欄、選択、スイッチ、ボタンだけで、新しい部品はありません。';
+  const builtSays = (takeaway) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f.startsWith('[takeaway]'));
+  const TWO = ['[takeaway] the takeaway of #built is not one sentence'];
+
+  it.each([['．', '．'], ['｡', '｡'], ['…', '…']])('takes %s as a sentence end: two sentences are two, one ending in it is one', (_, mark) => {
+    expect(builtSays(`新しい部品はありません${mark}保存も同じです。`)).toEqual(TWO);
+    expect(builtSays(`新しい部品はありません${mark}`)).toEqual([]);
+  });
+
+  it.each([
+    ['an end mark inside a quote', '設定は「保存する。」と表示されます。'],
+    ['an end mark inside brackets at the end', '設定は保存できます（変更は即時です。）'],
+    ['a closing quote right after the end', '画面には「保存しました。」'],
+    ['a run of ellipses', '新しい部品はありません……'],
+  ])('reads %s as one sentence', (_, takeaway) => {
+    expect(builtSays(takeaway)).toEqual([]);
+  });
+
+  it('still finds a sentence after a closing bracket', () => {
+    expect(builtSays('設定は「保存する。」次に閉じます。')).toEqual([]);
+    expect(builtSays('設定は保存できます。」次に閉じます。')).toEqual(TWO);
+  });
+
   it('keeps counting words between spaces on a page in English', () => {
     expect(findings(read('account-settings/r1').replaceOrFail('data-say="The email address can be changed on this page, like the display name."', 'data-say="Changeable on this page."'))).toContain('[answer] the answer "Changeable here" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
   });
