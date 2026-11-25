@@ -513,6 +513,9 @@ describe('check-proposal.mjs reads text as a browser shows it', () => {
     expect(takeaway('Show the tools, e.g. Jira and Linear, in the header.')).toEqual([]);
     expect(takeaway('Show counts... then the name.')).toEqual([]);
     expect(takeaway('Show counts... Then show the name.')).toHaveLength(1);
+    expect(takeaway('Step one… 2 more.')).toEqual([]);
+    expect(takeaway('Show counts… then the name.')).toEqual([]);
+    expect(takeaway('Show counts… Then show the name.')).toHaveLength(1);
     expect(takeaway('Ask Dr.. Smith for the counts.')).toHaveLength(1);
     expect(takeaway('Show counts...? Then the name.')).toHaveLength(1);
     expect(takeaway('Show counts in the header. Then show the name.')).toHaveLength(1);

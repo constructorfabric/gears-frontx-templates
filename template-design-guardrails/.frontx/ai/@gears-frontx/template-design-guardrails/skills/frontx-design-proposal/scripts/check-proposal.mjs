@@ -1087,7 +1087,7 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
   const sorted = [...known].sort((a, b) => SECTION_ORDER.indexOf(a) - SECTION_ORDER.indexOf(b));
   if (known.join() !== sorted.join()) add('sections', `sections out of order: ${known.join(', ')}; expected ${sorted.join(', ')}`);
   const sectionById = new Map(sections.map((n) => [n.attrs.id, n]));
-  checkTakeaways({ sections, add });
+  checkTakeaways({ sections, spaceless: unspaced(root), add });
 
   // language: the page names the language it is written in; the English labels bind a page in English only
   const english = inEnglish(root);
@@ -1119,7 +1119,7 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
     if (!takeaway) add('head', 'no takeaway (.takeaway)');
     else {
       const t = norm(textOf(takeaway));
-      if (sentenceFindings(t)) add('head', 'the takeaway must be one sentence');
+      if (sentenceFindings(t, unspaced(root))) add('head', 'the takeaway must be one sentence');
       if (words(t) > TAKEAWAY_MAX) add('head', `the takeaway runs ${words(t)} words; ${TAKEAWAY_MAX} at most`);
     }
     if (!find(head, (n) => hasClass(n, 'ask')).length) add('head', 'no ask (.ask) in the head');
@@ -1892,8 +1892,9 @@ function proseOf(node, skip = () => false) {
 const shownText = (raw) => decodeHtml(raw.replace(/&([a-zA-Z]{2,20});/g, (m, name) => (Object.hasOwn(ARROW_REFS, name) ? ARROW_REFS[name] : m)));
 /** Abbreviations whose period ends no sentence. */
 const ABBREVIATIONS = /\b(?:e\.g|i\.e|etc|vs|cf|approx|incl|Dr|Mr|Mrs|Ms|St|No)\.(?=\s)/g;
-/** The sentence ends of Chinese and Japanese text (。．｡！？) and the ellipsis "…". */
+/** The sentence ends of Chinese and Japanese text (。．｡！？) and the ellipsis "…"; all but the ellipsis break a text (WIDE_BREAK). */
 const WIDE_END = '\u3002\uff0e\uff61\uff01\uff1f\u2026';
+const WIDE_BREAK = '\u3002\uff0e\uff61\uff01\uff1f';
 /**
  * The brackets and quotes that open a part an end mark inside does not break, each with its own closer (WIDE_PAIRS),
  * and those that may follow an end mark as part of its sentence (WIDE_CLOSE): the closers and the ASCII quotes, which
@@ -1907,7 +1908,7 @@ const WIDE_ENDING = new RegExp(`[${WIDE_END}][${WIDE_CLOSE}]*$`);
  * the run of end marks and of the closing brackets and quotes after it, then more text, with or without a space
  * between, as such text puts none. The open marks are a stack: a closer ends the part only when it is the closer of
  * the mark on top; a mark never closed hides nothing, so a break inside it counts at the end of the text. An ellipsis
- * before a lower-case letter is no break, as "..." is not.
+ * is no wide break: sentenceFindings reads it.
  */
 const wideBreak = (t) => {
   const open = [];
@@ -1915,14 +1916,14 @@ const wideBreak = (t) => {
     let j = i + 1;
     while (j < t.length && (WIDE_END.includes(t[j]) || WIDE_CLOSE.includes(t[j]))) j += 1;
     while (j < t.length && /\s/.test(t[j])) j += 1;
-    return { j, breaks: j < t.length && !(t[i] === '…' && /\p{Ll}/u.test(t[j])) };
+    return { j, breaks: j < t.length };
   };
   for (let i = 0; i < t.length; i += 1) {
     const c = t[i];
     const top = open[open.length - 1];
     if (WIDE_PAIRS.has(c)) open.push({ closer: WIDE_PAIRS.get(c), broken: false });
     else if (top && c === top.closer) open.pop();
-    else if (WIDE_END.includes(c)) {
+    else if (WIDE_BREAK.includes(c)) {
       const { j, breaks } = breakAfter(i);
       if (!top) {
         if (breaks) return true;
@@ -1936,14 +1937,16 @@ const wideBreak = (t) => {
  * One sentence: it ends with ".", "!" or "?", or with a wide end (WIDE_END) and the closing brackets and quotes after
  * it, and no break stands inside it. A break is ".", "!" or "?" before more text, whatever starts it (a capital, a
  * lower-case word, a number); a period after a common abbreviation is no break. A run of periods (an ellipsis) is a
- * break only before a capital: "counts... then" is one sentence, "counts... Then" two. A wide end breaks as wideBreak
- * reads it: an end mark inside 「...」 or (...) is no break, and a closing bracket or quote right after an end mark
- * belongs to its sentence.
+ * break only before a capital: "counts... then" is one sentence, "counts... Then" two; "…" breaks as "..." does on a
+ * page in a language written with spaces, and never by itself on a page in one written without (spaceless). A wide
+ * end breaks as wideBreak reads it: an end mark inside 「...」 or (...) is no break, and a closing bracket or quote right
+ * after an end mark belongs to its sentence.
  */
-const sentenceFindings = (t) => {
+const sentenceFindings = (t, spaceless) => {
   const plain = t.replace(ABBREVIATIONS, (m) => m.slice(0, -1));
   const ends = /[.!?]$/.test(t) || WIDE_ENDING.test(t);
-  return !ends || /(?:(?<!\.)\.|[!?])\s+\S|\.\.\s+\p{Lu}/u.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
+  const ellipsis = spaceless ? /\.\.\s+\p{Lu}/u : /(?:\.\.|\u2026)\s+\p{Lu}/u;
+  return !ends || /(?:(?<!\.)\.|[!?])\s+\S/u.test(plain) || ellipsis.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
 };
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
@@ -1975,7 +1978,7 @@ function checkText({ root, add }) {
 }
 
 /** Every section but the head and the glossary: an h2, then one takeaway sentence of thirty words at most that is not its heading again. */
-function checkTakeaways({ sections, add }) {
+function checkTakeaways({ sections, spaceless, add }) {
   for (const sec of sections) {
     const id = sec.attrs.id;
     if (id === 'head') continue;
@@ -1986,7 +1989,7 @@ function checkTakeaways({ sections, add }) {
     const take = kids[1];
     if (!take || take.tag !== 'p' || !hasClass(take, 'takeaway')) { add('takeaway', `#${id} has no takeaway (p.takeaway) right under its heading: one sentence saying what the section settles`); continue; }
     const t = norm(textOf(take));
-    const wrong = sentenceFindings(t);
+    const wrong = sentenceFindings(t, spaceless);
     if (wrong) add('takeaway', `the takeaway of #${id} ${wrong}`);
     if (words(t) > TAKEAWAY_MAX) add('takeaway', `the takeaway of #${id} runs ${words(t)} words; ${TAKEAWAY_MAX} at most`);
     const heading = new Set(contentWords(textOf(h2)));

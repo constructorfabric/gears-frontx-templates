@@ -201,9 +201,14 @@ describe('a page in a language written without spaces', () => {
   const builtSays = (takeaway) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f.startsWith('[takeaway]'));
   const TWO = ['[takeaway] the takeaway of #built is not one sentence'];
 
-  it.each([['．', '．'], ['｡', '｡'], ['…', '…']])('takes %s as a sentence end: two sentences are two, one ending in it is one', (_, mark) => {
+  it.each([['．', '．'], ['｡', '｡']])('takes %s as a sentence end: two sentences are two, one ending in it is one', (_, mark) => {
     expect(builtSays(`新しい部品はありません${mark}保存も同じです。`)).toEqual(TWO);
     expect(builtSays(`新しい部品はありません${mark}`)).toEqual([]);
+  });
+
+  it('takes … as a sentence end, never as a break by itself', () => {
+    expect(builtSays('新しい部品はありません…')).toEqual([]);
+    expect(builtSays('えーと…それで決まりです。')).toEqual([]);
   });
 
   it.each([
