@@ -1924,11 +1924,15 @@ const WIDE_ENDING = new RegExp(`[${WIDE_END}][${WIDE_CLOSE}]*$`);
  */
 const wideBreak = (t) => {
   const open = [];
+  // Every end mark of one run ends where the first does: the run is walked once, inside a bracket too.
+  let run = { j: -1 };
   const breakAfter = (i) => {
+    if (i < run.j) return run;
     let j = i + 1;
     while (j < t.length && (WIDE_END.includes(t[j]) || WIDE_CLOSE.includes(t[j]))) j += 1;
     while (j < t.length && /\s/.test(t[j])) j += 1;
-    return { j, breaks: j < t.length };
+    run = { j, breaks: j < t.length };
+    return run;
   };
   for (let i = 0; i < t.length; i += 1) {
     const c = t[i];

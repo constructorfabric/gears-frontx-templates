@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import './replace-or-fail.mjs';
+import { expectLinear } from './linear-time.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skill = path.join(here, '../.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design-proposal');
@@ -231,6 +232,15 @@ describe('a page in a language written without spaces', () => {
     ['an ASCII closing quote right after the end, then more text', '彼は"保存しました。"次に閉じます。'],
   ])('finds two sentences across %s', (_, takeaway) => {
     expect(builtSays(takeaway)).toEqual(TWO);
+  });
+
+  it('reads a long run of end marks inside a bracket never closed in time linear in its length, with the same result', { timeout: 600_000 }, () => {
+    const breaks = (takeaway) => builtSays(takeaway).filter((f) => f === TWO[0]);
+    expect(breaks('（。。。。')).toEqual([]);
+    expect(breaks('（。。。次。')).toEqual(TWO);
+    expect(breaks('（。"。"。')).toEqual([]);
+    expect(breaks('（。"。"次。')).toEqual(TWO);
+    expectLinear((n) => builtSays(`（${'。'.repeat(n)}`), 5000, 'end marks inside a bracket never closed');
   });
 
   it('still finds a sentence after a closing bracket', () => {
