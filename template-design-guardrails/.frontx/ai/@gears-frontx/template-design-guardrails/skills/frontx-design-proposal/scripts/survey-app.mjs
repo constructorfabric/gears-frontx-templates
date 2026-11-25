@@ -1058,12 +1058,21 @@ function resolveVars(raw, lookup, depth = 0, cache = new Map()) {
   return out.trim();
 }
 
-/** A length in px: px, rem (16 px), or a calc() of them; null otherwise. */
+/**
+ * A length in px: px, rem (16 px), or a calc() of them; null for anything
+ * else, so a caller reads null as "unknown". A malformed number (more than
+ * one dot, a lone dot or dash) is unknown too, and the plain branch never
+ * returns NaN or Infinity.
+ */
 function toPx(value) {
   if (value === null || value === undefined) return null;
   const v = String(value).trim();
-  const plain = /^(-?[\d.]+)(px|rem)?$/.exec(v);
-  if (plain) return plain[2] === 'rem' ? Number(plain[1]) * 16 : (plain[2] === 'px' || Number(plain[1]) === 0 ? Number(plain[1]) : null);
+  const plain = /^(-?(?:\d+(?:\.\d+)?|\.\d+))(px|rem)?$/.exec(v);
+  if (plain) {
+    const n = Number(plain[1]) * (plain[2] === 'rem' ? 16 : 1);
+    if (!Number.isFinite(n)) return null;
+    return plain[2] || n === 0 ? n : null;
+  }
   const calc = /^calc\((.*)\)$/.exec(v);
   if (!calc) return null;
   // A number is read from its first digit only (the look-behind), so a long run of digits is scanned once, not once per digit.
