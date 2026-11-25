@@ -152,7 +152,6 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
   it.each([
     ['a theme without default: true written before it', "export const lightTheme = { id: 'light', appearance: 'light', variables: { '--primary': '#111111' } };\n"],
     ['a type alias with a variables object', "type Shape = { variables: { [name: string]: string } };\n"],
-    ['an interface whose variables hold a pair', "interface Shape { default: true; variables: { '--primary': '#00ff00' } }\n"],
   ])('reads the variables of the object that says default: true, not of %s', (what, head) => {
     expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066'", head))).toEqual(['#ff0066', 'src-app/app/themes/default.ts --primary']);
   });
@@ -160,7 +159,23 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
   it('leaves the colours unresolved when default: true is said only by a type', () => {
     const root = realApp();
     writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), "interface Shape { default: true }\nexport const defaultTheme = { id: 'default', appearance: 'light', variables: { '--primary': '#ff0066' } };\n");
-    expect(accentOf(root)).toEqual([survey.UNRESOLVED, 'src-app/app/themes/default.ts holds no theme object that says default: true the survey can read: the colours of the theme are not known']);
+    expect(accentOf(root)).toEqual([survey.UNRESOLVED, 'src-app/app/themes/default.ts says default: true in a type or interface declaration, so the survey cannot tell which object is the theme: the colours of the theme are not known']);
+  });
+
+  const THEME = "export const t = { id:'dark', appearance:'dark', default: true, variables:{'--primary':'#ff0066'} };\n";
+  it.each([
+    ['a type declaration with a default type parameter', "type Theme<T = string> = { default: true; variables: {'--primary':'#00ff00'} };\n" + THEME, 'a type or interface declaration'],
+    ['an interface whose variables hold a pair', "interface Shape { default: true; variables: { '--primary': '#00ff00' } }\n" + THEME, 'a type or interface declaration'],
+    ['an object nested in another object', "export const t = { id:'d', variables:{'--primary':'#ff0066'}, meta:{ default: true } };\n", 'an object nested in another object'],
+    ['two top-level objects', THEME + "export const u = { id:'u', appearance:'dark', default: true, variables:{'--primary':'#00ff00'} };\n", 'more than one top-level object'],
+    ['an object passed to a call', "export const t = defineTheme({ id:'d', default: true, variables:{'--primary':'#ff0066'} });\n", 'an object that is not a top-level const literal'],
+  ])('leaves every colour key unresolved, naming the file and the case, for default: true in %s', (what, source, why) => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), source);
+    const result = survey.survey(root);
+    expect(COLOUR_ROLES.map((k) => result.look[k])).toEqual(COLOUR_ROLES.map(() => survey.UNRESOLVED));
+    expect(result.lookFrom.accent).toBe(`src-app/app/themes/default.ts says default: true in ${why}, so the survey cannot tell which object is the theme: the colours of the theme are not known`);
+    expect(result.lookSources.themeId).toBe(survey.UNRESOLVED);
   });
 
   it('takes the theme id and appearance from the object the colours come from, not from a theme written before it', () => {

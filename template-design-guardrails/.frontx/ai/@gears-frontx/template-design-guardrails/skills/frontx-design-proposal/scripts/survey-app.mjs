@@ -1190,31 +1190,41 @@ function readVariables(root, file, code, body, variables, from, unread) {
 }
 
 /** A "{" that opens a type: a type alias, an interface, or the annotation of a const (let, var). */
-const TYPE_OPEN = /(?:\btype\s+[A-Za-z_$][\w$]*(?:\s*<[^=;{}]*>)?\s*=|\binterface\s+[A-Za-z_$][\w$]*[^{};=]*|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*:)\s*$/;
+const TYPE_OPEN = /(?:\btype\s+[A-Za-z_$][\w$]*(?:\s*<[^;{}]*>)?\s*=|\binterface\s+[A-Za-z_$][\w$]*[^{};=]*|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*:)\s*$/;
 const DEFAULT_KEY = /default\s*:\s*true(?![\w$])/y;
 const VARIABLES_KEY = /variables\s*:\s*(\{)?/y;
 const ID_KEY = /id\s*:\s*(?:(['"])([\w-]+)\1|([A-Za-z_$][\w$]*))/y;
 const APPEARANCE_KEY = /appearance\s*:\s*(['"])(light|dark)\1/y;
+/** A "{" at the top of the file that opens the literal of a (exported) const. */
+const CONST_OPEN = /(?:^|[^\w$.])(?:export\s+)?const\s+[A-Za-z_$][\w$]*\s*(?::[^=;{}]*)?=\s*$/;
 
 /**
- * The theme object of a theme file (comments stripped): the object literal that holds default: true as its own key,
- * outside type and interface bodies and annotations, the first such object to close. Returns whether there is one,
- * whether it has a variables key, where its variables object literal opens (-1 when it is not one), and its own id (a
- * literal, or the name it is read from: idName) and appearance. One pass; strings and template literals are skipped
- * whole, as objectBody does.
+ * The theme object of a theme file (comments stripped): the one object literal that holds default: true as its own key,
+ * taken only when it is unambiguous: exactly one such object, the literal of a const at the top of the file, and no
+ * other object says default: true. Returns whether there is one, whether it has a variables key, where its variables
+ * object literal opens (-1 when it is not one), and its own id (a literal, or the name it is read from: idName) and
+ * appearance; otherwise why, the cases that make it ambiguous (a type or interface, a nested object, an object that is
+ * no top-level const literal, several). One pass; strings and template literals are skipped whole, as objectBody does.
  */
 function themeObject(code) {
   const stack = [];
+  const taken = [];
+  const why = new Set();
   for (let i = 0; i < code.length; i += 1) {
     const c = code[i];
     if (c === '"' || c === "'" || c === '`') {
       for (i += 1; i < code.length && code[i] !== c; i += 1) if (code[i] === '\\') i += 1;
     } else if (c === '{') {
       const parent = stack[stack.length - 1];
-      stack.push({ type: Boolean(parent?.type) || TYPE_OPEN.test(code.slice(Math.max(0, i - 200), i)), isDefault: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null });
+      const before = code.slice(Math.max(0, i - 200), i);
+      stack.push({ type: Boolean(parent?.type) || TYPE_OPEN.test(before), literal: !parent && CONST_OPEN.test(before), isDefault: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null });
     } else if (c === '}') {
       const frame = stack.pop();
-      if (frame?.isDefault && !frame.type) return { ...frame, found: true };
+      if (!frame?.isDefault) continue;
+      if (frame.type) why.add('a type or interface declaration');
+      else if (stack.length) why.add('an object nested in another object');
+      else if (!frame.literal) why.add('an object that is not a top-level const literal');
+      else taken.push(frame);
     } else if ('dvia'.includes(c) && stack.length && !/[\w$.]/.test(code[i - 1] ?? '')) {
       const top = stack[stack.length - 1];
       for (const key of [DEFAULT_KEY, VARIABLES_KEY, ID_KEY, APPEARANCE_KEY]) key.lastIndex = i;
@@ -1229,14 +1239,17 @@ function themeObject(code) {
       }
     }
   }
-  return { found: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null };
+  if (taken.length > 1) why.add('more than one top-level object');
+  if (taken.length === 1 && !why.size) return { ...taken[0], found: true };
+  return { found: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null, why: [...why].join(' and ') };
 }
 
 /**
  * The active theme: the first file (by name) under src-app/app/themes whose text says default: true, read from the
  * variables object of its theme object (themeObject, readVariables), comments stripped: from names the file each value
  * comes from, unread the names built in code, blocked why the colours are not known when a spread cannot be followed,
- * the variables are not an object literal, or the file holds no theme object that says default: true.
+ * the variables are not an object literal, the file holds no theme object that says default: true, or which object is
+ * the theme is ambiguous (themeObject).
  */
 function readActiveTheme(root) {
   const dir = path.join(root, 'src-app/app/themes');
@@ -1253,6 +1266,7 @@ function readActiveTheme(root) {
   const theme = themeObject(code);
   const body = theme.open >= 0 ? objectBody(code, theme.open) : null;
   const blocked = body !== null ? readVariables(root, file, code, body, variables, from, unread)
+    : theme.why ? `${rel(root, file)} says default: true in ${theme.why}, so the survey cannot tell which object is the theme: ${THEME_UNKNOWN}`
     : !theme.found ? `${rel(root, file)} holds no theme object that says default: true the survey can read: ${THEME_UNKNOWN}`
       : theme.hasVariables ? `${rel(root, file)} gives variables no object literal the survey can read: ${THEME_UNKNOWN}` : null;
   return {
