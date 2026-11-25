@@ -221,6 +221,12 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     expect(found.some((f) => f.includes(message)), found.join('\n')).toBe(true);
   });
 
+  // The ask link is judged by its href decoded once, as the browser reads a fragment: &#35; stands for #.
+  it('reads &#35; in the ask link href as the # it stands for', () => {
+    const coded = edit(r1, '<a href="#answer">your answer</a>', '<a href="&#35;answer">your answer</a>');
+    expect(check.checkPage(coded).findings).toEqual([]);
+  });
+
   it('reports five ready answers, one past the four allowed', () => {
     const extra = (label) => Q2_WRONG.replaceAllOrFail('Under All, with the rest', label);
     const five = edit(r1, Q2_WRONG, Q2_WRONG + extra('Under a Done tab') + extra('Hidden after a week') + extra('In a second list'));

@@ -1263,7 +1263,7 @@ const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn' }, { value: 'c
  */
 function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add }) {
   for (const ask of find(root, (n) => hasClass(n, 'ask'))) {
-    if (!find(ask, (n) => n.tag === 'a' && n.attrs.href === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
+    if (!find(ask, (n) => n.tag === 'a' && hrefOf(n) === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
   }
   const sec = sectionById.get('answer');
   const form = sec ? find(sec, (n) => n.tag === 'form' && n.attrs.id === 'answer-form' && hasClass(n, 'answer'))[0] : undefined;
@@ -1309,8 +1309,8 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add
     if (sug.length !== 1) add('answer', `"Which option?" marks ${sug.length} options suggested; exactly one, the recommended one`);
     else {
       if (!oneChecked(picks, sug[0])) add('answer', `the suggested option ${sug[0].input.attrs.value} is not the one checked`);
-      const rec = find(root, (n) => hasClass(n, 'opt-link') && hasClass(n, 'recommended') && /^#option-[a-z]$/.test(n.attrs.href ?? ''))[0];
-      const letter = rec ? rec.attrs.href.slice(-1).toUpperCase() : null;
+      const rec = find(root, (n) => hasClass(n, 'opt-link') && hasClass(n, 'recommended') && /^#option-[a-z]$/.test(hrefOf(n)))[0];
+      const letter = rec ? hrefOf(rec).slice(-1).toUpperCase() : null;
       if (letter && sug[0].input.attrs.value !== letter) add('answer', `the suggested option ${sug[0].input.attrs.value} is not the recommended option ${letter}`);
     }
   }
@@ -1753,7 +1753,7 @@ function checkGuarantees({ sections, add }) {
     if (typeof c === 'string') return unmarked(c);
     if (skip(c)) return ' ';
     if (c.tag === 'a' && hasClass(c, 'pinref')) return `${unmarked(textOf(c))}${MARK}${PIN}`;
-    return c.tag === 'a' && /^#q-\d+$/.test(c.attrs.href ?? '') ? `${unmarked(textOf(c))}${MARK}` : flat(c);
+    return c.tag === 'a' && /^#q-\d+$/.test(hrefOf(c)) ? `${unmarked(textOf(c))}${MARK}` : flat(c);
   }).join('');
   for (const sec of sections) {
     if (GUARANTEE_FREE.has(sec.attrs.id)) continue;
@@ -1979,7 +1979,7 @@ function checkPaths({ paths, changes, byId, main, english, add }) {
         if (!longer && mark) add('paths', `"${name}" carries the "!" mark but takes no more steps than today`);
       }
     } else if (mark) add('paths', 'a "!" mark with no Today column to compare against');
-    if (mark && (!/^#q-\d+$/.test(mark.attrs.href ?? '') || !byId.has(mark.attrs.href.slice(1)))) add('paths', `the "!" mark of "${name}" links to no open question`);
+    if (mark && (!/^#q-\d+$/.test(hrefOf(mark)) || !byId.has(fragment(mark)))) add('paths', `the "!" mark of "${name}" links to no open question`);
   }
 }
 
