@@ -278,6 +278,39 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
   });
 });
 
+describe('the recommended option, marked once per place and the same in each', () => {
+  const OVERVIEW_A = '<a class="opt-link recommended" href="#option-a"><span class="mini"';
+  const REC_A = '<a class="opt-link recommended" href="#option-a"><span class="opt-name">';
+  const REC_B = '<a class="opt-link" href="#option-b"><span class="opt-name">';
+  const found = (html) => check.checkPage(html).findings.filter((f) => f.startsWith('[overview]') && f.includes('recommended'));
+
+  it('keeps the worked example clean', () => {
+    expect(found(r1)).toEqual([]);
+  });
+
+  it('reports a page with options that marks none', () => {
+    const none = r1.replaceAll('class="opt-link recommended"', 'class="opt-link"');
+    expect(found(none)).toEqual([
+      '[overview] #overview marks 0 options recommended (.opt-link.recommended); exactly one, the option the page suggests',
+      '[overview] #recommendation marks 0 options recommended (.opt-link.recommended); exactly one, the option the page suggests',
+    ]);
+  });
+
+  it('reports a second mark that names another option', () => {
+    const two = edit(r1, REC_B, '<a class="opt-link recommended" href="#option-b"><span class="opt-name">');
+    expect(found(two)).toEqual([
+      '[overview] #recommendation marks 2 options recommended (.opt-link.recommended); exactly one, the option the page suggests',
+      '[overview] the recommended marks (.opt-link.recommended) name different options: #option-a, #option-b; every mark names the one recommended option',
+    ]);
+  });
+
+  it('reports one mark per place that disagree, the later one compared too', () => {
+    const moved = edit(edit(r1, REC_A, '<a class="opt-link" href="#option-a"><span class="opt-name">'), REC_B, '<a class="opt-link recommended" href="#option-b"><span class="opt-name">');
+    expect(moved).toContain(OVERVIEW_A);
+    expect(found(moved)).toEqual(['[overview] the recommended marks (.opt-link.recommended) name different options: #option-a, #option-b; every mark names the one recommended option']);
+  });
+});
+
 describe('the Ready answers field of CHOICE.md', () => {
   it('is required', () => {
     const choice = readFileSync(path.join(proposals, 'team-tasks/r2/CHOICE.md'), 'utf8');

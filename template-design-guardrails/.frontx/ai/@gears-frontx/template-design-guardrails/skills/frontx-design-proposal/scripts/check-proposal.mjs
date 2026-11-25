@@ -114,7 +114,9 @@
  *   design with no option fields; ids unique;
  * - overview: every option (or the one design) has exactly one overview link
  *   that holds its thumbnail and its name, the link's target exists, and the
- *   thumbnail's drawing exists;
+ *   thumbnail's drawing exists; with options, the overview and the
+ *   recommendation each mark exactly one link recommended
+ *   (.opt-link.recommended), and every such mark names the same option;
  * - pins: every data-note in a drawing has a note, every note a pin, numbers
  *   unique per drawing and digits only (data-note and data-n in a drawing, a
  *   notes list or a pin reference), every notes list belongs to a drawing;
@@ -1276,6 +1278,18 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
     for (const link of find(rec, (n) => n.tag === 'a')) {
       if (!optionIds.includes(fragment(link))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
     }
+  }
+  // With options the overview and the recommendation each mark the recommended option once, and every mark on the
+  // page names the same option: the answer block and the storyboard read it from these marks.
+  if (withOptions) {
+    const marks = find(main, (n) => hasClass(n, 'opt-link') && hasClass(n, 'recommended'));
+    for (const [id, sec] of [['overview', overview], ['recommendation', rec]]) {
+      if (!sec) continue;
+      const count = marks.filter((m) => inside(m, (a) => a === sec)).length;
+      if (count !== 1) add('overview', `#${id} marks ${count} options recommended (.opt-link.recommended); exactly one, the option the page suggests`);
+    }
+    const named = [...new Set(marks.map(hrefOf))];
+    if (named.length > 1) add('overview', `the recommended marks (.opt-link.recommended) name different options: ${named.join(', ')}; every mark names the one recommended option`);
   }
   checkAnswer({ root, tpl, sectionById, optionNodes, withOptions, english, folder, add });
   checkViews({ how, screens, optionNodes, add });
