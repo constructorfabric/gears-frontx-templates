@@ -54,7 +54,7 @@ async function saveDashboard(edited: unknown) {
 
 - Widget code already loaded is not loaded again. A dashboard whose definition is unchanged keeps its cells as they are; a changed one runs its cells again, so their data requests go out again. A widget that changed its type loads the code of the new type if the page has not loaded it yet.
 - A dashboard missing from the new file shows "This dashboard cannot be shown".
-- A refresh that fails (the file request fails or times out, the base file is rejected, or the file defines otherwise a type the root already holds) resolves `{ ok: false, problem }` and writes one console line; the dashboards stay as they were drawn from the definitions read before. A served file that changes a base type the root already holds is refused this way, and so is one whose widget part brings otherwise a type that the same part brought before (the problem names the type and the part): the cells that part serves keep working, and a host that needs such a change makes a new root. A widget type's definition changes only with a new root. A widget part left out for another reason (its type was brought first by the base file or another part, so it was left out on the first load as well) is left out again and does not fail the refresh.
+- A refresh that fails (the file request fails or times out, the base file is rejected, the file defines otherwise a base type the root already holds, or a widget part defines otherwise a type that the same part brought before) resolves `{ ok: false, problem }` and writes one console line; the dashboards stay as they were drawn from the definitions read before. A served file that changes a base type the root already holds is refused this way, and so is one whose widget part brings otherwise a type that the same part brought before (the problem names the type and the part): the cells that part serves keep working, and a host that needs such a change makes a new root. A widget type's definition changes only with a new root. A widget part left out for another reason (its type was brought first by the base file or another part, so it was left out on the first load as well) is left out again and does not fail the refresh.
 - Calls do not pile up: a call made while another runs aborts the other's file request, and both resolve with the outcome of the later one.
 
 When the product is done with a root (the analytics area closes for good, the user signs out), unmount its `<Dashboard>` and call `dispose()`. It unmounts and unregisters every widget, removes their containers from the page, aborts the requests in flight, clears its timers and listeners, and disposes of its registry. A `load` or a `refresh` still in flight then resolves `{ ok: false }`, and so does every later one; a second `dispose()` returns the same promise. A new root works on its own. The widget code the page loaded stays in the page's module cache until a page reload, so a new root loads its own copy: keep one root for the page's life and refresh it rather than making new ones.
@@ -85,27 +85,22 @@ The template's colours are written with the CSS `light-dark()` function, which p
 
 ### For a host that embedded dashboards with an earlier template version
 
-Earlier versions of the template coloured the series of these four charts with the kit's five chart tokens, in the order `--chart-5`, `--chart-4`, `--chart-2`, `--chart-1`, `--chart-3`, and the sixth series took the first colour again. With this version the same dashboards draw the template's ten colours above, so their series change colour. In the dark theme the first series draws `#5193f4`, while the single-colour charts keep the kit's dark chart token `#60a5fa`. A host that wants the colours its dashboards had sets the kit's values as its own colours:
+Earlier versions of the template coloured the series of these four charts with the kit's five chart tokens, in the order `--chart-5`, `--chart-4`, `--chart-2`, `--chart-1`, `--chart-3`, and the sixth series took the first colour again. With this version the same dashboards draw the template's ten colours above, so their series change colour. In the dark theme the first series draws `#5193f4`, while the single-colour charts keep the kit's dark chart token `#60a5fa`. A host that wants the colours its dashboards had maps these properties to the kit's chart tokens in the earlier order:
 
 ```css
 :root,
-[data-theme='light'] {
-  --dashboard-chart-1: #2563eb;
-  --dashboard-chart-2: #f59e0b;
-  --dashboard-chart-3: #059669;
-  --dashboard-chart-4: #e11d48;
-  --dashboard-chart-5: #4e79a7;
-}
-[data-theme='dark'] {
-  --dashboard-chart-1: #60a5fa;
-  --dashboard-chart-2: #f6c453;
-  --dashboard-chart-3: #34d399;
-  --dashboard-chart-4: #fb7185;
-  --dashboard-chart-5: #0065e3;
+[data-theme] {
+  --dashboard-chart-1: var(--chart-5);
+  --dashboard-chart-2: var(--chart-4);
+  --dashboard-chart-3: var(--chart-2);
+  --dashboard-chart-4: var(--chart-1);
+  --dashboard-chart-5: var(--chart-3);
 }
 ```
 
-A host whose charts show more than five series and that wants the earlier wrap repeats these five values for `--dashboard-chart-6` onward, one property per series it shows.
+A `var()` in a custom property takes its value on the element that declares the property, and the widgets inherit that value. This rule declares the properties on `:root` and on every element with a `data-theme`, so each theme scope takes its own chart tokens: the kit's for a host that keeps them, the host's own for a host that sets `--chart-1` to `--chart-5` itself. It reaches the widgets, and the larger view and the widget overlays by the same rules as above: the dashboard's element carries `data-theme`, and a host that passes an `overlayContainer` keeps `data-theme` on that container or an ancestor. The chart tokens must be set in the host page (the kit's theme stylesheet, or the host's own values) on those elements; where they are not, the properties have no value and the series draw the template's colours.
+
+A host whose charts show more than five series and that wants the earlier wrap repeats the five for `--dashboard-chart-6` onward, one property per series it shows: `--dashboard-chart-6: var(--chart-5)`, `--dashboard-chart-7: var(--chart-4)`, and so on.
 
 ## Where overlays open
 
