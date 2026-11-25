@@ -362,13 +362,15 @@ describe('Dashboard on the real registry', () => {
     vi.restoreAllMocks();
   }, 15_000);
 
-  it('marks the frame with the canonical tag the widgets draw in, and en for a value that is not a BCP-47 tag', () => {
+  it('marks the frame with the canonical tag the widgets draw in, and en for a value that is not a BCP-47 tag', async () => {
     const root = new DashboardRoot({ host: createMockHost({ delayMs: 60_000 }), entries, origin: 'http://localhost' });
     const view = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="pt-br" variables={DEMO_VARIABLES} />);
     expect(view.container.firstElementChild?.getAttribute('lang')).toBe('pt-BR');
     view.rerender(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="pt_BR" variables={DEMO_VARIABLES} />);
     expect(view.container.firstElementChild?.getAttribute('lang')).toBe('en');
     view.unmount();
+    // The served file never answers here: the dispose ends its read, so its timeout writes no line into a later test.
+    await root.dispose();
   });
 
   it.each([
