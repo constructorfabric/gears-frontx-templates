@@ -388,6 +388,28 @@ describe('the rules a stylesheet yields', () => {
     expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
   });
 
+  // The end of the file inside an open string, url() or block: the rules of the unclosed block are cut, the rules
+  // before it stay, and the file is listed under skipped once with the reason.
+  const STRING_OR_URL = /^an unterminated string or url\(\) in an at-rule: the rest of the file is not read/;
+  const UNCLOSED_BLOCK = /^a block at-rule \(@media, @supports, \.\.\.\) the file never closes: its rules are not read/;
+  it.each([
+    ['a quote open inside an unclosed @media', (t) => `${t}\n@media (min-width: 600px) { .kpi { font-size: 33px; } @import "x`, STRING_OR_URL],
+    ['an unclosed @media', (t) => `${t}\n@media (min-width: 600px) { .kpi { font-size: 33px; }`, UNCLOSED_BLOCK],
+  ])('does not read the rules of %s at the end of the file, and lists the file under skipped', (_, edit, why) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: edit }));
+    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.skipped.filter((s) => s.file === HOME_CSS)).toEqual([{ file: HOME_CSS, why: expect.stringMatching(why) }]);
+    expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
+  });
+
+  it('reads the rules before a quote left open at the top level at the end of the file, and lists the file under skipped', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${t}\n@import "abc` }));
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.look.bg).toBe('#ffffff');
+    expect(result.skipped.filter((s) => s.file === HOME_CSS)).toEqual([{ file: HOME_CSS, why: expect.stringMatching(STRING_OR_URL) }]);
+  });
+
   it('keeps the rules of a @supports block out of the look where the string of the condition would have made a made-up rule of them', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@supports (content: ";.kpi") { .kpi { font-size: 33px; } }\n${t}` }));
     expect(result.lookFrom.stat).toBe('kit --text-kpi-size (the app sets none)');

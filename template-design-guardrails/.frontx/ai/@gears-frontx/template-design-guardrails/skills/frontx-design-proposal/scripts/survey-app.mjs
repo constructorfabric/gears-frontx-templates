@@ -886,11 +886,13 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * A string also ends at an unescaped newline, as a bad string: the file reads
  * on from there, while a quote inside an unquoted url( opens no string, a
  * quoted url("...") holds a string like any other, and url( is matched in
- * any case. A rule inside an @media the file never closes
- * is not kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading:
- * the rules before it are kept and the file, given as full, is listed under
- * skipped; so does a "}" at the top level with no rule open, and a file that
- * ends inside the string or url() of an at-statement.
+ * any case. A rule inside a block at-rule the file never closes is not kept
+ * and the file, given as full, is listed under skipped, once, also when the
+ * file ends inside the string or url() of an at-statement there. An @media
+ * nested deeper than MEDIA_DEPTH_CAP ends the reading: the rules before it
+ * are kept and the file is listed under skipped; so does a "}" at the top
+ * level with no rule open, and a file that ends inside the string or url()
+ * of an at-statement.
  */
 function parseCssRules(css, file = '', full = null) {
   const rules = [];
@@ -983,14 +985,12 @@ function parseCssRules(css, file = '', full = null) {
       }
     }
   }
-  // A string or url() of a pending at-statement still open at the end: what follows it never closes the frame, so the
-  // reading stopped inside the statement and the file is listed under skipped.
+  // The end of the file inside a string or url() of a pending at-statement, or inside a block the file never closes:
+  // the rules of the unclosed block are cut, the rules before it stay, and the file is listed under skipped once.
   const last = frames[frames.length - 1];
-  if (last.quote || last.url) {
-    if (full) skip(full, `an unterminated string or url() in an at-rule: the rest of the file is not read${linkNote(full)}`);
-    return rules;
-  }
   if (frames.length > 1) rules.length = frames[1].kept;
+  if (full && (last.quote || last.url)) skip(full, `an unterminated string or url() in an at-rule: the rest of the file is not read${linkNote(full)}`);
+  else if (full && frames.length > 1) skip(full, `a block at-rule (@media, @supports, ...) the file never closes: its rules are not read${linkNote(full)}`);
   return rules;
 }
 
