@@ -1551,9 +1551,10 @@ function readChrome(root, lookup) {
 function menuOwnRules(root, layoutDir, shellCss) {
   const menu = path.join(layoutDir, 'Menu.tsx');
   if (!exists(menu)) return [];
-  const specs = (file, code) => [...code.matchAll(/\bimport\s/g)]
+  // Each file once, by resolved path: a file imported many times is read, stripped and scanned once.
+  const specs = (file, code) => new Set([...code.matchAll(/\bimport\s/g)]
     .map((m) => /^([^'";]*?)\bfrom\s*['"]([^'"\n]+)['"]/.exec(code.slice(m.index + 7, m.index + 7 + IMPORT_SPAN))?.[2])
-    .filter(Boolean).map((spec) => resolveImport(root, file, spec)).filter(Boolean);
+    .filter(Boolean).map((spec) => resolveImport(root, file, spec)).filter(Boolean));
   const css = new Set();
   for (const file of specs(menu, stripComments(read(menu)))) {
     if (!CODE_EXT.some((x) => file.endsWith(x))) continue;

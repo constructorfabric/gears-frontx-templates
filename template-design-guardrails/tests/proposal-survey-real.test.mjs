@@ -193,6 +193,16 @@ describe('survey-app.mjs reads theme spreads in time linear in their number', { 
     });
     try { expect(accentOf(at(2000))[0]).toBe('#abcdef'); expectLinear((n) => survey.survey(at(n)), 2000, 'theme spreads of an imported name'); } finally { done(); }
   });
+
+  it('a menu that imports one large file many times', () => {
+    // The imported file grows with the imports (40 characters an import), so reading it once per import would grow as their square.
+    const { at, done } = rows((n) => {
+      const root = realApp();
+      writeFileSync(path.join(root, 'src-app/app/components/ui/big.tsx'), `export const big = 1;\nexport const pad = '${'x'.repeat(40 * n)}';\n`);
+      return edit(root, 'src-app/app/layout/Menu.tsx', /^/, "import big from '../components/ui/big';\n".repeat(n));
+    });
+    try { expect(survey.survey(at(2000)).lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color'); expectLinear((n) => survey.survey(at(n)), 2000, 'menu imports of one file'); } finally { done(); }
+  });
 });
 
 describe('survey-app.mjs on the stock shell', () => {
