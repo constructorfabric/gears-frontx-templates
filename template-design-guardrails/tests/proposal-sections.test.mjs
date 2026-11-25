@@ -112,6 +112,14 @@ describe('words, labels, ids, links and the glossary', () => {
     expect(text('The app\'s links carry the screen in the address /?screen=&lt;route&gt;2')).toEqual(['[text] template text "&lt;route&gt;" left in the page']);
     expect(text('The app\'s links carry the screen in the address /?screen=&lt;route&gt;, and a document opens at /docs/&lt;id&gt;/edit; done')).toEqual([]);
   });
+
+  it('takes the in-screen sub-route form with ";" as the address form, and still finds a bracketed word outside an address', () => {
+    const NOTE = 'The app\'s links carry the screen in the address (/?screen=docs)';
+    const text = (note) => findings(edit(docs, NOTE, note)).filter((f) => f.startsWith('[text]'));
+    expect(text('The app\'s links carry one task at /?screen=tasks;route=&lt;id&gt;')).toEqual([]);
+    expect(text('The app\'s links carry one task at /?screen=tasks;route=&lt;id&gt;;tab=&lt;tab&gt;, then Back')).toEqual([]);
+    expect(text('The app\'s links carry one task at tasks;route=&lt;id&gt;')).toEqual(['[text] template text "&lt;id&gt;" left in the page']);
+  });
 });
 
 describe('the Decisions field of CHOICE.md', () => {

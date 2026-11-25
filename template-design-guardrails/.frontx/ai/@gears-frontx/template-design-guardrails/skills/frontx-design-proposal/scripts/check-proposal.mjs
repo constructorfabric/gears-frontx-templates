@@ -280,17 +280,17 @@ const ARROW_REFS = { rarr: '\u2192', rightarrow: '\u2192', RightArrow: '\u2192',
 const GARBLED = /[\u00c3\u00c2\u00e2][\u0080-\u00bf\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2013-\u203a\u20ac\u2122]|\ufffd/;
 const UNFILLED = /&lt;[a-zA-Z][a-zA-Z0-9 ,.'-]{0,60}&gt;|\bREPLACE\b|\bTODO\b/;
 /**
- * An address written with a named part, `/?screen=<route>` or `/tasks/<id>`: the form the app's links take
- * (references/page-parts.md, the addresses), not a placeholder left. It starts with "/" at the start of a word,
- * every named part is one word in angle brackets, and it holds no space. After a named part comes a separator
- * ("/", "?", "=", ...) or the end of the address, never a letter, a digit or another bracket, and the address ends
+ * An address written with a named part, `/?screen=<route>`, `/?screen=tasks;route=<id>` or `/tasks/<id>`: the form
+ * the app's links take (references/page-parts.md, the addresses), not a placeholder left. It starts with "/" at the
+ * start of a word, every named part is one word in angle brackets, and it holds no space. After a named part comes a
+ * separator ("/", "?", "=", ";", ...) or the end of the address, never a letter, a digit or another bracket, and the address ends
  * at a boundary (a space, the end of the text, or closing punctuation), so text glued to it (`<route>TODO`,
  * `<route><REPLACE>`) is not taken in. A match starts only where a word starts and no address part holds a space,
  * so no two tries cover the same text and the scan stays linear. `lt` and `gt` are the brackets as the text writes them.
  */
 const addressForm = (lt, gt) => {
   const part = `${lt}[a-zA-Z][\\w-]{0,30}${gt}`;
-  return new RegExp(`(?<=^|[\\s("'\`])/[\\w\\-./?=#%]*${part}(?:[\\-./?=#%][\\w\\-./?=#%]*${part})*(?:[\\-./?=#%][\\w\\-./?=#%]*)?(?=$|[\\s.,;:)'"\`\\u2019\\u201d])`, 'g');
+  return new RegExp(`(?<=^|[\\s("'\`])/[\\w\\-./?=#%;]*${part}(?:[\\-./?=#%;][\\w\\-./?=#%;]*${part})*(?:[\\-./?=#%;][\\w\\-./?=#%;]*)?(?=$|[\\s.,;:)'"\`\\u2019\\u201d])`, 'g');
 };
 const ADDRESS_FORM_HTML = addressForm('&lt;', '&gt;');
 const ADDRESS_FORM_TEXT = addressForm('<', '>');
