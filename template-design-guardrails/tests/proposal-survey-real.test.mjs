@@ -163,6 +163,14 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
     expect(accentOf(root)).toEqual([survey.UNRESOLVED, 'src-app/app/themes/default.ts holds no theme object that says default: true the survey can read: the colours of the theme are not known']);
   });
 
+  it('takes the theme id and appearance from the object the colours come from, not from a theme written before it', () => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), "export const light = { id:'light', appearance:'light', variables:{'--primary':'#111111'} };\n"
+      + "export const t = { id:'dark', appearance:'dark', default: true, variables:{'--primary':'#ff0066'} };\n");
+    const result = survey.survey(root);
+    expect([result.look.accent, result.lookSources.themeId, result.lookSources.appearance]).toEqual(['#ff0066', 'dark', 'dark']);
+  });
+
   it('ignores a commented-out pair', () => {
     expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066',\n    // '--primary': '#00ff00',\n"))[0]).toBe('#ff0066');
   });

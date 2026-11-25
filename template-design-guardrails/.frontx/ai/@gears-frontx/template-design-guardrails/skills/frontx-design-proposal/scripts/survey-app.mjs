@@ -1193,12 +1193,15 @@ function readVariables(root, file, code, body, variables, from, unread) {
 const TYPE_OPEN = /(?:\btype\s+[A-Za-z_$][\w$]*(?:\s*<[^=;{}]*>)?\s*=|\binterface\s+[A-Za-z_$][\w$]*[^{};=]*|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*:)\s*$/;
 const DEFAULT_KEY = /default\s*:\s*true(?![\w$])/y;
 const VARIABLES_KEY = /variables\s*:\s*(\{)?/y;
+const ID_KEY = /id\s*:\s*(?:(['"])([\w-]+)\1|([A-Za-z_$][\w$]*))/y;
+const APPEARANCE_KEY = /appearance\s*:\s*(['"])(light|dark)\1/y;
 
 /**
  * The theme object of a theme file (comments stripped): the object literal that holds default: true as its own key,
  * outside type and interface bodies and annotations, the first such object to close. Returns whether there is one,
- * whether it has a variables key, and where its variables object literal opens (-1 when it is not one). One pass;
- * strings and template literals are skipped whole, as objectBody does.
+ * whether it has a variables key, where its variables object literal opens (-1 when it is not one), and its own id (a
+ * literal, or the name it is read from: idName) and appearance. One pass; strings and template literals are skipped
+ * whole, as objectBody does.
  */
 function themeObject(code) {
   const stack = [];
@@ -1208,22 +1211,25 @@ function themeObject(code) {
       for (i += 1; i < code.length && code[i] !== c; i += 1) if (code[i] === '\\') i += 1;
     } else if (c === '{') {
       const parent = stack[stack.length - 1];
-      stack.push({ type: Boolean(parent?.type) || TYPE_OPEN.test(code.slice(Math.max(0, i - 200), i)), isDefault: false, hasVariables: false, open: -1 });
+      stack.push({ type: Boolean(parent?.type) || TYPE_OPEN.test(code.slice(Math.max(0, i - 200), i)), isDefault: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null });
     } else if (c === '}') {
       const frame = stack.pop();
-      if (frame?.isDefault && !frame.type) return { found: true, hasVariables: frame.hasVariables, open: frame.open };
-    } else if ((c === 'd' || c === 'v') && stack.length && !/[\w$.]/.test(code[i - 1] ?? '')) {
+      if (frame?.isDefault && !frame.type) return { ...frame, found: true };
+    } else if ('dvia'.includes(c) && stack.length && !/[\w$.]/.test(code[i - 1] ?? '')) {
       const top = stack[stack.length - 1];
-      DEFAULT_KEY.lastIndex = i;
-      VARIABLES_KEY.lastIndex = i;
+      for (const key of [DEFAULT_KEY, VARIABLES_KEY, ID_KEY, APPEARANCE_KEY]) key.lastIndex = i;
       if (c === 'd' && DEFAULT_KEY.test(code)) top.isDefault = true;
+      else if (c === 'i' && !top.id && !top.idName) {
+        const m = ID_KEY.exec(code);
+        if (m) { top.id = m[2] ?? null; top.idName = m[3] ?? null; }
+      } else if (c === 'a' && !top.appearance) top.appearance = APPEARANCE_KEY.exec(code)?.[2] ?? null;
       else if (c === 'v' && !top.hasVariables) {
         const m = VARIABLES_KEY.exec(code);
         if (m) { top.hasVariables = true; if (m[1]) top.open = i + m[0].length - 1; }
       }
     }
   }
-  return { found: false, hasVariables: false, open: -1 };
+  return { found: false, hasVariables: false, open: -1, id: null, idName: null, appearance: null };
 }
 
 /**
@@ -1251,8 +1257,9 @@ function readActiveTheme(root) {
       : theme.hasVariables ? `${rel(root, file)} gives variables no object literal the survey can read: ${THEME_UNKNOWN}` : null;
   return {
     file: rel(root, file),
-    id: text.match(/\bid:\s*['"]([\w-]+)['"]/)?.[1] ?? text.match(/_ID\s*=\s*['"]([\w-]+)['"]/)?.[1] ?? UNRESOLVED,
-    appearance: text.match(/\bappearance:\s*['"](light|dark)['"]/)?.[1] ?? 'light',
+    // The id and appearance of the theme object the colours come from; an id given by name is read from that const.
+    id: theme.id ?? (theme.idName && code.match(new RegExp(`\\b${theme.idName.replaceAll('$', '\\$')}\\s*(?::[^=;]*)?=\\s*['"]([\\w-]+)['"]`))?.[1]) ?? UNRESOLVED,
+    appearance: theme.appearance ?? 'light',
     variables,
     from,
     unread,
