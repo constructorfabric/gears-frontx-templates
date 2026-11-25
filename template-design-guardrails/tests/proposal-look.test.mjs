@@ -336,6 +336,9 @@ describe('the rules a stylesheet yields', () => {
     ['@namespace', '@namespace x url(http://www.w3.org/2000/svg);'],
     ['@value', '@value x: 1px;'],
     ['url( in any case', '@import URL(a;b.css);'],
+    ['url("...") with a ")" inside the quotes', '@import url("a)b.css");'],
+    ["url('...') with a \")\" inside the quotes", "@import url('a)b.css');"],
+    ['url( "..." ) with white space around the quoted url', '@import url( "a)b.css" );'],
   ])('reads the .root rule after the at-statement %s as its own rule', (_, statement) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);

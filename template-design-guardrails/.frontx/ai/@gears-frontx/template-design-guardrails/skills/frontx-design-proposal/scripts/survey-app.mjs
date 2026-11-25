@@ -885,8 +885,9 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * string ("...", '...', with backslash escapes) and the content of url(...)
  * in it hold no end: no semicolon or brace inside one ends or opens anything.
  * A string also ends at an unescaped newline, as a bad string: the file reads
- * on from there, while a quote inside an unquoted url( opens no string and
- * url( is matched in any case. A rule inside an @media the file never closes
+ * on from there, while a quote inside an unquoted url( opens no string, a
+ * quoted url("...") holds a string like any other, and url( is matched in
+ * any case. A rule inside an @media the file never closes
  * is not kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading:
  * the rules before it are kept and the file, given as full, is listed under
  * skipped; so does a "}" at the top level with no rule open, and a file that
@@ -912,7 +913,8 @@ function parseCssRules(css, file = '', full = null) {
     if (f.head === 'at') {
       // A quoted string ends at its matching unescaped quote, or at an unescaped newline, which ends it as a bad
       // string: the file reads on from there. Inside an unquoted url( a quote opens no string, so only ")" ends it;
-      // url( is matched in any case.
+      // a url( whose first character after white space is a quote holds a string, read by the string branch, and the
+      // rest up to ")" is ordinary at-statement text; url( is matched in any case.
       if (f.quote) {
         if (c === '\\') i += 1;
         else if (c === f.quote) f.quote = '';
@@ -921,7 +923,13 @@ function parseCssRules(css, file = '', full = null) {
       }
       if (f.url) { if (c === ')') f.url = 0; continue; }
       if (c === '"' || c === "'") { f.quote = c; continue; }
-      if ((c === 'u' || c === 'U') && /^url\(/i.test(text.slice(i, i + 4))) { f.url = 1; i += 3; continue; }
+      if ((c === 'u' || c === 'U') && /^url\(/i.test(text.slice(i, i + 4))) {
+        let j = i + 4;
+        while (j < text.length && /\s/.test(text[j])) j += 1;
+        if (text[j] !== '"' && text[j] !== "'") f.url = 1;
+        i = j - 1;
+        continue;
+      }
     }
     if (c !== '{' && c !== '}' && !(c === ';' && f.depth === 0)) continue;
     if (c === ';') {
