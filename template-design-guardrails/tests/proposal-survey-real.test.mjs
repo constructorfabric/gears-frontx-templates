@@ -19,7 +19,11 @@ const repo = path.join(here, '../..');
 const skill = path.join(here, '../.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design-proposal');
 const survey = await import(pathToFileURL(path.join(skill, 'scripts/survey-app.mjs')).href);
 
-/** The shell files the survey reads: the app name, the layout, the themes, the logo, the menu's own CSS, the global CSS. */
+/**
+ * The shell files the survey reads for the look, the nav and the links: the app name (index.html), the layout, the
+ * themes, the logo, the menu's own CSS (components/ui), the global CSS. The rest of src-app (api, mfe, actions, i18n)
+ * changes only the services and mocks lists, which these tests do not assert.
+ */
 const SHELL_FILES = [
   'index.html',
   'src-app/app/layout',
@@ -128,6 +132,18 @@ describe('survey-app.mjs on a theme built from spreads', () => {
 });
 
 describe('survey-app.mjs on the stock shell', () => {
+  it('reads the unchanged stock shell and scaffold: the title from .title, the background unresolved, the router address, the menu\'s logo colour', () => {
+    const result = survey.survey(realApp());
+    // A1: the scaffold's .title is the title; its .screen sets no background, so the background is unresolved, naming the file.
+    expect([result.lookFrom.h1, result.lookFrom['h1-weight'], result.lookFrom.lead]).toEqual([`${SCREEN_CSS} .title font-size`, `${SCREEN_CSS} .title font-weight`, `${SCREEN_CSS} .description font-size`]);
+    expect([result.look.bg, result.unresolved]).toEqual([survey.UNRESOLVED, ['look.bg']]);
+    expect(result.lookFrom.bg).toBe(`no page background (.root or .screen background-color or background) in ${SCREEN_CSS}`);
+    // A2: the menu builds no link, so the address is the one the shell's router writes.
+    expect([result.nav, result.links.screens.map((x) => x.link)]).toEqual(['side', ['/?screen=blank-home']]);
+    // A5: the SVG logo takes --left-menu-foreground from the menu's own CSS module.
+    expect([result.look['mark-color'], result.look['nav-text']]).toEqual(['color-mix(in oklab, #f1f5f9 70%, #0f172a)', 'color-mix(in oklab, #f1f5f9 70%, #0f172a)']);
+    expect(result.lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color');
+  });
   it('colours the logo from the menu\'s own CSS module, --left-menu-foreground, not the accent', () => {
     const result = survey.survey(realApp());
     expect(result.brandMark.kind).toBe('svg');
