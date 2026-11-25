@@ -1874,6 +1874,37 @@ describe('refresh and dispose of the root', () => {
     instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).startsWith('gts.frontx.mfes.mfe.mf_manifest.v1~') && String(instance.id).endsWith('.metric_card.v1')),
   };
 
+  it('refuses a refresh whose widget part brings its own held type otherwise while a later part under its name still brings that type as held', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // A later part with the metric part's manifest id, another manifest content and the metric widget type as held,
+    // but not the metric entry: on the first load it is left out for its manifest.
+    const manifest = TWIN.instances[0] as { metaData: Record<string, unknown> };
+    const twin = {
+      types: BUNDLE_TYPES.metric_card.filter((type) => String(type.$id) === `gts://${METRIC_TYPE}`),
+      instances: [{ ...manifest, metaData: { ...manifest.metaData, publicPath: '/widgets/metric_card_twin/' } }],
+    };
+    const changed = partsOf([9], { extra: [twin], metricType: (type) => (String(type.$id) === `gts://${METRIC_TYPE}` ? { ...type, description: 'otherwise' } : type) });
+    const answers: unknown[] = [partsOf([7], { extra: [twin] }), changed];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const leftOut = () => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(leftOut()).toEqual([expect.stringMatching(/is left out: its instance .*metric_card\.v1 is already registered otherwise$/)]);
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(leftOut()).toHaveLength(1);
+  }, 15_000);
+
   it('refuses a refresh whose widget part without a manifest brings otherwise a type it brought itself', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const [first, ...rest] = BUNDLE_TYPES.markdown_card ?? [];

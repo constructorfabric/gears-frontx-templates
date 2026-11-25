@@ -170,16 +170,17 @@ export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin
  * The reason a served file read again cannot register, or nothing: the first type of a widget part that `types` holds
  * otherwise and that the same part brought first (its source in `sources`, the part named by its manifest ids or its
  * place). The store keeps the first definition, so the part would be left out and the cells it served would fail.
- * A name is not an identity: two parts may carry the same manifest ids, or ids equal in their capped length. So a
- * type is refused only when no part of the answer under the recorded name brings it as the store holds it; while
- * one does, the part that brought it is still there unchanged, and the other is left out as on the first load.
+ * A name is not an identity: two parts may carry the same manifest ids, or ids equal in their capped length. So the
+ * check follows the order of registration: of the parts under the recorded name, the first in answer order that
+ * brings the type stands for the part that registered it, and the type is refused when that part brings it otherwise;
+ * a later part under the name was left out as on the first load.
  * A part whose type another source brought first was left out from the first load on, and is left out again without
  * failing anything; a part that cannot be read is left out by the registration as before.
  */
 export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources: TypeSources): string | undefined {
   if (!Array.isArray(file)) return undefined;
-  // Each held type a part brings under the source recorded for it, with whether that part brings it as held.
-  const brought: { source: string; id: string; same: boolean }[] = [];
+  // Each held type with the first part, in answer order, that brings it under the source recorded for it.
+  const seen = new Set<string>();
   for (const [index, part] of file.slice(1).entries()) {
     try {
       if (!isObject(part) || !Array.isArray(part.types)) continue;
@@ -188,14 +189,15 @@ export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources:
         if (!isObject(schema)) continue;
         const id = idOf(schema);
         const was = types.getSchema(id);
-        if (was && sources.get(id) === source) brought.push({ source, id, same: canonical(was) === canonical(schema) });
+        if (!was || sources.get(id) !== source || seen.has(id)) continue;
+        seen.add(id);
+        if (canonical(was) !== canonical(schema)) return `${source}: its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
       }
     } catch {
       // Left out by the registration, as on a first load.
     }
   }
-  const changed = brought.find(({ source, id, same }) => !same && !brought.some((other) => other.same && other.id === id && other.source === source));
-  return changed && `${changed.source}: its type ${changed.id} is already defined otherwise, and a type changes only in a new dashboard root`;
+  return undefined;
 }
 
 /**
