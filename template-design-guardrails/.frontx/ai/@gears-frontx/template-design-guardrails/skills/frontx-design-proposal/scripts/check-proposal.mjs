@@ -173,8 +173,9 @@
  * - answer: an ask (.ask) that does not link to the answer block (#answer);
  *   no answer block (form#answer-form.answer in #answer); a data-subject
  *   that does not name the top bar's page id and revision; its options
- *   (values and names) differ from the page's options, or with one design
- *   from "Build it as drawn" and "Change it first"; not exactly one
+ *   (values, names and data-say, which Copy answer writes) differ from the
+ *   page's options, or with one design from "Build it as drawn" and "Change
+ *   it first" (on a page not in English: a name and a data-say); not exactly one
  *   suggested option, the suggested option not the one checked, or not the
  *   recommended one; an open question missing from the block, or a question
  *   in the block the page has not; a question with fewer than two ready
@@ -1264,7 +1265,7 @@ export function checkPage(html, { survey = null } = {}) {
 const NOT_DECIDED = /\b(?:not (?:yet )?decided|undecided|decide later|no answer|not sure|don'?t know|no preference|tbd|to be decided)\b|^\s*skip(?:ped)?\s*[.!]?\s*$/i;
 /** The words the page's scripts write, from the answer form's data-phrase-*, and the places each must keep for the script to fill. */
 const PHRASES = { choose: ['{subject}', '{letter}', '{name}'], answer: ['{subject}', '{answer}'], questions: [], changes: ['{changes}'], none: [], copied: [], failed: [], 'wide-part': [] };
-const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn' }, { value: 'change', name: 'Change it first' }];
+const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn', say: 'build it as drawn' }, { value: 'change', name: 'Change it first', say: 'change it first, as written under Changes' }];
 
 /**
  * The answer block (references/page-parts.md, "Answer block"): every ask links
@@ -1311,11 +1312,13 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add
     const picks = picksOf(optGroup, 'option');
     const want = withOptions ? optionNodes.map((o) => ({ value: (o.attrs['data-option'] ?? '').toUpperCase(), name: norm(textOf(find(o, (n) => n.tag === 'h3')[0] ?? { children: [] })) })) : DESIGN_PICKS;
     const have = picks.map((p) => ({ value: p.input.attrs.value ?? '', name: p.name, say: norm(p.input.attrs['data-say'] ?? '') }));
-    // On a page in another language the two cards of one design are named in that language: their values bind, and a name.
+    // On a page in another language the two cards of one design are named in that language: their values bind, a
+    // name and a data-say. Copy answer writes the checked card's data-say, so every card carries one.
     const named = (w, h) => (english || withOptions ? w.name === h.name : h.name !== '');
-    const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && named(w, have[i]) && (!withOptions || `${w.value}. ${have[i].say}` === w.name));
+    const said = (w, h) => (withOptions ? `${w.value}. ${h.say}` === w.name : english ? h.say === w.say : h.say !== '');
+    const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && named(w, have[i]) && said(w, have[i]));
     const show = (xs) => xs.map((x) => `${x.value} "${x.name}"`).join(', ') || 'none';
-    if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: withOptions ? `${h.name}" say "${h.say}` : h.name })))}) differ from the page's (${show(want)})`);
+    if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: `${h.name}" say "${h.say}` })))}) differ from the page's (${show(want)})`);
     const sug = picks.filter((p) => p.suggested);
     if (sug.length !== 1) add('answer', `"Which option?" marks ${sug.length} options suggested; exactly one, the recommended one`);
     else {

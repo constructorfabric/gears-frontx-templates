@@ -18,6 +18,7 @@ const check = await import(pathToFileURL(path.join(skill, 'scripts/check-proposa
 
 const r1 = readFileSync(path.join(proposals, 'team-tasks/r1/proposal.html'), 'utf8');
 const r2 = readFileSync(path.join(proposals, 'team-tasks/r2/proposal.html'), 'utf8');
+const account = readFileSync(path.join(proposals, 'account-settings/r1/proposal.html'), 'utf8');
 const edit = (page, from, to) => {
   expect(page.includes(from), from).toBe(true);
   return page.replaceOrFail(from, to);
@@ -212,6 +213,9 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['a short data-say', edit(r1, 'data-say="Done tasks show under All together with the open tasks."', 'data-say="Under All."'), 'a data-say of fewer than five words'],
     ['a "not decided" answer', edit(r1, Q2_WRONG, Q2_WRONG.replaceAllOrFail('Under All, with the rest', 'Not decided yet')), 'is a "not decided" placeholder'],
     ['no reason for the suggested answer', r1.replaceOrFail(/(<li id="q-2">[\s\S]*?)<span class="small why">[\s\S]*?<\/span><\/li>/, '$1</li>'), 'open question 2 gives no reason'],
+    ['one design without data-say on the build card, which Copy answer writes', edit(account, ' value="build" data-say="build it as drawn"', ' value="build"'), 'build "Build it as drawn" say ""'],
+    ['one design without data-say on the change card', edit(account, ' value="change" data-say="change it first, as written under Changes"', ' value="change"'), 'change "Change it first" say ""'],
+    ['one design in another language without data-say', edit(edit(account, '<html lang="en">', '<html lang="de">'), ' value="build" data-say="build it as drawn"', ' value="build"'), 'build "Build it as drawn" say ""'],
     ['a subject without the revision', edit(r1, '(page team-tasks, revision r1)', '(page team-tasks)'), 'does not name page team-tasks and revision r1'],
     ['no changes field', r1.replaceOrFail(/<label class="ans-q ans-note">[\s\S]*?<\/label>\n/, ''), 'no "Anything to change?" textarea'],
     ['no Copy button', edit(r1, ' id="answer-copy"', ''), 'has no #answer-copy'],
