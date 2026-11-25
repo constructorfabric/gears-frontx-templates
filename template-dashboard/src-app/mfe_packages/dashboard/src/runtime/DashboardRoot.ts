@@ -360,6 +360,8 @@ export class DashboardRoot {
     for (const container of this.containers.values()) container.remove();
     this.containers.clear();
     this.leaving.clear();
+    this.cells.clear();
+    this.sources.clear();
   }
 
   /** Publishes the host theme id and language on the `widgets` domain; a change restyles every widget and re-runs nothing. */

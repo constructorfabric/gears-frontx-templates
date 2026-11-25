@@ -2341,6 +2341,9 @@ describe('refresh and dispose of the root', () => {
     // The root holds no listener: the one added before the dispose is dropped, and one added after it is not kept.
     const listeners = (root as unknown as { listeners: Set<unknown> }).listeners;
     expect(listeners.size).toBe(0);
+    // Nor the count of the cells that named each extension, nor the first source of each served type.
+    const held = root as unknown as { cells: Map<string, number>; sources: Map<string, string> };
+    expect([held.cells.size, held.sources.size]).toEqual([0, 0]);
     root.subscribe(listener);
     expect(listeners.size).toBe(0);
     // Later calls have their own results: no file request, no write to the domain, no extension.
