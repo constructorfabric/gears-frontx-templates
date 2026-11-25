@@ -16,7 +16,11 @@
  *   unresolved, never stopping;
  *   it counts a screen with no label or no folder as unresolved, lists only
  *   the CSS it read as a look source, says when --out cannot be written,
- *   cleans an SVG in linear time with at most SVG_ATTR_CAP attributes a tag;
+ *   cleans an SVG in linear time with at most SVG_ATTR_CAP attributes a tag
+ *   and at most SVG_USE_CAP <use> elements, whose nested expansion no page
+ *   needs; it resolves a value's var() references once per name in one
+ *   resolution and resolves no value over RESOLVE_CAP characters, so a theme
+ *   of var() fan-out costs bounded work and a huge value is unknown;
  *   it decodes the app name once, reports a project root it cannot list as
  *   an input error and lists an unreadable file or folder under skipped;
  * - check-proposal.mjs refuses what would load or run anything: addresses out
@@ -117,6 +121,43 @@ describe('survey-app.mjs copies only values that fit their kind', { timeout: SUR
     const result = survey.survey(root);
     expect(result.appName).toBe('Tom & Jerry <3');
     expect(result.brandHtml).toContain('Tom &amp; Jerry &lt;3</span>');
+  });
+});
+
+describe('survey-app.mjs resolves var() values in bounded time and size', { timeout: SURVEY_TIMEOUT }, () => {
+  const cpuMs = () => { const { user, system } = process.cpuUsage(); return (user + system) / 1000; };
+  // A theme under a kilobyte: each value holds k var() calls of the next value, 9 levels deep (under the depth cap),
+  // the leaf a length. The .root bridge of the page CSS carries it into the look through --primary (the accent token,
+  // which no page rule of its own overrides).
+  const fanRoot = (k, levels) => {
+    const decls = ['--primary: var(--v0);'];
+    for (let l = 0; l < levels - 1; l += 1) decls.push(`--v${l}: ${Array.from({ length: k }, () => `var(--v${l + 1})`).join(' ')};`);
+    decls.push(`--v${levels - 1}: 1px;`);
+    return edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root {\n  ${decls.join('\n  ')}\n}\n${t}`);
+  };
+
+  it('resolves a small fan-out as before: the value comes out and is refused only for its kind', () => {
+    const result = survey.survey(fanRoot(2, 9));
+    expect(result.dropped).toContainEqual(expect.objectContaining({ key: 'look.accent', why: 'not a colour the drawing can take' }));
+    expect(result.unresolved).toContain('look.accent');
+  });
+
+  it('surveys a fan-out of 8 var() calls per value, 9 levels deep, in bounded time', () => {
+    const root = fanRoot(8, 9);
+    const start = cpuMs();
+    const result = survey.survey(root);
+    const spent = cpuMs() - start;
+    expect(result.unresolved).toContain('look.accent');
+    // The old resolution redid every var() once per appearance: about 20 s of CPU time here. A name is now resolved
+    // once and a value is refused over RESOLVE_CAP characters, so the same input stays far under the bound.
+    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide var() fan-out`).toBeLessThan(2000);
+  });
+
+  it('resolves no value over the output cap: it is unknown, not a refused value', () => {
+    const root = edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root { --primary: ${'1px '.repeat(2000)}; }\n${t}`);
+    const result = survey.survey(root);
+    expect(result.unresolved).toContain('look.accent');
+    expect(result.dropped.map((d) => d.key)).not.toContain('look.accent');
   });
 });
 

@@ -983,14 +983,22 @@ function findKitDir(root) {
   }
 }
 
-/** Replaces every var(--x[, fallback]) in a value through lookup; null when one cannot be resolved. */
-function resolveVars(raw, lookup, depth = 0) {
+/** The longest value one var() resolution may produce; over it the value cannot be resolved. */
+export const RESOLVE_CAP = 4096;
+
+/**
+ * Replaces every var(--x[, fallback]) in a value through lookup; null when one cannot be resolved or the resolved
+ * value would be over RESOLVE_CAP characters. Within one resolution a name is resolved once and cached, so a value
+ * with many var() calls of the same names costs one resolution of each name, not one per appearance; the depth cap
+ * and the cycle behaviour are as before.
+ */
+function resolveVars(raw, lookup, depth = 0, cache = new Map()) {
   if (raw === null || raw === undefined || depth > 12) return null;
   let out = '';
   let i = 0;
   while (i < raw.length) {
     const at = raw.indexOf('var(', i);
-    if (at === -1) { out += raw.slice(i); break; }
+    if (at === -1) { out += raw.slice(i); if (out.length > RESOLVE_CAP) return null; break; }
     out += raw.slice(i, at);
     let level = 1;
     let j = at + 4;
@@ -1002,10 +1010,16 @@ function resolveVars(raw, lookup, depth = 0) {
     const comma = inner.indexOf(',');
     const name = (comma === -1 ? inner : inner.slice(0, comma)).trim();
     const fallback = comma === -1 ? null : inner.slice(comma + 1).trim();
-    let value = resolveVars(lookup(name), lookup, depth + 1);
-    if (value === null && fallback !== null) value = resolveVars(fallback, lookup, depth + 1);
+    let value;
+    if (cache.has(name)) value = cache.get(name);
+    else {
+      value = resolveVars(lookup(name), lookup, depth + 1, cache);
+      cache.set(name, value);
+    }
+    if (value === null && fallback !== null) value = resolveVars(fallback, lookup, depth + 1, cache);
     if (value === null) return null;
     out += value;
+    if (out.length > RESOLVE_CAP) return null;
     i = j;
   }
   return out.trim();
