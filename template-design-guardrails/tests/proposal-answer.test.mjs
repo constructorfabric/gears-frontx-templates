@@ -234,9 +234,23 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['the recommended .opt-link', edit(edit(r1, OPT_A, '<a class="opt-link recommended" href="&#35;option-a"><span class="mini"'), OPT_A_LATER, '<a class="opt-link recommended" href="#option-b"><span class="opt-name">'), 'is not the recommended option'],
     ['the guarantees #q-N link', edit(invite, '<a class="pinref" href="#draw-join-used" data-n="1">1</a>', '<a href="&#35;q-2">question 2</a>'), '[guarantee]'],
     ['the paths "!" mark', edit(docs, '<a class="longer" href="#q-2"', '<a class="longer" href="&#35;q-2"'), 'links to no open question'],
+    ['an overview link, counted per option', edit(r1, '<a class="opt-link" href="#option-b"><span class="mini"', '<a class="opt-link" href="&#35;option-b"><span class="mini"'), '#option-b has'],
+    ['a map node, counted per screen', edit(r1, '<a class="map-node" href="#screen-list">', '<a class="map-node" href="&#35;screen-list">'), 'screen #screen-list has'],
+    ['a link into the home section of a glossary term', edit(r1, '<a class="opt-link" href="#option-c"><span class="mini"', '<a class="opt-link" href="&#35;option-c"><span class="mini"'), '"Board" appears in #overview'],
   ])('reads &#35; in the href of %s as the # it stands for', (_, coded, finding) => {
     const found = check.checkPage(coded).findings;
     expect(found.filter((f) => f.includes(finding)), found.join('\n')).toEqual([]);
+  });
+
+  // The sites where a fragment href opens a check: read raw, the coded link would open none and the finding would
+  // be lost. The glossary row says "board" in the overview, before #how, the section that holds #option-c, where its entry links.
+  const SAME = 'the same ten sample tasks.';
+  it.each([
+    ['the home link of a glossary entry', edit(edit(r1, '<a href="#option-c">Drawn in option C</a>', '<a href="&#35;option-c">Drawn in option C</a>'), SAME, 'the same ten sample tasks on a board.'), '[glossary] "Board" appears in #overview, before #how'],
+    ['an in-page link', edit(r1, SAME, `${SAME} <a href="&#35;nowhere">More</a>`), '[links] a link to &#35;nowhere, which the page does not have'],
+  ])('reads &#35; in the href of %s as the # it stands for, and reports what it finds there', (_, coded, finding) => {
+    const found = check.checkPage(coded).findings;
+    expect(found.filter((f) => f.includes(finding)), found.join('\n')).toHaveLength(1);
   });
 
   it('reports five ready answers, one past the four allowed', () => {
