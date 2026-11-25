@@ -596,7 +596,7 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
   // one hard link, so references/propose.md keeps the agent from opening it by hand.
   it.skipIf(process.platform === 'win32').each([
     ['theme.css', 'over the byte cap', `OUTSECRET ${'x'.repeat(1_100_000)}`, /^\d+ bytes, over the \d+ byte cap, and it has more than one hard link$/],
-    ['chunks/table.css', 'with @media nested past the depth cap', `${'@media x{'.repeat(40)} OUTSECRET`, /^@media rules nested more than \d+ deep: the rest of the file is not read, and it has more than one hard link$/],
+    ['chunks/table.css', 'with @media nested past the depth cap', `${'@media x{'.repeat(40)} OUTSECRET`, /^block at-rules \(@media, @supports, @layer, \.\.\.\) nested more than \d+ deep: the rest of the file is not read, and it has more than one hard link$/],
   ])('says a hard-linked kit %s skipped %s has more than one hard link', (file, _, content, why) => {
     const root = writeTopApp(tempDir());
     const outside = path.join(tempDir(), 'outside.css');
@@ -1093,7 +1093,7 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
   it('stops at the @media depth cap however deep the nesting goes, saying so', () => {
     for (const depth of [500, 4000, 30000]) {
       const result = survey.survey(edit(writeTopApp(tempDir()), HOME_CSS, (t) => `${t}${'@media (min-width: 600px) {'.repeat(depth)}.x { color: red; }${'}'.repeat(depth)}\n`));
-      expect(result.skipped, String(depth)).toEqual([{ file: HOME_CSS, why: `@media rules nested more than ${survey.MEDIA_DEPTH_CAP} deep: the rest of the file is not read` }]);
+      expect(result.skipped, String(depth)).toEqual([{ file: HOME_CSS, why: `block at-rules (@media, @supports, @layer, ...) nested more than ${survey.MEDIA_DEPTH_CAP} deep: the rest of the file is not read` }]);
     }
   });
 
@@ -1110,7 +1110,7 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
     expect(at.skipped).toEqual([]);
     const over = nested(survey.MEDIA_DEPTH_CAP + 1);
     expect(over.lookFrom.max).toBe(`${HOME_CSS} .column max-width`);
-    expect(over.skipped).toEqual([{ file: HOME_CSS, why: `@media rules nested more than ${survey.MEDIA_DEPTH_CAP} deep: the rest of the file is not read` }]);
+    expect(over.skipped).toEqual([{ file: HOME_CSS, why: `block at-rules (@media, @supports, @layer, ...) nested more than ${survey.MEDIA_DEPTH_CAP} deep: the rest of the file is not read` }]);
     expect(over.unresolved).toContain(`skipped ${HOME_CSS}`);
   });
 

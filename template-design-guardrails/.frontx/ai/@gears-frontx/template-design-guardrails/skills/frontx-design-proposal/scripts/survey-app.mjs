@@ -945,7 +945,7 @@ function parseCssRules(css, file = '', full = null) {
         const holding = !atMedia && RULE_HOLDING_AT_RULES.has(name);
         if (atMedia || holding) {
           if (frames.length > MEDIA_DEPTH_CAP) {
-            if (full) skip(full, `@media rules nested more than ${MEDIA_DEPTH_CAP} deep: the rest of the file is not read${linkNote(full)}`);
+            if (full) skip(full, `block at-rules (@media, @supports, @layer, ...) nested more than ${MEDIA_DEPTH_CAP} deep: the rest of the file is not read${linkNote(full)}`);
             return rules;
           }
           f.depth = 1;
