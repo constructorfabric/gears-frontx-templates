@@ -853,26 +853,41 @@ export const MEDIA_DEPTH_CAP = 32;
  * Rules of a CSS file: { selector, media, decls }. media is null for a top
  * level rule, the min-width in px of the innermost @media (min-width: N px)
  * for a rule inside one, or 'other' for any other @media; a rule inside any
- * other at-rule is left out of the look. One pass: each open @media body is
- * a frame with its own brace depth, start and selector, so a body is read
- * where it stands and never scanned again. A rule inside an @media the file
- * never closes is not kept. An @media nested deeper than MEDIA_DEPTH_CAP ends
- * the reading: the rules before it are kept and the file, given as full, is
- * listed under skipped; so does a "}" at the top level with no rule open.
+ * other at-rule is not kept and the file is listed under skipped. One pass:
+ * each open @media body is a frame with its own brace depth, start and
+ * selector, so a body is read where it stands and never scanned again. At the
+ * top level a semicolon ends an at-statement (@import, @charset, @layer a;,
+ * @namespace, @value): the statement itself is no rule, and the rule after it
+ * is read as its own. A rule inside an @media the file never closes is not
+ * kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading: the
+ * rules before it are kept and the file, given as full, is listed under
+ * skipped; so does a "}" at the top level with no rule open.
  */
 function parseCssRules(css, file = '', full = null) {
   const rules = [];
   const text = withoutBlocks(css, '/*', '*/');
-  const top = { media: null, depth: 0, start: 0, selector: '', kept: 0 };
+  const top = { media: null, depth: 0, start: 0, selector: '', kept: 0, sig: 0 };
   const frames = [top];
+  // The first character that is not white space at or after a frame's start;
+  // each frame scans forward only, so the reading stays linear in the file.
+  const significant = (f) => {
+    while (f.sig < text.length && /\s/.test(text[f.sig])) f.sig += 1;
+    return f.sig;
+  };
   for (let i = 0; i < text.length; i += 1) {
     const c = text[i];
-    if (c !== '{' && c !== '}') continue;
+    if (c !== '{' && c !== '}' && !(c === ';' && frames.length === 1 && top.depth === 0)) continue;
     const f = frames[frames.length - 1];
+    if (c === ';') {
+      // An at-statement at the top level ends here: what follows is read as its own rule.
+      if (text[significant(top)] === '@') { top.start = i + 1; top.sig = i + 1; }
+      continue;
+    }
     if (c === '{') {
       if (f.depth === 0) {
         f.selector = text.slice(f.start, i).trim();
         f.start = i + 1;
+        f.sig = i + 1;
         if (f.selector.startsWith('@media')) {
           if (frames.length > MEDIA_DEPTH_CAP) {
             if (full) skip(full, `@media rules nested more than ${MEDIA_DEPTH_CAP} deep: the rest of the file is not read${linkNote(full)}`);
@@ -880,7 +895,7 @@ function parseCssRules(css, file = '', full = null) {
           }
           const min = /min-width:\s*(\d+)px/.exec(f.selector);
           f.depth = 1;
-          frames.push({ media: min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length });
+          frames.push({ media: min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, sig: i + 1 });
           continue;
         }
       }
@@ -895,6 +910,7 @@ function parseCssRules(css, file = '', full = null) {
       const outer = frames[frames.length - 1];
       outer.depth = 0;
       outer.start = i + 1;
+      outer.sig = i + 1;
     } else {
       f.depth -= 1;
       if (f.depth === 0) {
@@ -902,8 +918,11 @@ function parseCssRules(css, file = '', full = null) {
           const decls = new Map();
           for (const m of text.slice(f.start, i).matchAll(/(?<![\w-])(--[\w-]{1,100}|[a-z-]{1,100})\s*:\s*([^;{}]+)/g)) decls.set(m[1], m[2].trim());
           rules.push({ selector: f.selector, media: f.media, decls, file });
+        } else if (full) {
+          skip(full, `the ${f.selector.split(/[\s,{]/)[0]} rule is not read`);
         }
         f.start = i + 1;
+        f.sig = i + 1;
       }
     }
   }

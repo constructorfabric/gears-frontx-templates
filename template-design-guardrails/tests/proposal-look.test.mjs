@@ -10,6 +10,11 @@
  *   and never the logo inlined again where the survey defines it once;
  *   An SVG is kept up to SVG_CAP bytes once cleaned, and a use whose
  *   address was dropped draws nothing;
+ * - the rules a stylesheet yields: an at-statement at the top level (@import,
+ *   @charset, @layer a;, @namespace, @value) ends at its semicolon and the
+ *   rule after it is read as its own rule; a rule the parser still skips (a
+ *   block at-rule such as @layer a { ... }) is not kept and the file is
+ *   listed under skipped;
  * - the app name from the index title, the content column's width by the
  *   app's own box-sizing (its global reset at the top level of a stylesheet
  *   in src-app or src-app/app, unless the column opts out), and the link
@@ -315,6 +320,27 @@ describe('the app name, the content column and the link addresses', () => {
       'src-app/app/layout/Menu.tsx': 'function linkTo(route) { return `/app${route}`; }\nexport const items = (routes) => routes.map((route) => ({ to: makeMenuHref(route) }));\n',
     });
     expect(objects.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
+  });
+});
+
+describe('the rules a stylesheet yields', () => {
+  const HOME_CSS = 'src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css';
+  it.each([
+    ['@import', '@import "a.css";'],
+    ['@charset', '@charset "utf-8";'],
+    ['@layer a;', '@layer a;'],
+    ['@namespace', '@namespace x url(http://www.w3.org/2000/svg);'],
+    ['@value', '@value x: 1px;'],
+  ])('reads the .root rule after the at-statement %s as its own rule', (_, statement) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.look.bg).toBe('#ffffff');
+  });
+
+  it('lists a block at-rule it still skips under skipped, with its reason', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@layer a { .root { background-color: #000000; } }\n${t}` }));
+    expect(result.skipped).toContainEqual({ file: HOME_CSS, why: 'the @layer rule is not read' });
+    expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
   });
 });
 
