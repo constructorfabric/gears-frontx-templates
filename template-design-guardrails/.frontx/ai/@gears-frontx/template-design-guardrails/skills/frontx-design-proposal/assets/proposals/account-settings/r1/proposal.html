@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-szqzYFvKRD1WNfC1COdVPeaUs0v4phxROgenBlNzq34=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Y5VAolzeAHqGJn9oU1US1wlezHshtT/OhQNqjS22BVg=' 'sha256-837c4vUxxBVJJlCj/r5IPIFg2EFcbOUe7N8Jek/03U4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proposal: Account settings</title>
 <style id="frame">
@@ -1049,11 +1049,14 @@ dialog button:hover { background: var(--raise); }
     zoom.showModal();
     placePins(canvas);
   }
-  for (const figure of document.querySelectorAll('main .drawing')) {
-    figure.addEventListener('click', () => enlarge(figure));
-    figure.addEventListener('keydown', (e) => { if (e.key === 'Enter') enlarge(figure); });
+  // Without the dialog (the check asks for it) no drawing enlarges, and the rest of the script still runs.
+  if (zoom && zoomBody) {
+    for (const figure of document.querySelectorAll('main .drawing')) {
+      figure.addEventListener('click', () => enlarge(figure));
+      figure.addEventListener('keydown', (e) => { if (e.key === 'Enter') enlarge(figure); });
+    }
+    zoom.addEventListener('click', (e) => { if (e.target === zoom) zoom.close(); });
   }
-  zoom.addEventListener('click', (e) => { if (e.target === zoom) zoom.close(); });
   for (const details of document.querySelectorAll('details')) details.addEventListener('toggle', layout);
   // The rendered layout check (references/propose.md, step 6), for a session
   // with a headless browser: evaluate checkProposalLayout() at 1280 and at

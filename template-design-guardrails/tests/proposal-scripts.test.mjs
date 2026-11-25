@@ -197,6 +197,8 @@ describe('check-proposal.mjs on broken copies', () => {
     ['drawing', '<p> inside a drawing', swap('<span class="d-skel" style="--w: 80%"></span>', '<p>The loading state shows grey lines where the tasks will be while the list loads from the server.</p>')],
     ['options', 'has no "Trade-off"', swap('<dt>Trade-off</dt><dd>about half', '<dt>Cost</dt><dd>about half')],
     ['text', 'longer than five words', swap('<b>Status select</b>', '<b>The select that replaces the status tabs</b>')],
+    ['frame', 'no zoom dialog (dialog#zoom)', page.replaceOrFail(/<dialog id="zoom"[\s\S]*?<\/dialog>\n/, '')],
+    ['frame', 'the zoom dialog (dialog#zoom) holds no #zoom-body', swap('<div id="zoom-body"></div>', '')],
     ['text', 'placeholder {{PAGE_TITLE}}', swap('<h1 class="topbar-title">Proposal: Team tasks</h1>', '<h1 class="topbar-title">Proposal: {{PAGE_TITLE}}</h1>')],
   ])('reports %s: %s', (kind, message, html) => {
     const found = kinds(html);

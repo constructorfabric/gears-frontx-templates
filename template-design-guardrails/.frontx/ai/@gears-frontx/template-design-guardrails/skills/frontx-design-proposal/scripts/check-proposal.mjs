@@ -49,7 +49,8 @@
  *   head or the policy would come too late), the app-look block holds more than --d-*
  *   declarations on .d-app or a "{", a "[" or a "(" its declaration does not close
  *   (CSS would lose the rest of the rule), a double quote, a backslash or a single quote
- *   outside --d-font, or another style or script block is present;
+ *   outside --d-font, another style or script block is present, or the zoom
+ *   dialog (dialog#zoom holding #zoom-body) the frame script enlarges a drawing into is missing;
  * - app-look (when survey.json lies beside the page): a --d-* value that
  *   differs from survey.json, is missing from the block, is not in
  *   survey.json, or fills a value the survey left unresolved, without a
@@ -1013,8 +1014,12 @@ export function checkPage(html, { survey = null } = {}) {
       }
     }
   }
+  // The zoom dialog the frame script enlarges a drawing into; the agent edits it to translate Close.
+  const zoom = find(root, (n) => n.tag === 'dialog' && n.attrs.id === 'zoom')[0];
+  if (!zoom) add('frame', 'no zoom dialog (dialog#zoom) with its #zoom-body: the frame script enlarges a drawing into it; keep it as templates/proposal.html has it, only Close in the page\'s language');
+  else if (!find(zoom, (n) => n.attrs.id === 'zoom-body').length) add('frame', 'the zoom dialog (dialog#zoom) holds no #zoom-body, where the frame script puts the enlarged drawing; keep it as templates/proposal.html has it');
   for (const n of find(root, (x) => x.tag === 'style' || x.tag === 'script')) {
-    if (!['frame', 'draw', 'app-look', 'frame-js', 'answer-js'].includes(n.attrs.id)) add('frame', `an extra <${n.tag}> block${n.attrs.id ? ` (#${n.attrs.id})` : ''}`);
+    if (!['frame','draw', 'app-look', 'frame-js', 'answer-js'].includes(n.attrs.id)) add('frame', `an extra <${n.tag}> block${n.attrs.id ? ` (#${n.attrs.id})` : ''}`);
   }
 
   // placeholders
