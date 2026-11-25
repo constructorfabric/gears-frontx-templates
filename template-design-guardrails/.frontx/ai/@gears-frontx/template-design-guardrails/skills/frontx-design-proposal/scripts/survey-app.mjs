@@ -943,7 +943,7 @@ function parseCssRules(css, file = '', full = null) {
       if (f.depth === 0) {
         f.selector = text.slice(f.start, i).trim();
         reset(f, i + 1);
-        const min = /min-width:\s*(\d+)px/.exec(f.selector);
+        const min = /min-width:\s*(\d+)px/i.exec(f.selector);
         // The at-rule name is read once, lower cased, and used for both the @media test and the rule-holding test, so
         // @MEDIA (min-width: 600px){ and @supports(display:grid){ are read like their lower case spellings. A
         // rule-holding block at-rule, @layer included, opens a frame like a non-min-width @media does, with media
@@ -958,7 +958,7 @@ function parseCssRules(css, file = '', full = null) {
             return rules;
           }
           f.depth = 1;
-          frames.push({ media: atMedia ? (min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other') : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
+          frames.push({ media: atMedia ? (min && !/max-width/i.test(f.selector) ? Number(min[1]) : 'other') : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
           continue;
         }
       }

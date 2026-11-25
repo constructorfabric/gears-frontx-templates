@@ -357,12 +357,19 @@ describe('the rules a stylesheet yields', () => {
     ['a ";" inside the prelude string of a block at-rule', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color`, '#ffffff'],
     ['a stray ";" between rules', '.kpi {} ; @import "x"; .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
     ['an at-rule name in upper case', '@MEDIA (min-width: 600px) { .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
+    ['a MIN-WIDTH feature in upper case', '@media (MIN-WIDTH: 600px) { .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
   ])('reads the rules around %s as their own rules', (_, before, key, from, value) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${before}\n${t}` }));
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
     expect(result.lookFrom[key], before).toBe(from);
     expect(result.look[key], before).toBe(value);
+  });
+
+  it('reads a min-width @media with a MAX-WIDTH in upper case as media other: no rule from that width', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@media (min-width: 600px) and (MAX-WIDTH: 900px) { .kpi { font-size: 33px; } }\n${t}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
   });
 
   // A quoted string of an at-statement also ends at an unescaped newline, as a bad string: the file reads on from
