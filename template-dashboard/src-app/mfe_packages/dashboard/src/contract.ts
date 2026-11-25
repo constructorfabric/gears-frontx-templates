@@ -94,6 +94,10 @@ export const LANGUAGE_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~fro
  * The element a host names for overlays (the `overlayContainer` of `<Dashboard>`), or null for none. The `widgets`
  * domain shares it like the theme and the language; a widget opens its overlays (menus, popovers, dialogs) there, and
  * inside its own shadow root without one. No widget entry requires it.
+ *
+ * The value schema is open (a page element is not JSON), so nothing in the type store checks what a widget receives.
+ * A widget must check that the value is an `HTMLElement` of its own document before it uses it, and treat anything
+ * else as no container; a product's own widget bundle gets the value as `unknown`.
  */
 export const OVERLAY_CONTAINER_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~frontx.dashboard.mfe.overlay_container.v1~';
 
