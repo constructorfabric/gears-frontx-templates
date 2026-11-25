@@ -316,8 +316,11 @@ const UNSPACED_LANGS = new Set(['ja', 'zh', 'th', 'lo', 'km', 'my']);
  */
 const CHARS_PER_WORD = 1.5;
 const unspaced = (root) => UNSPACED_LANGS.has((langOf(root) ?? '').toLowerCase().split('-')[0]);
-/** The characters of the scripts written without spaces (Han, Hiragana, Katakana and its long vowel mark, Thai, Lao, Khmer, Myanmar). */
-const UNSPACED_CHARS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}ーｰ]/gu;
+/**
+ * The letters and digits of the scripts written without spaces (Han, Hiragana, Katakana and its long vowel mark, Thai,
+ * Lao, Khmer, Myanmar); their combining marks (vowel signs, tone marks) are no characters of their own.
+ */
+const UNSPACED_CHARS = /[[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}ーｰ]&&[\p{L}\p{N}]]/gv;
 /**
  * The words of a text for a minimum: words between spaces; in a language without spaces, the characters of the
  * unspaced scripts over CHARS_PER_WORD plus the words between spaces of the rest (a run with a letter or a digit), so

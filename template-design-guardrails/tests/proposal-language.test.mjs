@@ -255,28 +255,33 @@ describe('a page in a language written without spaces', () => {
     expect(sayFindings('はいはい yes okay fine')).toEqual([]);
   });
 
-  it('counts 1.5 characters a word: six kana are four words, eight are more than five', () => {
-    expect(sayFindings('はいはいはい')).toEqual([SHORT_SAY]);
-    expect(sayFindings('はいはいはいはい')).toEqual([]);
+  it('counts 1.5 kana a word and a Latin word as one, however long: six kana and one word are five', () => {
+    expect(sayFindings('はいはい abcdefgh')).toEqual([SHORT_SAY]);
+    expect(sayFindings('はいはいはい a')).toEqual([]);
   });
 
-  it('counts characters on a page in Chinese too', () => {
-    expect(sayFindings('可以改', 'zh')).toEqual([SHORT_SAY]);
-    expect(sayFindings('邮箱可以在这里修改', 'zh')).toEqual([]);
+  it('counts characters on a page in Chinese too, and its Latin words as words', () => {
+    expect(sayFindings('可以 internationalization', 'zh')).toEqual([SHORT_SAY]);
+    expect(sayFindings('可以改 a b c', 'zh')).toEqual([]);
+  });
+
+  it('counts the letters of Thai, not its vowel and tone marks', () => {
+    // เปลี่ยนที่นี่: 7 letters and 6 marks, 4.7 words, short.
+    expect(sayFindings('เปลี่ยนที่นี่', 'th')).toEqual([SHORT_SAY]);
   });
 
   it('counts characters for a disclosure\'s summary on a Japanese page', () => {
     const DISCLOSURE = 'a disclosure whose summary does not say what it hides';
     const withSummary = (summary) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${BUILT}</p>\n<details class="more"><summary>${summary}</summary><span>古い記録です。</span></details>`)).filter((f) => f.includes(DISCLOSURE));
-    expect(withSummary('はい')).toEqual([`[disclosure] ${DISCLOSURE}`]);
-    expect(withSummary('古い記録の全部')).toEqual([]);
+    expect(withSummary('Excel')).toEqual([`[disclosure] ${DISCLOSURE}`]);
+    expect(withSummary('はい a b')).toEqual([]);
   });
 
   it('counts characters for a removed part\'s reason on a Japanese page', () => {
     const REMOVED = '<td>Removed: documents are read in the app now, <a href="#q-1">question 1</a></td>';
     const reason = (td) => findings(read('docs-redesign/r1').replaceOrFail('<html lang="en">', '<html lang="ja">').replaceOrFail(REMOVED, td)).filter((f) => f.startsWith('[mapping]'));
-    expect(reason('<td>不要</td>')).toEqual(['[mapping] the removed part "Download all" does not say why it goes']);
-    expect(reason('<td>文書はアプリで読みます</td>')).toEqual([]);
+    expect(reason('<td>不要 PDF</td>')).toEqual(['[mapping] the removed part "Download all" does not say why it goes']);
+    expect(reason('<td>不要 a b</td>')).toEqual([]);
   });
 
   it('keeps counting words between spaces on a page in English', () => {
