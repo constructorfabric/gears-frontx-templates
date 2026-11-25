@@ -568,6 +568,12 @@ const decodeHtml = (s) => s.replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([a-zA-Z][a-
   return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : '\ufffd';
 });
 /**
+ * A link's href decoded once, for comparing a fragment with the ids, which parseHtml keeps decoded: href="#answer&#45;form"
+ * goes to id="answer&#45;form". node.attrs.href stays raw for the URL scan. fragment is that without its leading "#".
+ */
+const hrefOf = (a) => decodeHtml(a.attrs.href ?? '');
+const fragment = (a) => hrefOf(a).replace(/^#/, '');
+/**
  * CSS text as the browser reads it: escapes decoded, so \75 rl( is url(. A hex escape ends with one CSS whitespace
  * (space, tab, LF, CR, CRLF or form feed), not a no-break space or another character JavaScript's \s takes.
  */
@@ -1179,14 +1185,14 @@ export function checkPage(html, { survey = null } = {}) {
     const links = find(overview, (n) => n.tag === 'a' && hasClass(n, 'opt-link'));
     const mainIds = new Set(find(main, (n) => n.attrs.id !== undefined).map((n) => n.attrs.id));
     for (const link of links) {
-      const target = (link.attrs.href ?? '').replace(/^#/, '');
+      const target = fragment(link);
       if (!mainIds.has(target)) add('overview', `link to #${target}, which does not exist`);
       const mini = find(link, (n) => hasClass(n, 'mini'))[0];
       if (!mini) add('overview', `the link to #${target} holds no thumbnail (.mini)`);
       else if (!drawingIds.has(mini.attrs['data-mini-of'])) add('overview', `the thumbnail of #${target} shows "${mini.attrs['data-mini-of']}", which is not a drawing`);
       if (!find(link, (n) => hasClass(n, 'opt-name')).length) add('overview', `the link to #${target} holds no name (.opt-name)`);
     }
-    const linksTo = countBy(links, (l) => l.attrs.href);
+    const linksTo = countBy(links, hrefOf);
     for (const id of optionIds) {
       const count = linksTo.get(`#${id}`) ?? 0;
       if (count !== 1) add('overview', `#${id} has ${count} overview links; exactly one, the thumbnail with its name`);
@@ -1232,7 +1238,7 @@ export function checkPage(html, { survey = null } = {}) {
   const rec = sectionById.get('recommendation');
   if (rec) {
     for (const link of find(rec, (n) => n.tag === 'a')) {
-      if (!optionIds.includes((link.attrs.href ?? '').replace(/^#/, ''))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
+      if (!optionIds.includes(fragment(link))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
     }
   }
   checkAnswer({ root, sectionById, optionNodes, withOptions, english, add });
@@ -1459,12 +1465,12 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
     if (nodes.length < 2) add('map', 'a map shows two screens or more');
     const screenIds = new Set(screens.map((s) => s.attrs.id));
     for (const node of nodes) {
-      const target = (node.attrs.href ?? '').replace(/^#/, '');
+      const target = fragment(node);
       if (!screenIds.has(target)) add('map', `map node #${target} is not a screen (.screen in #how)`);
       if (!find(node, (n) => hasClass(n, 'mini')).length) add('map', `map node #${target} holds no thumbnail (.mini)`);
       if (!find(node, (n) => hasClass(n, 'map-name')).length) add('map', `map node #${target} holds no name (.map-name)`);
     }
-    const nodesTo = countBy(nodes, (n) => n.attrs.href);
+    const nodesTo = countBy(nodes, hrefOf);
     for (const s of screens) {
       const count = nodesTo.get(`#${s.attrs.id}`) ?? 0;
       if (count !== 1) add('map', `screen #${s.attrs.id} has ${count} map nodes; exactly one`);
@@ -1495,7 +1501,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
     if (english ? norm(textOf(chip)).toLowerCase() !== state : !norm(textOf(chip))) add('chips', `a chip reads "${norm(textOf(chip))}" but its state is ${state}`);
     if (isScope(chip)) continue;
     if (scopeOf(chip)?.attrs['data-state'] === state) add('chips', `a chip repeats "${state}", which its heading already gives`);
-    if (state === 'open' && (chip.tag !== 'a' || !questionIds.has((chip.attrs.href ?? '').replace(/^#/, '')))) add('chips', 'an open chip links to its open question (<a class="chip" href="#q-n">)');
+    if (state === 'open' && (chip.tag !== 'a' || !questionIds.has(fragment(chip)))) add('chips', 'an open chip links to its open question (<a class="chip" href="#q-n">)');
   }
 
   // disclosure
@@ -1533,8 +1539,8 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
     const dd = sibling(dt, 1);
     if (!dd || dd.tag !== 'dd' || !norm(textOf(dd))) add('glossary', `entry "${key}" has no meaning (dd)`);
     // A term is met first in the section its entry links to; before it the page says the thing in plain words.
-    const home = dd ? find(dd, (n) => n.tag === 'a' && /^#./.test(n.attrs.href ?? ''))[0] : undefined;
-    const target = home && byId.get(home.attrs.href.slice(1));
+    const home = dd ? find(dd, (n) => n.tag === 'a' && /^#./.test(hrefOf(n)))[0] : undefined;
+    const target = home && byId.get(fragment(home));
     const homeSec = target && (hasClass(target, 'sec') ? target : [...ancestors(target)].find((a) => hasClass(a, 'sec')));
     const at = homeSec ? orderAt.get(homeSec) ?? -1 : -1;
     const term = norm(textOf(dt));
@@ -1544,7 +1550,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
       if (!proseFor.has(homeSec)) proseFor.set(homeSec, new Map());
       const prose = proseFor.get(homeSec);
       // A link into the home section, the strip (copies of the options' drawings under their names) and the person's quoted words may use the term.
-      const into = (n) => n.tag === 'a' && (n.attrs.href ?? '').startsWith('#') && [byId.get(n.attrs.href.slice(1)), ...ancestors(byId.get(n.attrs.href.slice(1)) ?? { parent: null })].includes(homeSec);
+      const into = (n) => n.tag === 'a' && hrefOf(n).startsWith('#') && [byId.get(fragment(n)), ...ancestors(byId.get(fragment(n)) ?? { parent: null })].includes(homeSec);
       for (const sec of order.slice(0, at)) {
         if (sec.attrs.id === 'head') continue;
         if (!prose.has(sec)) prose.set(sec, proseOf(sec, (n) => into(n) || hasClass(n, 'strip') || hasClass(n, 'request')));
@@ -1570,7 +1576,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   const drawingById = firstBy(drawings, (x) => x.attrs.id);
   const pinsByDrawing = new Map();
   for (const ref of find(main, (n) => n.tag === 'a' && hasClass(n, 'pinref'))) {
-    const id = (ref.attrs.href ?? '').replace(/^#/, '');
+    const id = fragment(ref);
     const d = drawingById.get(id);
     if (d && !pinsByDrawing.has(d)) pinsByDrawing.set(d, pinsOf(d));
     if (!d) add('paths', `a pin reference to "${id}", which is not a drawing`);
@@ -1601,7 +1607,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
       else {
         const links = find(changed, (x) => x.tag === 'a');
         if (!links.length) add('revision', 'the "Changed since" line links to the changed sections');
-        for (const a of links) if (!byId.has((a.attrs.href ?? '').replace(/^#/, ''))) add('revision', `the "Changed since" line links to ${a.attrs.href}, which does not exist`);
+        for (const a of links) if (!byId.has(fragment(a))) add('revision', `the "Changed since" line links to ${a.attrs.href}, which does not exist`);
       }
     } else if (changed) add('revision', 'r1 has no "Changed since" line');
   }
@@ -1645,7 +1651,7 @@ function checkFlow({ flowSec, main, map, english, add }) {
       if (s.tag === 'a') add('flow', `the step "${label(s)}" is outside the app and links nowhere`);
       continue;
     }
-    const target = s.tag === 'a' ? (s.attrs.href ?? '').replace(/^#/, '') : '';
+    const target = s.tag === 'a' ? fragment(s) : '';
     const drawing = target && drawingById.get(target);
     if (!drawing) add('flow', `the step "${label(s)}" links no drawing; link the drawing that shows it, or mark it outside the app (data-outside)`);
     if (!find(s, (n) => hasClass(n, 'flow-name')).length) add('flow', `the step "${label(s)}" has no name (.flow-name)`);
@@ -1700,7 +1706,7 @@ function checkStory({ main, how, english, add }) {
   const withStory = options.filter((o) => find(o, (n) => n.tag === 'ol' && hasClass(n, 'story')).length);
   if (withStory.length && withStory.length < options.length) {
     const rec = find(main, (n) => hasClass(n, 'opt-link') && hasClass(n, 'recommended'))[0];
-    const recId = rec ? (rec.attrs.href ?? '').replace(/^#/, '') : null;
+    const recId = rec ? fragment(rec) : null;
     if (withStory.length > 1 || withStory[0].attrs.id !== recId) add('storyboard', `storyboards in ${withStory.map((o) => `#${o.attrs.id}`).join(', ')} but not in every option: one storyboard sits in the recommended option when the interaction is the same in all, else one per option`);
     else if (!find(withStory[0], (n) => n.tag === 'p' && hasClass(n, 'story-same') && norm(textOf(n))).length) add('storyboard', `the storyboard in #${withStory[0].attrs.id} is the only one: add the line (p.story-same) saying it is the same in the other options`);
   }
@@ -1782,7 +1788,7 @@ function checkCue({ main, sections, screens, add }) {
   const head = kids.find((k) => k.attrs.id === 'head');
   if (head && kids.indexOf(cue) !== kids.indexOf(head) + 1) add('cue', 'the position cue sits right after the head');
   if (!norm(cue.attrs['aria-label'] ?? '')) add('cue', 'the position cue (nav.cue) has no aria-label');
-  const targets = find(cue, (n) => n.tag === 'a').map((a) => (a.attrs.href ?? '').replace(/^#/, ''));
+  const targets = find(cue, (n) => n.tag === 'a').map((a) => fragment(a));
   const ids = after.map((s) => s.attrs.id);
   const idSet = new Set(ids);
   const targetSet = new Set(targets);
@@ -1886,8 +1892,8 @@ function checkLinksAndIds({ root, byId, add }) {
   const seen = new Map();
   for (const n of walk(root)) if (n.attrs.id) seen.set(n.attrs.id, (seen.get(n.attrs.id) ?? 0) + 1);
   for (const [id, count] of seen) if (count > 1) add('ids', `id "${id}" is used ${count} times`);
-  for (const a of find(root, (n) => n.tag === 'a' && /^#./.test(n.attrs.href ?? ''))) {
-    if (!byId.has(a.attrs.href.slice(1))) add('links', `a link to ${a.attrs.href}, which the page does not have`);
+  for (const a of find(root, (n) => n.tag === 'a' && /^#./.test(hrefOf(n)))) {
+    if (!byId.has(fragment(a))) add('links', `a link to ${a.attrs.href}, which the page does not have`);
   }
   for (const table of find(root, (n) => n.tag === 'table' && ['mapping', 'paths-tbl', 'addresses'].some((c) => hasClass(n, c)))) {
     for (const cell of find(table, (n) => (n.tag === 'td' || n.tag === 'th') && inside(n, (a) => a.tag === 'tbody'))) {

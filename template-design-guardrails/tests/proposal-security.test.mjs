@@ -1441,6 +1441,11 @@ describe('check-proposal.mjs refuses what would load or run anything', () => {
     expect(found).toEqual(['[answer] the suggested answer of question 1 is not the one checked']);
   });
 
+  it('compares a link\'s fragment with the ids as the browser does, both decoded once', () => {
+    expect(findings(atEnd('<p><span id="answer&#45;note">x</span><a href="#answer&#45;note">note</a> <a href="#answer&#45;form">answer</a></p>'))).toEqual([]);
+    expect(findings(atEnd('<p><a href="#answer&#45;nothing">nowhere</a></p>'))).toEqual(['[links] a link to #answer&#45;nothing, which the page does not have']);
+  });
+
   // The browser's id is the attribute decoded once: id="&amp;#97;" is the literal &#97;, which a mark may not carry.
   it.each(['&amp;#97;', '&amp;amp;#97;'])('judges the id %s of the logo definition decoded once, as the browser reads it', (id) => {
     const logoPage = readFileSync(path.join(skill, 'assets/proposals/docs-redesign/r1/proposal.html'), 'utf8');
