@@ -10,7 +10,7 @@ Explain a new page or feature before anything is built: one self-contained HTML 
 
 ## Binding essentials
 
-- When it runs: at once when the person asked to see the page or options first; otherwise offered once, in one short line in the person's language, for new screens whose look they have neither seen nor described, and taken only on a yes; no offer for a small change or a look already given (`references/offer.md`).
+- When it runs: at once when the person asked to see the page or options first; otherwise offered once, in one short line in the person's language, for new screens whose look they have neither seen nor described, and taken only on a yes; the offer ends the turn, and the next reply decides; no offer for a small change or a look already given (`references/offer.md`).
 - Everything the person sees is in their own language, the frame's own words too: the answer form's `data-phrase-*` and the start's `data-start` give them, English only by default (`references/page-parts.md`, "The page's language").
 - Drawn, not built: no MFE package, no dev server, no build, no screenshot of a running app and no browser are needed to make the proposal. Real code is written only after the person has chosen, by `../frontx-design/SKILL.md`.
 - One design by default. Two or three options only for a part with a real trade-off (how a list is laid out, where an action lives); never options for decoration.
