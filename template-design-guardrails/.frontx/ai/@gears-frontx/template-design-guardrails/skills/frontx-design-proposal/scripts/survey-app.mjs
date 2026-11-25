@@ -1343,7 +1343,8 @@ function readScreens(root) {
     }
   }
   // UTF-16 code units, like every other sort of the file: the order must not change with the machine's locale.
-  screens.sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || (a.route < b.route ? -1 : a.route > b.route ? 1 : 0));
+  // A screen without an order sorts at 999, the shell's ORDER_WITHOUT_ONE (template-shell src-app/app/mfe/defaultScreen.ts).
+  screens.sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || (a.route < b.route ? -1 : a.route > b.route ? 1 : 0));
   return { screens, notShown, registry: registered ? 'public/generated-mfe-manifests.json' : null };
 }
 

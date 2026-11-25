@@ -128,6 +128,17 @@ describe('survey-app.mjs on a theme built from spreads', () => {
 });
 
 describe('survey-app.mjs on the stock shell', () => {
+  it('sorts a screen without an order at 999, as the shell does, so one at 1000 comes after it', () => {
+    const root = realApp();
+    const file = path.join(root, 'src-app/mfe_packages/blank-mfe/mfe.json');
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    const screen = manifest.extensions.find((x) => x.route);
+    delete screen.presentation.order;
+    manifest.extensions.push({ ...screen, id: `${screen.id}-late`, route: '/late', presentation: { ...screen.presentation, label: 'Late', order: 1000 } });
+    writeFileSync(file, JSON.stringify(manifest, null, 2));
+    expect(survey.survey(root).screens.map((s) => [s.route, s.order])).toEqual([['/blank-home', null], ['/late', 1000]]);
+  });
+
   it('gives the address the shell\'s router writes, /?screen=<route without the slash>, when the menu builds no link', () => {
     const { links } = survey.survey(realApp());
     expect(links.screens.map((x) => [x.route, x.link])).toEqual([['/blank-home', '/?screen=blank-home']]);
