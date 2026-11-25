@@ -128,6 +128,12 @@ describe('survey-app.mjs on a theme built from spreads', () => {
 });
 
 describe('survey-app.mjs on the stock shell', () => {
+  it('colours the logo from the menu\'s own CSS module, --left-menu-foreground, not the accent', () => {
+    const result = survey.survey(realApp());
+    expect(result.brandMark.kind).toBe('svg');
+    expect(result.look['mark-color']).toBe('color-mix(in oklab, #f1f5f9 70%, #0f172a)');
+    expect(result.lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color');
+  });
   it('sorts a screen without an order at 999, as the shell does, so one at 1000 comes after it', () => {
     const root = realApp();
     const file = path.join(root, 'src-app/mfe_packages/blank-mfe/mfe.json');

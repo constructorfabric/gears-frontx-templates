@@ -1453,7 +1453,26 @@ function readChrome(root, lookup) {
   const brand = readBrandMark(root, tsx);
   chrome.mark = brand.kind;
   chrome.sources.mark = brand.why;
-  return { chrome, rules, shellCss: shellCss.map((f) => rel(root, f)), brand };
+  return { chrome, rules, shellCss: shellCss.map((f) => rel(root, f)), brand, menuRules: menuOwnRules(root, layoutDir, shellCss) };
+}
+
+/**
+ * The rules of the menu's own CSS: the CSS Modules imported by the files Menu.tsx imports from the app (the stock
+ * shell's components/ui/sidebar.tsx and its sidebar.module.css), one level, each read through read(). Only the
+ * logo's colour is taken from them.
+ */
+function menuOwnRules(root, layoutDir, shellCss) {
+  const menu = path.join(layoutDir, 'Menu.tsx');
+  if (!exists(menu)) return [];
+  const specs = (file, code) => [...code.matchAll(/\bimport\s/g)]
+    .map((m) => /^([^'";]*?)\bfrom\s*['"]([^'"\n]+)['"]/.exec(code.slice(m.index + 7, m.index + 7 + IMPORT_SPAN))?.[2])
+    .filter(Boolean).map((spec) => resolveImport(root, file, spec)).filter(Boolean);
+  const css = new Set();
+  for (const file of specs(menu, stripComments(read(menu)))) {
+    if (!CODE_EXT.some((x) => file.endsWith(x))) continue;
+    for (const f of specs(file, stripComments(read(file)))) if (/\.module\.css$/.test(f) && !shellCss.includes(f)) css.add(f);
+  }
+  return [...css].sort().flatMap((f) => cssRules(f, rel(root, f)));
 }
 
 const RASTER = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
@@ -1617,7 +1636,7 @@ function readLook(root, screens, chromeOf) {
   const appLookup = (name) => bridge.get(name)?.value ?? (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
   const kitLookup = (name) => (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
   const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
-  const { chrome, rules: shellRules, shellCss, brand } = chromeOf(appLookup);
+  const { chrome, rules: shellRules, shellCss, brand, menuRules } = chromeOf(appLookup);
 
   const look = {};
   const sources = {};
@@ -1783,7 +1802,11 @@ function readLook(root, screens, chromeOf) {
   }
   // An inlined SVG mark draws in currentColor: the colour the shell gives the mark, else the accent.
   if (brand.kind === 'svg') {
-    const markRule = shellRules.find((r) => /\.(mark|logo)\b/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'));
+    // The mark's own rule in the shell's CSS, else the colour the menu's own CSS gives the logo, the header it sits in or
+    // the menu panel it inherits from (the stock shell's .sidebar).
+    const plain = (r) => r.media === null && !/:hover|:focus|\[|::?(after|before)/.test(r.selector) && r.decls.has('color');
+    const markRule = shellRules.find((r) => /\.(mark|logo)\b/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'))
+      ?? [/\.(mark|logo)\b/, /\.(brand|header|headerRow)\b/, /\.(sidebar|menu|nav)\b/].map((p) => menuRules.find((r) => plain(r) && p.test(r.selector))).find(Boolean);
     const colour = markRule && resolveVars(markRule.decls.get('color'), appLookup);
     if (colour) set('mark-color', colour, `${markRule.file} ${markRule.selector} color`);
     else set('mark-color', look.accent, 'the accent (the shell gives the mark no colour of its own)');

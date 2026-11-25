@@ -15,7 +15,7 @@ Every colour, size and spacing of a block comes from a `--d-*` property on `.d-a
 | `--d-nav-bg`, `--d-nav-text`, `--d-nav-active`, `--d-nav-active-text` | `--left-menu*` (else the sidebar tokens) | side menu |
 | `--d-toplink`, `--d-toplink-active` | the header link's colour, plain and active | top header links |
 | `--d-nav-h`, `--d-nav-pad`, `--d-nav-gap`, `--d-nav-size` | the header bar's height and side padding, the gap between links, the link size | top header |
-| `--d-brand-size`, `--d-mark`, `--d-mark-color` | the app name's size, the logo's size, the colour an inlined SVG logo draws in (the shell's colour for the mark, else the accent; set only when the logo is an SVG) | brand |
+| `--d-brand-size`, `--d-mark`, `--d-mark-color` | the app name's size, the logo's size, the colour an inlined SVG logo draws in (the shell's colour for the mark, else the colour the menu's own CSS module gives the logo or the menu, else the accent; set only when the logo is an SVG) | brand |
 | `--d-tab-active` | the active tab's text colour: the app's own (the colour a screen's CSS gives its active tab trigger), else the kit's `--secondary-foreground` | `d-tab--active` |
 | `--d-radius` | the cards' radius, else `--radius` | cards, inputs, lists |
 | `--d-font` | `--font-sans` | all text |
