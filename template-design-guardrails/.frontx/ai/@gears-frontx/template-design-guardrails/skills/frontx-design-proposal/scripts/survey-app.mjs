@@ -873,7 +873,11 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * inside a rule-holding block at-rule (@supports, @layer, @container, @scope,
  * @starting-style, @document), which opens a frame like a non-min-width
  * @media does: layered rules are not read into the look because the survey
- * does not model the cascade layers. A rule inside any other at-rule is not
+ * does not model the cascade layers. A block at-rule opened inside a frame
+ * with media 'other' gets media 'other' too, whatever its own condition says,
+ * so a min-width @media inside one of those blocks or inside a non-min-width
+ * @media never feeds the look; a min-width @media inside a min-width @media
+ * takes the innermost min-width. A rule inside any other at-rule is not
  * kept and the file is read on. One pass:
  * each open @media body is a frame with its own brace depth, start and
  * selector, so a body is read where it stands and never scanned again. A
@@ -949,7 +953,10 @@ function parseCssRules(css, file = '', full = null) {
         // @MEDIA (min-width: 600px){ and @supports(display:grid){ are read like their lower case spellings. A
         // rule-holding block at-rule, @layer included, opens a frame like a non-min-width @media does, with media
         // 'other': layered rules are not read into the look because the survey does not model the cascade layers.
-        // Nesting counts toward MEDIA_DEPTH_CAP the way @media nesting does.
+        // Nesting counts toward MEDIA_DEPTH_CAP the way @media nesting does. A frame opened inside a frame with media
+        // 'other' gets media 'other' too, whatever its own selector says, so a min-width @media inside @layer,
+        // @supports or @media print never feeds the look; a min-width @media inside a min-width @media takes the
+        // innermost min-width.
         const name = /^@[\w-]+/.exec(f.selector)?.[0]?.toLowerCase() ?? '';
         const atMedia = name === '@media';
         const holding = !atMedia && RULE_HOLDING_AT_RULES.has(name);
@@ -959,7 +966,7 @@ function parseCssRules(css, file = '', full = null) {
             return rules;
           }
           f.depth = 1;
-          frames.push({ media: atMedia ? (min && !/max-width/i.test(f.selector) ? Number(min[1]) : 'other') : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
+          frames.push({ media: f.media !== 'other' && atMedia ? (min && !/max-width/i.test(f.selector) ? Number(min[1]) : 'other') : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
           continue;
         }
       }

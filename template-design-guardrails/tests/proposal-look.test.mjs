@@ -463,6 +463,17 @@ describe('the rules a stylesheet yields', () => {
     expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
   });
 
+  // A frame opened inside a frame with media 'other' gets media 'other' too, whatever its own selector says.
+  it.each([
+    ['@layer', '@layer a { @media (min-width: 700px) { .kpi { font-size: 33px; } } }'],
+    ['@supports', '@supports not (display: grid) { @media (min-width: 700px) { .kpi { font-size: 33px; } } }'],
+    ['@media print', '@media print { @media (min-width: 700px) { .kpi { font-size: 33px; } } }'],
+  ])('does not read a min-width @media inside %s as a rule from that width', (_, block) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${t}\n${block}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.lookFrom.stat).not.toContain('.kpi (from 700 px)');
+  });
+
   it.each([
     ['@supports with no space before the condition', '@supports(display:grid){ @import "}"; .root { background-color: #000000; } }'],
     ['@SUPPORTS in upper case', '@SUPPORTS (display: grid) { @import "}"; .root { background-color: #000000; } }'],
