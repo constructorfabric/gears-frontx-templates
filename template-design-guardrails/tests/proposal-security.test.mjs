@@ -179,15 +179,17 @@ describe('survey-app.mjs resolves var() values in bounded time and size', { time
   });
 
   // A leaf no lookup resolves leaves every level null: caching only resolved values would redo the whole fan-out
-  // once per path, so a null is cached too, for the depth it failed at.
+  // once per path, so a null is cached too, for the depth it failed at. Each level holds the same next name eight
+  // times with an empty fallback and one bare var(--gone): the level still resolves to null, but the empty fallback
+  // keeps the resolution walking down, so the fixture really fans out eight wide per level.
   it('surveys a fan-out whose leaves no lookup resolves in bounded time', () => {
-    const decls = ['--primary: var(--u0);', ...Array.from({ length: 9 }, (_, l) => `--u${l}: ${Array.from({ length: 8 }, (_, k) => `var(--gone${k})`).join(' ')};`)];
+    const decls = ['--primary: var(--u0);', ...Array.from({ length: 8 }, (_, l) => `--u${l}: ${Array.from({ length: 8 }, () => `var(--u${l + 1}, )`).join(' ')} var(--gone);`)];
     const root = edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root {\n  ${decls.join('\n  ')}\n}\n${t}`);
     const start = cpuMs();
     const result = survey.survey(root);
     const spent = cpuMs() - start;
     expect(result.unresolved).toContain('look.accent');
-    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide fan-out of missing names`).toBeLessThan(500);
+    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on an 8 level, 8 wide fan-out whose every level is null`).toBeLessThan(500);
   });
 
   it('resolves no value over the output cap: it is unknown, not a refused value', () => {
@@ -1454,7 +1456,16 @@ describe('check-proposal.mjs refuses what would load or run anything', () => {
   });
 
   // The browser's id is the attribute decoded once: id="&amp;#97;" is the literal &#97;, which a mark may not carry.
-  it.each(['&amp;#97;', '&amp;amp;#97;'])('judges the id %s of the logo definition decoded once, as the browser reads it', (id) => {
+  it.each(['&amp;#97;'])('judges the id %s of the logo definition decoded once, as the browser reads it', (id) => {
+    const logoPage = readFileSync(path.join(skill, 'assets/proposals/docs-redesign/r1/proposal.html'), 'utf8');
+    const html = logoPage.replaceOrFail('<path d="M10 10h12v12H10z"/></symbol>', `<path id="${id}" d="M10 10h12v12H10z"/></symbol>`);
+    expect(findings(html)).toEqual([`[mark] the logo definition (svg.brand-defs) carries id="${id}", which points outside the page or runs code`]);
+  });
+
+  // Not a double-decoding row: id="&amp;amp;#97;" decodes to the literal &amp;#97;, still refused, and this checks the
+  // finding repeats the id as written, escapes and all.
+  it('repeats the escaped id of the logo definition in the finding as written', () => {
+    const id = '&amp;amp;#97;';
     const logoPage = readFileSync(path.join(skill, 'assets/proposals/docs-redesign/r1/proposal.html'), 'utf8');
     const html = logoPage.replaceOrFail('<path d="M10 10h12v12H10z"/></symbol>', `<path id="${id}" d="M10 10h12v12H10z"/></symbol>`);
     expect(findings(html)).toEqual([`[mark] the logo definition (svg.brand-defs) carries id="${id}", which points outside the page or runs code`]);

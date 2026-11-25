@@ -421,7 +421,7 @@ export const SVG_ATTR_CAP = 100;
  * target's subtree, so groups of uses that draw groups of uses grow past any
  * size while the source itself stays small.
  */
-export const SVG_USE_CAP = 16;
+const SVG_USE_CAP = 16;
 const isWs = (c) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 const isNameStart = (c) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 const isNameChar = (c) => isNameStart(c) || (c >= '0' && c <= '9') || c === '_' || c === ':' || c === '-';

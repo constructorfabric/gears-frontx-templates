@@ -351,7 +351,7 @@ describe('the rules a stylesheet yields', () => {
   it.each([
     ['an at-statement inside a @media block', '@media (min-width: 600px) { @layer base; .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
     ['a ";" inside the url() of an at-statement', '@import url("a;b.css"); .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
-    ['a ";" inside the string of an at-statement', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color`, '#ffffff'],
+    ['a ";" inside the prelude string of a block at-rule', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color`, '#ffffff'],
     ['a stray ";" between rules', '.kpi {} ; @import "x"; .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
     ['an at-rule name in upper case', '@MEDIA (min-width: 600px) { .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
   ])('reads the rules around %s as their own rules', (_, before, key, from, value) => {
