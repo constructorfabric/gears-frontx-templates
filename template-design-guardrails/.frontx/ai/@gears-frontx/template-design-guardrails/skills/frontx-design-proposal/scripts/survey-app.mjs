@@ -1607,7 +1607,7 @@ function readLook(root, screens, chromeOf) {
   const bridge = new Map();
   for (const r of pageRules) {
     if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
-    for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file });
+    for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file, root: PAGE_ROOT.exec(r.selector)[0] });
   }
   // A name the theme builds in code is unknown: the lookup gives null for it, never the kit's value, and refused keeps
   // the first such reason met since it was last cleared.
@@ -1615,7 +1615,7 @@ function readLook(root, screens, chromeOf) {
   const builtInCode = (name) => { const why = theme?.unread.get(name); if (why) refused ??= why; return Boolean(why); };
   const appLookup = (name) => bridge.get(name)?.value ?? (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
   const kitLookup = (name) => (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
-  const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} .root ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
+  const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
   const { chrome, rules: shellRules, shellCss, brand } = chromeOf(appLookup);
 
   const look = {};

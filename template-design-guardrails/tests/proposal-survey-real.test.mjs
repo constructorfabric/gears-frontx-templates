@@ -70,6 +70,11 @@ describe('survey-app.mjs on the scaffold\'s own class names and breakpoints', ()
     expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .screen background`);
   });
 
+  it('reads a kit token .screen re-declares as the screen\'s own, naming .screen', () => {
+    const result = survey.survey(edit(realApp(), SCREEN_CSS, '.screen {\n', '.screen {\n  --primary: #123456;\n'));
+    expect([result.look.accent, result.lookFrom.accent]).toEqual(['#123456', `${SCREEN_CSS} .screen --primary`]);
+  });
+
   it('reads @media (min-width: 40rem) as a frame of 640 px', () => {
     const root = edit(realApp(), SCREEN_CSS, '.title {\n  font-size: var(--text-heading-1-size);', '.title {\n  font-size: 2rem;\n}\n@media (min-width: 40rem) {\n  .title { font-size: 3rem; }\n}\n.unused {');
     const result = survey.survey(root);
