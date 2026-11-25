@@ -172,7 +172,8 @@
  *   uses, no disclosure holding a drawing of today's page;
  * - answer: an ask (.ask) that does not link to the answer block (#answer);
  *   no answer block (form#answer-form.answer in #answer); a data-subject
- *   that does not name the top bar's page id and revision; its options
+ *   that does not name the top bar's page id and revision, each as a whole
+ *   token (account-settings-v2 does not name account-settings, nor r12 r1); its options
  *   (values, names and data-say, which Copy answer writes) differ from the
  *   page's options, or with one design from "Build it as drawn" and "Change
  *   it first" (on a page not in English: a name and a data-say); not exactly one
@@ -189,7 +190,8 @@
  *   scripts write: choose, answer, questions, changes, none, copied, failed,
  *   wide-part) missing or empty; on any page, a phrase given without a place
  *   the script fills ({subject}, {letter}, {name}, {answer}, {changes});
- * - revision: from r2 on, no "Changed since r<n-1>:" line in the head, or
+ * - revision: in a folder check, page facts that do not name the folder's
+ *   page id and revision exactly (the data-subject then names the folder's); from r2 on, no "Changed since r<n-1>:" line in the head, or
  *   one without links or with a link to nothing; in r1, such a line.
  * Optional parts (references/page-parts.md, "Optional parts"):
  * - flow: a flow outside #flow or more than one; a box off the grid
@@ -956,7 +958,11 @@ function checkAgainstSurvey({ look, drawings, survey, add }) {
 }
 
 /** Findings for the text of a proposal page; survey is the parsed survey.json the page was drawn from, when known. */
-export function checkPage(html, { survey = null } = {}) {
+/**
+ * folder: { pageId, revision } of the revision folder the page lies in (a folder check), or null; the page facts
+ * and the answer's subject then name that folder's page id and revision exactly.
+ */
+export function checkPage(html, { survey = null, folder = null } = {}) {
   const template = readFileSync(TEMPLATE, 'utf8');
   const kitClasses = drawClasses();
   const findings = [];
@@ -1253,7 +1259,7 @@ export function checkPage(html, { survey = null } = {}) {
       if (!optionIds.includes(fragment(link))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
     }
   }
-  checkAnswer({ root, sectionById, optionNodes, withOptions, english, add });
+  checkAnswer({ root, sectionById, optionNodes, withOptions, english, folder, add });
   checkViews({ how, screens, optionNodes, add });
   const { guarantees } = checkParts({ root, main, sectionById, drawings, screens, how, add });
   const parts = { guarantees, flow: sectionById.has('flow'), storyboard: find(main, (n) => n.tag === 'ol' && hasClass(n, 'story')).length > 0, cue: find(main, (n) => n.tag === 'nav' && hasClass(n, 'cue')).length > 0 };
@@ -1273,7 +1279,7 @@ const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn', say: 'build i
  * with ready answers, the suggested ones checked, each with a full sentence to
  * copy, plus the changes and the Copy button.
  */
-function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add }) {
+function checkAnswer({ root, sectionById, optionNodes, withOptions, english, folder, add }) {
   for (const ask of find(root, (n) => hasClass(n, 'ask'))) {
     if (!find(ask, (n) => n.tag === 'a' && hrefOf(n) === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
   }
@@ -1282,9 +1288,14 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add
   if (!form) { add('answer', 'no answer block (form#answer-form.answer in #answer) with the option, the open questions, the changes and Copy answer'); return; }
   const meta = find(root, (n) => hasClass(n, 'topbar-meta'))[0];
   const [pageId, revision] = meta ? find(meta, (n) => n.tag === 'code').map((n) => norm(textOf(n))) : [];
+  // In a folder check the page names its folder: a page copied from r1 into r2 (references/revise.md) and left
+  // naming r1 would have Copy answer name the old revision.
+  if (folder && (pageId !== folder.pageId || revision !== folder.revision)) add('revision', `the page facts name page "${pageId ?? ''}", revision "${revision ?? ''}", but the page lies in ${folder.pageId}/${folder.revision}: a copied page names its own folder`);
   const subject = form.attrs['data-subject'] ?? '';
-  const names = english ? [`page ${pageId}`, `revision ${revision}`] : [pageId, revision];
-  if (pageId && revision && !names.every((x) => subject.includes(x))) add('answer', `data-subject "${subject}" does not name page ${pageId} and revision ${revision} as the top bar does`);
+  const want = folder ?? { pageId, revision };
+  // Each name is a whole token: account-settings-v2 does not name account-settings, nor r12 r1.
+  const names = english ? [`page ${want.pageId}`, `revision ${want.revision}`] : [want.pageId, want.revision];
+  if (want.pageId && want.revision && !names.every((x) => wholeToken(subject, x))) add('answer', `data-subject "${subject}" does not name page ${want.pageId} and revision ${want.revision} as ${folder ? 'its folder' : 'the top bar'} does`);
   // The scripts' own words: English by default, so a page in another language gives each one in its language.
   for (const [key, places] of Object.entries(PHRASES)) {
     const words = norm(form.attrs[`data-phrase-${key}`] ?? '');
@@ -1359,6 +1370,8 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, add
   for (const id of ['answer-text', 'answer-copy', 'answer-state']) if (!find(form, (n) => n.attrs.id === id).length) add('answer', `the answer block has no #${id}`);
 }
 
+/** text holds token whole: no letter, digit, "_" or "-" right before or after it. */
+const wholeToken = (text, token) => new RegExp(`(?<![\\w-])${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(text);
 const ancestors = function* (node) { for (let n = node.parent; n; n = n.parent) yield n; };
 const inside = (node, pred) => { for (let n = node.parent; n; n = n.parent) if (pred(n)) return true; return false; };
 
@@ -2169,7 +2182,8 @@ export function checkTarget(target) {
   }
   const html = load(page, CAPS['proposal.html'], path.basename(page));
   if (html === null) return out;
-  const { findings, options, parts } = checkPage(html, { survey });
+  const folder = isDir && PAGE_ID.test(path.basename(path.dirname(abs))) && REVISION.test(path.basename(abs)) ? { pageId: path.basename(path.dirname(abs)), revision: path.basename(abs) } : null;
+  const { findings, options, parts } = checkPage(html, { survey, folder });
   out.push(...findings.map((f) => `${path.basename(page)}: ${f}`));
   if (isDir) {
     const choice = path.join(target, 'CHOICE.md');

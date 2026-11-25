@@ -238,6 +238,17 @@ describe('check-proposal.mjs on broken copies', () => {
     expect(check.checkTarget(dir)).toEqual(want);
   });
 
+  it('reports a page copied from r1 into r2 that still names r1, in its page facts and its answer', () => {
+    const dir = path.join(tempDir(), 'account-settings', 'r2');
+    cpSync(path.join(skill, 'assets/proposals/account-settings/r1'), dir, { recursive: true });
+    const record = path.join(dir, 'CHOICE.md');
+    writeFileSync(record, readFileSync(record, 'utf8').replaceOrFail(/^- Revision: r1$/m, '- Revision: r2').replaceOrFail(/^- Replaces: none$/m, '- Replaces: r1'));
+    const found = check.checkTarget(dir);
+    expect(found).toContain('proposal.html: [revision] the page facts name page "account-settings", revision "r1", but the page lies in account-settings/r2: a copied page names its own folder');
+    expect(found).toContain('proposal.html: [answer] data-subject "the Account settings proposal (page account-settings, revision r1)" does not name page account-settings and revision r2 as its folder does');
+    expect(check.checkTarget(path.join(skill, 'assets/proposals/account-settings/r1'))).toEqual([]);
+  });
+
   it('reports a record whose options differ from the page and a folder name mismatch', () => {
     const dir = path.join(tempDir(), 'other-page', 'r2');
     cpSync(path.join(example, 'r1'), dir, { recursive: true });

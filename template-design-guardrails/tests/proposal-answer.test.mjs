@@ -217,6 +217,8 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['one design without data-say on the change card', edit(account, ' value="change" data-say="change it first, as written under Changes"', ' value="change"'), 'change "Change it first" say ""'],
     ['one design in another language without data-say', edit(edit(account, '<html lang="en">', '<html lang="de">'), ' value="build" data-say="build it as drawn"', ' value="build"'), 'build "Build it as drawn" say ""'],
     ['a subject without the revision', edit(r1, '(page team-tasks, revision r1)', '(page team-tasks)'), 'does not name page team-tasks and revision r1'],
+    ['a subject whose page id only starts with the page\'s', edit(account, '(page account-settings, revision r1)', '(page account-settings-v2, revision r1)'), 'does not name page account-settings and revision r1'],
+    ['a subject whose revision only starts with the page\'s', edit(account, '(page account-settings, revision r1)', '(page account-settings, revision r12)'), 'does not name page account-settings and revision r1'],
     ['no changes field', r1.replaceOrFail(/<label class="ans-q ans-note">[\s\S]*?<\/label>\n/, ''), 'no "Anything to change?" textarea'],
     ['no Copy button', edit(r1, ' id="answer-copy"', ''), 'has no #answer-copy'],
     ['a changed answer script', edit(r1, "'Changes: {changes}'", "'Change: {changes}'"), 'the answer-js block differs'],

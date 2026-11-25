@@ -24,7 +24,7 @@ Edit `r2/proposal.html` by whole sections, never by restyling: add, move, replac
 - a section added, moved or replaced: its heading and its takeaway are written again, and the takeaways read in order still tell the proposal.
 - the optional parts are decided again (`references/page-parts.md`, "Optional parts"): a new branch or step goes into the flow, a new promise gets its pin, a section added or removed changes the position cue and may cross its threshold; CHOICE.md, Optional parts, follows.
 
-Set the revision in the top bar's page facts and add, at the top of the head before the takeaway, one line with links to the changed sections (`references/page-parts.md`, "Changed since"):
+Set the revision in the top bar's page facts and in the answer form's `data-subject` (checked: in a folder check both name the folder, so a copied page left at r1 is a finding), and add, at the top of the head before the takeaway, one line with links to the changed sections (`references/page-parts.md`, "Changed since"):
 
 ```html
 <p class="changed">Changed since r1: <a href="#screen-list">the list is the table you chose, due date first</a>; <a href="#questions">the question about Done tasks is answered</a>.</p>
