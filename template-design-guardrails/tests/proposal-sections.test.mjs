@@ -120,6 +120,15 @@ describe('words, labels, ids, links and the glossary', () => {
     expect(text('The app\'s links carry one task at /?screen=tasks;route=&lt;id&gt;;tab=&lt;tab&gt;, then Back')).toEqual([]);
     expect(text('The app\'s links carry one task at tasks;route=&lt;id&gt;')).toEqual(['[text] template text "&lt;id&gt;" left in the page']);
   });
+
+  it('takes only name=value parts after a ";" into the address, so a leftover after one is still found', () => {
+    const NOTE = 'The app\'s links carry the screen in the address (/?screen=docs)';
+    const text = (note) => findings(edit(docs, NOTE, note)).filter((f) => f.startsWith('[text]'));
+    expect(text('The app\'s links carry the screen in the address /?screen=&lt;route&gt;;TODO')).toEqual(['[text] template text "TODO" left in the page']);
+    expect(text('The app\'s links carry the screen in the address /TODO;&lt;route&gt;')).toEqual(['[text] template text "TODO" left in the page']);
+    expect(text('The app\'s links carry one task at /?screen=tasks;route=&lt;id&gt;')).toEqual([]);
+    expect(text('The app\'s links carry one task at /?screen=tasks;route=TSK-128;tab=open')).toEqual([]);
+  });
 });
 
 describe('the Decisions field of CHOICE.md', () => {

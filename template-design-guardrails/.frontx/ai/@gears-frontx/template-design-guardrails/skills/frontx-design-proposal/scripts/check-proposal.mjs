@@ -284,17 +284,26 @@ const UNFILLED = /&lt;[a-zA-Z][a-zA-Z0-9 ,.'-]{0,60}&gt;|\bREPLACE\b|\bTODO\b/;
  * An address written with a named part, `/?screen=<route>`, `/?screen=tasks;route=<id>` or `/tasks/<id>`: the form
  * the app's links take (references/page-parts.md, the addresses), not a placeholder left. It starts with "/" at the
  * start of a word, every named part is one word in angle brackets, and it holds no space. After a named part comes a
- * separator ("/", "?", "=", ";", ...) or the end of the address, never a letter, a digit or another bracket, and the address ends
- * at a boundary (a space, the end of the text, or closing punctuation), so text glued to it (`<route>TODO`,
- * `<route><REPLACE>`) is not taken in. A match starts only where a word starts and no address part holds a space,
- * so no two tries cover the same text and the scan stays linear. `lt` and `gt` are the brackets as the text writes them.
+ * separator ("/", "?", "=", ...) or the end of the address, never a letter, a digit or another bracket. After a ";"
+ * comes only a name=value part (`;route=<id>`, `;tab=open`), so text after a ";" that is no such part
+ * (`<route>;TODO`) is not taken in. The address ends at a boundary (a space, the end of the text, or closing
+ * punctuation), so text glued to it (`<route>TODO`, `<route><REPLACE>`) is not taken in either. A match starts only
+ * where a word starts and no address part holds a space, so no two tries cover the same text and the scan stays
+ * linear; a match with no named part is no address form and stays text. `lt` and `gt` are the brackets as the text
+ * writes them.
  */
 const addressForm = (lt, gt) => {
   const part = `${lt}[a-zA-Z][\\w-]{0,30}${gt}`;
-  return new RegExp(`(?<=^|[\\s("'\`])/[\\w\\-./?=#%;]*${part}(?:[\\-./?=#%;][\\w\\-./?=#%;]*${part})*(?:[\\-./?=#%;][\\w\\-./?=#%;]*)?(?=$|[\\s.,;:)'"\`\\u2019\\u201d])`, 'g');
+  const chunk = `[\\w\\-./?=#%]*(?:${part}(?:[\\-./?=#%][\\w\\-./?=#%]*${part})*(?:[\\-./?=#%][\\w\\-./?=#%]*)?)?`;
+  return {
+    address: new RegExp(`(?<=^|[\\s("'\`])/${chunk}(?:;[a-zA-Z][\\w-]*=${chunk})*(?=$|[\\s.,;:)'"\`\\u2019\\u201d])`, 'g'),
+    part: new RegExp(part),
+  };
 };
 const ADDRESS_FORM_HTML = addressForm('&lt;', '&gt;');
 const ADDRESS_FORM_TEXT = addressForm('<', '>');
+/** The text with each address written with a named part (addressForm) replaced by a space. */
+const dropAddresses = (text, form) => text.replace(form.address, (m) => (form.part.test(m) ? ' ' : m));
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'are', 'it', 'its', 'with', 'each', 'every', 'this', 'that', 'what', 'where', 'how', 'goes', 'go']);
 const ALLOWED_STYLE_PROPS = new Set(['--cols', '--w', '--h']);
 const FORBIDDEN_IN_DRAWING = new Set(['img', 'svg', 'canvas', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'style', 'script', 'iframe']);
@@ -1957,7 +1966,7 @@ const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w)
 function checkText({ root, add }) {
   const body = find(root, (n) => n.tag === 'body')[0] ?? root;
   const text = proseOf(body);
-  const left = UNFILLED.exec(text.replace(ADDRESS_FORM_HTML, ' '));
+  const left = UNFILLED.exec(dropAddresses(text, ADDRESS_FORM_HTML));
   if (left) add('text', `template text "${left[0]}" left in the page`);
   const bad = GARBLED.exec(text);
   if (bad) add('text', `garbled characters ${JSON.stringify(bad[0])}: the text was saved in one encoding and read in another`);
@@ -2175,7 +2184,7 @@ export function checkChoice(text, { options = [], pageId, revision, parts = null
     else if (fields.get(label) === '') add(`field "${label}" is empty; write "none" when there is nothing`);
   }
   // Inline code may name a placeholder on purpose (`<revision-dir>`), and so may an address form (/?screen=<route>); field values may not.
-  for (const m of new Set(text.replace(/`[^`\n]*`/g, '').replace(ADDRESS_FORM_TEXT, ' ').match(/<[a-z@][^<>\n]*>/gi) ?? [])) add(`placeholder ${m} left`);
+  for (const m of new Set(dropAddresses(text.replace(/`[^`\n]*`/g, ''), ADDRESS_FORM_TEXT).match(/<[a-z@][^<>\n]*>/gi) ?? [])) add(`placeholder ${m} left`);
   if (pageId && fields.has('Page id') && fields.get('Page id') !== pageId) add(`Page id "${fields.get('Page id')}" is not the folder's "${pageId}"`);
   if (revision && fields.has('Revision') && fields.get('Revision') !== revision) add(`Revision "${fields.get('Revision')}" is not the folder's "${revision}"`);
   const revNo = Number(/^r(\d+)$/.exec(fields.get('Revision') ?? '')?.[1] ?? 0);
