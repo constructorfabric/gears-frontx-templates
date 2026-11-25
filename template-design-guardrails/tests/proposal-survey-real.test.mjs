@@ -209,6 +209,21 @@ describe('survey-app.mjs matches class names whole', () => {
     expect([result.look['mark-color'], result.lookFrom['mark-color']]).toEqual(['color-mix(in oklab, #f1f5f9 70%, #0f172a)', 'src-app/app/components/ui/sidebar.module.css .sidebar color']);
   });
 
+  it('does not take .title-bar for the title or .description-x for the lead', () => {
+    const result = survey.survey(edit(realApp(), SCREEN_CSS, '.intro {', '.title-bar { font-size: 3rem; }\n.description-x { font-size: 3rem; }\n.intro {'));
+    expect([result.lookFrom.h1, result.lookFrom.lead]).toEqual([`${SCREEN_CSS} .title font-size`, `${SCREEN_CSS} .description font-size`]);
+  });
+
+  it('resolves the shell\'s page background without the screen\'s own token bridge: the shell is outside the screen', () => {
+    const result = survey.survey(edit(realApp(), SCREEN_CSS, '.screen {\n', '.screen {\n  --background: #123456;\n'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#f1f5f9', 'src-app/app/layout/Screen.module.css .screen background-color (shell)']);
+  });
+
+  it('leaves a role the kit answers unresolved, with the theme\'s reason, when the theme builds its kit token in code', () => {
+    const result = survey.survey(themeWith(realApp(), "'--text-meta-size': mk('12px')"));
+    expect([result.look.small, result.lookFrom.small]).toEqual([survey.UNRESOLVED, 'src-app/app/themes/default.ts builds --text-meta-size in code (a call or a template, not a literal): the survey does not run it']);
+  });
+
   it('names the page background rule whose value it cannot resolve', () => {
     const result = survey.survey(addCss(realApp(), SCREEN_CSS, '.root { background-color: var(--nope); }'));
     expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `${SCREEN_CSS} .root background-color (screen): a value the survey cannot resolve`]);
@@ -275,20 +290,22 @@ describe('survey-app.mjs reads theme spreads in time linear in their number', { 
     return { at, done: () => { for (const root of roots.values()) rmSync(root, { recursive: true, force: true }); } };
   };
 
-  it('a theme of many spreads of a const declared after it', () => {
-    // 8 * 5000 spreads of 9 characters: 360 KB of spreads.
-    const { at, done } = rows((n) => themeWith(realApp(), `${'...base, '.repeat(n)}'--card': '#ffffff'`, '', `const base = { '--primary': '#aa0000' };\n`));
-    try { expect(accentOf(at(5000))[0]).toBe('#aa0000'); expectLinear((n) => survey.survey(at(n)), 5000, 'theme spreads of a local const'); } finally { done(); }
+  it('a theme of many spreads of one const declared after it, whose object grows with them', () => {
+    // n spreads of one const that grows with them (80 characters a spread, in an entry that is no pair): reading the const
+    // once per spread, not once per name, would grow as their square.
+    const { at, done } = rows((n) => themeWith(realApp(), `${'...base, '.repeat(n)}'--card': '#ffffff'`, '', `const base = { '--primary': '#aa0000', pad: '${'x'.repeat(80 * n)}' };\n`));
+    try { expect(accentOf(at(500))[0]).toBe('#aa0000'); expectLinear((n) => survey.survey(at(n)), 500, 'theme spreads of one local const'); } finally { done(); }
   });
 
-  it('a theme of many spreads of a name imported from a large file', () => {
-    // The imported file grows with the spreads (40 characters a spread), so reading it once per spread would grow as their square.
+  it('a theme of spreads of many names imported from one large file', () => {
+    // n distinct names exported by one file of n consts: reading the file once per name, not once, would grow as their square.
+    const names = (n) => Array.from({ length: n }, (_, i) => `c${i}`);
     const { at, done } = rows((n) => {
       const root = realApp();
-      writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), `export const big = { '--primary': '#abcdef' };\nexport const pad = '${'x'.repeat(40 * n)}';\n`);
-      return themeWith(root, `${'...big, '.repeat(n)}'--card': '#ffffff'`, "import { big } from './pal';\n");
+      writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), `${names(n).map((c, i) => `export const ${c} = { '--p${i}': '#000000' };\n`).join('')}export const big = { '--primary': '#abcdef' };\n`);
+      return themeWith(root, `${names(n).map((c) => `...${c}, `).join('')}...big, '--card': '#ffffff'`, [...names(n), 'big'].map((c) => `import { ${c} } from './pal';\n`).join(''));
     });
-    try { expect(accentOf(at(2000))[0]).toBe('#abcdef'); expectLinear((n) => survey.survey(at(n)), 2000, 'theme spreads of an imported name'); } finally { done(); }
+    try { expect(accentOf(at(1000))[0]).toBe('#abcdef'); expectLinear((n) => survey.survey(at(n)), 1000, 'theme spreads of many imported names'); } finally { done(); }
   });
 
   it('a menu that imports one large file many times', () => {
