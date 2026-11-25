@@ -46,7 +46,7 @@ The hand-off between the proposal and the build (references/record.md). Fill eve
 
 ## Build hand-off
 
-- Route: /tasks and /tasks/:taskId, two screen extensions of a new team-tasks package; search, filters and Show done kept in the address of /tasks
+- Route: /tasks, one screen extension of a new team-tasks package; the task details are its in-screen /<id> sub-route, a sub-route with a back path, not a second menu entry; search, filters and Show done kept in the address of /tasks
 - Menu place: third, after Home (10) and Docs (20): order 30, label Tasks; the details screen has no menu entry
 - Regions: list at 1440 and 768: page head, counters row, filter row (search, assignee and priority selects, Show done switch), status tabs, table with Due first; list at 390: page head, the four counters in two rows, search, the status select instead of tabs with Show done beside it, list rows led by the due date instead of the table; details at 1440: back link, page head with Edit and Mark as done, description and activity on the left, the details card on the right; at 768 and 390 the details card moves above the description
 - Blocks: page head = the title and one primary Button, as on Home; counters = a row of Cards with one number each; search = Input; filters = Select; Show done = Switch; status tabs = Tabs with a count Badge per tab; table block = kit Table inside a bordered Card, as on Docs; status and overdue = Badge; owner initials = Avatar; details fields = Field with Select and Input; activity = rows in a bordered Card

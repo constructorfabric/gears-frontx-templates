@@ -35,7 +35,7 @@ When a folder for the same page exists, read its highest revision's CHOICE.md fi
 
 ## 1. Survey the app
 
-One command surveys the app and saves `survey.json` in the revision folder:
+One command surveys the app and saves `survey.json` in the revision folder. Pick the page id first (`team-tasks`): lower-case letters and digits in words joined by single hyphens, nothing else, so it is safe in a path and a shell line (checked); step 2 refers back to it:
 
 ```bash
 node "$S/scripts/survey-app.mjs" --project . --out ".frontx/proposals/<page-id>/r1/survey.json"
@@ -72,7 +72,7 @@ Write down, in the person's words where possible:
 
 When the request contradicts a rule of the project's design files (DESIGN.md, a design contract: "no persistence" against "the page remembers what is done"), do not choose silently. Draw the request as asked, and raise an open question that names the rule and the file ("DESIGN.md, section 7, says page state resets on reload"), with ready answers: follow the request and change the rule; keep the rule and adjust the request (say how). Mark the suggested one and give its reason in one sentence. The drawing marks the part with an open chip linked to that question.
 
-List the screens: one, or several in click order (a list and the details a row opens), with the secondary ones (a dialog) under the screen that opens them. Then decide where a real choice exists. Default is one design. Two or three options only for a part with a real trade-off, each option best for a different use; the rest of the page is the same in every option and drawn the same. Never offer options for colour, decoration or wording. Pick a page id (`team-tasks`): lower-case letters and digits in words joined by single hyphens, nothing else, so it is safe in a path and a shell line (checked). Pick the routes (`/tasks`, `/tasks/<id>`), next to the existing routes the survey listed.
+List the screens: one, or several in click order (a list and the details a row opens), with the secondary ones (a dialog) under the screen that opens them. Then decide where a real choice exists. Default is one design. Two or three options only for a part with a real trade-off, each option best for a different use; the rest of the page is the same in every option and drawn the same. Never offer options for colour, decoration or wording. Keep the page id picked in step 1 (lower-case letters and digits in words joined by single hyphens, nothing else, checked). Pick the routes next to the existing routes the survey listed: one screen extension per menu entry (`/tasks`), and a list-to-detail flow one screen with the details as its in-screen `/<id>` sub-route (`frontx-context.md`, "Routes inside a screen").
 
 Then go through the optional parts (`references/page-parts.md`, "Optional parts") and decide each one now, from the request and the screens, before drawing:
 
