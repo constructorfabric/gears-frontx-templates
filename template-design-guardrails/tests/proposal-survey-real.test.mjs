@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import './replace-or-fail.mjs';
 import { FILES } from './proposal-fixture.mjs';
+import { expectLinear } from './linear-time.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '../..');
@@ -128,6 +129,69 @@ describe('survey-app.mjs on a theme built from spreads', () => {
     const result = survey.survey(root);
     expect([result.look.accent, result.look['nav-bg'], result.look['nav-text']]).toEqual(['#ff0066', '#202020', '#eeeeee']);
     expect([result.lookFrom.accent, result.lookFrom['nav-bg']]).toEqual(['src-app/app/themes/default.ts --primary', 'src-app/app/themes/palette.ts --left-menu']);
+  });
+});
+
+/** A default theme whose variables object is `variables`, after `head` (imports, consts), with `tail` after it. */
+const themeWith = (root, variables, head = '', tail = '') => {
+  writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), `${head}export const defaultTheme = { id: 'default', appearance: 'light', default: true, variables: { ${variables} } };\n${tail}`);
+  return root;
+};
+const accentOf = (root) => { const result = survey.survey(root); return [result.look.accent, result.lookFrom.accent]; };
+
+describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variables object, in source order', () => {
+  it.each([
+    ['a "..." in a string', "export const hint = 'Loading...';\n"],
+    ['a rest parameter', 'const f = (...args) => args;\n'],
+    ['an array spread', "const list = [...['a']];\n"],
+  ])('ignores %s outside the variables object', (what, head) => {
+    expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066'", head))).toEqual(['#ff0066', 'src-app/app/themes/default.ts --primary']);
+  });
+
+  it('ignores a commented-out pair', () => {
+    expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066',\n    // '--primary': '#00ff00',\n"))[0]).toBe('#ff0066');
+  });
+
+  it('lets a later entry win, as JS does: a spread after a pair, and a pair after a spread', () => {
+    const base = "const base = { '--primary': '#aa0000' };\n";
+    expect(accentOf(themeWith(realApp(), "'--primary': '#00ff00', ...base", base))).toEqual(['#aa0000', 'src-app/app/themes/default.ts --primary']);
+    expect(accentOf(themeWith(realApp(), "...base, '--primary': '#00ff00'", base))[0]).toBe('#00ff00');
+  });
+
+  it('marks a pair the theme itself builds in code after a spread as built in code, not the spread\'s value', () => {
+    const [accent, from] = accentOf(themeWith(realApp(), "...base, '--primary': mk('#f00')", "const base = { '--primary': '#aa0000' };\n"));
+    expect(accent).toBe(survey.UNRESOLVED);
+    expect(from).toMatch(/^src-app\/app\/themes\/default\.ts builds --primary in code/);
+  });
+
+  it('finds an imported name that holds a $', () => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), "export const $tokens = { '--primary': '#abcdef' };\n");
+    expect(accentOf(themeWith(root, '...$tokens', "import { $tokens } from './pal';\n"))).toEqual(['#abcdef', 'src-app/app/themes/pal.ts --primary']);
+  });
+});
+
+describe('survey-app.mjs reads theme spreads in time linear in their number', { timeout: 600_000 }, () => {
+  const rows = (build) => {
+    const roots = new Map();
+    const at = (n) => { if (!roots.has(n)) roots.set(n, build(n)); return roots.get(n); };
+    return { at, done: () => { for (const root of roots.values()) rmSync(root, { recursive: true, force: true }); } };
+  };
+
+  it('a theme of many spreads of a const declared after it', () => {
+    // 8 * 5000 spreads of 9 characters: 360 KB of spreads.
+    const { at, done } = rows((n) => themeWith(realApp(), `${'...base, '.repeat(n)}'--card': '#ffffff'`, '', `const base = { '--primary': '#aa0000' };\n`));
+    try { expect(accentOf(at(5000))[0]).toBe('#aa0000'); expectLinear((n) => survey.survey(at(n)), 5000, 'theme spreads of a local const'); } finally { done(); }
+  });
+
+  it('a theme of many spreads of a name imported from a large file', () => {
+    // The imported file grows with the spreads (40 characters a spread), so reading it once per spread would grow as their square.
+    const { at, done } = rows((n) => {
+      const root = realApp();
+      writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), `export const big = { '--primary': '#abcdef' };\nexport const pad = '${'x'.repeat(40 * n)}';\n`);
+      return themeWith(root, `${'...big, '.repeat(n)}'--card': '#ffffff'`, "import { big } from './pal';\n");
+    });
+    try { expect(accentOf(at(2000))[0]).toBe('#abcdef'); expectLinear((n) => survey.survey(at(n)), 2000, 'theme spreads of an imported name'); } finally { done(); }
   });
 });
 

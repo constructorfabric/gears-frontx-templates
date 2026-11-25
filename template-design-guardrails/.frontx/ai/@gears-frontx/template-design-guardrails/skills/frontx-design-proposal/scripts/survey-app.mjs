@@ -27,8 +27,9 @@
  *   bridge, page heading, lead, content column, cards, buttons, counters,
  *   table headers; the content column's width without its padding when the
  *   app's global reset or the column itself sets border-box) and of the
- *   shell's header and menu, then the active theme's own variables (its
- *   literal pairs and those of a const object it spreads, followed one level;
+ *   shell's header and menu, then the active theme's own variables object (its
+ *   literal pairs and those of a const object it spreads, followed one level,
+ *   in source order, a later entry winning;
  *   a value built in code or a spread it cannot follow is unresolved), then
  *   the installed kit (theme.css and its component styles). Each value names its source; where the kit's value
  *   and the app's differ the app's wins and the survey says so;
@@ -1041,8 +1042,10 @@ const cssRules = (full, file, kitStyle = false) => {
   }));
 };
 
-const LITERAL_PAIR = /['"](--[\w-]+)['"]\s*:\s*(['"])(.*?)\2/g;
-const ANY_PAIR = /['"](--[\w-]+)['"]\s*:/g;
+/** An entry of an object literal: a spread, or a pair whose key is a quoted custom property name; a value written as one plain string. */
+const SPREAD_ENTRY = /^\.\.\.\s*([\s\S]*)$/;
+const PAIR_ENTRY = /^(['"])(--[\w-]+)\1\s*:\s*([\s\S]*)$/;
+const LITERAL_VALUE = /^(?:'([^'\\\n]*)'|"([^"\\\n]*)")$/;
 
 /**
  * The text of the object literal whose "{" is at open, up to its matching "}", or null when the file never closes it.
@@ -1060,49 +1063,129 @@ function objectBody(text, open) {
   return null;
 }
 
-/** The body of the object literal a const of that name holds in code, or null when there is none. */
-function constObject(code, name, exported) {
-  const m = new RegExp(`\\b${exported ? 'export\\s+' : ''}(?:const|let|var)\\s+${name.replace(/\$/g, '\\$')}(?![\\w$])[^=;{}]*=\\s*\\{`).exec(code);
-  return m ? objectBody(code, m.index + m[0].length - 1) : null;
-}
-
 /**
- * What the theme's spreads (...name) give: each is followed one level, to a const object of literal pairs in the theme
- * file itself or exported by a file the theme imports by a relative path, read through read() like every other file.
- * A name whose value is not a literal (built in code: a call, a template) is listed under unread with the reason, so
- * no lookup falls through to the kit for it; a spread the survey cannot follow sets blocked, and then no colour of the
- * theme is known.
+ * The top level entries of an object literal's body, in source order: the text between two commas outside strings,
+ * template literals and brackets, trimmed; an empty one (after a trailing comma) is left out. One pass.
  */
-function readSpreads(root, file, code, variables, from, unread) {
-  const themeFile = rel(root, file);
-  for (const m of code.matchAll(/\.\.\.\s*([^,}\n]*)/g)) {
-    const name = m[1].trim();
-    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return `${themeFile} spreads ${name.slice(0, 60)}, which the survey does not read: the colours of the theme are not known`;
-    let body = constObject(code, name, false);
-    let where = file;
-    if (body === null) {
-      const target = importOf(root, file, code, name);
-      if (!target) return `${themeFile} spreads ${name}, which the survey cannot find: the colours of the theme are not known`;
-      if (!target.spec.startsWith('.') || !target.file) return `${themeFile} spreads ${name} from ${target.spec}, which the survey does not read: the colours of the theme are not known`;
-      where = target.file;
-      body = constObject(stripComments(read(where)), name, true);
-      if (body === null) return `${themeFile} spreads ${name} from ${rel(root, where)}, which holds no exported object of that name the survey can read: the colours of the theme are not known`;
-    }
-    if (/\.\.\./.test(body)) return `${themeFile} spreads ${name} from ${rel(root, where)}, which spreads another object: the survey follows one level, so the colours of the theme are not known`;
-    const literal = new Map([...body.matchAll(LITERAL_PAIR)].map((p) => [p[1], p[3]]));
-    for (const [, key] of body.matchAll(ANY_PAIR)) {
-      from.set(key, rel(root, where));
-      if (literal.has(key)) { variables.set(key, literal.get(key)); unread.delete(key); }
-      else { variables.delete(key); unread.set(key, `${themeFile} spreads ${name} from ${rel(root, where)}, which builds ${key} in code (a call or a template, not a literal): the survey does not run it`); }
+function objectEntries(body) {
+  const entries = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i <= body.length; i += 1) {
+    const c = body[i];
+    if (c === '"' || c === "'" || c === '`') {
+      for (i += 1; i < body.length && body[i] !== c; i += 1) if (body[i] === '\\') i += 1;
+    } else if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') depth -= 1;
+    else if (i === body.length || (c === ',' && depth === 0)) {
+      const entry = body.slice(start, i).trim();
+      if (entry) entries.push(entry);
+      start = i + 1;
     }
   }
-  return null;
+  return entries;
 }
 
 /**
- * The active theme: the file under src-app/app/themes that says default: true. Its own literal '--x': '...' pairs,
- * over what its spreads give (readSpreads): from names the file each value comes from, unread the names built in code,
- * blocked why the colours are not known when a spread cannot be followed.
+ * Where the object literal each const (let, var) of a file opens, by name, the first of each name: local holds every
+ * one, exported those written export const. One pass; the "=" is looked for within 200 characters of the name (room for
+ * a type), so a declaration with none costs no more than that.
+ */
+const DECLARATION = /\b(export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)(?![\w$])[^=;{}]{0,200}=\s*\{/g;
+function declarations(code) {
+  const local = new Map();
+  const exported = new Map();
+  for (const m of code.matchAll(DECLARATION)) {
+    const open = m.index + m[0].length - 1;
+    if (!local.has(m[2])) local.set(m[2], open);
+    if (m[1] && !exported.has(m[2])) exported.set(m[2], open);
+  }
+  return { local, exported };
+}
+
+const THEME_UNKNOWN = 'the colours of the theme are not known';
+
+/**
+ * The entries of the theme's own variables object (body), in source order: a literal '--x': '...' pair, a pair built
+ * in code (a call, a template), or a spread (...name), followed one level to a const object in the theme file itself or
+ * exported by a file the theme imports by a relative path, read through read() like every other file. A key takes the
+ * value of the last entry that sets it, as in JS: the entries are applied last first, each key once, so a spread met
+ * again sets nothing new and costs nothing. Each spread name is followed once and each imported file read once. A
+ * literal goes to variables, a value built in code to unread with the reason, so no lookup falls through to the kit for
+ * it. Returns why the colours are not known when a spread cannot be followed (the first in source order), else null.
+ */
+function readVariables(root, file, code, body, variables, from, unread) {
+  const themeFile = rel(root, file);
+  const own = declarations(code);
+  const imports = importTable(code);
+  const files = new Map();
+  const spreads = new Map();
+  const pair = (key, value, where, why) => {
+    const literal = LITERAL_VALUE.exec(value.trim());
+    return { key, where, value: literal ? literal[1] ?? literal[2] : null, why };
+  };
+  const follow = (name) => {
+    const fail = (why) => ({ blocked: `${themeFile} spreads ${why}` });
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return fail(`${name.slice(0, 60)}, which the survey does not read: ${THEME_UNKNOWN}`);
+    let where = file;
+    let source = code;
+    let open = own.local.get(name);
+    if (open === undefined) {
+      const spec = imports.get(name);
+      if (spec === undefined) return fail(`${name}, which the survey cannot find: ${THEME_UNKNOWN}`);
+      const target = { spec, file: resolveImport(root, file, spec) };
+      if (!target.spec.startsWith('.') || !target.file) return fail(`${name} from ${target.spec}, which the survey does not read: ${THEME_UNKNOWN}`);
+      if (!files.has(target.file)) { const text = stripComments(read(target.file)); files.set(target.file, { text, exported: declarations(text).exported }); }
+      where = target.file;
+      source = files.get(where).text;
+      open = files.get(where).exported.get(name);
+    }
+    const object = open === undefined ? null : objectBody(source, open);
+    if (object === null) return fail(`${name} from ${rel(root, where)}, which holds no ${where === file ? '' : 'exported '}object of that name the survey can read: ${THEME_UNKNOWN}`);
+    const entries = objectEntries(object);
+    if (entries.some((e) => SPREAD_ENTRY.test(e))) return fail(`${name} from ${rel(root, where)}, which spreads another object: the survey follows one level, so ${THEME_UNKNOWN}`);
+    const pairs = [];
+    for (const entry of entries) {
+      const p = PAIR_ENTRY.exec(entry);
+      if (p) pairs.push(pair(p[2], p[3], rel(root, where), `${themeFile} spreads ${name} from ${rel(root, where)}, which builds ${p[2]} in code (a call or a template, not a literal): the survey does not run it`));
+    }
+    return { pairs };
+  };
+  let blocked = null;
+  const entries = objectEntries(body).map((entry) => {
+    const spread = SPREAD_ENTRY.exec(entry);
+    if (spread) {
+      const name = spread[1].trim();
+      if (!spreads.has(name)) spreads.set(name, follow(name));
+      const got = spreads.get(name);
+      if (got.blocked) { blocked ??= got.blocked; return null; }
+      return { name, pairs: got.pairs };
+    }
+    const p = PAIR_ENTRY.exec(entry);
+    return p ? { pairs: [pair(p[2], p[3], themeFile, `${themeFile} builds ${p[2]} in code (a call or a template, not a literal): the survey does not run it`)] } : null;
+  });
+  const set = new Set();
+  const applied = new Set();
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    if (!entry || applied.has(entry.name)) continue;
+    if (entry.name) applied.add(entry.name);
+    for (let j = entry.pairs.length - 1; j >= 0; j -= 1) {
+      const { key, where, value, why } = entry.pairs[j];
+      if (set.has(key)) continue;
+      set.add(key);
+      from.set(key, where);
+      if (value === null) unread.set(key, why);
+      else variables.set(key, value);
+    }
+  }
+  return blocked;
+}
+
+/**
+ * The active theme: the file under src-app/app/themes that says default: true, read from its variables object
+ * (readVariables), comments stripped: from names the file each value comes from, unread the names built in code,
+ * blocked why the colours are not known when a spread cannot be followed or the variables are not an object literal.
  */
 function readActiveTheme(root) {
   const dir = path.join(root, 'src-app/app/themes');
@@ -1112,11 +1195,14 @@ function readActiveTheme(root) {
   const file = files.find((f) => /\bdefault:\s*true\b/.test(read(f)));
   if (!file) return null;
   const text = read(file);
+  const code = stripComments(text);
   const variables = new Map();
   const from = new Map();
   const unread = new Map();
-  const blocked = readSpreads(root, file, stripComments(text), variables, from, unread);
-  for (const m of text.matchAll(LITERAL_PAIR)) { variables.set(m[1], m[3]); from.set(m[1], rel(root, file)); unread.delete(m[1]); }
+  const open = /\bvariables\s*:\s*\{/.exec(code);
+  const body = open ? objectBody(code, open.index + open[0].length - 1) : null;
+  const blocked = body !== null ? readVariables(root, file, code, body, variables, from, unread)
+    : /\bvariables\s*:/.test(code) ? `${rel(root, file)} gives variables no object literal the survey can read: ${THEME_UNKNOWN}` : null;
   return {
     file: rel(root, file),
     id: text.match(/\bid:\s*['"]([\w-]+)['"]/)?.[1] ?? text.match(/_ID\s*=\s*['"]([\w-]+)['"]/)?.[1] ?? UNRESOLVED,
@@ -1491,10 +1577,13 @@ function resolveImport(root, from, spec) {
   return CODE_EXT.map((x) => plain + x).find((f) => existsSync(f)) ?? null;
 }
 
-/** The file a name is imported from, or { pkg } when it comes from a package. */
-function importOf(root, file, code, name) {
-  // Each import statement is read on its own, up to IMPORT_SPAN characters: no pattern runs over the whole file.
-  const word = new RegExp(`(?:^|[^\\w$])${name}(?![\\w$])`);
+/**
+ * The module specifier each name of a file's imports comes from, the first import of a name winning: the default
+ * import and every word of the brace list. Each import statement is read on its own, up to IMPORT_SPAN characters, and
+ * no pattern is built from a name, so a name with a $ is read as written.
+ */
+function importTable(code) {
+  const table = new Map();
   for (const m of code.matchAll(/\bimport\s/g)) {
     const span = code.slice(m.index + 7, m.index + 7 + IMPORT_SPAN);
     const from = /^([^'";]*?)\bfrom\s*['"]([^'"\n]+)['"]/.exec(span);
@@ -1503,9 +1592,15 @@ function importOf(root, file, code, name) {
     const brace = clause.indexOf('{');
     const head = (brace === -1 ? clause : clause.slice(0, brace)).replace(/,\s*$/, '').trim();
     const list = brace === -1 ? '' : clause.slice(brace + 1, clause.lastIndexOf('}'));
-    if (head === name || word.test(list)) return { spec: from[2], file: resolveImport(root, file, from[2]) };
+    for (const name of [head, ...(list.match(/[A-Za-z_$][\w$]*/g) ?? [])]) if (name && !table.has(name)) table.set(name, from[2]);
   }
-  return null;
+  return table;
+}
+
+/** The file a name is imported from (null for a package) with its specifier, or null when the file does not import it. */
+function importOf(root, file, code, name) {
+  const spec = importTable(code).get(name);
+  return spec === undefined ? null : { spec, file: resolveImport(root, file, spec) };
 }
 const IMPORT_SPAN = 2000;
 
