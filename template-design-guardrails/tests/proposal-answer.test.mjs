@@ -215,6 +215,7 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['no reason for the suggested answer', r1.replaceOrFail(/(<li id="q-2">[\s\S]*?)<span class="small why">[\s\S]*?<\/span><\/li>/, '$1</li>'), 'open question 2 gives no reason'],
     ['one design without data-say on the build card, which Copy answer writes', edit(account, ' value="build" data-say="build it as drawn"', ' value="build"'), 'build "Build it as drawn" say ""'],
     ['one design without data-say on the change card', edit(account, ' value="change" data-say="change it first, as written under Changes"', ' value="change"'), 'change "Change it first" say ""'],
+    ['one design in English whose build card says other words than the skeleton\'s', edit(account, ' value="build" data-say="build it as drawn"', ' value="build" data-say="build it now"'), 'build "Build it as drawn" say "build it now"'],
     ['one design in another language without data-say', edit(edit(account, '<html lang="en">', '<html lang="de">'), ' value="build" data-say="build it as drawn"', ' value="build"'), 'build "Build it as drawn" say ""'],
     ['a subject without the revision', edit(r1, '(page team-tasks, revision r1)', '(page team-tasks)'), 'does not name page team-tasks and revision r1'],
     ['a subject whose page id only starts with the page\'s', edit(account, '(page account-settings, revision r1)', '(page account-settings-v2, revision r1)'), 'does not name page account-settings and revision r1'],
