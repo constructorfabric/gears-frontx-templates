@@ -344,7 +344,10 @@ describe('survey-app.mjs embeds a logo only from inside the project', { timeout:
       for (let l = 1; l <= levels; l += 1) inner = `${inner}<g id="g${l}">${Array.from({ length: 10 }, () => `<use href="#g${l - 1}"/>`).join('')}</g>`;
       return `<svg viewBox="0 0 1 1">${inner}</svg>`;
     };
-    expect(survey.sanitizeSvg(nested(3)).error).toBe(`the SVG holds more than ${survey.SVG_USE_CAP} <use> elements`);
+    expect(survey.sanitizeSvg(nested(3)).error).toBe('the SVG holds more than 16 <use> elements');
+    const at = (n) => `<svg viewBox="0 0 1 1"><defs><g id="g"><path d="M0 0h1v1z"/></g></defs>${'<use href="#g"/>'.repeat(n)}</svg>`;
+    expect(survey.sanitizeSvg(at(16)).svg).toBe(at(16).replace('viewBox="0 0 1 1">', 'viewBox="0 0 1 1" aria-hidden="true">'));
+    expect(survey.sanitizeSvg(at(17)).error).toBe('the SVG holds more than 16 <use> elements');
     const few = '<svg viewBox="0 0 1 1"><defs><g id="g"><path d="M0 0h1v1z"/></g></defs><use href="#g"/><use href="#g"/></svg>';
     expect(survey.sanitizeSvg(few).svg).toBe(few.replace('viewBox="0 0 1 1">', 'viewBox="0 0 1 1" aria-hidden="true">'));
   });

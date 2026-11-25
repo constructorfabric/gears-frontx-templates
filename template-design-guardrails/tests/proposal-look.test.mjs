@@ -22,8 +22,8 @@
  *   addresses from a route template only where a link is built from it (an
  *   href or to, a navigate, push, assign, open or redirect call, a location
  *   assignment; templates that disagree are unresolved);
- *   a length the survey cannot read (two dots, a lone dot or dash, a number
- *   that never fits) is unknown, the same as any other unreadable length;
+ *   a length the survey cannot read (two dots, a number that never fits) is
+ *   unknown, the same as any other unreadable length;
  * - the active tab's text colour, read from the app, the kit's when the app
  *   sets none;
  * - the side-by-side strip: stripFit in the skeleton's page script never
@@ -404,7 +404,7 @@ describe('the rules a stylesheet yields', () => {
 
   it('reads a length it cannot parse as unknown, like any other unreadable length', () => {
     const at = (value) => survey.survey(topApp({ [HOME_CSS]: (t) => t.replaceOrFail('.column { max-width: 1240px;', `.column { max-width: ${value};`) }));
-    for (const value of ['1.2.3px', '.', '-px', `${'9'.repeat(400)}px`]) {
+    for (const value of ['1.2.3px', '1.2.3rem', '..5px', `${'9'.repeat(400)}px`]) {
       const result = at(value);
       expect(result.look.max, value).toBe('unresolved');
       // A malformed number is not a number that is not a length: it is unknown, and the source says so once.
