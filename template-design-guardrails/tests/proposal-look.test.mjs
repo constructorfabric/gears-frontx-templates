@@ -13,9 +13,9 @@
  * - the rules a stylesheet yields: an at-statement at the top level (@import,
  *   @charset, @layer a;, @namespace, @value) ends at its semicolon and the
  *   rule after it is read as its own rule; the rules inside a rule-holding
- *   block at-rule (@supports, @container) are read as conditional and never
- *   reach the look, a @layer block applies unconditionally like a top-level
- *   rule, and a block at-rule that holds
+ *   block at-rule (@supports, @container, @layer) are read as conditional
+ *   and never reach the look (the survey does not model cascade layers), and
+ *   a block at-rule that holds
  *   no style rules (@keyframes, @font-face) is read on;
  * - the app name from the index title, the content column's width by the
  *   app's own box-sizing (its global reset at the top level of a stylesheet
@@ -403,17 +403,21 @@ describe('the rules a stylesheet yields', () => {
     expect(result.unresolved).not.toContain(`skipped ${chunk}`);
   });
 
-  // @layer is unconditional CSS: its rules apply like top-level ones (lower in the cascade, which the survey does not
-  // model), so its frame takes the enclosing frame's media and its .root reaches the look where no top-level rule
-  // sets the same property.
-  it('reads the rules inside a @layer block unconditionally: its .root wins the look where no top-level rule sets the property', () => {
-    const result = survey.survey(topApp({
-      [HOME_CSS]: (t) => `@layer a { .root { background-color: #000000; } }\n${t.replaceOrFail('  background-color: #ffffff;\n', '')}`,
-    }));
+  // Layered rules sit below unlayered ones in the cascade, which the survey does not model, so a @layer block opens a
+  // frame with media 'other' like @supports: its rules never reach the look, and a top-level .root setting the same
+  // property wins even when the layered rule comes first.
+  it('keeps the rules inside a @layer block out of the look: the top-level .root wins even after it', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@layer a { .root { background-color: #000000; } }\n${t}` }));
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
-    expect(result.look.bg).toBe('#000000');
+    expect(result.look.bg).toBe('#ffffff');
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+  });
+
+  it('does not read a rule inside a @layer inside a min-width @media as a rule from that width', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@media (min-width: 600px) { @layer a { .kpi { font-size: 33px; } } }\n${t}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.lookFrom.stat).not.toBe(`${HOME_CSS} .kpi (from 600 px) font-size`);
   });
 
   it.each([
