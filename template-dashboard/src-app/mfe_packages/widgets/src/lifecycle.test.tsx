@@ -1,8 +1,9 @@
-import { act } from '@testing-library/react';
+import { act, fireEvent } from '@testing-library/react';
 import type { ActionHandler, ChildMfeBridge } from '@gears-frontx/mfes';
 import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID } from '@gears-frontx/frontx-dashboard-root/contract';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Popover, PopoverContent, PopoverTrigger } from '@gears-frontx/ui-kit';
+import { useEffect } from 'react';
 
 import { formatValue } from './format';
 import { createWidgetLifecycle } from './lifecycle';
@@ -328,6 +329,46 @@ describe('kit overlays with a host overlay container', () => {
     expect(popupOf(shadow)).toBeUndefined();
     await act(async () => lifecycle.unmount(shadow));
     expect(second.childElementCount).toBe(0);
+  });
+
+  it('keeps a popup the user opened open when the host names another element or drops it, and draws its content again in the new place', async () => {
+    const [first, second] = [pageElement(), pageElement()];
+    let mounts = 0;
+    const Content = () => {
+      useEffect(() => void (mounts += 1), []);
+      return <input aria-label="Note" />;
+    };
+    const lifecycle = createWidgetLifecycle((_payload, { container }) => (
+      <Popover>
+        <PopoverTrigger>Details</PopoverTrigger>
+        <PopoverContent container={container ?? undefined}>
+          <Content />
+        </PopoverContent>
+      </Popover>
+    ));
+    const { shadow } = ownMountPoint();
+    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: first });
+    await act(async () => lifecycle.mount(shadow, child));
+    await send({ render: {} });
+    const noteIn = (root: ParentNode) => root.querySelector<HTMLInputElement>('input[aria-label="Note"]');
+    expect(noteIn(first.firstElementChild!.shadowRoot!)).toBeNull();
+    await act(async () => fireEvent.click(Array.from(shadow.querySelectorAll('button')).find((button) => button.textContent === 'Details')!));
+    const typed = noteIn(first.firstElementChild!.shadowRoot!)!;
+    expect(typed).toBeTruthy();
+    typed.value = 'typed';
+    expect(mounts).toBe(1);
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, second);
+    expect(first.childElementCount).toBe(0);
+    const moved = noteIn(second.firstElementChild!.shadowRoot!);
+    expect(moved).toBeTruthy();
+    expect(moved).not.toBe(typed);
+    expect(moved!.value).toBe('');
+    expect(mounts).toBe(2);
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, null);
+    expect(second.childElementCount).toBe(0);
+    expect(noteIn(shadow)).toBeTruthy();
+    expect(mounts).toBe(3);
+    await act(async () => lifecycle.unmount(shadow));
   });
 
   it('gives two widgets sharing one host element a shadow root each, and removes only its own on unmount', async () => {
