@@ -253,7 +253,7 @@
     "mark-color": "#2f6fd6"
   },
   "lookFrom": {
-    "bg": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color",
+    "bg": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color (screen)",
     "surface": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --card",
     "text": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --foreground",
     "muted": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root --muted-foreground",
@@ -335,7 +335,7 @@
       "key": "bg",
       "kit": "#f1f5f9",
       "app": "#ffffff",
-      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color"
+      "source": "src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css .root background-color (screen)"
     },
     {
       "key": "text",

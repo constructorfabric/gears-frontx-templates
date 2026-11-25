@@ -72,7 +72,7 @@ describe('survey-app.mjs on the scaffold\'s own class names and breakpoints', ()
     // 40 px is drawn at round(40 * 1120 / 1440) = 31 px by the scale rule.
     expect([result.look.h1, result.lookReal.h1, result.look.bg]).toEqual(['31px', '40px', '#fdf6e3']);
     expect(result.lookFrom.h1).toBe(`${SCREEN_CSS} .title font-size`);
-    expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .screen background`);
+    expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .screen background (screen)`);
   });
 
   it('reads a kit token .screen re-declares as the screen\'s own, naming .screen', () => {
@@ -109,7 +109,8 @@ describe('survey-app.mjs on a theme built from spreads', () => {
     expect(result.lookSources.theme).toBe('src-app/app/themes/dracula.ts');
     expect(COLOUR_ROLES.map((k) => result.look[k])).toEqual(COLOUR_ROLES.map(() => survey.UNRESOLVED));
     expect(result.unresolved).toEqual(expect.arrayContaining(COLOUR_ROLES.map((k) => `look.${k}`)));
-    // The background is unresolved by the scaffold's rule first: its .screen sets none.
+    // The scaffold's .screen sets no background; the shell's .screen takes --background, which the palette builds in code.
+    expect(result.lookFrom.bg).toMatch(/^src-app\/app\/layout\/Screen\.module\.css \.screen background-color \(shell\): src-app\/app\/themes\/dracula\.ts spreads draculaKitColors from src-app\/app\/themes\/draculaPalette\.ts, which builds --background in code/);
     expect(result.lookFrom.accent).toMatch(/^src-app\/app\/themes\/dracula\.ts spreads draculaKitColors from src-app\/app\/themes\/draculaPalette\.ts, which builds --primary in code/);
     expect(result.lookFrom['nav-bg']).toMatch(/^src-app\/app\/themes\/dracula\.ts spreads draculaShellColors from src-app\/app\/themes\/draculaPalette\.ts, which builds --left-menu in code/);
   });
@@ -185,7 +186,7 @@ const addCss = (root, rel, css) => edit(root, rel, /$/, `\n${css}\n`);
 describe('survey-app.mjs matches class names whole', () => {
   it('does not take .screen-header for the page root', () => {
     const result = survey.survey(addCss(realApp(), SCREEN_CSS, '.screen-header { background-color: #abcdef; --primary: #ff00ff; }'));
-    expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `no page background (.root or .screen background-color or background) in ${SCREEN_CSS}`]);
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#f1f5f9', 'src-app/app/layout/Screen.module.css .screen background-color (shell)']);
     expect([result.look.accent, result.lookFrom.accent]).toEqual(['#0065e3', 'kit theme.css --primary']);
   });
 
@@ -196,7 +197,7 @@ describe('survey-app.mjs matches class names whole', () => {
 
   it('names the page background rule whose value it cannot resolve', () => {
     const result = survey.survey(addCss(realApp(), SCREEN_CSS, '.root { background-color: var(--nope); }'));
-    expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `${SCREEN_CSS} .root background-color: a value the survey cannot resolve`]);
+    expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `${SCREEN_CSS} .root background-color (screen): a value the survey cannot resolve`]);
   });
 });
 
@@ -204,14 +205,14 @@ describe('survey-app.mjs never puts the kit palette under an app file\'s name wh
   it('leaves a screen\'s colours unresolved when they come through the kit, naming the rule and the theme reason', () => {
     const result = survey.survey(addCss(blockedTheme(realApp()), SCREEN_CSS, '.root { background-color: var(--background); --primary: var(--info); }'));
     expect([result.look.bg, result.look.accent]).toEqual([survey.UNRESOLVED, survey.UNRESOLVED]);
-    expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .root background-color: ${BLOCKED}`);
+    expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .root background-color (screen): ${BLOCKED}`);
     expect(result.lookFrom.accent).toBe(BLOCKED);
   });
 
   it('keeps the screen\'s own literal values when the theme is blocked', () => {
     const result = survey.survey(addCss(blockedTheme(realApp()), SCREEN_CSS, '.root { background-color: #fafafa; --primary: #123456; }'));
     expect([result.look.bg, result.look.accent]).toEqual(['#fafafa', '#123456']);
-    expect([result.lookFrom.bg, result.lookFrom.accent]).toEqual([`${SCREEN_CSS} .root background-color`, `${SCREEN_CSS} .root --primary`]);
+    expect([result.lookFrom.bg, result.lookFrom.accent]).toEqual([`${SCREEN_CSS} .root background-color (screen)`, `${SCREEN_CSS} .root --primary`]);
   });
 
   it('leaves the logo colour unresolved when the menu\'s rule resolves it through the kit', () => {
@@ -290,12 +291,24 @@ describe('survey-app.mjs reads theme spreads in time linear in their number', { 
 describe('survey-app.mjs on the stock shell', () => {
   // Each fact of the unchanged stock shell has one owner test: the title and the background here, then the logo colour,
   // the nav and the router address, each in its own test below.
-  it('reads the unchanged stock shell and scaffold: the title from .title, the background unresolved', () => {
-    const result = survey.survey(realApp());
-    // The scaffold's .title is the title; its .screen sets no background, so the background is unresolved, naming the file.
+  it('reads the unchanged stock shell and scaffold: the title from .title, the background from the shell, and exits 0', () => {
+    const root = realApp();
+    const result = survey.survey(root);
+    // The scaffold's .title is the title; its .screen sets no background, so the page shows the shell's own .screen
+    // background, var(--background), which the stock default theme leaves to the kit.
     expect([result.lookFrom.h1, result.lookFrom['h1-weight'], result.lookFrom.lead]).toEqual([`${SCREEN_CSS} .title font-size`, `${SCREEN_CSS} .title font-weight`, `${SCREEN_CSS} .description font-size`]);
-    expect([result.look.bg, result.unresolved]).toEqual([survey.UNRESOLVED, ['look.bg']]);
-    expect(result.lookFrom.bg).toBe(`no page background (.root or .screen background-color or background) in ${SCREEN_CSS}`);
+    expect([result.look.bg, result.lookFrom.bg, result.unresolved]).toEqual(['#f1f5f9', 'src-app/app/layout/Screen.module.css .screen background-color (shell)', []]);
+    expect(survey.main(['--project', root], { log: () => {}, error: () => {} })).toBe(0);
+  });
+  it('takes the shell\'s global body background when its layout .screen sets none', () => {
+    const root = edit(realApp(), 'src-app/app/layout/Screen.module.css', '  background-color: var(--background);\n', '');
+    const result = survey.survey(addCss(root, 'src-app/app/globals.css', 'body { background-color: #222222; }'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#222222', 'src-app/app/globals.css body background-color (shell)']);
+  });
+  it('takes the active theme\'s --background when neither the screen nor the shell sets a page background', () => {
+    const root = edit(themeWith(realApp(), "'--background': '#101010'"), 'src-app/app/layout/Screen.module.css', '  background-color: var(--background);\n', '');
+    const result = survey.survey(root);
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#101010', 'src-app/app/themes/default.ts --background (theme)']);
   });
   it('colours the logo from the menu\'s own CSS module, --left-menu-foreground, not the accent', () => {
     const result = survey.survey(realApp());

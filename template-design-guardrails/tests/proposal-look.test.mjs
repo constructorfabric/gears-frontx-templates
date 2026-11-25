@@ -344,7 +344,7 @@ describe('the rules a stylesheet yields', () => {
     ['url("...") with braces after the quotes', '@import url("x" {.root{background-color:#000000;}} );'],
   ])('reads the .root rule after the at-statement %s as its own rule', (_, statement) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
     expect(result.look.bg).toBe('#ffffff');
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
@@ -357,7 +357,7 @@ describe('the rules a stylesheet yields', () => {
   it.each([
     ['an at-statement inside a @media block', '@media (min-width: 600px) { @layer base; .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
     ['a ";" inside the url() of an at-statement', '@import url("a;b.css"); .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
-    ['a ";" inside the prelude string of a block at-rule', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color`, '#ffffff'],
+    ['a ";" inside the prelude string of a block at-rule', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color (screen)`, '#ffffff'],
     ['a stray ";" between rules', '.kpi {} ; @import "x"; .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
     ['an at-rule name in upper case', '@MEDIA (min-width: 600px) { @import "}"; .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
     ['a MIN-WIDTH feature in upper case', '@media (MIN-WIDTH: 600px) { .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
@@ -385,7 +385,7 @@ describe('the rules a stylesheet yields', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${before}\n${t}` }));
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
-    expect(result.lookFrom.bg, before).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg, before).toBe(`${HOME_CSS} .root background-color (screen)`);
     expect(result.look.bg, before).toBe('#ffffff');
   });
 
@@ -408,14 +408,14 @@ describe('the rules a stylesheet yields', () => {
   ])('does not read the rules of %s at the end of the file, and lists the file under skipped', (_, edit, why) => {
     const result = survey.survey(topApp({ [HOME_CSS]: edit }));
     expect([result.look.stat, result.lookFrom.stat]).toEqual(['25px', 'kit --text-kpi-size (the app sets none)']);
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
     expect(result.skipped.filter((s) => s.file === HOME_CSS)).toEqual([{ file: HOME_CSS, why: expect.stringMatching(why) }]);
     expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
   });
 
   it('reads the rules before a quote left open at the top level at the end of the file, and lists the file under skipped', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${t}\n@import "abc` }));
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
     expect(result.look.bg).toBe('#ffffff');
     expect(result.skipped.filter((s) => s.file === HOME_CSS)).toEqual([{ file: HOME_CSS, why: expect.stringMatching(STRING_OR_URL) }]);
   });
@@ -455,7 +455,7 @@ describe('the rules a stylesheet yields', () => {
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
     expect(result.look.bg).toBe('#ffffff');
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
   });
 
   it('does not read a rule inside a @layer inside a min-width @media as a rule from that width', () => {
@@ -483,7 +483,7 @@ describe('the rules a stylesheet yields', () => {
     expect(result.skipped).toEqual([]);
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
     expect(result.look.bg).toBe('#ffffff');
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
   });
 
   it('lists no skipped entry for a block at-rule that holds no style rules, and reads the rule after it', () => {
@@ -492,7 +492,7 @@ describe('the rules a stylesheet yields', () => {
     }));
     expect(result.skipped).not.toContainEqual(expect.objectContaining({ file: HOME_CSS }));
     expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
-    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color (screen)`);
     expect(result.look.bg).toBe('#ffffff');
   });
 

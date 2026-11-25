@@ -184,6 +184,11 @@ const LOOK_TOKENS = {
 const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.title(?![\w-])/];
 /** The screen root: the page background and the kit token bridge. */
 const PAGE_ROOT = /\.(root|screen)(?![\w-])/;
+/**
+ * The shell's own page background behind the screen, innermost first: the stock shell's layout/Screen.module.css
+ * .screen (background-color: var(--background)) wraps every screen; the global CSS's html, body or #root is under it.
+ */
+const SHELL_PAGE = [['src-app/app/layout/Screen.module.css', PAGE_ROOT], ['src-app/app/globals.css', /(^|,)\s*(html|body|#root)\s*(?=,|$)/]];
 /** The roles the scaffold names: with the shown screens' CSS Modules read, no match leaves them unresolved, not the kit's. */
 const SCAFFOLD_ROLES = new Set(['h1', 'h1-phone', 'h1-weight', 'h1-track']);
 const COLUMN = [/\.column\b/, /\.container\b/, /\.content\b/, /\.page\b/];
@@ -1792,12 +1797,22 @@ function readLook(root, screens, chromeOf) {
       if (value) { source = whereToken(token); break; }
     }
     if (key === 'bg') {
-      const page = pageRules.find((r) => r.media === null && PAGE_ROOT.test(r.selector) && (r.decls.has('background-color') || r.decls.has('background')));
-      const prop = page?.decls.has('background-color') ? 'background-color' : 'background';
-      const own = page ? resolveIn(page.decls.get(prop), { colour }) : null;
-      if (own?.value) { value = own.value; source = `${page.file} ${page.selector} ${prop}`; why = null; }
-      else if (own) { set(key, UNRESOLVED, because(`${page.file} ${page.selector} ${prop}`, own.why ?? 'a value the survey cannot resolve')); continue; }
-      else if (pageCss.length) { set(key, UNRESOLVED, `no page background (.root or .screen background-color or background) in ${pageCss.join(', ')}`); continue; }
+      // What the page really shows, with the kind of its source: a shown screen's own background, else the shell's page
+      // background behind the screen, else the active theme's --background (the token loop above).
+      const paints = (r) => r.media === null && (r.decls.has('background-color') || r.decls.has('background'));
+      const page = pageRules.find((r) => paints(r) && PAGE_ROOT.test(r.selector));
+      const shell = page ? null : SHELL_PAGE.flatMap(([f, sel]) => (exists(path.join(root, f)) ? cssRules(path.join(root, f), f) : [])
+        .filter((r) => sel.test(r.selector))).find(paints);
+      const hit = page ?? shell;
+      if (hit) {
+        const prop = hit.decls.has('background-color') ? 'background-color' : 'background';
+        const at = `${hit.file} ${hit.selector} ${prop} (${page ? 'screen' : 'shell'})`;
+        // The screen's own kit tokens reach its own background only; the shell's element is outside the screen.
+        const got = resolveIn(hit.decls.get(prop), { colour, bridged: Boolean(page) });
+        if (!got.value) { set(key, UNRESOLVED, because(at, got.why ?? 'a value the survey cannot resolve')); continue; }
+        if (shell && !shellCss.includes(shell.file)) shellCss.push(shell.file);
+        value = got.value; source = at; why = null;
+      } else if (source) source = `${source} (theme)`;
     }
     set(key, value ?? UNRESOLVED, why ?? source ?? 'none', kitValue);
   }
