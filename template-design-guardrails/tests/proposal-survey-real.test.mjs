@@ -86,6 +86,42 @@ describe('survey-app.mjs on the scaffold\'s own class names and breakpoints', ()
   });
 });
 
+/** Moves default: true from the stock default theme to the given theme file. */
+const withDefault = (root, theme) => {
+  edit(root, 'src-app/app/themes/default.ts', '  default: true,\n', '');
+  return edit(root, `src-app/app/themes/${theme}`, "  appearance: 'dark',\n", "  appearance: 'dark',\n  default: true,\n");
+};
+const COLOUR_ROLES = ['bg', 'surface', 'text', 'accent', 'nav-bg', 'nav-text'];
+
+describe('survey-app.mjs on a theme built from spreads', () => {
+  it('leaves the colour keys of the real Dracula default unresolved, naming the palette file, never the kit palette', () => {
+    const result = survey.survey(withDefault(realApp(), 'dracula.ts'));
+    expect(result.lookSources.theme).toBe('src-app/app/themes/dracula.ts');
+    expect(COLOUR_ROLES.map((k) => result.look[k])).toEqual(COLOUR_ROLES.map(() => survey.UNRESOLVED));
+    expect(result.unresolved).toEqual(expect.arrayContaining(COLOUR_ROLES.map((k) => `look.${k}`)));
+    // The background is unresolved by the scaffold's rule first: its .screen sets none.
+    expect(result.lookFrom.accent).toMatch(/^src-app\/app\/themes\/dracula\.ts spreads draculaKitColors from src-app\/app\/themes\/draculaPalette\.ts, which builds --primary in code/);
+    expect(result.lookFrom['nav-bg']).toMatch(/^src-app\/app\/themes\/dracula\.ts spreads draculaShellColors from src-app\/app\/themes\/draculaPalette\.ts, which builds --left-menu in code/);
+  });
+
+  it('leaves the colour keys unresolved when the theme spreads an object from a package', () => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), "import { brand } from '@acme/palette';\nexport const defaultTheme = { id: 'default', appearance: 'light', default: true, variables: { ...brand, '--left-menu': '#000000' } };\n");
+    const result = survey.survey(root);
+    expect(COLOUR_ROLES.map((k) => result.look[k])).toEqual(COLOUR_ROLES.map(() => survey.UNRESOLVED));
+    expect(result.lookFrom.accent).toBe('src-app/app/themes/default.ts spreads brand from @acme/palette, which the survey does not read: the colours of the theme are not known');
+  });
+
+  it('follows a spread of literal pairs from the same file and from a file of the themes folder', () => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/palette.ts'), "export const shell = {\n  '--left-menu': '#202020',\n  '--left-menu-foreground': '#eeeeee',\n};\n");
+    writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), "import { shell } from './palette';\nconst base = { '--background': '#101010', '--primary': '#ff0066' };\nexport const defaultTheme = { id: 'default', appearance: 'light', default: true, variables: { ...base, ...shell } };\n");
+    const result = survey.survey(root);
+    expect([result.look.accent, result.look['nav-bg'], result.look['nav-text']]).toEqual(['#ff0066', '#202020', '#eeeeee']);
+    expect([result.lookFrom.accent, result.lookFrom['nav-bg']]).toEqual(['src-app/app/themes/default.ts --primary', 'src-app/app/themes/palette.ts --left-menu']);
+  });
+});
+
 describe('survey-app.mjs on the stock shell', () => {
   it('gives the address the shell\'s router writes, /?screen=<route without the slash>, when the menu builds no link', () => {
     const { links } = survey.survey(realApp());

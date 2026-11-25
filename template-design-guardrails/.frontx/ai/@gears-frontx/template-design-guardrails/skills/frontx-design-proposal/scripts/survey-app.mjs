@@ -27,7 +27,9 @@
  *   bridge, page heading, lead, content column, cards, buttons, counters,
  *   table headers; the content column's width without its padding when the
  *   app's global reset or the column itself sets border-box) and of the
- *   shell's header and menu, then the active theme's own variables, then
+ *   shell's header and menu, then the active theme's own variables (its
+ *   literal pairs and those of a const object it spreads, followed one level;
+ *   a value built in code or a spread it cannot follow is unresolved), then
  *   the installed kit (theme.css and its component styles). Each value names its source; where the kit's value
  *   and the app's differ the app's wins and the survey says so;
  * - scale: real pixel sizes are scaled to the drawing window by one rule
@@ -1039,7 +1041,69 @@ const cssRules = (full, file, kitStyle = false) => {
   }));
 };
 
-/** The active theme: the file under src-app/app/themes that says default: true. */
+const LITERAL_PAIR = /['"](--[\w-]+)['"]\s*:\s*(['"])(.*?)\2/g;
+const ANY_PAIR = /['"](--[\w-]+)['"]\s*:/g;
+
+/**
+ * The text of the object literal whose "{" is at open, up to its matching "}", or null when the file never closes it.
+ * Quoted strings and template literals are skipped whole, so a brace inside one counts for nothing.
+ */
+function objectBody(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"' || c === "'" || c === '`') {
+      for (i += 1; i < text.length && text[i] !== c; i += 1) if (text[i] === '\\') i += 1;
+    } else if (c === '{') depth += 1;
+    else if (c === '}' && --depth === 0) return text.slice(open + 1, i);
+  }
+  return null;
+}
+
+/** The body of the object literal a const of that name holds in code, or null when there is none. */
+function constObject(code, name, exported) {
+  const m = new RegExp(`\\b${exported ? 'export\\s+' : ''}(?:const|let|var)\\s+${name.replace(/\$/g, '\\$')}(?![\\w$])[^=;{}]*=\\s*\\{`).exec(code);
+  return m ? objectBody(code, m.index + m[0].length - 1) : null;
+}
+
+/**
+ * What the theme's spreads (...name) give: each is followed one level, to a const object of literal pairs in the theme
+ * file itself or exported by a file the theme imports by a relative path, read through read() like every other file.
+ * A name whose value is not a literal (built in code: a call, a template) is listed under unread with the reason, so
+ * no lookup falls through to the kit for it; a spread the survey cannot follow sets blocked, and then no colour of the
+ * theme is known.
+ */
+function readSpreads(root, file, code, variables, from, unread) {
+  const themeFile = rel(root, file);
+  for (const m of code.matchAll(/\.\.\.\s*([^,}\n]*)/g)) {
+    const name = m[1].trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return `${themeFile} spreads ${name.slice(0, 60)}, which the survey does not read: the colours of the theme are not known`;
+    let body = constObject(code, name, false);
+    let where = file;
+    if (body === null) {
+      const target = importOf(root, file, code, name);
+      if (!target) return `${themeFile} spreads ${name}, which the survey cannot find: the colours of the theme are not known`;
+      if (!target.spec.startsWith('.') || !target.file) return `${themeFile} spreads ${name} from ${target.spec}, which the survey does not read: the colours of the theme are not known`;
+      where = target.file;
+      body = constObject(stripComments(read(where)), name, true);
+      if (body === null) return `${themeFile} spreads ${name} from ${rel(root, where)}, which holds no exported object of that name the survey can read: the colours of the theme are not known`;
+    }
+    if (/\.\.\./.test(body)) return `${themeFile} spreads ${name} from ${rel(root, where)}, which spreads another object: the survey follows one level, so the colours of the theme are not known`;
+    const literal = new Map([...body.matchAll(LITERAL_PAIR)].map((p) => [p[1], p[3]]));
+    for (const [, key] of body.matchAll(ANY_PAIR)) {
+      from.set(key, rel(root, where));
+      if (literal.has(key)) { variables.set(key, literal.get(key)); unread.delete(key); }
+      else { variables.delete(key); unread.set(key, `${themeFile} spreads ${name} from ${rel(root, where)}, which builds ${key} in code (a call or a template, not a literal): the survey does not run it`); }
+    }
+  }
+  return null;
+}
+
+/**
+ * The active theme: the file under src-app/app/themes that says default: true. Its own literal '--x': '...' pairs,
+ * over what its spreads give (readSpreads): from names the file each value comes from, unread the names built in code,
+ * blocked why the colours are not known when a spread cannot be followed.
+ */
 function readActiveTheme(root) {
   const dir = path.join(root, 'src-app/app/themes');
   const names = list(dir)?.map((e) => e.name);
@@ -1049,12 +1113,18 @@ function readActiveTheme(root) {
   if (!file) return null;
   const text = read(file);
   const variables = new Map();
-  for (const m of text.matchAll(/['"](--[\w-]+)['"]\s*:\s*(['"])(.*?)\2/g)) variables.set(m[1], m[3]);
+  const from = new Map();
+  const unread = new Map();
+  const blocked = readSpreads(root, file, stripComments(text), variables, from, unread);
+  for (const m of text.matchAll(LITERAL_PAIR)) { variables.set(m[1], m[3]); from.set(m[1], rel(root, file)); unread.delete(m[1]); }
   return {
     file: rel(root, file),
     id: text.match(/\bid:\s*['"]([\w-]+)['"]/)?.[1] ?? text.match(/_ID\s*=\s*['"]([\w-]+)['"]/)?.[1] ?? UNRESOLVED,
     appearance: text.match(/\bappearance:\s*['"](light|dark)['"]/)?.[1] ?? 'light',
     variables,
+    from,
+    unread,
+    blocked,
   };
 }
 
@@ -1539,9 +1609,13 @@ function readLook(root, screens, chromeOf) {
     if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
     for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file });
   }
-  const appLookup = (name) => bridge.get(name)?.value ?? theme?.variables.get(name) ?? scope.get(name) ?? null;
-  const kitLookup = (name) => theme?.variables.get(name) ?? scope.get(name) ?? null;
-  const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} .root ${name}` : theme?.variables.has(name) ? `${theme.file} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
+  // A name the theme builds in code is unknown: the lookup gives null for it, never the kit's value, and refused keeps
+  // the first such reason met since it was last cleared.
+  let refused = null;
+  const builtInCode = (name) => { const why = theme?.unread.get(name); if (why) refused ??= why; return Boolean(why); };
+  const appLookup = (name) => bridge.get(name)?.value ?? (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  const kitLookup = (name) => (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} .root ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
   const { chrome, rules: shellRules, shellCss, brand } = chromeOf(appLookup);
 
   const look = {};
@@ -1576,9 +1650,12 @@ function readLook(root, screens, chromeOf) {
     let value = null;
     let source = null;
     let kitValue = null;
+    refused = null;
     for (const token of tokens) {
       value = resolveVars(`var(${token})`, appLookup);
       kitValue = resolveVars(`var(${token})`, kitLookup);
+      // A token the theme builds in code is unknown: the next token in the list does not stand for it.
+      if (refused) { value = null; break; }
       if (value) { source = whereToken(token); break; }
     }
     if (key === 'bg') {
@@ -1588,11 +1665,14 @@ function readLook(root, screens, chromeOf) {
       if (pageValue) { value = pageValue; source = `${page.file} ${page.selector} ${prop}`; }
       else if (pageCss.length) { set(key, UNRESOLVED, `no page background (.root or .screen background-color or background) in ${pageCss.join(', ')}`); continue; }
     }
-    set(key, value ?? UNRESOLVED, source ?? 'none', kitValue);
+    // A theme spread the survey cannot follow may set any colour: only the screens' own value stands.
+    if (theme?.blocked && key !== 'font' && !pageCss.some((f) => source?.startsWith(`${f} `))) { set(key, UNRESOLVED, theme.blocked); continue; }
+    set(key, value ?? UNRESOLVED, source ?? refused ?? 'none', kitValue);
   }
 
   const role = (key, spec, rules) => {
     const hit = pickRule(rules, spec);
+    refused = null;
     const kitRaw = spec.kit ? resolveVars(`var(${spec.kit})`, kitLookup) : null;
     const asRaw = (v) => (toPx(v) !== null ? `${toPx(v)}px` : v);
     const realPx = (v) => (toPx(v) !== null ? `${Math.round(toPx(v))}px` : v);
@@ -1609,7 +1689,7 @@ function readLook(root, screens, chromeOf) {
         const maxPx = toPx(raw);
         raw = maxPx === null ? null : `${box ? maxPx - 2 * (padPx ?? 0) : maxPx}px`;
       }
-      if (raw === null) { set(key, UNRESOLVED, `${describe(hit)}: a value the survey cannot resolve`); return; }
+      if (raw === null) { set(key, UNRESOLVED, `${describe(hit)}: ${refused ?? 'a value the survey cannot resolve'}`); return; }
       const value = spec.raw ? asRaw(raw) : sized(raw, spec.at);
       if (value === null) { set(key, UNRESOLVED, `${describe(hit)}: ${raw} is not a length`); return; }
       set(key, value, describe(hit), kitValue, spec.raw ? undefined : realPx(raw));
@@ -1619,6 +1699,7 @@ function readLook(root, screens, chromeOf) {
       set(key, UNRESOLVED, `no page title rule (.pageTitle, .pageHeading, h1, .heroTitle, .title) sets ${spec.prop.join(' or ')}${spec.at === 'phone' ? ' outside @media' : ''} in ${pageCss.join(', ')}`);
       return;
     }
+    if (refused) { set(key, UNRESOLVED, refused); return; }
     if (kitValue !== null) { set(key, kitValue, `kit ${spec.kit} (the app sets none)`, undefined, spec.raw ? undefined : realPx(kitRaw)); return; }
     if (key === 'th-case') {
       const head = kitRules.find((r) => /_?tableHead/i.test(r.selector) && r.decls.has('text-transform'));
