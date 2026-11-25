@@ -862,16 +862,19 @@ function parseKitCss(full) {
 
 /** The deepest nesting of @media rules the survey reads; past it the rest of the file is skipped. */
 export const MEDIA_DEPTH_CAP = 32;
-/** The block at-rules that hold style rules: each opens a frame like a non-min-width @media does, with media 'other'. */
+/** The block at-rules that hold style rules: each opens a frame like a non-min-width @media does, with media
+ * 'other', except @layer, whose rules apply unconditionally and whose frame takes the enclosing frame's media. */
 const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@scope', '@starting-style', '@document']);
 
 /**
  * Rules of a CSS file: { selector, media, decls }. media is null for a top
  * level rule, the min-width in px of the innermost @media (min-width: N px)
  * for a rule inside one, or 'other' for any other @media and for a rule
- * inside a rule-holding block at-rule (@supports, @layer, @container, @scope,
+ * inside a rule-holding block at-rule (@supports, @container, @scope,
  * @starting-style, @document), which opens a frame like a non-min-width
- * @media does; a rule inside any other at-rule is not kept and the file is
+ * @media does; a @layer block holds its rules unconditionally, lower in the
+ * cascade, which the survey does not model, so its frame takes the enclosing
+ * frame's media. A rule inside any other at-rule is not kept and the file is
  * read on. One pass:
  * each open @media body is a frame with its own brace depth, start and
  * selector, so a body is read where it stands and never scanned again. A
@@ -932,18 +935,21 @@ function parseCssRules(css, file = '', full = null) {
         f.selector = text.slice(f.start, i).trim();
         reset(f, i + 1);
         const min = /min-width:\s*(\d+)px/.exec(f.selector);
-        // A rule-holding block at-rule opens a frame like a non-min-width @media does; the name is read and matched
-        // lower case, so @supports(display:grid){ and @SUPPORTS open one too. Nesting counts toward MEDIA_DEPTH_CAP
-        // the way @media nesting does.
-        const atMedia = f.selector.startsWith('@media');
-        const holding = !atMedia && RULE_HOLDING_AT_RULES.has(/^@[\w-]+/.exec(f.selector)?.[0]?.toLowerCase() ?? '');
+        // The at-rule name is read once, lower cased, and used for both the @media test and the rule-holding test, so
+        // @MEDIA (min-width: 600px){ and @supports(display:grid){ are read like their lower case spellings. A
+        // rule-holding block at-rule opens a frame like a non-min-width @media does; @layer holds its rules
+        // unconditionally, so its frame takes the enclosing frame's media. Nesting counts toward MEDIA_DEPTH_CAP the
+        // way @media nesting does.
+        const name = /^@[\w-]+/.exec(f.selector)?.[0]?.toLowerCase() ?? '';
+        const atMedia = name === '@media';
+        const holding = !atMedia && RULE_HOLDING_AT_RULES.has(name);
         if (atMedia || holding) {
           if (frames.length > MEDIA_DEPTH_CAP) {
             if (full) skip(full, `@media rules nested more than ${MEDIA_DEPTH_CAP} deep: the rest of the file is not read${linkNote(full)}`);
             return rules;
           }
           f.depth = 1;
-          frames.push({ media: atMedia && min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
+          frames.push({ media: atMedia ? (min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other') : name === '@layer' ? f.media : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
           continue;
         }
       }
