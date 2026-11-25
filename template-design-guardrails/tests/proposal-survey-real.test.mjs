@@ -134,6 +134,11 @@ describe('survey-app.mjs on the stock shell', () => {
     expect(result.look['mark-color']).toBe('color-mix(in oklab, #f1f5f9 70%, #0f172a)');
     expect(result.lookFrom['mark-color']).toBe('src-app/app/components/ui/sidebar.module.css .sidebar color');
   });
+  it('reads nav from <Menu />, not from the right-hand <Sidebar />: without the menu the header is the nav', () => {
+    expect(survey.survey(realApp()).nav).toBe('side');
+    const result = survey.survey(edit(realApp(), 'src-app/app/layout/Layout.tsx', '<Menu />', ''));
+    expect([result.nav, result.chrome.sources.nav]).toEqual(['top', 'src-app/app/layout/Layout.tsx']);
+  });
   it('sorts a screen without an order at 999, as the shell does, so one at 1000 comes after it', () => {
     const root = realApp();
     const file = path.join(root, 'src-app/mfe_packages/blank-mfe/mfe.json');

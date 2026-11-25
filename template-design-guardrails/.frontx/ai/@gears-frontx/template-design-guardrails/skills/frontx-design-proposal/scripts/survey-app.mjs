@@ -1412,7 +1412,8 @@ function readChrome(root, lookup) {
   const code = tsx.map((f) => stripComments(read(f))).join('\n');
   if (exists(layout)) {
     const text = stripComments(read(layout));
-    if (/<(Menu|Sidebar)\b/.test(text)) chrome.nav = 'side';
+    // The side menu is <Menu />: the stock shell's <Sidebar /> is the right-hand panel and renders with or without it.
+    if (/<Menu\b/.test(text)) chrome.nav = 'side';
     else if (/<Header\b/.test(text)) chrome.nav = 'top';
     chrome.sources.nav = rel(root, layout);
   }
