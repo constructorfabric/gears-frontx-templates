@@ -115,6 +115,16 @@ describe('a page in the person\'s own language', () => {
     }
   });
 
+  // The skeleton's English words for each phrase, as the attribute writes them.
+  const skeleton = readFileSync(path.join(skill, 'templates/proposal.html'), 'utf8');
+  it.each(['choose', 'answer', 'questions', 'changes', 'none', 'copied', 'failed', 'wide-part'])('finds data-phrase-%s left in the skeleton\'s English on a page not in English', (key) => {
+    const english = new RegExp(` data-phrase-${key}="[^"]*"`).exec(skeleton)[0];
+    const page = german(read('team-tasks/r1'));
+    expect(findings(page)).toEqual([]);
+    const found = findings(page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), english));
+    expect(found.filter((f) => f.startsWith(`[answer] data-phrase-${key} keeps the skeleton's English`)), found.join('\n')).toHaveLength(1);
+  });
+
   it('lets a page in English leave the words to the scripts\' English', () => {
     const page = read('team-tasks/r1').replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, '>').replace(/ data-start="Start"/g, ' data-start');
     expect(findings(page)).toEqual([]);

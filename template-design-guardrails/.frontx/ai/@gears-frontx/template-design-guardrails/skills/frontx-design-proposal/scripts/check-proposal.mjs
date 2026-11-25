@@ -191,7 +191,7 @@
  *   textarea in its label, or no answer text, Copy button or state line;
  *   on a page not in English, a data-phrase-* of the form (the words the
  *   scripts write: choose, answer, questions, changes, none, copied, failed,
- *   wide-part) missing or empty; on any page, a phrase given without a place
+ *   wide-part) missing, empty or left as the skeleton's English; on any page, a phrase given without a place
  *   the script fills ({subject}, {letter}, {name}, {answer}, {changes});
  * - revision: in a folder check, page facts that do not name the folder's
  *   page id and revision exactly (the data-subject then names the folder's); from r2 on, no "Changed since r<n-1>:" line in the head, or
@@ -1277,7 +1277,7 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
       if (!optionIds.includes(fragment(link))) add('overview', `recommendation link ${link.attrs.href} is not an option`);
     }
   }
-  checkAnswer({ root, sectionById, optionNodes, withOptions, english, folder, add });
+  checkAnswer({ root, tpl, sectionById, optionNodes, withOptions, english, folder, add });
   checkViews({ how, screens, optionNodes, add });
   const { guarantees } = checkParts({ root, main, sectionById, drawings, screens, how, add });
   const parts = { guarantees, flow: sectionById.has('flow'), storyboard: find(main, (n) => n.tag === 'ol' && hasClass(n, 'story')).length > 0, cue: find(main, (n) => n.tag === 'nav' && hasClass(n, 'cue')).length > 0 };
@@ -1297,7 +1297,7 @@ const DESIGN_PICKS = [{ value: 'build', name: 'Build it as drawn', say: 'build i
  * with ready answers, the suggested ones checked, each with a full sentence to
  * copy, plus the changes and the Copy button.
  */
-function checkAnswer({ root, sectionById, optionNodes, withOptions, english, folder, add }) {
+function checkAnswer({ root, tpl, sectionById, optionNodes, withOptions, english, folder, add }) {
   for (const ask of find(root, (n) => hasClass(n, 'ask'))) {
     if (!find(ask, (n) => n.tag === 'a' && hrefOf(n) === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
   }
@@ -1315,10 +1315,13 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, fol
   // Each name is a whole token: account-settings-v2 does not name account-settings, nor r12 r1.
   const names = english ? [`page ${want.pageId}`, `revision ${want.revision}`] : [want.pageId, want.revision];
   if (want.pageId && want.revision && !names.every((x) => wholeToken(subject, x))) add('answer', `data-subject "${subject}" does not name page ${want.pageId} and revision ${want.revision} as ${folder ? 'its folder' : 'the top bar'} does`);
-  // The scripts' own words: English by default, so a page in another language gives each one in its language.
+  // The scripts' own words: English by default, so a page in another language gives each one in its language,
+  // never the skeleton's English left as it was.
+  const tplForm = find(tpl, (n) => n.tag === 'form' && n.attrs.id === 'answer-form')[0];
   for (const [key, places] of Object.entries(PHRASES)) {
     const words = norm(form.attrs[`data-phrase-${key}`] ?? '');
     if (!words) { if (!english) add('answer', `the answer form has no words in data-phrase-${key}: the script writes them, so give them in the page's language`); continue; }
+    if (!english && words === norm(tplForm?.attrs[`data-phrase-${key}`] ?? '')) add('answer', `data-phrase-${key} keeps the skeleton's English "${decodeHtml(words)}" on a page not in English; write it in the page's language`);
     for (const place of places) if (!words.includes(place)) add('answer', `data-phrase-${key} leaves out ${place}, the place the script fills in`);
   }
   const groups = find(form, (n) => n.tag === 'fieldset' && hasClass(n, 'ans-q'));
