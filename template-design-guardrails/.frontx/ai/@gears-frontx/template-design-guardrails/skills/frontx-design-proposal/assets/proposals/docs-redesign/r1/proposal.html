@@ -587,7 +587,7 @@ dialog button:hover { background: var(--raise); }
   <div class="map">
     <div class="map-col"><a class="map-node" href="#screen-list"><span class="mini" data-mini-of="draw-list"></span><span class="map-name">Docs list</span><span class="small">/?screen=docs</span></a></div>
     <span class="map-arrow">Row click</span>
-    <div class="map-col"><a class="map-node" href="#screen-doc"><span class="mini" data-mini-of="draw-doc"></span><span class="map-name">Document</span><span class="small">/?screen=docs/rate-limits</span></a></div>
+    <div class="map-col"><a class="map-node" href="#screen-doc"><span class="mini" data-mini-of="draw-doc"></span><span class="map-name">Document</span><span class="small">/?screen=docs;route=rate-limits</span></a></div>
   </div>
   <p class="small map-key">An arrow is the main click that leads to the next screen. Each picture is a scaled copy of the full drawing below and a link to it.</p>
 </section>
@@ -715,7 +715,7 @@ dialog button:hover { background: var(--raise); }
     <thead><tr><th>Screen</th><th>Address</th><th>Reached from</th><th>What the link keeps</th><th>Today the same link opens</th></tr></thead>
     <tbody>
       <tr><th scope="row">Docs list</th><td><code>/?screen=docs&amp;section=api&amp;q=limits</code></td><td>the header; Back to docs</td><td>section and search</td><td class="today-opens">Docs on its Guides tab, the rest ignored</td></tr>
-      <tr><th scope="row">Document</th><td><code>/?screen=docs/rate-limits#limits-per-plan</code></td><td>a row of the list</td><td>one document at one heading</td><td class="today-opens">no such page: Not found</td></tr>
+      <tr><th scope="row">Document</th><td><code>/?screen=docs;route=rate-limits#limits-per-plan</code></td><td>a row of the list</td><td>one document at one heading</td><td class="today-opens">no such page: Not found</td></tr>
     </tbody>
   </table></div>
   <p class="note">The app's links carry the screen in the address (/?screen=docs), not the registered route /docs, so a shared link has that form. A file link shared before keeps opening the file; Back from a document returns to the list as it was left.</p>

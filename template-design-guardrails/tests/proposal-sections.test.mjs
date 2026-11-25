@@ -72,7 +72,7 @@ describe('the addresses', () => {
     ['addresses', docs.replaceOrFail('<th>Today the same link opens</th>', '').replaceOrFail(/<td class="today-opens">.*?<\/td>/g, ''), 'the table needs the column "Today the same link opens"'],
     ['addresses', edit(docs, '<div class="tbl-wrap"><table class="tbl addresses"', bases), 'base lines (.bases) are for more than one base'],
     ['addresses', docs.replaceOrFail(/<p class="note">The app's links carry[^<]*<\/p>/, ''), 'no closing note (p.note) after the table'],
-    ['addresses', edit(docs, '<td><code>/?screen=docs/rate-limits#limits-per-plan</code></td>', '<td>/?screen=docs/rate-limits</td>'), 'an address row needs its screen (th) and its address (code)'],
+    ['addresses', edit(docs, '<td><code>/?screen=docs;route=rate-limits#limits-per-plan</code></td>', '<td>/?screen=docs;route=rate-limits</td>'), 'an address row needs its screen (th) and its address (code)'],
   ]))('reports %s: %s', (kind, message, html) => one(html, kind, message));
 
   it('keeps two base lines, each with its tag and address, clean', () => {
