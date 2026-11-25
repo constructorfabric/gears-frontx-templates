@@ -113,7 +113,9 @@ A cell's larger view opens in an overlay that mounts inside the dashboard's own 
 The element can also be one the host renders itself. Keep it in state through a callback ref, not in a ref object: setting the state renders the dashboard again once the element exists, and a ref object changes without a render, so the dashboard would not see the element.
 
 ```tsx
-function DashboardPage() {
+import { useState } from 'react';
+
+export function DashboardPage({ id, theme, language }: { id: string; theme: string; language: string }) {
   const [overlays, setOverlays] = useState<HTMLElement | null>(null);
   return (
     <>
