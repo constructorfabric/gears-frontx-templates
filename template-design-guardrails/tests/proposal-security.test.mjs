@@ -31,6 +31,8 @@
  *   refresh, a style block closed in upper case, and a missing, doubled,
  *   misplaced or changed Content-Security-Policy; it reads CSS only where a
  *   browser does (style blocks and attributes, svg presentation attributes); it
+ *   compares id, name, class and data-* values with their character references
+ *   decoded, as the browser and the page script read them; it
  *   checks the page id, the revision and the size of each record file, and
  *   reads no survey.json or CHOICE.md that is a symbolic link;
  * - the skeleton's Content-Security-Policy allows exactly its two scripts.
@@ -1388,6 +1390,16 @@ describe('check-proposal.mjs refuses what would load or run anything', () => {
 
   it('reads ordinary text attributes as text, not as CSS', () => {
     expect(findings(atEnd('<p alt="Upload image(s)" title="element(s) of url(s)" aria-label="cross-fade(s)" data-note="image-set(x)">x</p>'))).toEqual([]);
+  });
+
+  it('reads an id with a character reference as the browser does: a hidden form#answer&#45;form doubles the answer form id', () => {
+    expect(findings(swap('<main', '<form id="answer&#45;form" hidden></form><main'))).toEqual(['[ids] id "answer-form" is used 2 times']);
+  });
+
+  it('reads a radio name with a character reference as the browser does: name="q&#49;" is a second checked answer of question 1', () => {
+    const extra = '<label class="pick"><input type="radio" name="q&#49;" value="Third" data-say="A third answer that nobody suggested here." checked><span>Third</span></label>';
+    const found = findings(swap('<label class="pick"><input type="radio" name="q1" value="Only the assignee"', `${extra}<label class="pick"><input type="radio" name="q1" value="Only the assignee"`));
+    expect(found).toEqual(['[answer] the suggested answer of question 1 is not the one checked']);
   });
 
   it('accepts an https link to the tracker issue in the top bar\'s page facts only', () => {

@@ -514,7 +514,9 @@ function parseHtml(html) {
       seen.add(t.tag);
     }
     const attrs = {};
-    for (const [k, v] of t.list) if (!(k in attrs)) attrs[k] = v; // a browser keeps the first of two equal names
+    // A browser keeps the first of two equal names. id, name, class and data-* values are compared later, so they are
+    // read as the browser and the page script read them: id="answer&#45;form" is the id answer-form. list stays raw.
+    for (const [k, v] of t.list) if (!(k in attrs)) attrs[k] = DECODED_ATTR.test(k) ? decodeHtml(v) : v;
     const child = { tag: t.tag, ns, attrs, list: t.list, children: [], parent: node, depth: node.depth + 1, prelude };
     if (!HEAD_PRELUDE.has(t.tag) || ns !== 'html') prelude = false;
     node.children.push(child);
@@ -552,6 +554,8 @@ function parseHtml(html) {
 const HTML_ENTITIES = { amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>', quot: '"', QUOT: '"', apos: "'", colon: ':', lpar: '(', rpar: ')', sol: '/', bsol: '\\', Tab: '\t', NewLine: '\n', nbsp: '\u00a0', num: '#', period: '.', comma: ',', semi: ';', equals: '=' };
 /** The ones a browser also reads without ";", in an attribute only when no "=", letter or digit follows. */
 const LEGACY = new Set(['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT', 'nbsp']);
+/** The attributes whose values parseHtml keeps decoded in node.attrs. */
+const DECODED_ATTR = /^(?:id|name|class|data-.*)$/;
 /** An attribute value as the browser reads it: character references decoded where a browser decodes them, and no others. */
 const decodeHtml = (s) => s.replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([a-zA-Z][a-zA-Z0-9]*))(;?)/g, (m, dec, hex, name, semi, at, all) => {
   if (name) {
