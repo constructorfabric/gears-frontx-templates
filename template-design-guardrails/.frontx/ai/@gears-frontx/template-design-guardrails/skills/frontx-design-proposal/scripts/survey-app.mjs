@@ -1226,7 +1226,7 @@ function readScreens(root) {
       });
     }
   }
-  // Code points, like every other sort of the file: the order must not change with the machine's locale.
+  // UTF-16 code units, like every other sort of the file: the order must not change with the machine's locale.
   screens.sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || (a.route < b.route ? -1 : a.route > b.route ? 1 : 0));
   return { screens, notShown, registry: registered ? 'public/generated-mfe-manifests.json' : null };
 }
