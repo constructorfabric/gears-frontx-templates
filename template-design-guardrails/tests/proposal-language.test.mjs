@@ -33,6 +33,8 @@ const german = (html) => html
   .replace('These are drawings for deciding.', 'Das sind Skizzen zum Entscheiden.')
   .replace(/<dt>Best for<\/dt>/g, '<dt>Am besten für</dt>')
   .replace(/<dt>Trade-off<\/dt>/g, '<dt>Nachteil</dt>')
+  .replace('<dt>The same in every option</dt>', '<dt>In jeder Option gleich</dt>')
+  .replace('<dt>What differs</dt>', '<dt>Was sich unterscheidet</dt>')
   .replace(/<span class="tag">suggested<\/span>/g, '<span class="tag">empfohlen</span>')
   .replace('<b>Build it as drawn</b>', '<b>So bauen</b>')
   .replace('<b>Change it first</b>', '<b>Erst ändern</b>')
@@ -59,8 +61,16 @@ const PHRASES = [
 describe('a page in the person\'s own language', () => {
   it.each(examples)('%s relabelled in German reads clean', (rev) => {
     const page = german(read(rev));
-    expect(page).not.toMatch(/Proposal: |<dt>Best for|class="tag">suggested|Changed since|<th>Today|data-start="Start"|data-phrase-choose="For/);
+    expect(page).not.toMatch(/Proposal: |<dt>Best for|<dt>The same in every option|<dt>What differs|class="tag">suggested|Changed since|<th>Today|data-start="Start"|data-phrase-choose="For/);
     expect(findings(page)).toEqual([]);
+  });
+
+  it('finds the comparison of a page not in English by its structure: the overview\'s dl with two terms or more', () => {
+    const page = german(read('team-tasks/r1'));
+    expect(page).toContain('<dt>In jeder Option gleich</dt>');
+    const message = '[overview] with options the overview marks "The same in every option" and "What differs"';
+    expect(findings(page.replaceOrFail(/<dl class="compare">[\s\S]*?<\/dl>/, ''))).toContain(message);
+    expect(findings(page.replaceOrFail('<dt>Was sich unterscheidet</dt>', ''))).toContain(message);
   });
 
   it('keeps the English labels on a page in English', () => {

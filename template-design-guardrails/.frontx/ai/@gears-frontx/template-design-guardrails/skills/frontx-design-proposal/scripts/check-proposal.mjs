@@ -96,7 +96,8 @@
  *   since", "on a phone", the table columns). On a page in another language
  *   the same parts are found by their place and class instead: the title is
  *   a word, a colon and the title; a disclaimer has text; an option has two
- *   fields; a tag in a ready answer marks it suggested; a chip has text; the
+ *   fields; the overview's comparison is a dl with two terms or more; a tag
+ *   in a ready answer marks it suggested; a chip has text; the
  *   "Changed since" line names the previous revision; a storyboard's width
  *   heading is there; every column of the mapping, paths and addresses
  *   tables has a heading with text, and today's cells are found by their
@@ -1197,7 +1198,12 @@ export function checkPage(html, { survey = null } = {}) {
       const count = linksTo.get(`#${id}`) ?? 0;
       if (count !== 1) add('overview', `#${id} has ${count} overview links; exactly one, the thumbnail with its name`);
     }
-    if (withOptions && !find(overview, (n) => n.tag === 'dt' && /same in every option/i.test(textOf(n))).length) add('overview', 'with options the overview marks "The same in every option" and "What differs"');
+    // On a page in English the comparison is found by its label; in another language by its structure, a dl of the
+    // overview with two terms or more (what is the same, what differs).
+    const compares = english
+      ? find(overview, (n) => n.tag === 'dt' && /same in every option/i.test(textOf(n))).length > 0
+      : find(overview, (n) => n.tag === 'dl' && find(n, (t) => t.tag === 'dt' && norm(textOf(t))).length >= 2).length > 0;
+    if (withOptions && !compares) add('overview','with options the overview marks "The same in every option" and "What differs"');
   }
 
   // strip: the same rows of every option side by side, above the overview links
