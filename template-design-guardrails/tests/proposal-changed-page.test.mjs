@@ -80,10 +80,10 @@ describe('the addresses the app\'s links carry', () => {
     expect(links.mismatch).toBe(true);
   });
 
-  it('keeps the route when the shell builds no link from it', () => {
+  it('gives the address the shell\'s router writes when the shell builds no link from the route', () => {
     const { links } = survey.survey(writeProposalApp(tempDir()));
-    expect(links.mismatch).toBe(false);
-    expect(links.screens.every((x) => x.link === x.route)).toBe(true);
+    expect(links.mismatch).toBe(true);
+    expect(links.screens.map((x) => [x.route, x.link])).toEqual([['/home', '/?screen=home'], ['/docs', '/?screen=docs']]);
   });
 });
 

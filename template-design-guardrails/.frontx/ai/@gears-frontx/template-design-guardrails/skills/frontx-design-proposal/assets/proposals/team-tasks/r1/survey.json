@@ -72,18 +72,18 @@
       {
         "route": "/home",
         "label": "Home",
-        "link": "/home",
-        "source": "no link template in src-app/app/layout: the registered route"
+        "link": "/?screen=home",
+        "source": "no link template in src-app/app/layout: the address the shell's router writes for a mounted screen, /?screen=<route without the leading slash>"
       },
       {
         "route": "/docs",
         "label": "Docs",
-        "link": "/docs",
-        "source": "no link template in src-app/app/layout: the registered route"
+        "link": "/?screen=docs",
+        "source": "no link template in src-app/app/layout: the address the shell's router writes for a mounted screen, /?screen=<route without the leading slash>"
       }
     ],
     "inCode": [],
-    "mismatch": false
+    "mismatch": true
   },
   "screenLooks": [
     {

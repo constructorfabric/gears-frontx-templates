@@ -85,3 +85,12 @@ describe('survey-app.mjs on the scaffold\'s own class names and breakpoints', ()
     expect(result.lookFrom.h1).toContain(SCREEN_CSS);
   });
 });
+
+describe('survey-app.mjs on the stock shell', () => {
+  it('gives the address the shell\'s router writes, /?screen=<route without the slash>, when the menu builds no link', () => {
+    const { links } = survey.survey(realApp());
+    expect(links.screens.map((x) => [x.route, x.link])).toEqual([['/blank-home', '/?screen=blank-home']]);
+    expect(links.screens[0].source).toMatch(/router/);
+    expect(links.mismatch).toBe(true);
+  });
+});

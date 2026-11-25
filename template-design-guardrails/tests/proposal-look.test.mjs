@@ -228,8 +228,9 @@ describe('the app name, the content column and the link addresses', () => {
       return survey.survey(root);
     };
     const analytics = side({ 'src-app/app/layout/Analytics.tsx': 'export const track = (route: string) => `viewed:${route}`;\n' });
-    expect(analytics.links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
-    expect(analytics.links.mismatch).toBe(false);
+    // No link is built from the template: the address is the one the shell's router writes.
+    expect(analytics.links.screens.map((x) => x.link)).toEqual(['/?screen=home', '/?screen=docs']);
+    expect(analytics.links.screens[0].source).toMatch(/^no link template in src-app\/app\/layout: the address the shell's router writes/);
     const nav = side({ 'src-app/app/layout/Go.tsx': 'export const go = (route: string) => navigate(`/app${route}`);\n' });
     expect(nav.links.screens.map((x) => x.link)).toEqual(['/app/home', '/app/docs']);
     const two = side({
@@ -281,7 +282,7 @@ describe('the app name, the content column and the link addresses', () => {
     expect(printed).toContain('Addresses the app\'s links carry (link form not detected, check the menu code by hand');
     expect(printed).not.toMatch(/^ {2}Home {2}\/home$/m);
     // A literal address is not a link form to read.
-    expect(side({ 'src-app/app/layout/Logo.tsx': "export const Logo = () => <a href={'/'}>Home</a>;\n" }).links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
+    expect(side({ 'src-app/app/layout/Logo.tsx': "export const Logo = () => <a href={'/'}>Home</a>;\n" }).links.screens.map((x) => x.link)).toEqual(['/?screen=home', '/?screen=docs']);
   });
 
   it('leaves menu entries built as objects from code unresolved, and a plain string in the object as it was', () => {
@@ -298,7 +299,7 @@ describe('the app name, the content column and the link addresses', () => {
       expect(built.unresolved, entry).toContain('links');
     }
     const plain = side({ 'src-app/app/layout/Items.tsx': "export const items = [{ label: 'Home', href: '/home' }, { label: 'Docs', to: '/docs' }];\n" });
-    expect(plain.links.screens.map((x) => x.link)).toEqual(['/home', '/docs']);
+    expect(plain.links.screens.map((x) => x.link)).toEqual(['/?screen=home', '/?screen=docs']);
     expect(plain.unresolved).not.toContain('links');
   });
 

@@ -1731,8 +1731,9 @@ function readLook(root, screens, chromeOf) {
  * the person checks the menu code by hand. The same holds when a template is
  * read but the layout also builds an href or to from a call to a function that
  * is not a helper a template was read from (LINK_CALL): the readable helper
- * does not stand for that link. Only a layout that builds no link
- * from code keeps the registered route. Each
+ * does not stand for that link. A layout that builds no link from code
+ * gets the address the shell's router writes for a mounted screen,
+ * /?screen=<route without the leading slash>. Each
  * screen gets its link and where it was read; mismatch says the registered
  * route is not what a shared link carries.
  */
@@ -1780,8 +1781,10 @@ function readLinks(root, screens) {
   const out = screens.map((x) => {
     if (disagree) return { route: x.route, label: x.label, link: UNRESOLVED, source: `the shell builds links from ${candidates.length} templates that disagree: ${candidates.map((c) => `${c.file} ${c.template}`).join('; ')}` };
     if (notDetected) return { route: x.route, label: x.label, link: UNRESOLVED, source: `link form not detected, check the menu code by hand: ${unread.join(', ')} ${unread.length > 1 ? 'build links' : 'builds a link'} from code the survey does not read` };
-    const link = rule ? `${rule.prefix}${rule.strip ? x.route.replace(/^\//, '') : x.route}${rule.suffix}` : x.route;
-    return { route: x.route, label: x.label, link, source: rule ? `${rule.file} ${rule.template}` : 'no link template in src-app/app/layout: the registered route' };
+    // Without a template the menu mounts the screen in code (the stock shell dispatches mount_ext) and the shell's
+    // router, from @gears-frontx/routing, writes the mount into the address as ?screen=<route without the slash>.
+    const link = rule ? `${rule.prefix}${rule.strip ? x.route.replace(/^\//, '') : x.route}${rule.suffix}` : `/?screen=${x.route.replace(/^\//, '')}`;
+    return { route: x.route, label: x.label, link, source: rule ? `${rule.file} ${rule.template}` : 'no link template in src-app/app/layout: the address the shell\'s router writes for a mounted screen, /?screen=<route without the leading slash>' };
   });
   return {
     screens: out,
