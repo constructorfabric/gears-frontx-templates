@@ -103,17 +103,17 @@ function Drawn({ render, payload, context }: { render: WidgetRenderer; payload: 
 /**
  * The host's overlay container as the shared property carries it: the `element` of the holder the root publishes
  * (`OverlayContainerValue` in the contract), when it is an element of the widget's own document, or none for anything
- * else (a bare element, an element of another document, a holder whose `element` throws). The shape is read, not the
+ * else (a bare element, an element of another document, a holder whose `element` or a check of it throws). The shape is read, not the
  * holder's class: the root's class is not this bundle's.
  */
 const elementOf = (value: unknown, own: Document): HTMLElement | null => {
-  let element: unknown;
+  // Every read is inside the try: a proxy can throw on the field, on the check of its prototype or on its document.
   try {
-    element = typeof value === 'object' && value !== null ? (value as Partial<OverlayContainerValue>).element : null;
+    const element = typeof value === 'object' && value !== null ? (value as Partial<OverlayContainerValue>).element : null;
+    return element instanceof HTMLElement && element.ownerDocument === own ? element : null;
   } catch {
     return null;
   }
-  return element instanceof HTMLElement && element.ownerDocument === own ? element : null;
 };
 
 /**

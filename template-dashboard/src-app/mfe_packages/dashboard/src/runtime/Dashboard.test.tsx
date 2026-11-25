@@ -513,6 +513,19 @@ describe('Dashboard on the real registry', () => {
     }, 30_000);
   });
 
+  it('publishes null for an undefined overlay container from untyped code, and a second undefined publishes nothing', async () => {
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    onTestFinished(() => root.dispose());
+    const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
+    root.publishOverlayContainer(document.body);
+    writes.mockClear();
+    root.publishOverlayContainer(undefined as unknown as null);
+    expect(writes.mock.calls).toEqual([[OVERLAY_CONTAINER_PROPERTY_ID, null]]);
+    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+    root.publishOverlayContainer(undefined as unknown as null);
+    expect(writes.mock.calls).toHaveLength(1);
+  });
+
   it('publishes no overlay container once the Dashboard that passed one unmounts', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const overlayHost = document.body.appendChild(document.createElement('div'));

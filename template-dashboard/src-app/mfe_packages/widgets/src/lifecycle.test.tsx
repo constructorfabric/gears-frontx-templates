@@ -415,8 +415,29 @@ describe('kit overlays with a host overlay container', () => {
     ['a holder of a selector string', () => holding('#overlays')],
     ['a holder of an object shaped as an element', () => holding({ nodeType: 1, append: () => undefined })],
     ['the bare element, without a holder', (target) => target],
-    // The copy the type store makes keeps the class but not the private field, so reading its element throws.
+    // An object with the holder's prototype but without its private field, as a structural copy of a holder would
+    // be: reading its element throws.
     ['a copy of a holder whose element throws', () => Object.create(Holder.prototype) as unknown],
+    // A check of a proxy's prototype runs its trap, so these throw on the element check, not on the read.
+    [
+      'a holder of a revoked proxy',
+      () => {
+        const { proxy, revoke } = Proxy.revocable({}, {});
+        revoke();
+        return holding(proxy);
+      },
+    ],
+    [
+      'a holder of a proxy of the element whose getPrototypeOf throws',
+      (target) =>
+        holding(
+          new Proxy(target, {
+            getPrototypeOf() {
+              throw new Error('getPrototypeOf');
+            },
+          }),
+        ),
+    ],
   ])('takes %s as no host element: the widget keeps its popup in its own shadow root, and the page element #overlays stays empty', async (_name, valueOf) => {
     const target = Object.assign(pageElement(), { id: 'overlays' });
     const lifecycle = popupWidget();

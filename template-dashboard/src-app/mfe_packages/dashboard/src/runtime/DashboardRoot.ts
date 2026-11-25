@@ -390,12 +390,13 @@ export class DashboardRoot {
    * Publishes the element the widgets open their overlays in (the host's `overlayContainer`), or null for none, on the
    * `widgets` domain. Each widget then moves its overlays there; with null they stay inside its own shadow root. The
    * element goes out in a holder the type store does not walk (`OverlayContainerValue` in the contract), and the same
-   * element again publishes nothing.
+   * element again publishes nothing. Any value without an element (undefined from untyped code) is null.
    */
-  publishOverlayContainer(element: HTMLElement | null): void {
+  publishOverlayContainer(value: HTMLElement | null): void {
+    const element = value || null;
     if (!this.registry || this.disposed || (this.published.overlays ?? null) === element) return;
     try {
-      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element && new OverlayContainer(element));
+      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element ? new OverlayContainer(element) : null);
       this.published.overlays = element;
     } catch (error) {
       console.error(`[dashboard] ${escapeControls(`the overlay container cannot be published: ${String(error).split('\n')[0]}`)}`);
