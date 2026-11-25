@@ -181,9 +181,9 @@ const LOOK_TOKENS = {
  * not scaled); kit: the kit token when the app sets nothing.
  */
 // .title, .screen and .description are the class names of the screen scaffold (template-mfe's _blank-mfe).
-const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.title\b/];
+const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.title(?![\w-])/];
 /** The screen root: the page background and the kit token bridge. */
-const PAGE_ROOT = /\.(root|screen)\b/;
+const PAGE_ROOT = /\.(root|screen)(?![\w-])/;
 /** The roles the scaffold names: with the shown screens' CSS Modules read, no match leaves them unresolved, not the kit's. */
 const SCAFFOLD_ROLES = new Set(['h1', 'h1-phone', 'h1-weight', 'h1-track']);
 const COLUMN = [/\.column\b/, /\.container\b/, /\.content\b/, /\.page\b/];
@@ -194,7 +194,7 @@ const PAGE_ROLES = {
   'h1-weight': { sel: TITLE, prop: ['font-weight'], at: 'desktop', kit: '--text-heading-1-weight', raw: true },
   'h1-track': { sel: TITLE, prop: ['letter-spacing'], at: 'desktop', kit: '--text-heading-1-tracking', raw: true },
   h2: { sel: [/cardTitle\b/i, /sectionTitle/i, /(^|[\s,])h2\b/], prop: ['font-size'], at: 'desktop', kit: '--text-heading-2-size' },
-  lead: { sel: [/pageLead/i, /\.lead\b/i, /\.description\b/], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
+  lead: { sel: [/pageLead/i, /\.lead\b/i, /\.description(?![\w-])/], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
   body: { sel: [/\.body\b/], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
   small: { sel: [/\.(label|meta|small|note)\b/], prop: ['font-size'], at: 'desktop', kit: '--text-meta-size' },
   stat: { sel: [/(kpi|stat|metric|count)\w*(value|number|figure)/i, /\.(kpi|stat|metric)\b/i], prop: ['font-size'], at: 'desktop', kit: '--text-kpi-size' },
@@ -1796,7 +1796,7 @@ function readLook(root, screens, chromeOf) {
       const prop = page?.decls.has('background-color') ? 'background-color' : 'background';
       const own = page ? resolveIn(page.decls.get(prop), { colour }) : null;
       if (own?.value) { value = own.value; source = `${page.file} ${page.selector} ${prop}`; why = null; }
-      else if (own?.why) { set(key, UNRESOLVED, because(`${page.file} ${page.selector} ${prop}`, own.why)); continue; }
+      else if (own) { set(key, UNRESOLVED, because(`${page.file} ${page.selector} ${prop}`, own.why ?? 'a value the survey cannot resolve')); continue; }
       else if (pageCss.length) { set(key, UNRESOLVED, `no page background (.root or .screen background-color or background) in ${pageCss.join(', ')}`); continue; }
     }
     set(key, value ?? UNRESOLVED, why ?? source ?? 'none', kitValue);
@@ -1924,8 +1924,8 @@ function readLook(root, screens, chromeOf) {
     // The mark's own rule in the shell's CSS, else the colour the menu's own CSS gives the logo, the header it sits in or
     // the menu panel it inherits from (the stock shell's .sidebar).
     const plain = (r) => r.media === null && !/:hover|:focus|\[|::?(after|before)/.test(r.selector) && r.decls.has('color');
-    const markRule = shellRules.find((r) => /\.(mark|logo)\b/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'))
-      ?? [/\.(mark|logo)\b/, /\.(brand|header|headerRow)\b/, /\.(sidebar|menu|nav)\b/].map((p) => menuRules.find((r) => plain(r) && p.test(r.selector))).find(Boolean);
+    const markRule = shellRules.find((r) => /\.(mark|logo)(?![\w-])/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'))
+      ?? [/\.(mark|logo)(?![\w-])/, /\.(brand|header|headerRow)(?![\w-])/, /\.(sidebar|menu|nav)(?![\w-])/].map((p) => menuRules.find((r) => plain(r) && p.test(r.selector))).find(Boolean);
     const got = markRule ? resolveIn(markRule.decls.get('color'), { colour: true }) : { value: null, why: null };
     if (got.value || got.why) set('mark-color', got.value ?? UNRESOLVED, because(`${markRule.file} ${markRule.selector} color`, got.why));
     else set('mark-color', look.accent, 'the accent (the shell gives the mark no colour of its own)');

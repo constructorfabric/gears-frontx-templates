@@ -176,6 +176,24 @@ const BLOCKED = 'src-app/app/themes/default.ts spreads brand from @acme/palette,
 const blockedTheme = (root, more = '') => themeWith(root, `...brand${more}`, "import { brand } from '@acme/palette';\n");
 const addCss = (root, rel, css) => edit(root, rel, /$/, `\n${css}\n`);
 
+describe('survey-app.mjs matches class names whole', () => {
+  it('does not take .screen-header for the page root', () => {
+    const result = survey.survey(addCss(realApp(), SCREEN_CSS, '.screen-header { background-color: #abcdef; --primary: #ff00ff; }'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `no page background (.root or .screen background-color or background) in ${SCREEN_CSS}`]);
+    expect([result.look.accent, result.lookFrom.accent]).toEqual(['#0065e3', 'kit theme.css --primary']);
+  });
+
+  it('does not take .menu-item for the menu the logo inherits its colour from', () => {
+    const result = survey.survey(edit(realApp(), 'src-app/app/components/ui/sidebar.module.css', /^/, '.menu-item { color: #ff0000; }\n'));
+    expect([result.look['mark-color'], result.lookFrom['mark-color']]).toEqual(['color-mix(in oklab, #f1f5f9 70%, #0f172a)', 'src-app/app/components/ui/sidebar.module.css .sidebar color']);
+  });
+
+  it('names the page background rule whose value it cannot resolve', () => {
+    const result = survey.survey(addCss(realApp(), SCREEN_CSS, '.root { background-color: var(--nope); }'));
+    expect([result.look.bg, result.lookFrom.bg]).toEqual([survey.UNRESOLVED, `${SCREEN_CSS} .root background-color: a value the survey cannot resolve`]);
+  });
+});
+
 describe('survey-app.mjs never puts the kit palette under an app file\'s name when the theme is blocked or builds a token in code', () => {
   it('leaves a screen\'s colours unresolved when they come through the kit, naming the rule and the theme reason', () => {
     const result = survey.survey(addCss(blockedTheme(realApp()), SCREEN_CSS, '.root { background-color: var(--background); --primary: var(--info); }'));
