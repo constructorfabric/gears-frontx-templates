@@ -1868,11 +1868,37 @@ describe('refresh and dispose of the root', () => {
   /** A part with no manifest that brings the metric widget type otherwise: the metric part brought it first. */
   const CLASHING = { types: [{ ...BUNDLE_TYPES.metric_card.find((type) => String(type.$id) === `gts://${METRIC_TYPE}`)!, description: 'otherwise' }], instances: [] };
   const MARKDOWN_TYPES = (BUNDLE_TYPES.markdown_card ?? []).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
+  /** A second part named like the metric part (it carries the same manifest) that brings the metric widget type otherwise. */
+  const TWIN = {
+    types: CLASHING.types,
+    instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).startsWith('gts.frontx.mfes.mfe.mf_manifest.v1~') && String(instance.id).endsWith('.metric_card.v1')),
+  };
+
+  it('refuses a refresh whose widget part without a manifest brings otherwise a type it brought itself', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const [first, ...rest] = BUNDLE_TYPES.markdown_card ?? [];
+    const own = (schema: Record<string, unknown>) => partsOf([7], { without: ['markdown_card'], extra: [{ types: [schema, ...rest], instances: [] }] });
+    const answers: unknown[] = [own(first!), own({ ...first!, description: 'otherwise' })];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    expect(root.types.getSchema(MARKDOWN_TYPES[0]!)).toBeTruthy();
+    // The part comes last, after the base file and one part per catalog bundle but the markdown one.
+    await act(async () =>
+      expect(await root.refresh()).toEqual({
+        ok: false,
+        problem: `the widget part number ${TYPES.length + 1} of the answer (the served file is number 1): its type ${MARKDOWN_TYPES[0]} is already defined otherwise, and a type changes only in a new dashboard root`,
+      }),
+    );
+    expect(refreshLines(errors)).toHaveLength(1);
+  }, 15_000);
 
   it.each([
     ['the dashboards change while every widget part keeps its content', partsOf([7]), partsOf([9]), 0],
     ['a new widget part with new types joins', partsOf([7], { without: ['markdown_card'] }), partsOf([9]), 0],
     ['a part left out from the first load, its type brought first by another part, comes again', partsOf([7], { extra: [CLASHING] }), partsOf([9], { extra: [CLASHING] }), 2],
+    ['a second part with the manifest of the part that brought a type, and that type otherwise, comes again', partsOf([7], { extra: [TWIN] }), partsOf([9], { extra: [TWIN] }), 2],
   ])('takes a refresh in which %s, and redraws', async (name, first, next, leftOut) => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const answers: unknown[] = [first, next];

@@ -170,27 +170,32 @@ export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin
  * The reason a served file read again cannot register, or nothing: the first type of a widget part that `types` holds
  * otherwise and that the same part brought first (its source in `sources`, the part named by its manifest ids or its
  * place). The store keeps the first definition, so the part would be left out and the cells it served would fail.
+ * A name is not an identity: two parts may carry the same manifest ids, or ids equal in their capped length. So a
+ * type is refused only when no part of the answer under the recorded name brings it as the store holds it; while
+ * one does, the part that brought it is still there unchanged, and the other is left out as on the first load.
  * A part whose type another source brought first was left out from the first load on, and is left out again without
  * failing anything; a part that cannot be read is left out by the registration as before.
  */
 export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources: TypeSources): string | undefined {
   if (!Array.isArray(file)) return undefined;
+  // Each held type a part brings under the source recorded for it, with whether that part brings it as held.
+  const brought: { source: string; id: string; same: boolean }[] = [];
   for (const [index, part] of file.slice(1).entries()) {
     try {
       if (!isObject(part) || !Array.isArray(part.types)) continue;
-      const instances = Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
-      const source = `the widget part ${partName(instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID)), index)}`;
+      const source = partSource(idsOfPart(part), index);
       for (const schema of part.types) {
         if (!isObject(schema)) continue;
         const id = idOf(schema);
         const was = types.getSchema(id);
-        if (was && sources.get(id) === source && canonical(was) !== canonical(schema)) return `${source}: its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
+        if (was && sources.get(id) === source) brought.push({ source, id, same: canonical(was) === canonical(schema) });
       }
     } catch {
       // Left out by the registration, as on a first load.
     }
   }
-  return undefined;
+  const changed = brought.find(({ source, id, same }) => !same && !brought.some((other) => other.same && other.id === id && other.source === source));
+  return changed && `${changed.source}: its type ${changed.id} is already defined otherwise, and a type changes only in a new dashboard root`;
 }
 
 /**
@@ -224,6 +229,16 @@ const partName = (ids: string[], index: number) => {
   return listed ? quoted(listed.length > NAME_CAP ? `${listed.slice(0, NAME_CAP)}...` : listed) : `number ${index + 2} of the answer (the served file is number 1)`;
 };
 
+/** The ids a widget part is named by: its instance ids other than its dashboards'. */
+const idsOfPart = (part: unknown) =>
+  (isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : []).map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
+
+/**
+ * The source a widget part's types are recorded under and the name its console lines give it, built in one place:
+ * a refresh matches a part to the recorded source by this name, so the two must not differ.
+ */
+const partSource = (ids: string[], index: number) => `the widget part ${partName(ids, index)}`;
+
 /**
  * Step 2: the served file, or a dashboard-level failure. A host answers one
  * joined file, or the file in parts: the base file (the catalog types and the
@@ -252,9 +267,8 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     // is left out with the part, but must not take the part's name and its instance ids down with it, which the
     // cells of the type fail by.
     const reason = guarded(() => {
-      const instances = isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
-      ids = instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
-      return registerPart(types, part, bundleIds, held, false, `the widget part ${partName(ids, index)}`);
+      ids = idsOfPart(part);
+      return registerPart(types, part, bundleIds, held, false, partSource(ids, index));
     });
     guarded(() => {
       if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
@@ -266,9 +280,8 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
       for (const id of typeIds) rejected.types.delete(id);
       return;
     }
-    const name = partName(ids, index);
     // The reason quotes ids from the part as well (a registry message, an id held otherwise), so it is escaped the same way.
-    const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
+    const line = `${partSource(ids, index)} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);
     // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. An
     // instance id is recorded only when nothing held it.
