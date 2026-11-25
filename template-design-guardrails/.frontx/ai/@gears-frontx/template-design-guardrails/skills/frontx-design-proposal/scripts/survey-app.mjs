@@ -177,7 +177,12 @@ const LOOK_TOKENS = {
  * (the widest min-width rule up to 1440, scaled) or phone (the base rule,
  * not scaled); kit: the kit token when the app sets nothing.
  */
-const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i];
+// .title, .screen and .description are the class names of the screen scaffold (template-mfe's _blank-mfe).
+const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.title\b/];
+/** The screen root: the page background and the kit token bridge. */
+const PAGE_ROOT = /\.(root|screen)\b/;
+/** The roles the scaffold names: with the shown screens' CSS Modules read, no match leaves them unresolved, not the kit's. */
+const SCAFFOLD_ROLES = new Set(['h1', 'h1-phone', 'h1-weight', 'h1-track']);
 const COLUMN = [/\.column\b/, /\.container\b/, /\.content\b/, /\.page\b/];
 const BUTTON = [/\.(cta|button|btn)\w*/i];
 const PAGE_ROLES = {
@@ -186,7 +191,7 @@ const PAGE_ROLES = {
   'h1-weight': { sel: TITLE, prop: ['font-weight'], at: 'desktop', kit: '--text-heading-1-weight', raw: true },
   'h1-track': { sel: TITLE, prop: ['letter-spacing'], at: 'desktop', kit: '--text-heading-1-tracking', raw: true },
   h2: { sel: [/cardTitle\b/i, /sectionTitle/i, /(^|[\s,])h2\b/], prop: ['font-size'], at: 'desktop', kit: '--text-heading-2-size' },
-  lead: { sel: [/pageLead/i, /\.lead\b/i], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
+  lead: { sel: [/pageLead/i, /\.lead\b/i, /\.description\b/], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
   body: { sel: [/\.body\b/], prop: ['font-size'], at: 'desktop', kit: '--text-body-size' },
   small: { sel: [/\.(label|meta|small|note)\b/], prop: ['font-size'], at: 'desktop', kit: '--text-meta-size' },
   stat: { sel: [/(kpi|stat|metric|count)\w*(value|number|figure)/i, /\.(kpi|stat|metric)\b/i], prop: ['font-size'], at: 'desktop', kit: '--text-kpi-size' },
@@ -868,8 +873,8 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
 
 /**
  * Rules of a CSS file: { selector, media, decls }. media is null for a top
- * level rule, the min-width in px of the innermost @media (min-width: N px)
- * for a rule inside one, or 'other' for any other @media and for a rule
+ * level rule, the min-width in px of the innermost @media (min-width: N px,
+ * or N rem or N em read as N * 16 px) for a rule inside one, or 'other' for any other @media and for a rule
  * inside a rule-holding block at-rule (@supports, @layer, @container, @scope,
  * @starting-style, @document), which opens a frame like a non-min-width
  * @media does: layered rules are not read into the look because the survey
@@ -948,7 +953,9 @@ function parseCssRules(css, file = '', full = null) {
       if (f.depth === 0) {
         f.selector = text.slice(f.start, i).trim();
         reset(f, i + 1);
-        const min = /min-width:\s*(\d+)px/i.exec(f.selector);
+        // A min-width in rem or em is read as that many times 16 px: the survey assumes the browser's 16 px root size.
+        const minMatch = /min-width:\s*(?:(\d+)px|(\d+(?:\.\d+)?)r?em\b)/i.exec(f.selector);
+        const min = minMatch && [minMatch[0], minMatch[1] ?? String(Number(minMatch[2]) * 16)];
         // The at-rule name is read once, lower cased, and used for both the @media test and the rule-holding test, so
         // @MEDIA (min-width: 600px){ and @supports(display:grid){ are read like their lower case spellings. A
         // rule-holding block at-rule, @layer included, opens a frame like a non-min-width @media does, with media
@@ -1529,7 +1536,7 @@ function readLook(root, screens, chromeOf) {
   // The kit token bridge: kit tokens a screen root re-declares for the kit components inside it.
   const bridge = new Map();
   for (const r of pageRules) {
-    if (r.media !== null || !/\.root\b/.test(r.selector)) continue;
+    if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
     for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file });
   }
   const appLookup = (name) => bridge.get(name)?.value ?? theme?.variables.get(name) ?? scope.get(name) ?? null;
@@ -1575,9 +1582,11 @@ function readLook(root, screens, chromeOf) {
       if (value) { source = whereToken(token); break; }
     }
     if (key === 'bg') {
-      const page = pageRules.find((r) => r.media === null && /\.root\b/.test(r.selector) && (r.decls.has('background-color') || r.decls.has('background')));
-      const pageValue = page && resolveVars(page.decls.get('background-color') ?? page.decls.get('background'), appLookup);
-      if (pageValue) { value = pageValue; source = `${page.file} ${page.selector} background-color`; }
+      const page = pageRules.find((r) => r.media === null && PAGE_ROOT.test(r.selector) && (r.decls.has('background-color') || r.decls.has('background')));
+      const prop = page?.decls.has('background-color') ? 'background-color' : 'background';
+      const pageValue = page && resolveVars(page.decls.get(prop), appLookup);
+      if (pageValue) { value = pageValue; source = `${page.file} ${page.selector} ${prop}`; }
+      else if (pageCss.length) { set(key, UNRESOLVED, `no page background (.root or .screen background-color or background) in ${pageCss.join(', ')}`); continue; }
     }
     set(key, value ?? UNRESOLVED, source ?? 'none', kitValue);
   }
@@ -1604,6 +1613,10 @@ function readLook(root, screens, chromeOf) {
       const value = spec.raw ? asRaw(raw) : sized(raw, spec.at);
       if (value === null) { set(key, UNRESOLVED, `${describe(hit)}: ${raw} is not a length`); return; }
       set(key, value, describe(hit), kitValue, spec.raw ? undefined : realPx(raw));
+      return;
+    }
+    if (SCAFFOLD_ROLES.has(key) && pageCss.length) {
+      set(key, UNRESOLVED, `no page title rule (.pageTitle, .pageHeading, h1, .heroTitle, .title) sets ${spec.prop.join(' or ')}${spec.at === 'phone' ? ' outside @media' : ''} in ${pageCss.join(', ')}`);
       return;
     }
     if (kitValue !== null) { set(key, kitValue, `kit ${spec.kit} (the app sets none)`, undefined, spec.raw ? undefined : realPx(kitRaw)); return; }
