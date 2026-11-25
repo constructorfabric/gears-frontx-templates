@@ -345,6 +345,16 @@ describe('the rules a stylesheet yields', () => {
     expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
   });
 
+  it('lists no skipped entry for a block at-rule that holds no style rules, and reads the rule after it', () => {
+    const result = survey.survey(topApp({
+      [HOME_CSS]: (t) => `@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }\n@font-face { font-family: X; src: local(X); }\n${t}`,
+    }));
+    expect(result.skipped).not.toContainEqual(expect.objectContaining({ file: HOME_CSS }));
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.look.bg).toBe('#ffffff');
+  });
+
   it('reads a length it cannot parse as unknown, like any other unreadable length', () => {
     const at = (value) => survey.survey(topApp({ [HOME_CSS]: (t) => t.replaceOrFail('.column { max-width: 1240px;', `.column { max-width: ${value};`) }));
     for (const value of ['1.2.3px', '.', '-px', `${'9'.repeat(400)}px`]) {

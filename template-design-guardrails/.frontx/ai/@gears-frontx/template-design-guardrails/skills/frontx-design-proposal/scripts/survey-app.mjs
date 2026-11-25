@@ -862,12 +862,16 @@ function parseKitCss(full) {
 
 /** The deepest nesting of @media rules the survey reads; past it the rest of the file is skipped. */
 export const MEDIA_DEPTH_CAP = 32;
+/** The block at-rules that hold style rules the look may need: only these are listed under skipped when not read. */
+const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@scope', '@starting-style', '@document']);
 
 /**
  * Rules of a CSS file: { selector, media, decls }. media is null for a top
  * level rule, the min-width in px of the innermost @media (min-width: N px)
- * for a rule inside one, or 'other' for any other @media; a rule inside any
- * other at-rule is not kept and the file is listed under skipped. One pass:
+ * for a rule inside one, or 'other' for any other @media; a rule inside a
+ * rule-holding at-rule is not kept and the file is listed under skipped,
+ * while a rule inside any other at-rule is not kept and the file is read on.
+ * One pass:
  * each open @media body is a frame with its own brace depth, start and
  * selector, so a body is read where it stands and never scanned again. At the
  * top level a semicolon ends an at-statement (@import, @charset, @layer a;,
@@ -932,8 +936,9 @@ function parseCssRules(css, file = '', full = null) {
           const decls = new Map();
           for (const m of text.slice(f.start, i).matchAll(/(?<![\w-])(--[\w-]{1,100}|[a-z-]{1,100})\s*:\s*([^;{}]+)/g)) decls.set(m[1], m[2].trim());
           rules.push({ selector: f.selector, media: f.media, decls, file });
-        } else if (full) {
-          skip(full, `the ${f.selector.split(/[\s,{]/)[0]} rule is not read`);
+        } else if (full && RULE_HOLDING_AT_RULES.has(f.selector.split(/[\s,{]/)[0])) {
+          const name = f.selector.split(/[\s,{]/)[0];
+          skip(full, `the ${name} rule is not read`);
         }
         f.start = i + 1;
         f.sig = i + 1;
@@ -1824,7 +1829,10 @@ export function survey(root) {
     ]),
     ...(result.links.templates || result.links.unread ? ['links'] : []),
   ];
-  result.skipped = [...new Map(skipped.map((s) => [s.file, { file: rel(root, s.file), why: s.why }])).values()];
+  // One entry per file, the first reason recorded: the first skip is the one that stopped or limited the reading.
+  const firstSkip = new Map();
+  for (const s of skipped) if (!firstSkip.has(s.file)) firstSkip.set(s.file, { file: rel(root, s.file), why: s.why });
+  result.skipped = [...firstSkip.values()];
   // A file the survey meant to read and could not is a gap the agent fills by hand.
   result.unresolved.push(...result.skipped.map((s) => `skipped ${s.file}`));
   return result;
