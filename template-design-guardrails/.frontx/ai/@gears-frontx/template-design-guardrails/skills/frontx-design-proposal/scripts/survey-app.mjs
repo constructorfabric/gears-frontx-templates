@@ -1726,12 +1726,26 @@ function readLook(root, screens, chromeOf) {
     if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
     for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file, root: PAGE_ROOT.exec(r.selector)[0] });
   }
-  // A name the theme builds in code is unknown: the lookup gives null for it, never the kit's value, and refused keeps
-  // the first such reason met since it was last cleared.
-  let refused = null;
-  const builtInCode = (name) => { const why = theme?.unread.get(name); if (why) refused ??= why; return Boolean(why); };
-  const appLookup = (name) => bridge.get(name)?.value ?? (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
-  const kitLookup = (name) => (builtInCode(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  // A name the theme builds in code is unknown: a lookup gives null for it, never the kit's value.
+  const appLookup = (name) => bridge.get(name)?.value ?? (theme?.unread.has(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  /**
+   * One resolution of a value that keeps its own reason: through the screens' kit token bridge (unless bridged is
+   * false), then the theme, then the kit. A name the theme builds in code, and for a colour any name the theme or kit
+   * would answer while a theme spread cannot be followed, makes this resolution, and only this one, unresolved with
+   * that reason; a value the app's own CSS gives without the theme or kit stands.
+   */
+  const resolveIn = (raw, { colour = false, bridged = true } = {}) => {
+    let why = null;
+    const value = resolveVars(raw, (name) => {
+      if (bridged && bridge.has(name)) return bridge.get(name).value;
+      const built = theme?.unread.get(name);
+      if (built || (colour && theme?.blocked)) { why ??= built ?? theme.blocked; return null; }
+      return theme?.variables.get(name) ?? scope.get(name) ?? null;
+    });
+    return why ? { value: null, why } : { value, why: null };
+  };
+  /** The reason a colour read from a rule is unresolved, after its source. */
+  const because = (source, why) => (why ? `${source}: ${why}` : source);
   const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
   const { chrome, rules: shellRules, shellCss, brand, menuRules } = chromeOf(appLookup);
 
@@ -1767,35 +1781,38 @@ function readLook(root, screens, chromeOf) {
     let value = null;
     let source = null;
     let kitValue = null;
-    refused = null;
+    let why = null;
+    // A theme spread the survey cannot follow may set any colour: only a value the screens give without the theme stands.
+    const colour = key !== 'font';
     for (const token of tokens) {
-      value = resolveVars(`var(${token})`, appLookup);
-      kitValue = resolveVars(`var(${token})`, kitLookup);
+      ({ value, why } = resolveIn(`var(${token})`, { colour }));
+      kitValue = resolveIn(`var(${token})`, { bridged: false }).value;
       // A token the theme builds in code is unknown: the next token in the list does not stand for it.
-      if (refused) { value = null; break; }
+      if (why) break;
       if (value) { source = whereToken(token); break; }
     }
     if (key === 'bg') {
       const page = pageRules.find((r) => r.media === null && PAGE_ROOT.test(r.selector) && (r.decls.has('background-color') || r.decls.has('background')));
       const prop = page?.decls.has('background-color') ? 'background-color' : 'background';
-      const pageValue = page && resolveVars(page.decls.get(prop), appLookup);
-      if (pageValue) { value = pageValue; source = `${page.file} ${page.selector} ${prop}`; }
+      const own = page ? resolveIn(page.decls.get(prop), { colour }) : null;
+      if (own?.value) { value = own.value; source = `${page.file} ${page.selector} ${prop}`; why = null; }
+      else if (own?.why) { set(key, UNRESOLVED, because(`${page.file} ${page.selector} ${prop}`, own.why)); continue; }
       else if (pageCss.length) { set(key, UNRESOLVED, `no page background (.root or .screen background-color or background) in ${pageCss.join(', ')}`); continue; }
     }
-    // A theme spread the survey cannot follow may set any colour: only the screens' own value stands.
-    if (theme?.blocked && key !== 'font' && !pageCss.some((f) => source?.startsWith(`${f} `))) { set(key, UNRESOLVED, theme.blocked); continue; }
-    set(key, value ?? UNRESOLVED, source ?? refused ?? 'none', kitValue);
+    set(key, value ?? UNRESOLVED, why ?? source ?? 'none', kitValue);
   }
 
   const role = (key, spec, rules) => {
     const hit = pickRule(rules, spec);
-    refused = null;
-    const kitRaw = spec.kit ? resolveVars(`var(${spec.kit})`, kitLookup) : null;
+    const colour = LOOK_KINDS[key] === 'colour';
+    const kit = spec.kit ? resolveIn(`var(${spec.kit})`, { colour, bridged: false }) : { value: null, why: null };
+    const kitRaw = kit.value;
     const asRaw = (v) => (toPx(v) !== null ? `${toPx(v)}px` : v);
     const realPx = (v) => (toPx(v) !== null ? `${Math.round(toPx(v))}px` : v);
     const kitValue = kitRaw === null ? null : spec.raw ? asRaw(kitRaw) : sized(kitRaw, spec.at);
     if (hit) {
-      let raw = resolveVars(hit.rule.decls.get(hit.prop), appLookup);
+      const got = resolveIn(hit.rule.decls.get(hit.prop), { colour });
+      let raw = got.value;
       if (raw !== null && spec.side) raw = side(raw, spec.side);
       if (raw !== null && spec.content) {
         const pad = pickRule(rules, { ...spec, prop: ['padding-inline', 'padding'], side: 'x' });
@@ -1806,7 +1823,7 @@ function readLook(root, screens, chromeOf) {
         const maxPx = toPx(raw);
         raw = maxPx === null ? null : `${box ? maxPx - 2 * (padPx ?? 0) : maxPx}px`;
       }
-      if (raw === null) { set(key, UNRESOLVED, `${describe(hit)}: ${refused ?? 'a value the survey cannot resolve'}`); return; }
+      if (raw === null) { set(key, UNRESOLVED, `${describe(hit)}: ${got.why ?? 'a value the survey cannot resolve'}`); return; }
       const value = spec.raw ? asRaw(raw) : sized(raw, spec.at);
       if (value === null) { set(key, UNRESOLVED, `${describe(hit)}: ${raw} is not a length`); return; }
       set(key, value, describe(hit), kitValue, spec.raw ? undefined : realPx(raw));
@@ -1816,7 +1833,7 @@ function readLook(root, screens, chromeOf) {
       set(key, UNRESOLVED, `no page title rule (.pageTitle, .pageHeading, h1, .heroTitle, .title) sets ${spec.prop.join(' or ')}${spec.at === 'phone' ? ' outside @media' : ''} in ${pageCss.join(', ')}`);
       return;
     }
-    if (refused) { set(key, UNRESOLVED, refused); return; }
+    if (kit.why) { set(key, UNRESOLVED, kit.why); return; }
     if (kitValue !== null) { set(key, kitValue, `kit ${spec.kit} (the app sets none)`, undefined, spec.raw ? undefined : realPx(kitRaw)); return; }
     if (key === 'th-case') {
       const head = kitRules.find((r) => /_?tableHead/i.test(r.selector) && r.decls.has('text-transform'));
@@ -1831,9 +1848,10 @@ function readLook(root, screens, chromeOf) {
       role(key, spec, shellRules);
     }
     const link = shellRules.find((r) => /\.(link|navLink)\b/.test(r.selector) && r.media === null && !/active|:hover|:focus/.test(r.selector) && r.decls.has('color'));
-    if (link) set('toplink', resolveVars(link.decls.get('color'), appLookup) ?? UNRESOLVED, `${link.file} ${link.selector} color`);
+    const ruleColour = (key, rule) => { const got = resolveIn(rule.decls.get('color'), { colour: true }); set(key, got.value ?? UNRESOLVED, because(`${rule.file} ${rule.selector} color`, got.why)); };
+    if (link) ruleColour('toplink', link);
     const active = shellRules.find((r) => /active|aria-current/.test(r.selector) && !/::?(after|before)|:hover|:focus/.test(r.selector) && r.decls.has('color'));
-    if (active) set('toplink-active', resolveVars(active.decls.get('color'), appLookup) ?? UNRESOLVED, `${active.file} ${active.selector} color`);
+    if (active) ruleColour('toplink-active', active);
   }
   // Per screen: its own heading when it differs from the shared one, its section heading and its bands.
   const measure = (spec, rules) => {
@@ -1864,14 +1882,18 @@ function readLook(root, screens, chromeOf) {
       if (r.media !== null || !BAND.test(r.selector) || NOT_BAND.test(r.selector.replace(BAND, '')) || /:hover|:focus/.test(r.selector)) continue;
       const prop = r.decls.has('background-color') ? 'background-color' : r.decls.has('background') ? 'background' : null;
       if (!prop || !r.decls.has('color')) continue;
-      const bg = resolveVars(r.decls.get(prop), appLookup);
-      const text = resolveVars(r.decls.get('color'), appLookup);
+      const name = r.selector.split(/\s*,\s*/)[0];
+      const source = `${r.file} ${name} ${prop} and color`;
+      const [bgIn, textIn] = [resolveIn(r.decls.get(prop), { colour: true }), resolveIn(r.decls.get('color'), { colour: true })];
+      // A band coloured through the theme or kit while the theme refuses it is kept, unresolved, with the reason.
+      if (bgIn.why || textIn.why) { bands.push({ name, bg: bgIn.value ?? UNRESOLVED, text: textIn.value ?? UNRESOLVED, source, bgWhy: bgIn.why, textWhy: textIn.why }); continue; }
+      const [bg, text] = [bgIn.value, textIn.value];
       if (!bg || !text || /transparent|none|url\(/i.test(bg) || bg === look.bg) continue;
       if (!FITS.colour(bg) || !FITS.colour(text)) {
         dropped.push({ key: `screenLooks.${s.label}.band`, value: `${bg} / ${text}`.slice(0, 120), source: `${r.file} ${r.selector.split(/\s*,\s*/)[0]}`, why: 'not a colour the drawing can take' });
         continue;
       }
-      bands.push({ name: r.selector.split(/\s*,\s*/)[0], bg, text, source: `${r.file} ${r.selector.split(/\s*,\s*/)[0]} ${prop} and color` });
+      bands.push({ name, bg, text, source });
     }
     if (bands.length) entry.bands = bands;
     screenLooks.push(entry);
@@ -1879,12 +1901,12 @@ function readLook(root, screens, chromeOf) {
   const banded = screenLooks.find((e) => e.bands);
   if (banded) {
     const [first, second] = banded.bands;
-    set('band-bg', first.bg, first.source.replace(/ and color$/, ''));
-    set('band-text', first.text, first.source.replace(/background(-color)? and /, ''));
-    if (second) {
-      set('band-alt-bg', second.bg, second.source.replace(/ and color$/, ''));
-      set('band-alt-text', second.text, second.source.replace(/background(-color)? and /, ''));
-    }
+    const band = (b, bgKey, textKey) => {
+      set(bgKey, b.bg, because(b.source.replace(/ and color$/, ''), b.bgWhy));
+      set(textKey, b.text, because(b.source.replace(/background(-color)? and /, ''), b.textWhy));
+    };
+    band(first, 'band-bg', 'band-text');
+    if (second) band(second, 'band-alt-bg', 'band-alt-text');
     const own = banded.heading;
     if (own) {
       set('band-title', own.size, `${own.source} (the ${banded.label} screen's own heading)`, undefined, own.real);
@@ -1904,8 +1926,8 @@ function readLook(root, screens, chromeOf) {
     const plain = (r) => r.media === null && !/:hover|:focus|\[|::?(after|before)/.test(r.selector) && r.decls.has('color');
     const markRule = shellRules.find((r) => /\.(mark|logo)\b/.test(r.selector) && r.media === null && !/:hover|:focus/.test(r.selector) && r.decls.has('color'))
       ?? [/\.(mark|logo)\b/, /\.(brand|header|headerRow)\b/, /\.(sidebar|menu|nav)\b/].map((p) => menuRules.find((r) => plain(r) && p.test(r.selector))).find(Boolean);
-    const colour = markRule && resolveVars(markRule.decls.get('color'), appLookup);
-    if (colour) set('mark-color', colour, `${markRule.file} ${markRule.selector} color`);
+    const got = markRule ? resolveIn(markRule.decls.get('color'), { colour: true }) : { value: null, why: null };
+    if (got.value || got.why) set('mark-color', got.value ?? UNRESOLVED, because(`${markRule.file} ${markRule.selector} color`, got.why));
     else set('mark-color', look.accent, 'the accent (the shell gives the mark no colour of its own)');
   }
   return {

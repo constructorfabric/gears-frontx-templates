@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import './replace-or-fail.mjs';
-import { FILES } from './proposal-fixture.mjs';
+import { FILES, writeTopApp } from './proposal-fixture.mjs';
 import { expectLinear } from './linear-time.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -168,6 +168,64 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
     const root = realApp();
     writeFileSync(path.join(root, 'src-app/app/themes/pal.ts'), "export const $tokens = { '--primary': '#abcdef' };\n");
     expect(accentOf(themeWith(root, '...$tokens', "import { $tokens } from './pal';\n"))).toEqual(['#abcdef', 'src-app/app/themes/pal.ts --primary']);
+  });
+});
+
+const BLOCKED = 'src-app/app/themes/default.ts spreads brand from @acme/palette, which the survey does not read: the colours of the theme are not known';
+/** A theme whose colours are not known: it spreads an object from a package. */
+const blockedTheme = (root, more = '') => themeWith(root, `...brand${more}`, "import { brand } from '@acme/palette';\n");
+const addCss = (root, rel, css) => edit(root, rel, /$/, `\n${css}\n`);
+
+describe('survey-app.mjs never puts the kit palette under an app file\'s name when the theme is blocked or builds a token in code', () => {
+  it('leaves a screen\'s colours unresolved when they come through the kit, naming the rule and the theme reason', () => {
+    const result = survey.survey(addCss(blockedTheme(realApp()), SCREEN_CSS, '.root { background-color: var(--background); --primary: var(--info); }'));
+    expect([result.look.bg, result.look.accent]).toEqual([survey.UNRESOLVED, survey.UNRESOLVED]);
+    expect(result.lookFrom.bg).toBe(`${SCREEN_CSS} .root background-color: ${BLOCKED}`);
+    expect(result.lookFrom.accent).toBe(BLOCKED);
+  });
+
+  it('keeps the screen\'s own literal values when the theme is blocked', () => {
+    const result = survey.survey(addCss(blockedTheme(realApp()), SCREEN_CSS, '.root { background-color: #fafafa; --primary: #123456; }'));
+    expect([result.look.bg, result.look.accent]).toEqual(['#fafafa', '#123456']);
+    expect([result.lookFrom.bg, result.lookFrom.accent]).toEqual([`${SCREEN_CSS} .root background-color`, `${SCREEN_CSS} .root --primary`]);
+  });
+
+  it('leaves the logo colour unresolved when the menu\'s rule resolves it through the kit', () => {
+    const result = survey.survey(blockedTheme(realApp(), ", '--left-menu-foreground': 'var(--foreground)'"));
+    expect(result.look['mark-color']).toBe(survey.UNRESOLVED);
+    expect(result.lookFrom['mark-color']).toBe(`src-app/app/components/ui/sidebar.module.css .sidebar color: ${BLOCKED}`);
+  });
+
+  it('leaves the header link and band colours unresolved when they come through the kit, and keeps a band the screen colours itself', () => {
+    const root = writeTopApp(mkdtempSync(path.join(tmpdir(), 'fx-proposal-real-')));
+    temps.push(root);
+    edit(root, 'src-app/app/themes/default.ts', /variables: \{/, 'variables: {\n    ...mystery(),');
+    edit(root, 'src-app/app/layout/Menu.module.css', 'font-size: 14px; color: #1d2433;', 'font-size: 14px; color: var(--danger-foreground);');
+    const home = 'src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css';
+    const why = 'src-app/app/themes/default.ts spreads mystery(), which the survey does not read: the colours of the theme are not known';
+    let result = survey.survey(root);
+    expect([result.look.toplink, result.lookFrom.toplink]).toEqual([survey.UNRESOLVED, `src-app/app/layout/Menu.module.css .link color: ${why}`]);
+    // .hero takes --primary from the screen's own .root: it stands.
+    expect([result.look['band-bg'], result.lookFrom['band-bg']]).toEqual(['#2f6fd6', `${home} .hero background-color`]);
+    result = survey.survey(edit(root, home, '.hero { background-color: var(--primary);', '.hero { background-color: var(--info);'));
+    expect([result.look['band-bg'], result.lookFrom['band-bg']]).toEqual([survey.UNRESOLVED, `${home} .hero background-color: ${why}`]);
+  });
+
+  it('keeps the screen\'s own value of a token the theme builds in code', () => {
+    const root = themeWith(realApp(), '...base', "const base = { '--primary': mk('#f00') };\n");
+    expect(accentOf(addCss(root, SCREEN_CSS, '.root { --primary: #123456; }'))).toEqual(['#123456', `${SCREEN_CSS} .root --primary`]);
+  });
+
+  it('does not let the next token of the list stand for one the theme builds in code', () => {
+    const result = survey.survey(themeWith(realApp(), "'--success': '#00aa00', '--success-foreground': mk('#0a0')"));
+    expect(result.look.ok).toBe(survey.UNRESOLVED);
+    expect(result.lookFrom.ok).toMatch(/^src-app\/app\/themes\/default\.ts builds --success-foreground in code/);
+  });
+
+  it('gives a rule\'s own reason, not that of a kit token the theme builds in code', () => {
+    const root = themeWith(realApp(), '...base', "const base = { '--text-heading-1-size': mk('2rem') };\n");
+    const result = survey.survey(addCss(root, SCREEN_CSS, '.pageTitle { font-size: var(--zzz); }'));
+    expect(result.lookFrom.h1).toBe(`${SCREEN_CSS} .pageTitle font-size: a value the survey cannot resolve`);
   });
 });
 
