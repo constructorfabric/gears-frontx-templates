@@ -83,6 +83,30 @@ A series whose property the host does not set takes the template's colour of its
 
 The template's colours are written with the CSS `light-dark()` function, which picks the light or the dark colour by the `color-scheme` the kit sets on each theme scope. It needs a current browser: in an older one without it, a series whose colour the host does not set draws without a palette colour.
 
+### For a host that embedded dashboards with an earlier template version
+
+Earlier versions of the template coloured the series of these four charts with the kit's five chart tokens, in the order `--chart-5`, `--chart-4`, `--chart-2`, `--chart-1`, `--chart-3`, and the sixth series took the first colour again. With this version the same dashboards draw the template's ten colours above, so their series change colour. In the dark theme the first series draws `#5193f4`, while the single-colour charts keep the kit's dark chart token `#60a5fa`. A host that wants the colours its dashboards had sets the kit's values as its own colours:
+
+```css
+:root,
+[data-theme='light'] {
+  --dashboard-chart-1: #2563eb;
+  --dashboard-chart-2: #f59e0b;
+  --dashboard-chart-3: #059669;
+  --dashboard-chart-4: #e11d48;
+  --dashboard-chart-5: #4e79a7;
+}
+[data-theme='dark'] {
+  --dashboard-chart-1: #60a5fa;
+  --dashboard-chart-2: #f6c453;
+  --dashboard-chart-3: #34d399;
+  --dashboard-chart-4: #fb7185;
+  --dashboard-chart-5: #0065e3;
+}
+```
+
+A host whose charts show more than five series and that wants the earlier wrap repeats these five values for `--dashboard-chart-6` onward, one property per series it shows.
+
 ## Where overlays open
 
 A cell's larger view opens in an overlay that mounts inside the dashboard's own element. When the product's page content sits in its own stacking context (an ancestor with `isolation: isolate`, a `transform`, or a positioned element with a `z-index`) under a fixed part of the page, such as a sidebar, that part covers the overlay. Pass the element the overlay mounts in as `overlayContainer`, usually `document.body`:
