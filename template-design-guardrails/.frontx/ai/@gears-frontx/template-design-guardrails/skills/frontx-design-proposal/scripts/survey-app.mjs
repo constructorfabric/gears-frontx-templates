@@ -1187,10 +1187,48 @@ function readVariables(root, file, code, body, variables, from, unread) {
   return blocked;
 }
 
+/** A "{" that opens a type: a type alias, an interface, or the annotation of a const (let, var). */
+const TYPE_OPEN = /(?:\btype\s+[A-Za-z_$][\w$]*(?:\s*<[^=;{}]*>)?\s*=|\binterface\s+[A-Za-z_$][\w$]*[^{};=]*|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*:)\s*$/;
+const DEFAULT_KEY = /default\s*:\s*true(?![\w$])/y;
+const VARIABLES_KEY = /variables\s*:\s*(\{)?/y;
+
 /**
- * The active theme: the file under src-app/app/themes that says default: true, read from its variables object
- * (readVariables), comments stripped: from names the file each value comes from, unread the names built in code,
- * blocked why the colours are not known when a spread cannot be followed or the variables are not an object literal.
+ * The theme object of a theme file (comments stripped): the object literal that holds default: true as its own key,
+ * outside type and interface bodies and annotations, the first such object to close. Returns whether there is one,
+ * whether it has a variables key, and where its variables object literal opens (-1 when it is not one). One pass;
+ * strings and template literals are skipped whole, as objectBody does.
+ */
+function themeObject(code) {
+  const stack = [];
+  for (let i = 0; i < code.length; i += 1) {
+    const c = code[i];
+    if (c === '"' || c === "'" || c === '`') {
+      for (i += 1; i < code.length && code[i] !== c; i += 1) if (code[i] === '\\') i += 1;
+    } else if (c === '{') {
+      const parent = stack[stack.length - 1];
+      stack.push({ type: Boolean(parent?.type) || TYPE_OPEN.test(code.slice(Math.max(0, i - 200), i)), isDefault: false, hasVariables: false, open: -1 });
+    } else if (c === '}') {
+      const frame = stack.pop();
+      if (frame?.isDefault && !frame.type) return { found: true, hasVariables: frame.hasVariables, open: frame.open };
+    } else if ((c === 'd' || c === 'v') && stack.length && !/[\w$.]/.test(code[i - 1] ?? '')) {
+      const top = stack[stack.length - 1];
+      DEFAULT_KEY.lastIndex = i;
+      VARIABLES_KEY.lastIndex = i;
+      if (c === 'd' && DEFAULT_KEY.test(code)) top.isDefault = true;
+      else if (c === 'v' && !top.hasVariables) {
+        const m = VARIABLES_KEY.exec(code);
+        if (m) { top.hasVariables = true; if (m[1]) top.open = i + m[0].length - 1; }
+      }
+    }
+  }
+  return { found: false, hasVariables: false, open: -1 };
+}
+
+/**
+ * The active theme: the first file (by name) under src-app/app/themes whose text says default: true, read from the
+ * variables object of its theme object (themeObject, readVariables), comments stripped: from names the file each value
+ * comes from, unread the names built in code, blocked why the colours are not known when a spread cannot be followed,
+ * the variables are not an object literal, or the file holds no theme object that says default: true.
  */
 function readActiveTheme(root) {
   const dir = path.join(root, 'src-app/app/themes');
@@ -1204,10 +1242,11 @@ function readActiveTheme(root) {
   const variables = new Map();
   const from = new Map();
   const unread = new Map();
-  const open = /\bvariables\s*:\s*\{/.exec(code);
-  const body = open ? objectBody(code, open.index + open[0].length - 1) : null;
+  const theme = themeObject(code);
+  const body = theme.open >= 0 ? objectBody(code, theme.open) : null;
   const blocked = body !== null ? readVariables(root, file, code, body, variables, from, unread)
-    : /\bvariables\s*:/.test(code) ? `${rel(root, file)} gives variables no object literal the survey can read: ${THEME_UNKNOWN}` : null;
+    : !theme.found ? `${rel(root, file)} holds no theme object that says default: true the survey can read: ${THEME_UNKNOWN}`
+      : theme.hasVariables ? `${rel(root, file)} gives variables no object literal the survey can read: ${THEME_UNKNOWN}` : null;
   return {
     file: rel(root, file),
     id: text.match(/\bid:\s*['"]([\w-]+)['"]/)?.[1] ?? text.match(/_ID\s*=\s*['"]([\w-]+)['"]/)?.[1] ?? UNRESOLVED,

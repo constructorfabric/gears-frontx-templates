@@ -149,6 +149,20 @@ describe('survey-app.mjs reads the spreads and pairs of the theme\'s own variabl
     expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066'", head))).toEqual(['#ff0066', 'src-app/app/themes/default.ts --primary']);
   });
 
+  it.each([
+    ['a theme without default: true written before it', "export const lightTheme = { id: 'light', appearance: 'light', variables: { '--primary': '#111111' } };\n"],
+    ['a type alias with a variables object', "type Shape = { variables: { [name: string]: string } };\n"],
+    ['an interface whose variables hold a pair', "interface Shape { default: true; variables: { '--primary': '#00ff00' } }\n"],
+  ])('reads the variables of the object that says default: true, not of %s', (what, head) => {
+    expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066'", head))).toEqual(['#ff0066', 'src-app/app/themes/default.ts --primary']);
+  });
+
+  it('leaves the colours unresolved when default: true is said only by a type', () => {
+    const root = realApp();
+    writeFileSync(path.join(root, 'src-app/app/themes/default.ts'), "interface Shape { default: true }\nexport const defaultTheme = { id: 'default', appearance: 'light', variables: { '--primary': '#ff0066' } };\n");
+    expect(accentOf(root)).toEqual([survey.UNRESOLVED, 'src-app/app/themes/default.ts holds no theme object that says default: true the survey can read: the colours of the theme are not known']);
+  });
+
   it('ignores a commented-out pair', () => {
     expect(accentOf(themeWith(realApp(), "'--primary': '#ff0066',\n    // '--primary': '#00ff00',\n"))[0]).toBe('#ff0066');
   });
