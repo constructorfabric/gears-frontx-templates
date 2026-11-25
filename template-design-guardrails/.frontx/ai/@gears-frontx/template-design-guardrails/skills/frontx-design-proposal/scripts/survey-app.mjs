@@ -874,10 +874,14 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * @media does; a rule inside any other at-rule is not kept and the file is
  * read on. One pass:
  * each open @media body is a frame with its own brace depth, start and
- * selector, so a body is read where it stands and never scanned again. At the
- * top level a semicolon ends an at-statement (@import, @charset, @layer a;,
- * @namespace, @value): the statement itself is no rule, and the rule after it
- * is read as its own. A rule inside an @media the file never closes is not
+ * selector, so a body is read where it stands and never scanned again. A
+ * semicolon ends an at-statement (@import, @charset, @layer a;, @namespace,
+ * @value) in every frame, at its own depth 0: the statement itself is no
+ * rule, and the rule after it is read as its own, as is the rule after a
+ * stray semicolon. While a frame's pending text is an at-statement, a quoted
+ * string ("...", '...', with backslash escapes) and the content of url(...)
+ * in it hold no end: no semicolon or brace inside one ends or opens anything.
+ * A rule inside an @media the file never closes is not
  * kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading: the
  * rules before it are kept and the file, given as full, is listed under
  * skipped; so does a "}" at the top level with no rule open.
@@ -885,28 +889,37 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
 function parseCssRules(css, file = '', full = null) {
   const rules = [];
   const text = withoutBlocks(css, '/*', '*/');
-  const top = { media: null, depth: 0, start: 0, selector: '', kept: 0, sig: 0 };
+  // head says what a frame's pending text (from start to the character being read) opens with: 'empty' while it holds
+  // no character but white space and stray semicolons, 'at' when it opens with @, 'other' after any other character.
+  // quote and url hold the string and url(...) the frame is inside while its pending text is an at-statement: no
+  // semicolon or brace inside them ends or opens anything.
+  const top = { media: null, depth: 0, start: 0, selector: '', kept: 0, head: 'empty', quote: '', url: 0 };
   const frames = [top];
-  // The first character that is not white space at or after a frame's start;
-  // each frame scans forward only, so the reading stays linear in the file.
-  const significant = (f) => {
-    while (f.sig < text.length && /\s/.test(text[f.sig])) f.sig += 1;
-    return f.sig;
-  };
+  // A frame's pending text starts over: what a fresh frame would open with.
+  const reset = (f, at) => { f.start = at; f.head = 'empty'; f.quote = ''; f.url = 0; };
   for (let i = 0; i < text.length; i += 1) {
     const c = text[i];
-    if (c !== '{' && c !== '}' && !(c === ';' && frames.length === 1 && top.depth === 0)) continue;
     const f = frames[frames.length - 1];
+    // What the innermost frame's pending text opens with, read in one pass; a string or url() of a pending
+    // at-statement is text of the statement and says nothing of what follows.
+    if (f.depth === 0 && !f.quote && !f.url && f.head === 'empty' && c !== ';' && !/\s/.test(c)) f.head = c === '@' ? 'at' : 'other';
+    if (f.head === 'at') {
+      if (f.quote) { if (c === '\\') i += 1; else if (c === f.quote) f.quote = ''; continue; }
+      if (f.url) { if (c === '"' || c === "'") f.quote = c; else if (c === ')') f.url = 0; continue; }
+      if (c === '"' || c === "'") { f.quote = c; continue; }
+      if (c === 'u' && text.startsWith('url(', i)) { f.url = 1; i += 3; continue; }
+    }
+    if (c !== '{' && c !== '}' && !(c === ';' && f.depth === 0)) continue;
     if (c === ';') {
-      // An at-statement at the top level ends here: what follows is read as its own rule.
-      if (text[significant(top)] === '@') { top.start = i + 1; top.sig = i + 1; }
+      // An at-statement ends here in any frame, at the frame's own depth 0: what follows is read as its own rule. A
+      // pending text that is empty or holds only stray semicolons is no rule either, so the start moves past it.
+      if (f.head !== 'other') reset(f, i + 1);
       continue;
     }
     if (c === '{') {
       if (f.depth === 0) {
         f.selector = text.slice(f.start, i).trim();
-        f.start = i + 1;
-        f.sig = i + 1;
+        reset(f, i + 1);
         const min = /min-width:\s*(\d+)px/.exec(f.selector);
         // A rule-holding block at-rule opens a frame like a non-min-width @media does; the name is read and matched
         // lower case, so @supports(display:grid){ and @SUPPORTS open one too. Nesting counts toward MEDIA_DEPTH_CAP
@@ -919,7 +932,7 @@ function parseCssRules(css, file = '', full = null) {
             return rules;
           }
           f.depth = 1;
-          frames.push({ media: atMedia && min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, sig: i + 1 });
+          frames.push({ media: atMedia && min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, head: 'empty', quote: '', url: 0 });
           continue;
         }
       }
@@ -933,8 +946,7 @@ function parseCssRules(css, file = '', full = null) {
       frames.pop();
       const outer = frames[frames.length - 1];
       outer.depth = 0;
-      outer.start = i + 1;
-      outer.sig = i + 1;
+      reset(outer, i + 1);
     } else {
       f.depth -= 1;
       if (f.depth === 0) {
@@ -943,8 +955,7 @@ function parseCssRules(css, file = '', full = null) {
           for (const m of text.slice(f.start, i).matchAll(/(?<![\w-])(--[\w-]{1,100}|[a-z-]{1,100})\s*:\s*([^;{}]+)/g)) decls.set(m[1], m[2].trim());
           rules.push({ selector: f.selector, media: f.media, decls, file });
         }
-        f.start = i + 1;
-        f.sig = i + 1;
+        reset(f, i + 1);
       }
     }
   }

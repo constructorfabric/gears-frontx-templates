@@ -1075,6 +1075,7 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
     ['rules inside @media rules nested to the depth cap', 4000, HOME_CSS, (t, n) => `${t}${'@media (min-width: 600px) {'.repeat(survey.MEDIA_DEPTH_CAP)}${' .x { color: red; }'.repeat(n)}${'}'.repeat(survey.MEDIA_DEPTH_CAP)}\n`],
     ['@media nests at the depth cap side by side', 100, HOME_CSS, (t, n) => `${t}${`${'@media (min-width: 600px) {'.repeat(survey.MEDIA_DEPTH_CAP)} .x { color: red; }${'}'.repeat(survey.MEDIA_DEPTH_CAP)}\n`.repeat(n)}`],
     ['@media rules nested side by side in one', 2000, HOME_CSS, (t, n) => `${t}@media (min-width: 600px) {${' @media (min-width: 700px) { .x { color: red; } }'.repeat(n)} }\n`],
+    ['at-statements whose url() holds a semicolon', 2000, HOME_CSS, (t, n) => `${t}${'@import url("a;b.css");'.repeat(n)}.x { color: red; }\n`],
   ])('surveys a project in time linear in the size of %s', (what, size, rel, grow) => {
     const roots = new Map();
     const at = (n) => {

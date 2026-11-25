@@ -338,6 +338,30 @@ describe('the rules a stylesheet yields', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
     expect(result.look.bg).toBe('#ffffff');
+    expect(result.skipped).toEqual([]);
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+  });
+
+  // The statement and the rule after it are read apart wherever they stand: a ';' inside the quoted string or the
+  // url() of an at-statement is no end, an at-statement inside a @media block ends at its own ';', and a stray ';'
+  // between rules is no rule either. .kpi is a selector no rule of the fixture holds, so the rule read is the one
+  // the look takes.
+  it.each([
+    ['an at-statement inside a @media block', '@media (min-width: 600px) { @layer base; .kpi { font-size: 33px; } }', 'stat', `${HOME_CSS} .kpi (from 600 px) font-size`, '26px'],
+    ['a ";" inside the url() of an at-statement', '@import url("a;b.css"); .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
+    ['a ";" inside the string of an at-statement', '@supports (content: ";.root") { .root { background-color: #000000; } }', 'bg', `${HOME_CSS} .root background-color`, '#ffffff'],
+    ['a stray ";" between rules', '.kpi {} ; @import "x"; .kpi { font-size: 33px; }', 'stat', `${HOME_CSS} .kpi font-size`, '26px'],
+  ])('reads the rules around %s as their own rules', (_, before, key, from, value) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${before}\n${t}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+    expect(result.lookFrom[key], before).toBe(from);
+    expect(result.look[key], before).toBe(value);
+  });
+  it('keeps the rules of a @supports block out of the look where the string of the condition would have made a made-up rule of them', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@supports (content: ";.kpi") { .kpi { font-size: 33px; } }\n${t}` }));
+    expect(result.lookFrom.stat).toBe('kit --text-kpi-size (the app sets none)');
+    expect(result.skipped).toEqual([]);
   });
 
   it('reads a kit chunk of rule-holding block at-rules whole: nothing is skipped or unresolved for it', () => {
