@@ -1356,7 +1356,9 @@ const BRAND_USE_NODE = serialize(parseHtml(BRAND_USE).children.find((c) => typeo
 function checkClean(mark, at, add) {
   for (const n of [mark, ...walk(mark)]) {
     if (!SVG_ELEMENTS.has(n.tag)) add('mark', `${at} holds <${n.tag}>, which an inlined mark may not`);
-    for (const [k, v] of Object.entries(n.attrs)) {
+    for (const k of Object.keys(n.attrs)) {
+      // safeSvgValue decodes once itself, so it gets the value as written (the first of equal names, as in attrs).
+      const v = n.list.find(([name]) => name === k)[1];
       if (!SVG_ATTRIBUTES.has(k) && !(n === mark && n.tag === 'svg' && k === 'class')) add('mark', `${at} carries the attribute ${k}, which an inlined mark may not`);
       else if (!safeSvgValue(k, v)) add('mark', `${at} carries ${k}="${v}", which points outside the page or runs code`);
     }
