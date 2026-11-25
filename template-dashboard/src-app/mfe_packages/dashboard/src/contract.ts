@@ -95,11 +95,24 @@ export const LANGUAGE_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~fro
  * domain shares it like the theme and the language; a widget opens its overlays (menus, popovers, dialogs) there, and
  * inside its own shadow root without one. No widget entry requires it.
  *
+ * The value is an {@link OverlayContainerValue} that holds the element, or null for none; never the element itself.
+ * The type store reads every value it is given: it walks the own enumerable fields of each nested object for
+ * references and copies them, and an element a page framework rendered carries such fields that lead into the
+ * framework's whole tree (a React element does). The holder keeps the element in a private field, which the store
+ * neither walks nor copies; the domain hands each widget the holder the root published.
+ *
  * The value schema is open (a page element is not JSON), so nothing in the type store checks what a widget receives.
- * A widget must check that the value is an `HTMLElement` of its own document before it uses it, and treat anything
- * else as no container; a product's own widget bundle gets the value as `unknown`.
+ * A widget reads the value's `element` and uses it only when it is an `HTMLElement` of its own document, and treats
+ * anything else (a bare element, an object whose `element` throws or holds something else) as no container. A
+ * product's own widget bundle gets the value as `unknown` and reads that shape: the holder's class is the root's own,
+ * so `instanceof` of it does not hold across bundles.
  */
 export const OVERLAY_CONTAINER_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~frontx.dashboard.mfe.overlay_container.v1~';
+
+/** The value of the overlay container property other than null: a holder of the host's element (see above). */
+export interface OverlayContainerValue {
+  readonly element: HTMLElement;
+}
 
 /** Host theme ids whose palette is dark; any other id maps to the kit's light scope. */
 export const DARK_THEMES = new Set(['dark', 'dracula', 'dracula-large']);

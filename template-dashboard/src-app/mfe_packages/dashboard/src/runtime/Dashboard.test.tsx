@@ -68,6 +68,9 @@ const entries = Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, pr
 const shadowTexts = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.textContent ?? '');
 
+/** The element the overlay container property holds (the `element` of its holder), null for none, undefined when unset. */
+const elementIn = (value: unknown) => (value === null ? null : (value as { element?: unknown } | undefined)?.element);
+
 afterEach(() => {
   // Here, not at the end of a test that turns fake timers on, so a failing assertion never leaves them on.
   vi.useRealTimers();
@@ -417,12 +420,98 @@ describe('Dashboard on the real registry', () => {
     const props = { root, dashboardId: DEMO_DASHBOARD_ID, theme: 'light', language: 'en', variables: DEMO_VARIABLES };
     const view = render(<Dashboard {...props} overlayContainer={overlayHost} />);
     await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
-    expect([...new Set(seen.values())]).toEqual([overlayHost]);
+    expect([...new Set([...seen.values()].map(elementIn))]).toEqual([overlayHost]);
     view.rerender(<Dashboard {...props} />);
-    expect([...new Set(seen.values())]).toEqual([null]);
+    expect([...new Set([...seen.values()].map(elementIn))]).toEqual([null]);
     view.unmount();
     overlayHost.remove();
   }, 15_000);
+
+  describe('with an overlay container React rendered', () => {
+    /** Widget entries that keep the overlay container each widget last read, as the test above does. */
+    const recording = () => {
+      const seen = new Map<string, unknown>();
+      let count = 0;
+      const entry = (): MfeEntryLifecycle => {
+        const id = String(count++);
+        let stop: (() => void) | undefined;
+        return {
+          mount(_container, bridge) {
+            seen.set(id, bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value);
+            stop = bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => seen.set(id, property.value));
+            bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+          },
+          unmount() {
+            stop?.();
+          },
+        };
+      };
+      return { seen, entries: Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, entry])) };
+    };
+
+    /** A host that renders its own overlay element through a ref, beside `rows` rows of its own page. */
+    function Host({ root, rows = 0 }: { root: DashboardRoot; rows?: number }) {
+      const [overlays, setOverlays] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <ul>
+            {Array.from({ length: rows }, (_, index) => (
+              <li key={index}>
+                <span>row {index}</span>
+              </li>
+            ))}
+          </ul>
+          <div ref={setOverlays} data-testid="overlays" />
+          <Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={overlays} />
+        </>
+      );
+    }
+
+    it('gives every widget the element the host rendered', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { seen, entries: overlayEntries } = recording();
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+      const view = render(<Host root={root} />);
+      const overlays = screen.getByTestId('overlays');
+      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlays);
+      await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+      expect([...new Set([...seen.values()].map(elementIn))]).toEqual([overlays]);
+      expect(errors.mock.calls.filter(([line]) => String(line).includes('cannot be published'))).toEqual([]);
+      // Every widget gets the very holder on the domain, which shows the type store no field of its own.
+      const holder = root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID);
+      expect(holder).not.toBeInstanceOf(HTMLElement);
+      expect(Object.keys(holder as object)).toEqual([]);
+      expect([...new Set(seen.values())]).toEqual([holder]);
+      // A render of the host with the same element publishes nothing again.
+      const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
+      view.rerender(<Host root={root} />);
+      expect(writes.mock.calls.filter(([id]) => id === OVERLAY_CONTAINER_PROPERTY_ID)).toEqual([]);
+      view.unmount();
+      expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+      await root.dispose();
+    }, 15_000);
+
+    it('publishes the element the host rendered beside a large tree of its own, without walking that tree', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+      // The time the root takes to publish the element, which runs in a layout effect of the host's render.
+      let spent = 0;
+      const publish = root.publishOverlayContainer.bind(root);
+      vi.spyOn(root, 'publishOverlayContainer').mockImplementation((element) => {
+        const start = performance.now();
+        publish(element);
+        spent += performance.now() - start;
+      });
+      const view = render(<Host root={root} rows={2000} />);
+      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(screen.getByTestId('overlays'));
+      expect(errors.mock.calls.filter(([line]) => String(line).includes('cannot be published'))).toEqual([]);
+      // A loose bound, for a loaded machine. A publish that walks the host's tree overflows the call stack in this
+      // simulated DOM and takes seconds in a browser; one that does not takes a few milliseconds.
+      expect(spent).toBeLessThan(500);
+      view.unmount();
+      await root.dispose();
+    }, 30_000);
+  });
 
   it('publishes no overlay container once the Dashboard that passed one unmounts', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -430,7 +519,7 @@ describe('Dashboard on the real registry', () => {
     onTestFinished(() => overlayHost.remove());
     const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
     const view = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={overlayHost} />);
-    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBe(overlayHost);
+    expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlayHost);
     view.unmount();
     expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
   });
@@ -440,7 +529,7 @@ describe('Dashboard on the real registry', () => {
     const [oneHost, otherHost] = [0, 1].map(() => document.body.appendChild(document.createElement('div')));
     onTestFinished(() => [oneHost, otherHost].forEach((element) => element.remove()));
     const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
-    const property = () => root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID);
+    const property = () => elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID));
     const one = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={oneHost} />);
     const other = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={otherHost} />);
     expect(property()).toBe(otherHost);

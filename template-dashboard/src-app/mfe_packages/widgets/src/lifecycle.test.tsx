@@ -253,6 +253,21 @@ describe('kit overlays', () => {
   });
 });
 
+/**
+ * A holder of the host's element shaped as the root publishes it: the element in a private field behind a getter. The
+ * class is this file's own, as the root's class is to a widget bundle, so the widget can read its shape only.
+ */
+class Holder {
+  readonly #element: unknown;
+  constructor(element: unknown) {
+    this.#element = element;
+  }
+  get element() {
+    return this.#element;
+  }
+}
+const holding = (element: unknown) => new Holder(element);
+
 describe('kit overlays with a host overlay container', () => {
   const popupOf = (root: ParentNode) => Array.from(root.querySelectorAll('*')).find((node) => node.textContent === 'Popup text' && node.children.length === 0);
   const popupWidget = () =>
@@ -281,7 +296,7 @@ describe('kit overlays with a host overlay container', () => {
     const { shadow } = ownMountPoint();
     // A stylesheet the FrontX handler puts into the widget's shadow root before it mounts the widget.
     shadow.append(Object.assign(document.createElement('style'), { id: 'widget-css', textContent: '.popup { color: red; }' }));
-    const { child, send } = bridge({ [THEME_PROPERTY_ID]: 'dark', [LANGUAGE_PROPERTY_ID]: 'de', [OVERLAY_CONTAINER_PROPERTY_ID]: outside });
+    const { child, send } = bridge({ [THEME_PROPERTY_ID]: 'dark', [LANGUAGE_PROPERTY_ID]: 'de', [OVERLAY_CONTAINER_PROPERTY_ID]: holding(outside) });
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     const overlayRoot = outside.firstElementChild?.shadowRoot;
@@ -306,7 +321,7 @@ describe('kit overlays with a host overlay container', () => {
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     expect(popupOf(shadow)).toBeTruthy();
-    await change(OVERLAY_CONTAINER_PROPERTY_ID, outside);
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, holding(outside));
     expect(popupOf(outside.firstElementChild!.shadowRoot!)).toBeTruthy();
     expect(popupOf(shadow)).toBeUndefined();
     await change(OVERLAY_CONTAINER_PROPERTY_ID, null);
@@ -319,11 +334,11 @@ describe('kit overlays with a host overlay container', () => {
     const [first, second] = [pageElement(), pageElement()];
     const lifecycle = popupWidget();
     const { shadow } = ownMountPoint();
-    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: first });
+    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: holding(first) });
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     expect(popupOf(first.firstElementChild!.shadowRoot!)).toBeTruthy();
-    await change(OVERLAY_CONTAINER_PROPERTY_ID, second);
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, holding(second));
     expect(first.childElementCount).toBe(0);
     expect(popupOf(second.firstElementChild!.shadowRoot!)).toBeTruthy();
     expect(popupOf(shadow)).toBeUndefined();
@@ -347,7 +362,7 @@ describe('kit overlays with a host overlay container', () => {
       </Popover>
     ));
     const { shadow } = ownMountPoint();
-    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: first });
+    const { child, send, change } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: holding(first) });
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     const noteIn = (root: ParentNode) => root.querySelector<HTMLInputElement>('input[aria-label="Note"]');
@@ -357,7 +372,7 @@ describe('kit overlays with a host overlay container', () => {
     expect(typed).toBeTruthy();
     typed.value = 'typed';
     expect(mounts).toBe(1);
-    await change(OVERLAY_CONTAINER_PROPERTY_ID, second);
+    await change(OVERLAY_CONTAINER_PROPERTY_ID, holding(second));
     expect(first.childElementCount).toBe(0);
     const moved = noteIn(second.firstElementChild!.shadowRoot!);
     expect(moved).toBeTruthy();
@@ -375,7 +390,7 @@ describe('kit overlays with a host overlay container', () => {
     const outside = pageElement();
     const [one, other] = [popupWidget(), popupWidget()];
     const [onePoint, otherPoint] = [ownMountPoint(), ownMountPoint()];
-    const [oneBridge, otherBridge] = [bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside }), bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside })];
+    const [oneBridge, otherBridge] = [bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: holding(outside) }), bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: holding(outside) })];
     await act(async () => one.mount(onePoint.shadow, oneBridge.child));
     await act(async () => other.mount(otherPoint.shadow, otherBridge.child));
     await oneBridge.send({ render: {} });
@@ -394,14 +409,19 @@ describe('kit overlays with a host overlay container', () => {
     expect(outside.childElementCount).toBe(0);
   });
 
-  it.each([
-    ['a selector string', '#overlays'],
-    ['a plain object', { nodeType: 1, append: () => undefined }],
-  ])('takes %s as no host element: the widget keeps its popup in its own shadow root, and the page element #overlays stays empty', async (_name, value) => {
+  it.each<[string, (target: HTMLElement) => unknown]>([
+    ['a selector string', () => '#overlays'],
+    ['a plain object', () => ({ nodeType: 1, append: () => undefined })],
+    ['a holder of a selector string', () => holding('#overlays')],
+    ['a holder of an object shaped as an element', () => holding({ nodeType: 1, append: () => undefined })],
+    ['the bare element, without a holder', (target) => target],
+    // The copy the type store makes keeps the class but not the private field, so reading its element throws.
+    ['a copy of a holder whose element throws', () => Object.create(Holder.prototype) as unknown],
+  ])('takes %s as no host element: the widget keeps its popup in its own shadow root, and the page element #overlays stays empty', async (_name, valueOf) => {
     const target = Object.assign(pageElement(), { id: 'overlays' });
     const lifecycle = popupWidget();
     const { shadow } = ownMountPoint();
-    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: value });
+    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: valueOf(target) });
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     expect(shadow.textContent).toContain('Details');
@@ -415,7 +435,7 @@ describe('kit overlays with a host overlay container', () => {
     const outside = foreign.body.appendChild(foreign.createElement('div'));
     const lifecycle = popupWidget();
     const { shadow } = ownMountPoint();
-    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: outside });
+    const { child, send } = bridge({ [OVERLAY_CONTAINER_PROPERTY_ID]: holding(outside) });
     await act(async () => lifecycle.mount(shadow, child));
     await send({ render: {} });
     expect(popupOf(shadow)).toBeTruthy();

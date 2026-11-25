@@ -10,6 +10,7 @@ import {
   OVERLAY_CONTAINER_PROPERTY_ID,
   RENDER_WIDGET_ACTION_ID,
   THEME_PROPERTY_ID,
+  type OverlayContainerValue,
   type RenderWidgetPayload,
 } from '@gears-frontx/frontx-dashboard-root/contract';
 
@@ -100,10 +101,20 @@ function Drawn({ render, payload, context }: { render: WidgetRenderer; payload: 
 }
 
 /**
- * The host's overlay container as the shared property carries it: an element of the widget's own document, or none for
- * anything else (an element of another document included).
+ * The host's overlay container as the shared property carries it: the `element` of the holder the root publishes
+ * (`OverlayContainerValue` in the contract), when it is an element of the widget's own document, or none for anything
+ * else (a bare element, an element of another document, a holder whose `element` throws). The shape is read, not the
+ * holder's class: the root's class is not this bundle's.
  */
-const elementOf = (value: unknown, own: Document): HTMLElement | null => (value instanceof HTMLElement && value.ownerDocument === own ? value : null);
+const elementOf = (value: unknown, own: Document): HTMLElement | null => {
+  let element: unknown;
+  try {
+    element = typeof value === 'object' && value !== null ? (value as Partial<OverlayContainerValue>).element : null;
+  } catch {
+    return null;
+  }
+  return element instanceof HTMLElement && element.ownerDocument === own ? element : null;
+};
 
 /**
  * A shadow root inside the host's overlay container for this widget's overlays, or null without a container. It

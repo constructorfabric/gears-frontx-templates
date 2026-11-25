@@ -8,6 +8,7 @@ import {
   THEME_PROPERTY_ID,
   WIDGETS_DOMAIN_ID,
   type Dashboard,
+  type OverlayContainerValue,
   type WidgetInstance,
 } from '../contract';
 import { CellFailure, RequestFailed, SharedRequests, formOf, runBinding, type Binding, type BindingResult, type VariableValues } from './binding';
@@ -28,6 +29,21 @@ export type LoadOutcome = { ok: true; dashboard: Dashboard; failed: ReadonlyMap<
 
 /** The result of `refresh`: `problem` names why the root kept the definitions it read before. */
 export type RefreshOutcome = { ok: true } | { ok: false; problem: string };
+
+/**
+ * The value the root publishes for the host's overlay container. The element sits in a private field: the type store
+ * walks and copies the own fields of every value it registers, and an element a page framework rendered leads through
+ * them into that framework's whole tree. The domain hands this same object to each widget.
+ */
+class OverlayContainer implements OverlayContainerValue {
+  readonly #element: HTMLElement;
+  constructor(element: HTMLElement) {
+    this.#element = element;
+  }
+  get element(): HTMLElement {
+    return this.#element;
+  }
+}
 
 /** The reason every request of a disposed root fails with. */
 const DISPOSED = 'the dashboard root is disposed';
@@ -372,12 +388,14 @@ export class DashboardRoot {
 
   /**
    * Publishes the element the widgets open their overlays in (the host's `overlayContainer`), or null for none, on the
-   * `widgets` domain. Each widget then moves its overlays there; with null they stay inside its own shadow root.
+   * `widgets` domain. Each widget then moves its overlays there; with null they stay inside its own shadow root. The
+   * element goes out in a holder the type store does not walk (`OverlayContainerValue` in the contract), and the same
+   * element again publishes nothing.
    */
   publishOverlayContainer(element: HTMLElement | null): void {
     if (!this.registry || this.disposed || (this.published.overlays ?? null) === element) return;
     try {
-      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element);
+      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element && new OverlayContainer(element));
       this.published.overlays = element;
     } catch (error) {
       console.error(`[dashboard] ${escapeControls(`the overlay container cannot be published: ${String(error).split('\n')[0]}`)}`);
