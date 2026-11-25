@@ -862,16 +862,17 @@ function parseKitCss(full) {
 
 /** The deepest nesting of @media rules the survey reads; past it the rest of the file is skipped. */
 export const MEDIA_DEPTH_CAP = 32;
-/** The block at-rules that hold style rules the look may need: only these are listed under skipped when not read. */
+/** The block at-rules that hold style rules: each opens a frame like a non-min-width @media does, with media 'other'. */
 const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@scope', '@starting-style', '@document']);
 
 /**
  * Rules of a CSS file: { selector, media, decls }. media is null for a top
  * level rule, the min-width in px of the innermost @media (min-width: N px)
- * for a rule inside one, or 'other' for any other @media; a rule inside a
- * rule-holding at-rule is not kept and the file is listed under skipped,
- * while a rule inside any other at-rule is not kept and the file is read on.
- * One pass:
+ * for a rule inside one, or 'other' for any other @media and for a rule
+ * inside a rule-holding block at-rule (@supports, @layer, @container, @scope,
+ * @starting-style, @document), which opens a frame like a non-min-width
+ * @media does; a rule inside any other at-rule is not kept and the file is
+ * read on. One pass:
  * each open @media body is a frame with its own brace depth, start and
  * selector, so a body is read where it stands and never scanned again. At the
  * top level a semicolon ends an at-statement (@import, @charset, @layer a;,
@@ -906,14 +907,19 @@ function parseCssRules(css, file = '', full = null) {
         f.selector = text.slice(f.start, i).trim();
         f.start = i + 1;
         f.sig = i + 1;
-        if (f.selector.startsWith('@media')) {
+        const min = /min-width:\s*(\d+)px/.exec(f.selector);
+        // A rule-holding block at-rule opens a frame like a non-min-width @media does; the name is read and matched
+        // lower case, so @supports(display:grid){ and @SUPPORTS open one too. Nesting counts toward MEDIA_DEPTH_CAP
+        // the way @media nesting does.
+        const atMedia = f.selector.startsWith('@media');
+        const holding = !atMedia && RULE_HOLDING_AT_RULES.has(/^@[\w-]+/.exec(f.selector)?.[0]?.toLowerCase() ?? '');
+        if (atMedia || holding) {
           if (frames.length > MEDIA_DEPTH_CAP) {
             if (full) skip(full, `@media rules nested more than ${MEDIA_DEPTH_CAP} deep: the rest of the file is not read${linkNote(full)}`);
             return rules;
           }
-          const min = /min-width:\s*(\d+)px/.exec(f.selector);
           f.depth = 1;
-          frames.push({ media: min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, sig: i + 1 });
+          frames.push({ media: atMedia && min && !/max-width/.test(f.selector) ? Number(min[1]) : 'other', depth: 0, start: i + 1, selector: '', kept: rules.length, sig: i + 1 });
           continue;
         }
       }
@@ -923,7 +929,7 @@ function parseCssRules(css, file = '', full = null) {
       if (full) skip(full, `a closing brace with no rule open: the rest of the file is not read${linkNote(full)}`);
       return rules;
     } else if (f.depth === 0) {
-      // The end of an @media body: the block that holds it closes too.
+      // The end of an @media or rule-holding at-rule body: the block that holds it closes too.
       frames.pop();
       const outer = frames[frames.length - 1];
       outer.depth = 0;
@@ -936,9 +942,6 @@ function parseCssRules(css, file = '', full = null) {
           const decls = new Map();
           for (const m of text.slice(f.start, i).matchAll(/(?<![\w-])(--[\w-]{1,100}|[a-z-]{1,100})\s*:\s*([^;{}]+)/g)) decls.set(m[1], m[2].trim());
           rules.push({ selector: f.selector, media: f.media, decls, file });
-        } else if (full && RULE_HOLDING_AT_RULES.has(f.selector.split(/[\s,{]/)[0])) {
-          const name = f.selector.split(/[\s,{]/)[0];
-          skip(full, `the ${name} rule is not read`);
         }
         f.start = i + 1;
         f.sig = i + 1;

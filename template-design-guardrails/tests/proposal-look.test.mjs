@@ -12,9 +12,10 @@
  *   address was dropped draws nothing;
  * - the rules a stylesheet yields: an at-statement at the top level (@import,
  *   @charset, @layer a;, @namespace, @value) ends at its semicolon and the
- *   rule after it is read as its own rule; a rule the parser still skips (a
- *   block at-rule such as @layer a { ... }) is not kept and the file is
- *   listed under skipped;
+ *   rule after it is read as its own rule; the rules inside a rule-holding
+ *   block at-rule (@layer a { ... }, @supports, @container) are read as
+ *   conditional and never reach the look, while a block at-rule that holds
+ *   no style rules (@keyframes, @font-face) is read on;
  * - the app name from the index title, the content column's width by the
  *   app's own box-sizing (its global reset at the top level of a stylesheet
  *   in src-app or src-app/app, unless the column opts out), and the link
@@ -339,10 +340,32 @@ describe('the rules a stylesheet yields', () => {
     expect(result.look.bg).toBe('#ffffff');
   });
 
-  it('lists a block at-rule it still skips under skipped, with its reason', () => {
+  it('reads a kit chunk of rule-holding block at-rules whole: nothing is skipped or unresolved for it', () => {
+    const root = writeTopApp(tempDir());
+    const chunk = 'node_modules/@gears-frontx/ui-kit/dist/chunks/box.css';
+    writeFileSync(path.join(root, chunk), '@container (min-width: 1px) { .a { color: red } }\n@supports (display: grid) { .b { color: blue } }\n');
+    const result = survey.survey(root);
+    expect(result.skipped).not.toContainEqual(expect.objectContaining({ file: chunk }));
+    expect(result.unresolved).not.toContain(`skipped ${chunk}`);
+  });
+
+  it('reads the rules inside a rule-holding block at-rule as conditional: the top-level rule wins the look', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@layer a { .root { background-color: #000000; } }\n${t}` }));
-    expect(result.skipped).toContainEqual({ file: HOME_CSS, why: 'the @layer rule is not read' });
-    expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
+    expect(result.skipped).toEqual([]);
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+    expect(result.look.bg).toBe('#ffffff');
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
+  });
+
+  it.each([
+    ['@supports with no space before the condition', '@supports(display:grid){ .root { background-color: #000000; } }'],
+    ['@SUPPORTS in upper case', '@SUPPORTS (display: grid) { .root { background-color: #000000; } }'],
+  ])('reads %s as a rule-holding block at-rule: its .root stays out of the look', (_, block) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${block}\n${t}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+    expect(result.look.bg).toBe('#ffffff');
+    expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
   });
 
   it('lists no skipped entry for a block at-rule that holds no style rules, and reads the rule after it', () => {
