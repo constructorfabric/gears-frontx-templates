@@ -150,9 +150,44 @@ describe('survey-app.mjs resolves var() values in bounded time and size', { time
     const result = survey.survey(root);
     const spent = cpuMs() - start;
     expect(result.unresolved).toContain('look.accent');
-    // The old resolution redid every var() once per appearance: about 20 s of CPU time here. A name is now resolved
-    // once and a value is refused over RESOLVE_CAP characters, so the same input stays far under the bound.
-    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide var() fan-out`).toBeLessThan(2000);
+    // The old resolution redid every var() once per appearance: several seconds of CPU time here. A name is now
+    // resolved once and a value is refused over RESOLVE_CAP characters, so the same input stays far under the bound.
+    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide var() fan-out`).toBeLessThan(500);
+  });
+
+  // A null the depth cap produced deep in one value must not stick to the name: the same name may still resolve in a
+  // shallower frame of the same resolution, as it did at e3d6621. The chain runs one name shorter than the deepest
+  // one the survey resolves: the survey reads the token one frame deeper than a bare resolution of the value does.
+  it('resolves a name the depth cap refused deeper in the same value when a shallower frame reaches it', () => {
+    const decls = ['--a: var(--x1);', ...Array.from({ length: 9 }, (_, i) => `--x${i + 1}: var(--x${i + 2});`), '--x10: var(--b);', '--b: var(--leaf);', '--leaf: #ff0000;', '--primary: var(--a, 1px) var(--b);'];
+    const root = edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root {\n  ${decls.join('\n  ')}\n}\n${t}`);
+    const result = survey.survey(root);
+    expect(result.dropped).toContainEqual(expect.objectContaining({ key: 'look.accent', value: '1px #ff0000' }));
+    expect(result.unresolved).toContain('look.accent');
+  });
+
+  // The leaf resolves to the empty string, so RESOLVE_CAP never fires: only the per-name cache keeps the fan-out
+  // from being resolved once per path through it.
+  it('surveys a fan-out whose leaf resolves to the empty string in bounded time', () => {
+    const decls = ['--primary: var(--v0);', ...Array.from({ length: 8 }, (_, l) => `--v${l}: ${Array.from({ length: 8 }, () => `var(--v${l + 1})`).join(' ')};`), '--v8: var(--nothing, );'];
+    const root = edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root {\n  ${decls.join('\n  ')}\n}\n${t}`);
+    const start = cpuMs();
+    const result = survey.survey(root);
+    const spent = cpuMs() - start;
+    expect(result.unresolved).toContain('look.accent');
+    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide fan-out with an empty leaf`).toBeLessThan(500);
+  });
+
+  // A leaf no lookup resolves leaves every level null: caching only resolved values would redo the whole fan-out
+  // once per path, so a null is cached too, for the depth it failed at.
+  it('surveys a fan-out whose leaves no lookup resolves in bounded time', () => {
+    const decls = ['--primary: var(--u0);', ...Array.from({ length: 9 }, (_, l) => `--u${l}: ${Array.from({ length: 8 }, (_, k) => `var(--gone${k})`).join(' ')};`)];
+    const root = edit(writeTopApp(tempDir()), HOME_CSS, (t) => `.root {\n  ${decls.join('\n  ')}\n}\n${t}`);
+    const start = cpuMs();
+    const result = survey.survey(root);
+    const spent = cpuMs() - start;
+    expect(result.unresolved).toContain('look.accent');
+    expect(spent, `the survey took ${spent.toFixed(0)} ms of CPU time on a 9 level, 8 wide fan-out of missing names`).toBeLessThan(500);
   });
 
   it('resolves no value over the output cap: it is unknown, not a refused value', () => {
