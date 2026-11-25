@@ -13,7 +13,7 @@ import {
 import { CellFailure, RequestFailed, SharedRequests, formOf, runBinding, type Binding, type BindingResult, type VariableValues } from './binding';
 import { RequestFailure, withTimeout, type DashboardHost } from './host';
 import { extensionIdOf, renderStampIdOf, stampIdOf, type Role } from './ids';
-import { baseTypeChanged, effectiveTraits, escapeControls, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome, type TypeSources } from './register';
+import { baseTypeChanged, effectiveTraits, escapeControls, partTypeChanged, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome, type TypeSources } from './register';
 import { createWidgetsRegistry, WidgetEntryHandler, type WidgetEntries } from './registry';
 
 /*
@@ -239,9 +239,10 @@ export class DashboardRoot {
    * new file shows its cannot-be-shown state, as on a first load.
    *
    * On any failure (the file request, the base file the type store rejects, a base type defined otherwise than the
-   * type store holds it, which only a new root can take) the root keeps the definitions it read before, every shown
-   * dashboard stays as drawn, one console line names the problem, and the outcome carries it. A widget part left out
-   * is left out as on a first load and does not fail the refresh.
+   * type store holds it, or a type of a widget part defined otherwise than the store holds it from that same part,
+   * which only a new root can take) the root keeps the definitions it read before, every shown dashboard stays as
+   * drawn, one console line names the problem, and the outcome carries it. Any other widget part left out (one whose
+   * type another source brought first, as on a first load) is left out and does not fail the refresh.
    *
    * The last call wins: a call made while another runs aborts the other's file request, and every earlier call
    * resolves with the outcome of the latest one. After `dispose` it resolves `{ ok: false }` and reads nothing; a call
@@ -285,6 +286,9 @@ export class DashboardRoot {
       const trialBundle = registerBundle(trial);
       const changed = baseTypeChanged(this.types, trial, base);
       if (changed) return this.refreshFailed(`the served file: ${changed}`);
+      // A widget part whose own type changed would be left out, and the cells it served would fail.
+      const partChanged = partTypeChanged(this.types, answer, this.sources);
+      if (partChanged) return this.refreshFailed(partChanged);
       const tried = registerServedFile(trial, base, trialBundle);
       if (!tried.ok) return this.refreshFailed(tried.problem);
       file = registerServedFile(this.types, answer, this.bundleIds, this.sources);

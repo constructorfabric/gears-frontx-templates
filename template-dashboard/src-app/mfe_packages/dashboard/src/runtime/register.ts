@@ -167,6 +167,33 @@ export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin
 }
 
 /**
+ * The reason a served file read again cannot register, or nothing: the first type of a widget part that `types` holds
+ * otherwise and that the same part brought first (its source in `sources`, the part named by its manifest ids or its
+ * place). The store keeps the first definition, so the part would be left out and the cells it served would fail.
+ * A part whose type another source brought first was left out from the first load on, and is left out again without
+ * failing anything; a part that cannot be read is left out by the registration as before.
+ */
+export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources: TypeSources): string | undefined {
+  if (!Array.isArray(file)) return undefined;
+  for (const [index, part] of file.slice(1).entries()) {
+    try {
+      if (!isObject(part) || !Array.isArray(part.types)) continue;
+      const instances = Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
+      const source = `the widget part ${partName(instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID)), index)}`;
+      for (const schema of part.types) {
+        if (!isObject(schema)) continue;
+        const id = idOf(schema);
+        const was = types.getSchema(id);
+        if (was && sources.get(id) === source && canonical(was) !== canonical(schema)) return `${source}: its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
+      }
+    } catch {
+      // Left out by the registration, as on a first load.
+    }
+  }
+  return undefined;
+}
+
+/**
  * A part's reason, with a throw turned into one: an in-code host can answer content JSON never carries (a BigInt, a
  * cycle, a getter that throws), which the content checks cannot read. Such a part is left out like any rejected one.
  */

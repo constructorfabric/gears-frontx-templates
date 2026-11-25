@@ -1827,6 +1827,70 @@ describe('refresh and dispose of the root', () => {
     expect(root.types.getSchema(PIE)).toEqual(good.types.find((type) => String(type.$id) === `gts://${PIE}`));
   }, 15_000);
 
+  /** The served file in parts: the base file with the edited dashboard, then one part per catalog bundle but `without`. */
+  const partsOf = (values: number[], { without = [] as string[], extra = [] as unknown[], metricType = (type: Record<string, unknown>) => type } = {}) => {
+    const edited = fileOf(values).instances.at(-1)!;
+    const base = { ...DEMO_WITHOUT_BUNDLES, instances: [...DEMO_WITHOUT_BUNDLES.instances, edited] };
+    const parts = TYPES.filter((type) => !without.includes(type)).map((type) => ({
+      types: (BUNDLE_TYPES[type] ?? []).map((schema) => (type === 'metric_card' ? metricType(schema) : schema)),
+      instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).endsWith(`.${type}.v1`)),
+    }));
+    return [base, ...parts, ...extra];
+  };
+  const METRIC_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.metric_card.v1~';
+
+  it('refuses a refresh whose widget part brings its own held type otherwise, and keeps the working cells drawn', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const changed = partsOf([9], { metricType: (type) => (String(type.$id) === `gts://${METRIC_TYPE}` ? { ...type, description: 'otherwise' } : type) });
+    expect(changed).not.toEqual(partsOf([9]));
+    const answers: unknown[] = [partsOf([7]), changed];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('is left out'))).toEqual([]);
+  }, 15_000);
+
+  /** A part with no manifest that brings the metric widget type otherwise: the metric part brought it first. */
+  const CLASHING = { types: [{ ...BUNDLE_TYPES.metric_card.find((type) => String(type.$id) === `gts://${METRIC_TYPE}`)!, description: 'otherwise' }], instances: [] };
+  const MARKDOWN_TYPES = (BUNDLE_TYPES.markdown_card ?? []).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
+
+  it.each([
+    ['the dashboards change while every widget part keeps its content', partsOf([7]), partsOf([9]), 0],
+    ['a new widget part with new types joins', partsOf([7], { without: ['markdown_card'] }), partsOf([9]), 0],
+    ['a part left out from the first load, its type brought first by another part, comes again', partsOf([7], { extra: [CLASHING] }), partsOf([9], { extra: [CLASHING] }), 2],
+  ])('takes a refresh in which %s, and redraws', async (name, first, next, leftOut) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: unknown[] = [first, next];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const joins = name.startsWith('a new widget part');
+    if (joins) expect(MARKDOWN_TYPES.length > 0 && MARKDOWN_TYPES.every((id) => !root.types.getSchema(id))).toBe(true);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 9']), { timeout: 5000 });
+    expect(root.version).toBe(1);
+    if (joins) expect(MARKDOWN_TYPES.every((id) => root.types.getSchema(id))).toBe(true);
+    // The clashing part is left out on each read, the first load's and the refresh's, naming the part that brought the type.
+    const lines = errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(lines).toHaveLength(leftOut);
+    for (const line of lines) expect(line).toMatch(/is already defined otherwise by the widget part ".*metric_card\.v1.*"$/);
+    expect(refreshLines(errors)).toEqual([]);
+  }, 15_000);
+
   it('shows a dashboard missing from the refreshed file as one that cannot be shown', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let file: ServedFile = fileOf([7]);
