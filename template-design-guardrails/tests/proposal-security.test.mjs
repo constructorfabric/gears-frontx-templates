@@ -1456,16 +1456,12 @@ describe('check-proposal.mjs refuses what would load or run anything', () => {
   });
 
   // The browser's id is the attribute decoded once: id="&amp;#97;" is the literal &#97;, which a mark may not carry.
-  it.each(['&amp;#97;'])('judges the id %s of the logo definition decoded once, as the browser reads it', (id) => {
-    const logoPage = readFileSync(path.join(skill, 'assets/proposals/docs-redesign/r1/proposal.html'), 'utf8');
-    const html = logoPage.replaceOrFail('<path d="M10 10h12v12H10z"/></symbol>', `<path id="${id}" d="M10 10h12v12H10z"/></symbol>`);
-    expect(findings(html)).toEqual([`[mark] the logo definition (svg.brand-defs) carries id="${id}", which points outside the page or runs code`]);
-  });
-
-  // Not a double-decoding row: id="&amp;amp;#97;" decodes to the literal &amp;#97;, still refused, and this checks the
-  // finding repeats the id as written, escapes and all.
-  it('repeats the escaped id of the logo definition in the finding as written', () => {
-    const id = '&amp;amp;#97;';
+  // The &amp;amp;#97; row is no double-decoding row: it decodes to the literal &amp;#97;, still refused, and checks
+  // that the message's value repeats the id as written, escapes and all.
+  it.each([
+    ['decoded once, as the browser reads it', '&amp;#97;'],
+    ['repeated as written in the message\'s value', '&amp;amp;#97;'],
+  ])('judges the id of the logo definition %s: %s', (_, id) => {
     const logoPage = readFileSync(path.join(skill, 'assets/proposals/docs-redesign/r1/proposal.html'), 'utf8');
     const html = logoPage.replaceOrFail('<path d="M10 10h12v12H10z"/></symbol>', `<path id="${id}" d="M10 10h12v12H10z"/></symbol>`);
     expect(findings(html)).toEqual([`[mark] the logo definition (svg.brand-defs) carries id="${id}", which points outside the page or runs code`]);

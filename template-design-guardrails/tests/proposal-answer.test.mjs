@@ -221,10 +221,22 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     expect(found.some((f) => f.includes(message)), found.join('\n')).toBe(true);
   });
 
-  // The ask link is judged by its href decoded once, as the browser reads a fragment: &#35; stands for #.
-  it('reads &#35; in the ask link href as the # it stands for', () => {
-    const coded = edit(r1, '<a href="#answer">your answer</a>', '<a href="&#35;answer">your answer</a>');
-    expect(check.checkPage(coded).findings).toEqual([]);
+  // A fragment href is judged decoded once, as the browser reads it: &#35; stands for #. One row per site that reads
+  // a fragment href, each on the example that carries it. The recommended row: the first .opt-link.recommended is
+  // coded and names A, the suggested option; a later one, written plainly, names B. Read raw, the coded link would
+  // not match and the later one would stand for the recommended option.
+  const OPT_A = '<a class="opt-link recommended" href="#option-a"><span class="mini"';
+  const OPT_A_LATER = '<a class="opt-link recommended" href="#option-a"><span class="opt-name">';
+  const invite = readFileSync(path.join(proposals, 'invite-teammate/r1/proposal.html'), 'utf8');
+  const docs = readFileSync(path.join(proposals, 'docs-redesign/r1/proposal.html'), 'utf8');
+  it.each([
+    ['the ask link', edit(r1, '<a href="#answer">your answer</a>', '<a href="&#35;answer">your answer</a>'), '[answer] the ask'],
+    ['the recommended .opt-link', edit(edit(r1, OPT_A, '<a class="opt-link recommended" href="&#35;option-a"><span class="mini"'), OPT_A_LATER, '<a class="opt-link recommended" href="#option-b"><span class="opt-name">'), 'is not the recommended option'],
+    ['the guarantees #q-N link', edit(invite, '<a class="pinref" href="#draw-join-used" data-n="1">1</a>', '<a href="&#35;q-2">question 2</a>'), '[guarantee]'],
+    ['the paths "!" mark', edit(docs, '<a class="longer" href="#q-2"', '<a class="longer" href="&#35;q-2"'), 'links to no open question'],
+  ])('reads &#35; in the href of %s as the # it stands for', (_, coded, finding) => {
+    const found = check.checkPage(coded).findings;
+    expect(found.filter((f) => f.includes(finding)), found.join('\n')).toEqual([]);
   });
 
   it('reports five ready answers, one past the four allowed', () => {
