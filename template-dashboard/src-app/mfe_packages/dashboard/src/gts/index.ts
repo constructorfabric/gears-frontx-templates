@@ -35,9 +35,16 @@ export const WIDGETS_DOMAIN = widgetsDomain;
  * its own. The root registers each of these only where the type store has
  * none, so a host without a shell can register the `widgets` domain and the
  * widget entries, which name the theme and the language. The overlay
- * container's value is a page element or null, passed by reference; the type
- * store reads an element as no JSON value at all, so its type leaves the value
- * open and each widget takes only an element from it.
+ * container's value is a holder of a page element (`OverlayContainerValue` in
+ * the contract) or null; a page element is no JSON value, so its type leaves
+ * the value open and each widget takes only an element of its own document
+ * from the holder. The type store does read the value on every publish: it
+ * walks the own enumerable fields of every nested object for references,
+ * copies them, and compares the copy with the value before, which stops at 64
+ * levels. An element a page framework rendered carries fields that lead into
+ * the framework's whole tree, so the root never publishes the bare element:
+ * the holder keeps it in a private field the store neither sees nor copies,
+ * and the domain hands the holder itself to each widget.
  */
 export const SHARED_PROPERTY_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [
   ...[THEME_PROPERTY_ID, LANGUAGE_PROPERTY_ID].map((id) => ({ id, value: { type: 'string', minLength: 1 } })),

@@ -110,6 +110,20 @@ A cell's larger view opens in an overlay that mounts inside the dashboard's own 
 <Dashboard root={dashboards} dashboardId={id} theme={theme} language={language} overlayContainer={document.body} />
 ```
 
+The element can also be one the host renders itself. Keep it in state through a callback ref, not in a ref object: setting the state renders the dashboard again once the element exists, and a ref object changes without a render, so the dashboard would not see the element.
+
+```tsx
+function DashboardPage() {
+  const [overlays, setOverlays] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <div ref={setOverlays} className="page-overlays" />
+      <Dashboard root={dashboards} dashboardId={id} theme={theme} language={language} overlayContainer={overlays} />
+    </>
+  );
+}
+```
+
 Outside the dashboard's element the overlay takes its kit theme scope and `lang` from the given element and its ancestors, not from the dashboard: keep `data-theme` (`light` or `dark`, the scope the theme id gives) and `lang` on that element or an ancestor such as `<html>`. Without `overlayContainer`, or with `null`, the overlay stays inside the dashboard. Pass an element of the dashboard's own document: the widgets take no element of another document, window or frame, and their overlays then stay inside the widgets.
 
 The widgets open their own overlays (a menu or a popover a widget draws through the kit) in the same element. Each widget keeps its overlays in a shadow root of their own inside that element, which holds copies of the widget's stylesheets and carries the widget's theme scope and language, so they look as they do inside the widget and the page's styles do not reach them. Without `overlayContainer` they open inside the widget's own shadow root. When the host changes `overlayContainer`, or sets it to `null`, each widget mounts its overlay layer again in the new place. An overlay a widget has open at that moment stays open and moves there, and its content is drawn again: what the user typed in it is lost. A chart's tooltip is not an overlay: it is drawn inside the chart and stays there.

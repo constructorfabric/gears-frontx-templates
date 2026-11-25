@@ -97,9 +97,10 @@ export const LANGUAGE_PROPERTY_ID = 'gts.frontx.mfes.comm.shared_property.v1~fro
  *
  * The value is an {@link OverlayContainerValue} that holds the element, or null for none; never the element itself.
  * The type store reads every value it is given: it walks the own enumerable fields of each nested object for
- * references and copies them, and an element a page framework rendered carries such fields that lead into the
- * framework's whole tree (a React element does). The holder keeps the element in a private field, which the store
- * neither walks nor copies; the domain hands each widget the holder the root published.
+ * references, copies them and compares the copy with the value before, which stops at 64 levels; an element a page
+ * framework rendered carries such fields that lead into the framework's whole tree (a React element does). The holder
+ * keeps the element in a private field, which the store neither walks nor copies; the domain hands each widget the
+ * holder the root published.
  *
  * The value schema is open (a page element is not JSON), so nothing in the type store checks what a widget receives.
  * A widget reads the value's `element` and uses it only when it is an `HTMLElement` of its own document, and treats
