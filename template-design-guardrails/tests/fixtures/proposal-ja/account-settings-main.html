@@ -1,0 +1,169 @@
+<h1 class="topbar-title">提案：アカウント設定</h1><p class="topbar-meta"><span>ページ <code>account-settings</code>、リビジョン <code>r1</code>、2026-11-20</span><span>特に記載がなければ、ここにあるものはすべて<span class="chip chip--scope" data-state="proposed">提案中</span>です</span></p></div></div>
+<main>
+
+<header class="sec head" id="head">
+  <p class="takeaway">ヘッダーのアカウントのリンクから一つのページを開き、表示名と言語と受け取るメールを変えて保存します。</p>
+  <p class="ask">このまま作るか、変えたい点を書いて、未決の質問に答えてください：<a href="#answer">あなたの回答</a>。</p>
+  <p class="disclaimer">これは決めるためのスケッチです。実際のページは回答のあとに作って確かめるので、細かい点が変わることがあります。</p>
+</header>
+<nav class="cue" aria-label="このページの内容"><span class="cue-title">このページの内容</span><ol><li><a href="#asked">依頼</a></li><li><a href="#overview">概要</a></li><li><a href="#place">アプリ内の位置</a></li><li><a href="#how">使い方</a></li><li><a href="#addresses">アドレス</a></li><li><a href="#built">使う部品</a></li><li><a href="#data">データ</a></li><li><a href="#states">状態</a></li><li><a href="#questions">未決の質問</a></li><li><a href="#answer">あなたの回答</a></li></ol></nav>
+
+<section class="sec" id="asked">
+  <h2>依頼の内容</h2>
+  <p class="takeaway">名前と言語とメールのための一つのページを選択肢なしで頼まれたので、メールアドレスそのものはサインインから来るものとしました。</p>
+  <p class="request">「表示名と言語と受け取るメールを変えられるアカウント設定のページを追加してください。ページは一つで十分で、選択肢はいりません。」</p>
+  <div class="cols">
+    <div><h3>前提にしたこと</h3><ul>
+      <li>変えられるのは自分のアカウントだけです。</li>
+      <li>メールアドレスはサインインから来て、ここでは表示するだけで変えません。</li>
+      <li>セキュリティの通知は止められません。</li>
+      <li>変更はクリックのたびではなく、保存したときに反映されます。</li>
+    </ul></div>
+    <div><h3>このページに含まないもの</h3><ul>
+      <li>パスワード、サインインの方法、アカウントの削除。</li>
+      <li>ほかの人やチーム全体の設定。</li>
+    </ul></div>
+  </div>
+</section>
+
+<section class="sec" id="overview">
+  <h2>概要</h2>
+  <p class="takeaway">プロフィールとメールの二枚のカードを一つのページに置き、保存は両方に一つだけです。</p>
+  <div class="overview"><a class="opt-link" href="#design"><span class="mini" data-mini-of="draw-design"></span><span class="opt-name">アカウント設定</span><span class="small">一つのページに二枚のカードと保存ボタンが一つ。</span></a></div>
+</section>
+
+<section class="sec" id="place">
+  <h2>アプリの中の位置</h2>
+  <p class="takeaway">アカウントはホームとドキュメントの次の三つめのヘッダーリンクになり、ほかのどこにもつながりません。</p>
+<figure class="drawing" id="draw-place"><div class="scroll"><div class="canvas">
+<div class="d-app d-app--top d-app--mini"><div class="d-top d-top--end d-active--underline"><span class="d-brand d-brand--logo"><span class="d-logo"><svg aria-hidden="true"><use href="#brand-mark"/></svg></span>Example App</span><span class="d-navlink">ホーム</span><span class="d-navlink">ドキュメント</span><span class="d-navlink d-navlink--active d-navlink--new" data-note="1">アカウント <span class="d-new">新規</span></span></div><div class="d-main"><div class="d-pagehead"><div class="d-pagehead__text"><span class="d-h1">アカウント設定</span><span class="d-lead">名前、言語、Example App から届くメール</span></div></div><span class="d-skel" style="--w: 50%"></span></div></div>
+</div></div><figcaption>今のアプリにあるホームとドキュメントの二つのページと、そのあとに来る新しいアカウントのリンクがあるヘッダー。</figcaption></figure>
+<ol class="notes" data-for="draw-place">
+<li data-n="1"><b>新しいヘッダーリンク</b> アカウントはホームとドキュメントのあと、三つめに来ます。</li>
+</ol>
+  <ul><li>入ってくるリンク：ヘッダー。</li><li>出ていくリンク：なし。</li></ul>
+</section>
+
+<section class="sec" id="how">
+  <h2>使い方</h2>
+  <p class="takeaway">スマートフォンでは二枚のカードを縦に重ね、デスクトップでは横に並べてその下に保存を置きます。</p>
+  <section class="option" id="design">
+    <h4 class="view-name">スマートフォンで</h4>
+    <div class="pair">
+<figure class="drawing" id="draw-design-phone"><div class="scroll"><div class="canvas">
+<div class="d-app d-app--phone"><div class="d-top d-top--rows d-active--underline"><span class="d-brand d-brand--logo"><span class="d-logo"><svg aria-hidden="true"><use href="#brand-mark"/></svg></span>Example App</span><div class="d-toplinks"><span class="d-navlink">ホーム</span><span class="d-navlink">ドキュメント</span><span class="d-navlink d-navlink--active">アカウント</span></div></div><div class="d-main">
+<div class="d-pagehead"><div class="d-pagehead__text"><span class="d-h1">アカウント設定</span><span class="d-lead">名前、言語、Example App から届くメール</span></div></div>
+<div class="d-grid" style="--cols: 1">
+<div class="d-card" data-note="1"><span class="d-h2">プロフィール</span>
+<div class="d-field"><span class="d-label">表示名</span><span class="d-input">山田 花子</span></div>
+<div class="d-field"><span class="d-label">メール</span><span class="d-muted">hanako.yamada@example.com</span></div>
+<div class="d-field"><span class="d-label">言語</span><span class="d-select">日本語</span></div>
+</div>
+<div class="d-card"><span class="d-h2">メール</span>
+<span class="d-switch d-switch--on">セキュリティの通知（常に送信）</span>
+<span class="d-switch d-switch--on">新しいバージョンごとのリリースノート</span>
+<span class="d-switch">変更の週間まとめ</span>
+<span class="d-switch">はじめての方へのヒント</span>
+</div>
+</div>
+<div class="d-row"><span class="d-btn d-btn--primary" data-note="2">変更を保存</span><span class="d-small d-muted">最終保存 2026年11月14日</span></div>
+</div></div>
+</div></div><figcaption>幅 390 px のスマートフォン：ヘッダーはリンクの二段めを残し、カードは縦に重なります。</figcaption></figure>
+<ol class="notes" data-for="draw-design-phone">
+<li data-n="1"><b>カードは一列</b> 先にプロフィール、次にメールで、二枚はもう横に並びません。</li>
+<li data-n="2"><b>保存は最後</b> メールのスイッチの下にあるので、保存するには下までスクロールします。</li>
+</ol>
+    </div>
+    <h4 class="view-name">デスクトップで</h4>
+<figure class="drawing" id="draw-design"><div class="scroll"><div class="canvas">
+<div class="d-app d-app--top"><div class="d-top d-top--end d-active--underline"><span class="d-brand d-brand--logo"><span class="d-logo"><svg aria-hidden="true"><use href="#brand-mark"/></svg></span>Example App</span><span class="d-navlink">ホーム</span><span class="d-navlink">ドキュメント</span><span class="d-navlink d-navlink--active">アカウント</span></div><div class="d-main">
+<div class="d-pagehead"><div class="d-pagehead__text"><span class="d-h1">アカウント設定</span><span class="d-lead">名前、言語、Example App から届くメール</span></div></div>
+<div class="d-grid" style="--cols: 2">
+<div class="d-card"><span class="d-h2">プロフィール</span>
+<div class="d-field"><span class="d-label">表示名</span><span class="d-input" data-note="1">山田 花子</span></div>
+<div class="d-field"><span class="d-label">メール</span><span class="d-muted" data-note="2">hanako.yamada@example.com</span></div>
+<div class="d-field"><span class="d-label">言語</span><span class="d-select" data-note="3">日本語</span></div>
+</div>
+<div class="d-card" data-note="4"><span class="d-h2">メール</span>
+<span class="d-switch d-switch--on">セキュリティの通知（常に送信）</span>
+<span class="d-switch d-switch--on">新しいバージョンごとのリリースノート</span>
+<span class="d-switch">変更の週間まとめ</span>
+<span class="d-switch">はじめての方へのヒント</span>
+</div>
+</div>
+<div class="d-row"><span class="d-btn d-btn--primary" data-note="5">変更を保存</span><span class="d-small d-muted" data-note="6">最終保存 2026年11月14日</span></div>
+</div></div>
+</div></div><figcaption>デスクトップ。リリースノートとセキュリティの通知を受け取り、先週保存した人。</figcaption></figure>
+<ol class="notes" data-for="draw-design">
+<li data-n="1"><b>表示名</b> ほかの人に見える名前で、空にはできません。</li>
+<li data-n="2"><b>メール</b> 参照用に表示します。ここで変えられるかは<a class="chip" data-state="open" href="#q-1">未決</a></li>
+<li data-n="3"><b>言語</b> 保存すると、すべてのページの言語が変わります。<span class="chip" data-state="accepted">決定済み</span></li>
+<li data-n="4"><b>メールのスイッチ</b> メールの種類ごとに一つで、セキュリティの通知はオンのままです。<span class="chip" data-state="accepted">決定済み</span></li>
+<li data-n="5"><b>変更を保存</b> すべてをまとめて保存し、保存したと伝えます。</li>
+<li data-n="6"><b>最終保存</b> 設定が最後に変わった日時。</li>
+</ol>
+    <p class="reads">読むデータ：<span class="mark">今ある</span> 本人の名前とメール（AccountsApiService から）、<span class="mark mark--new">新しいデータ要求が必要</span> 言語、メールの選択、その保存。</p>
+  </section>
+</section>
+
+<section class="sec" id="addresses">
+  <h2>アドレス</h2>
+  <p class="takeaway">このページのアドレスは一つで、開いた人はそれぞれ自分の設定を見ます。</p>
+  <div class="tbl-wrap"><table class="tbl addresses" aria-label="このページのアドレス">
+    <thead><tr><th>画面</th><th>アドレス</th><th>来る場所</th><th>リンクが保つもの</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">アカウント設定</th><td><code>/?screen=account</code></td><td>ヘッダー</td><td>個人のものはなく、それぞれ自分の設定を見ます</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">アプリのリンクは登録したルート /account ではなく、画面をアドレスに入れた形（/?screen=account）なので、共有したリンクもその形になります。アドレスにアカウントは入らないので、共有したリンクは読む人自身の設定を開き、戻るで元のページに戻ります。</p>
+</section>
+
+<section class="sec" id="built">
+  <h2>アプリにすでにあるもので作る</h2>
+  <p class="takeaway">ホームのページが使っているカード、入力欄、選択、スイッチ、ボタンだけで、新しい部品はありません。</p>
+</section>
+
+<section class="sec" id="data">
+  <h2>必要なデータ</h2>
+  <p class="takeaway">名前とメールは今ありますが、言語とメールの選択とその保存には新しいデータ要求が必要です。</p>
+  <ul>
+    <li><b>表示名とメール</b>：その人が誰か。<span class="mark">今ある</span> <span class="small">AccountsApiService、今のユーザー</span></li>
+    <li><b>言語とメールの選択</b>：その人が選んだもの。<span class="mark mark--new">新しいデータ要求が必要</span> <span class="small">これから決める</span></li>
+    <li><b>保存</b>：名前、言語、メールの選択を書き込みます。<span class="mark mark--new">新しいデータ要求が必要</span> <span class="small">これから決める</span></li>
+  </ul>
+  <p class="small">スケッチのデータは見本です。</p>
+</section>
+
+<section class="sec" id="states">
+  <h2>状態</h2>
+  <p class="takeaway">描いたのは全部そろったページだけで、読み込み中、保存済み、保存できないはそれぞれ一行で書きます。</p>
+  <ul>
+    <li><b>全部そろった状態</b>：上のスケッチ。<span class="small">描いた</span></li>
+    <li><b>読み込み中</b>：設定が届くまで、各カードに灰色の線。<span class="small">描いていない</span></li>
+    <li><b>保存済み</b>：変更を保存したという短いメッセージ。<span class="small">描いていない</span></li>
+    <li><b>保存できない</b>：ボタンの上にそう出し、入力した内容を残して、もう一度試せるようにします。<span class="small">描いていない</span></li>
+  </ul>
+</section>
+
+<section class="sec" id="questions">
+  <h2>未決の質問</h2>
+  <p class="takeaway">未決の質問は一つで、メールアドレスをここで変えられるようにするかどうかです。</p>
+  <ol>
+    <li id="q-1">メールアドレスはここで変えられるようにしますか、それともサインインからだけにしますか？ <span class="small">関わる部分：メールの欄</span><span class="small why">おすすめ：サインインからだけ。アドレスはサインインが持っていて、変更にはこのページで描いていない確認が必要だからです。</span></li>
+  </ol>
+</section>
+
+<section class="sec" id="answer">
+  <h2>あなたの回答</h2>
+  <p class="ans-hint">おすすめの答えはもう選んであります。違うと思うところを変え、回答をコピーを押してチャットに貼ってください。自分の言葉で答えを書いてもかまいません。</p>
+  <form class="answer" id="answer-form" data-subject="アカウント設定の提案（ページ account-settings、リビジョン r1）" data-phrase-choose="{subject}について、選択肢 {letter}「{name}」を選びます。" data-phrase-answer="{subject}について：{answer}。" data-phrase-questions="未決の質問への答え：" data-phrase-changes="変更：{changes}" data-phrase-none="なし" data-phrase-copied="コピーしました。チャットに貼ってください。" data-phrase-failed="コピーできませんでした。テキストを選んだので、手でコピーしてください。" data-phrase-wide-part="横に広い部分">
+<fieldset class="ans-q" data-q="option"><legend>どれにしますか？</legend><div class="picks picks--cards">
+<label class="pick pick--card"><input type="radio" name="option" value="build" data-say="スケッチのとおりに作る" checked><span><b>このとおりに作る</b> <span class="tag">おすすめ</span><span class="small">スケッチのとおりにページを作ります。</span></span></label>
+<label class="pick pick--card"><input type="radio" name="option" value="change" data-say="下の変更に書いたとおり、先に変える"><span><b>先に変える</b><span class="small">作る前に変えたい点を下に書いてください。</span></span></label>
+</div></fieldset>
+<fieldset class="ans-q" data-q="1"><legend>1. メールアドレスはここで変えられるようにしますか、それともサインインからだけにしますか？</legend><div class="picks"><label class="pick"><input type="radio" name="q1" value="サインインからだけ" data-say="メールアドレスはこのページに表示しますが、変えられるのはサインインからだけです。" checked><span>サインインからだけ <span class="tag">おすすめ</span></span></label><label class="pick"><input type="radio" name="q1" value="ここで変えられる" data-say="メールアドレスは表示名と同じように、このページで変えられます。"><span>ここで変えられる</span></label></div></fieldset>
+<label class="ans-q ans-note"><span class="ans-legend">変えたい点はありますか？</span><textarea name="changes" rows="3" placeholder="例：言語の選択を表示名の上に"></textarea></label>
+<div class="ans-out"><pre id="answer-text" aria-live="polite"></pre><div class="ans-actions"><button type="button" id="answer-copy" class="btn-primary">回答をコピー</button><span class="small" id="answer-state"></span></div></div>
+  </form>
+</section>
+</main>

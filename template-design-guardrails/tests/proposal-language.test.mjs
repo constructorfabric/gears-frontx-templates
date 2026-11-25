@@ -146,3 +146,56 @@ describe('a page in the person\'s own language', () => {
     expect(found.filter((f) => f.startsWith(`[${kind}]`) && f.includes(message)), found.join('\n')).toHaveLength(1);
   });
 });
+
+/**
+ * A page in Japanese, written as a Japanese team would write it: account-settings with its visible text in
+ * Japanese (tests/fixtures/proposal-ja/account-settings-main.html, the top bar's title to the end of main), the
+ * structure kept. Sentences end in 。, the title's word for a proposal is followed by a full-width colon, and no
+ * spaces stand between words.
+ */
+const japanese = () => {
+  const page = read('account-settings/r1');
+  const main = readFileSync(path.join(here, 'fixtures/proposal-ja/account-settings-main.html'), 'utf8');
+  const from = page.indexOf('<h1 class="topbar-title">');
+  const to = page.indexOf('</main>\n') + '</main>\n'.length;
+  return (page.slice(0, from) + main + page.slice(to))
+    .replaceOrFail('<html lang="en">', '<html lang="ja">')
+    .replaceOrFail('<title>Proposal: Account settings</title>', '<title>提案：アカウント設定</title>')
+    .replaceOrFail('<dialog id="zoom" aria-label="Enlarged drawing">', '<dialog id="zoom" aria-label="拡大したスケッチ">')
+    .replaceOrFail('<button>Close</button>', '<button>閉じる</button>');
+};
+
+describe('a page in a language written without spaces', () => {
+  it('reads a natural Japanese account-settings page clean', () => {
+    const page = japanese();
+    expect(page).toContain('<h1 class="topbar-title">提案：アカウント設定</h1>');
+    expect(page).toMatch(/<p class="takeaway">[^<]*。<\/p>/);
+    expect(findings(page)).toEqual([]);
+  });
+
+  it.each([
+    ['a takeaway ending in 。', 'one sentence'],
+    ['the title 提案：…', 'the title must read'],
+    ['a data-say of one Japanese sentence', 'a data-say of fewer than five words'],
+    ['a .why of one Japanese sentence', 'gives no reason for its suggested answer'],
+  ])('no longer reports %s', (_, message) => {
+    expect(findings(japanese()).filter((f) => f.includes(message))).toEqual([]);
+  });
+
+  it('takes the full-width colon with a space after it too', () => {
+    expect(findings(japanese().replaceAllOrFail('提案：アカウント設定', '提案： アカウント設定'))).toEqual([]);
+  });
+
+  it('still finds two sentences in a takeaway, a short data-say and a short reason', () => {
+    const page = japanese();
+    expect(findings(page.replaceOrFail('新しい部品はありません。</p>', '新しい部品はありません。保存も同じです。</p>'))).toContain('[takeaway] the takeaway of #built is not one sentence');
+    for (const say of ['はい', 'はいはい']) {
+      expect(findings(page.replaceOrFail('data-say="メールアドレスは表示名と同じように、このページで変えられます。"', `data-say="${say}"`))).toContain('[answer] the answer "ここで変えられる" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
+    }
+    expect(findings(page.replaceOrFail(/<span class="small why">[^<]*<\/span>/, '<span class="small why">はい</span>'))).toContain('[answer] open question 1 gives no reason for its suggested answer (.why)');
+  });
+
+  it('keeps counting words between spaces on a page in English', () => {
+    expect(findings(read('account-settings/r1').replaceOrFail('data-say="The email address can be changed on this page, like the display name."', 'data-say="Changeable on this page."'))).toContain('[answer] the answer "Changeable here" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
+  });
+});

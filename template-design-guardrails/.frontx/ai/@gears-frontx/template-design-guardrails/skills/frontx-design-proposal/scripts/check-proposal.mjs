@@ -71,7 +71,8 @@
  * - takeaway: a section (all but the head, the glossary and the answer) without a
  *   one-sentence takeaway right under its h2, a takeaway of more than thirty
  *   words (the head's too), or one that only says its heading again; a
- *   sentence breaks at ".", "!" or "?" before more text, whatever starts it,
+ *   sentence breaks at ".", "!" or "?" before more text, whatever starts it
+ *   (at a full-width "。", "！" or "？" before more text, a space or none),
  *   never at the period of a common abbreviation (e.g.), and at an ellipsis
  *   only before a capital letter;
  * - ids: an id used twice;
@@ -96,7 +97,9 @@
  *   below ("Proposal:", "Best for", "suggested", a chip's state, "Changed
  *   since", "on a phone", the table columns). On a page in another language
  *   the same parts are found by their place and class instead: the title is
- *   a word, a colon and the title; a disclaimer has text; an option has two
+ *   a word, a colon (or a full-width colon, with or without a space) and the
+ *   title; in a language written without spaces (UNSPACED_LANGS) the word
+ *   minimums count characters (CHARS_PER_WORD); a disclaimer has text; an option has two
  *   fields; the overview's comparison is a dl with two terms or more; a tag
  *   in a ready answer marks it suggested; a chip has text; the
  *   "Changed since" line names the previous revision; a storyboard's width
@@ -297,6 +300,21 @@ const HTML_ELEMENTS = new Set('html head body title meta link style script noscr
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color-mix)\(|\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|pink)\b/i;
 const words = (text) => text.trim().split(/\s+/).filter(Boolean).length;
+/**
+ * Languages written without spaces between words (Japanese, Chinese, Thai, Lao, Khmer, Burmese), by the primary
+ * subtag of <html lang>: a count of words between spaces says nothing there, so a word minimum counts characters.
+ */
+const UNSPACED_LANGS = new Set(['ja', 'zh', 'th', 'lo', 'km', 'my']);
+/**
+ * Letters and digits that count as one word in such a language, for the word minimums only. One English word is
+ * about 1.5 Chinese characters, 2 to 3 Japanese ones and more in Thai; the lowest ratio is taken, so a minimum
+ * never asks more of such a text than of the same text in English, and an answer of one or two characters still
+ * falls short. The maximums keep counting words between spaces, and bind little in such a language.
+ */
+const CHARS_PER_WORD = 1.5;
+const unspaced = (root) => UNSPACED_LANGS.has((langOf(root) ?? '').toLowerCase().split('-')[0]);
+/** The words of a text for a minimum: words between spaces, or in a language without spaces its letters and digits over CHARS_PER_WORD. */
+const wordsFor = (text, spaceless) => (spaceless ? (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) / CHARS_PER_WORD : words(text));
 /** A language tag: two or three letters, then optional parts of letters or digits joined by hyphens (en, de, pt-BR). */
 const LANG_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/i;
 const langOf = (root) => find(root, (n) => n.tag === 'html')[0]?.attrs.lang?.trim();
@@ -1063,7 +1081,7 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
     if (inside(topbar, (a) => a.tag === 'main')) add('head', 'the top bar (.topbar) sits before main, not inside it');
     const h1s = find(root, (n) => n.tag === 'h1');
     const title = find(topbar, (n) => n.tag === 'h1' && hasClass(n, 'topbar-title'))[0];
-    if (!title || !(english ? /^Proposal: \S/ : /^[^:]+: \S/).test(norm(textOf(title)))) add('head', `the title must read ${english ? '"Proposal: <page title>"' : '"<the word for proposal>: <page title>"'} (h1.topbar-title in the top bar)`);
+    if (!title || !(english ? /^Proposal: \S/ : /^[^:\uff1a]+(?:: |\uff1a ?)\S/).test(norm(textOf(title)))) add('head', `the title must read ${english ? '"Proposal: <page title>"' : '"<the word for proposal>: <page title>"'} (h1.topbar-title in the top bar)`);
     if (h1s.length !== 1) add('head', `${h1s.length} h1 elements; the top bar's title is the page's only h1`);
     const docTitle = find(root, (n) => n.tag === 'title')[0];
     if (title && (!docTitle || norm(textOf(docTitle)) !== norm(textOf(title)))) add('head', `the document <title> "${docTitle ? norm(textOf(docTitle)) : ''}" differs from the h1 "${norm(textOf(title))}"`);
@@ -1283,6 +1301,7 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, fol
   for (const ask of find(root, (n) => hasClass(n, 'ask'))) {
     if (!find(ask, (n) => n.tag === 'a' && hrefOf(n) === '#answer').length) add('answer', `the ask "${norm(textOf(ask)).slice(0, 50)}" does not link to the answer block (<a href="#answer">)`);
   }
+  const spaceless = unspaced(root);
   const sec = sectionById.get('answer');
   const form = sec ? find(sec, (n) => n.tag === 'form' && n.attrs.id === 'answer-form' && hasClass(n, 'answer'))[0] : undefined;
   if (!form) { add('answer', 'no answer block (form#answer-form.answer in #answer) with the option, the open questions, the changes and Copy answer'); return; }
@@ -1358,11 +1377,11 @@ function checkAnswer({ root, sectionById, optionNodes, withOptions, english, fol
     else if (!oneChecked(picks, sug[0])) add('answer', `the suggested answer of question ${n} is not the one checked`);
     for (const p of picks) {
       const say = norm(p.input.attrs['data-say'] ?? '');
-      if (words(say) < 5) add('answer', `the answer "${p.text}" of question ${n} has ${say ? 'a data-say of fewer than five words' : 'no data-say'}; write the full sentence the copied answer carries`);
+      if (wordsFor(say, spaceless) < 5) add('answer', `the answer "${p.text}" of question ${n} has ${say ? 'a data-say of fewer than five words' : 'no data-say'}; write the full sentence the copied answer carries`);
       if (NOT_DECIDED.test(p.text) || NOT_DECIDED.test(p.input.attrs.value ?? '')) add('answer', `the answer "${p.text}" of question ${n} is a "not decided" placeholder; offer real answers and pick the suggested one`);
     }
     const li = itemOf.get(n);
-    if (!find(li, (x) => hasClass(x, 'why') && words(textOf(x)) >= 3).length) add('answer', `open question ${n} gives no reason for its suggested answer (.why)`);
+    if (!find(li, (x) => hasClass(x, 'why') && wordsFor(textOf(x), spaceless) >= 3).length) add('answer', `open question ${n} gives no reason for its suggested answer (.why)`);
   }
 
   // the changes, the text and the Copy button
@@ -1535,7 +1554,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   for (const d of find(main, (n) => n.tag === 'details')) {
     if (inside(d, (a) => a.tag === 'details')) add('disclosure', 'a disclosure inside a disclosure; two levels at most');
     const summary = d.children.find((c) => typeof c !== 'string' && c.tag === 'summary');
-    if (!summary || words(textOf(summary)) < 3) add('disclosure', 'a disclosure whose summary does not say what it hides');
+    if (!summary || wordsFor(textOf(summary), unspaced(root)) < 3) add('disclosure', 'a disclosure whose summary does not say what it hides');
   }
 
   // glossary
@@ -1618,7 +1637,7 @@ function checkParts({ root, main, sectionById, drawings, screens, how, add }) {
   }
   for (const r of find(main, (n) => hasClass(n, 'reads'))) if (!find(r, (n) => hasClass(n, 'mark')).length) add('data', 'a data line without "exists today" or "needs a new data request" (.mark)');
 
-  checkMapping({ mapping: sectionById.get('mapping'), english, add });
+  checkMapping({ mapping: sectionById.get('mapping'), english, spaceless: unspaced(root), add });
   checkDensity({ sections: [...sectionById.values()], add });
   checkLinksAndIds({ root, byId, add });
 
@@ -1838,15 +1857,17 @@ const shownText = (raw) => decodeHtml(raw.replace(/&([a-zA-Z]{2,20});/g, (m, nam
 /** Abbreviations whose period ends no sentence. */
 const ABBREVIATIONS = /\b(?:e\.g|i\.e|etc|vs|cf|approx|incl|Dr|Mr|Mrs|Ms|St|No)\.(?=\s)/g;
 /**
- * One sentence: it ends with ".", "!" or "?", and no break stands inside it.
- * A break is ".", "!" or "?" before more text, whatever starts it (a capital,
- * a lower-case word, a number); a period after a common abbreviation is no
- * break. A run of periods (an ellipsis) is a break only before a capital:
- * "counts... then" is one sentence, "counts... Then" two.
+ * One sentence: it ends with ".", "!" or "?", or their full-width forms "。",
+ * "！" and "？", and no break stands inside it. A break is ".", "!" or "?"
+ * before more text, whatever starts it (a capital, a lower-case word, a
+ * number); a period after a common abbreviation is no break. A run of periods
+ * (an ellipsis) is a break only before a capital: "counts... then" is one
+ * sentence, "counts... Then" two. A full-width end before more text is a
+ * break, with or without a space between, as such text puts none.
  */
 const sentenceFindings = (t) => {
   const plain = t.replace(ABBREVIATIONS, (m) => m.slice(0, -1));
-  return !/[.!?]$/.test(t) || /(?:(?<!\.)\.|[!?])\s+\S|\.\.\s+\p{Lu}/u.test(plain) ? 'is not one sentence' : null;
+  return !/[.!?\u3002\uff01\uff1f]$/.test(t) || /(?:(?<!\.)\.|[!?])\s+\S|\.\.\s+\p{Lu}|[\u3002\uff01\uff1f]\s*\S/u.test(plain) ? 'is not one sentence' : null;
 };
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
@@ -1937,7 +1958,7 @@ function checkLinksAndIds({ root, byId, add }) {
 }
 
 /** The mapping of today's page: Part, Today, Proposed; a change mark on every row; a reason for a removal; the legend; today's page drawn in a disclosure. */
-function checkMapping({ mapping, english, add }) {
+function checkMapping({ mapping, english, spaceless, add }) {
   if (!mapping) return;
   const table = find(mapping, (n) => n.tag === 'table' && hasClass(n, 'mapping'))[0];
   if (!table) { add('mapping', 'no mapping table (table.mapping)'); return; }
@@ -1956,7 +1977,7 @@ function checkMapping({ mapping, english, add }) {
     if (!CHANGES.includes(change)) { add('mapping', `the row "${part}" has no change mark (data-change: ${CHANGES.join(', ')})`); continue; }
     used.add(change);
     const proposed = cells[1] ? norm(textOf(cells[1])) : '';
-    if (change === 'removed' && words(proposed) < 3) add('mapping', `the removed part "${part}" does not say why it goes`);
+    if (change === 'removed' && wordsFor(proposed, spaceless) < 3) add('mapping', `the removed part "${part}" does not say why it goes`);
     if (change !== 'removed' && !proposed) add('mapping', `the row "${part}" does not say where it goes`);
   }
   const legend = find(mapping, (n) => hasClass(n, 'legend'))[0];
