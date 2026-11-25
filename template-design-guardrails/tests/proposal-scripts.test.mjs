@@ -5,7 +5,8 @@
  *   survey.json;
  * - survey-app.mjs against a top header app that styles itself
  *   (tests/proposal-fixture.mjs): the screens it shows, its chrome and its
- *   own page values over the kit's;
+ *   own page values over the kit's; screens with the same presentation order
+ *   come out in the UTF-16 code unit order of their routes, not the locale's;
  * - check-proposal.mjs on the worked example (r1 replaced, r2 awaiting, the
  *   r2 record selected) and on broken copies, one per finding kind, a pin
  *   number that is not digits included; the page parts have their own file,
@@ -41,6 +42,17 @@ const silent = () => {
   return { out, io: { log: (line) => out.push(line), error: (line) => out.push(line) } };
 };
 
+// Gives both screens of a top header app the same presentation order, so the route tie-break decides.
+const withRoutes = (root, edits) => {
+  for (const [rel, route] of Object.entries(edits)) {
+    const file = path.join(root, rel);
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.extensions = data.extensions.map((x) => ({ ...x, route, presentation: { ...x.presentation, order: 10 } }));
+    writeFileSync(file, JSON.stringify(data, null, 2));
+  }
+  return root;
+};
+
 describe('survey-app.mjs', () => {
   const app = writeProposalApp(tempDir());
 
@@ -50,6 +62,24 @@ describe('survey-app.mjs', () => {
     expect(result.screens[0].kitComponents).toEqual(['Button', 'Card', 'CardContent', 'CardHeader', 'CardTitle']);
     expect(result.screens[1].kitComponents).not.toContain('Dialog');
     expect(result.screens[1].source).toEqual(['src-app/mfe_packages/team-mfe/src/screens/docs/']);
+  });
+
+  // The routes here are upper and lower case letters on purpose: localeCompare sorts 'a' before 'B',
+  // UTF-16 code units sort 'B' (U+0042) before 'a' (U+0061), whichever screen holds which route.
+  it('orders screens with the same order by the UTF-16 code units of their routes, not by the locale', () => {
+    const result = survey.survey(withRoutes(writeTopApp(tempDir()), {
+      'src-app/mfe_packages/home-mfe/mfe.json': '/a',
+      'src-app/mfe_packages/docs-mfe/mfe.json': '/B',
+    }));
+    expect(result.screens.map((s) => s.route)).toEqual(['/B', '/a']);
+  });
+
+  it('orders screens with the same order by their routes whichever package holds which route', () => {
+    const result = survey.survey(withRoutes(writeTopApp(tempDir()), {
+      'src-app/mfe_packages/home-mfe/mfe.json': '/B',
+      'src-app/mfe_packages/docs-mfe/mfe.json': '/a',
+    }));
+    expect(result.screens.map((s) => s.route)).toEqual(['/B', '/a']);
   });
 
   it('reports services, mocks, design files, navigation and the app name', () => {
