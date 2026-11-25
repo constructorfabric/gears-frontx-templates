@@ -115,7 +115,8 @@ function useOverlayRoot(outside: HTMLElement | null, styled: Element | ShadowRoo
   const [overlayRoot, setOverlayRoot] = useState<ShadowRoot | null>(null);
   useLayoutEffect(() => {
     if (!outside) return setOverlayRoot(null);
-    const host = document.createElement('div');
+    // The container's own document makes the host, whatever guard picked the container.
+    const host = outside.ownerDocument.createElement('div');
     host.dataset.widgetOverlays = '';
     const shadow = host.attachShadow({ mode: 'open' });
     for (const sheet of Array.from(styled.children)) if (sheet.matches('style, link[rel="stylesheet"]')) shadow.append(sheet.cloneNode(true));
