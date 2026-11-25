@@ -228,6 +228,47 @@ describe('a page in a language written without spaces', () => {
     expect(builtSays('設定は保存できます。」次に閉じます。')).toEqual(TWO);
   });
 
+  const SAY = 'data-say="メールアドレスは表示名と同じように、このページで変えられます。"';
+  const SHORT_SAY = '[answer] the answer "ここで変えられる" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries';
+  const sayFindings = (say, lang = 'ja') => {
+    const page = lang === 'ja' ? japanese() : japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`);
+    return findings(page.replaceOrFail(SAY, `data-say="${say}"`)).filter((f) => f === SHORT_SAY);
+  };
+
+  it('counts English text on a Japanese page as words between spaces, as on an English page', () => {
+    expect(sayFindings('Changeable here.')).toEqual([SHORT_SAY]);
+  });
+
+  it('counts the Japanese characters and the English words of a mixed text, both', () => {
+    // 4 kana over 1.5 is 2.7 words, plus 2 English words: 4.7, short; plus 3: 5.7, enough.
+    expect(sayFindings('はいはい yes okay')).toEqual([SHORT_SAY]);
+    expect(sayFindings('はいはい yes okay fine')).toEqual([]);
+  });
+
+  it('counts 1.5 characters a word: six kana are four words, eight are more than five', () => {
+    expect(sayFindings('はいはいはい')).toEqual([SHORT_SAY]);
+    expect(sayFindings('はいはいはいはい')).toEqual([]);
+  });
+
+  it('counts characters on a page in Chinese too', () => {
+    expect(sayFindings('可以改', 'zh')).toEqual([SHORT_SAY]);
+    expect(sayFindings('邮箱可以在这里修改', 'zh')).toEqual([]);
+  });
+
+  it('counts characters for a disclosure\'s summary on a Japanese page', () => {
+    const DISCLOSURE = 'a disclosure whose summary does not say what it hides';
+    const withSummary = (summary) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${BUILT}</p>\n<details class="more"><summary>${summary}</summary><span>古い記録です。</span></details>`)).filter((f) => f.includes(DISCLOSURE));
+    expect(withSummary('はい')).toEqual([`[disclosure] ${DISCLOSURE}`]);
+    expect(withSummary('古い記録の全部')).toEqual([]);
+  });
+
+  it('counts characters for a removed part\'s reason on a Japanese page', () => {
+    const REMOVED = '<td>Removed: documents are read in the app now, <a href="#q-1">question 1</a></td>';
+    const reason = (td) => findings(read('docs-redesign/r1').replaceOrFail('<html lang="en">', '<html lang="ja">').replaceOrFail(REMOVED, td)).filter((f) => f.startsWith('[mapping]'));
+    expect(reason('<td>不要</td>')).toEqual(['[mapping] the removed part "Download all" does not say why it goes']);
+    expect(reason('<td>文書はアプリで読みます</td>')).toEqual([]);
+  });
+
   it('keeps counting words between spaces on a page in English', () => {
     expect(findings(read('account-settings/r1').replaceOrFail('data-say="The email address can be changed on this page, like the display name."', 'data-say="Changeable on this page."'))).toContain('[answer] the answer "Changeable here" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
   });

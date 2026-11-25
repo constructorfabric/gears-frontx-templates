@@ -99,7 +99,8 @@
  *   the same parts are found by their place and class instead: the title is
  *   a word, a colon (or a full-width colon, with or without a space) and the
  *   title; in a language written without spaces (UNSPACED_LANGS) the word
- *   minimums count characters (CHARS_PER_WORD); a disclaimer has text; an option has two
+ *   minimums count the characters of those scripts (CHARS_PER_WORD) and other text
+ *   as words between spaces; a disclaimer has text; an option has two
  *   fields; the overview's comparison is a dl with two terms or more; a tag
  *   in a ready answer marks it suggested; a chip has text; the
  *   "Changed since" line names the previous revision; a storyboard's width
@@ -315,8 +316,19 @@ const UNSPACED_LANGS = new Set(['ja', 'zh', 'th', 'lo', 'km', 'my']);
  */
 const CHARS_PER_WORD = 1.5;
 const unspaced = (root) => UNSPACED_LANGS.has((langOf(root) ?? '').toLowerCase().split('-')[0]);
-/** The words of a text for a minimum: words between spaces, or in a language without spaces its letters and digits over CHARS_PER_WORD. */
-const wordsFor = (text, spaceless) => (spaceless ? (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) / CHARS_PER_WORD : words(text));
+/** The characters of the scripts written without spaces (Han, Hiragana, Katakana and its long vowel mark, Thai, Lao, Khmer, Myanmar). */
+const UNSPACED_CHARS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}ーｰ]/gu;
+/**
+ * The words of a text for a minimum: words between spaces; in a language without spaces, the characters of the
+ * unspaced scripts over CHARS_PER_WORD plus the words between spaces of the rest (a run with a letter or a digit), so
+ * English text on such a page counts as it does on an English page.
+ */
+const wordsFor = (text, spaceless) => {
+  if (!spaceless) return words(text);
+  const chars = text.match(UNSPACED_CHARS)?.length ?? 0;
+  const rest = text.replace(UNSPACED_CHARS, ' ').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  return chars / CHARS_PER_WORD + rest;
+};
 /** A language tag: two or three letters, then optional parts of letters or digits joined by hyphens (en, de, pt-BR). */
 const LANG_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/i;
 const langOf = (root) => find(root, (n) => n.tag === 'html')[0]?.attrs.lang?.trim();
