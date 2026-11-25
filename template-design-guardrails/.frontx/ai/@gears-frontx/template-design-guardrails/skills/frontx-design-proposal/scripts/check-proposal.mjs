@@ -1894,30 +1894,43 @@ const shownText = (raw) => decodeHtml(raw.replace(/&([a-zA-Z]{2,20});/g, (m, nam
 const ABBREVIATIONS = /\b(?:e\.g|i\.e|etc|vs|cf|approx|incl|Dr|Mr|Mrs|Ms|St|No)\.(?=\s)/g;
 /** The sentence ends of Chinese and Japanese text (。．｡！？) and the ellipsis "…". */
 const WIDE_END = '\u3002\uff0e\uff61\uff01\uff1f\u2026';
-/** The brackets and quotes that open a part an end mark inside does not break, and those that close it or follow an end. */
-const WIDE_OPEN = '\u300c\u300e\uff08(\uff3b\u3010';
-const WIDE_CLOSE = '\u300d\u300f\uff09)\uff3d\u3011"\'\u201d\u2019';
+/**
+ * The brackets and quotes that open a part an end mark inside does not break, each with its own closer (WIDE_PAIRS),
+ * and those that may follow an end mark as part of its sentence (WIDE_CLOSE): the closers and the ASCII quotes, which
+ * open and close nothing.
+ */
+const WIDE_PAIRS = new Map([['「', '」'], ['『', '』'], ['（', '）'], ['(', ')'], ['［', '］'], ['【', '】'], ['“', '”'], ['‘', '’']]);
+const WIDE_CLOSE = `${[...WIDE_PAIRS.values()].join('')}"'`;
 const WIDE_ENDING = new RegExp(`[${WIDE_END}][${WIDE_CLOSE}]*$`);
 /**
- * Whether a wide end mark breaks the text in two, in one pass: an end mark outside every bracket or quote WIDE_OPEN
- * opens, then the run of end marks and of the closing brackets and quotes after it, then more text, with or without a
- * space between, as such text puts none. An ellipsis before a lower-case letter is no break, as "..." is not.
+ * Whether a wide end mark breaks the text in two, in one pass: an end mark outside every open bracket or quote, then
+ * the run of end marks and of the closing brackets and quotes after it, then more text, with or without a space
+ * between, as such text puts none. The open marks are a stack: a closer ends the part only when it is the closer of
+ * the mark on top; a mark never closed hides nothing, so a break inside it counts at the end of the text. An ellipsis
+ * before a lower-case letter is no break, as "..." is not.
  */
 const wideBreak = (t) => {
-  let depth = 0;
+  const open = [];
+  const breakAfter = (i) => {
+    let j = i + 1;
+    while (j < t.length && (WIDE_END.includes(t[j]) || WIDE_CLOSE.includes(t[j]))) j += 1;
+    while (j < t.length && /\s/.test(t[j])) j += 1;
+    return { j, breaks: j < t.length && !(t[i] === '…' && /\p{Ll}/u.test(t[j])) };
+  };
   for (let i = 0; i < t.length; i += 1) {
     const c = t[i];
-    if (WIDE_OPEN.includes(c)) depth += 1;
-    else if (WIDE_CLOSE.includes(c)) depth = Math.max(0, depth - 1);
-    else if (WIDE_END.includes(c) && depth === 0) {
-      let j = i + 1;
-      while (j < t.length && (WIDE_END.includes(t[j]) || WIDE_CLOSE.includes(t[j]))) j += 1;
-      while (j < t.length && /\s/.test(t[j])) j += 1;
-      if (j < t.length && !(c === '…' && /\p{Ll}/u.test(t[j]))) return true;
-      i = j - 1;
+    const top = open[open.length - 1];
+    if (WIDE_PAIRS.has(c)) open.push({ closer: WIDE_PAIRS.get(c), broken: false });
+    else if (top && c === top.closer) open.pop();
+    else if (WIDE_END.includes(c)) {
+      const { j, breaks } = breakAfter(i);
+      if (!top) {
+        if (breaks) return true;
+        i = j - 1;
+      } else if (breaks) top.broken = true;
     }
   }
-  return false;
+  return open.some((mark) => mark.broken);
 };
 /**
  * One sentence: it ends with ".", "!" or "?", or with a wide end (WIDE_END) and the closing brackets and quotes after

@@ -211,8 +211,21 @@ describe('a page in a language written without spaces', () => {
     ['an end mark inside brackets at the end', '設定は保存できます（変更は即時です。）'],
     ['a closing quote right after the end', '画面には「保存しました。」'],
     ['a run of ellipses', '新しい部品はありません……'],
+    ['an apostrophe inside a quote', '設定は「don\'t 保存。」と表示されます。'],
+    ['ASCII quotes inside a quote', '設定は「"保存"。」と表示されます。'],
+    ['an apostrophe right before the end inside a quote', '「don\'t。」と言った。'],
+    ['an end mark inside Chinese quotes', '他说：“好。”然后走了。'],
+    ['an ASCII closing quote right after the end, last', '彼は"保存しました。"'],
   ])('reads %s as one sentence', (_, takeaway) => {
     expect(builtSays(takeaway)).toEqual([]);
+  });
+
+  it.each([
+    ['a quote never closed', '「一つ目です。二つ目です。'],
+    ['a bracket never closed', '（注。これは二文目です。'],
+    ['an ASCII closing quote right after the end, then more text', '彼は"保存しました。"次に閉じます。'],
+  ])('finds two sentences across %s', (_, takeaway) => {
+    expect(builtSays(takeaway)).toEqual(TWO);
   });
 
   it('still finds a sentence after a closing bracket', () => {
