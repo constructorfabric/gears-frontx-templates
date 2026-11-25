@@ -482,35 +482,72 @@ describe('Dashboard on the real registry', () => {
       expect(holder).not.toBeInstanceOf(HTMLElement);
       expect(Object.keys(holder as object)).toEqual([]);
       expect([...new Set(seen.values())]).toEqual([holder]);
-      // A render of the host with the same element publishes nothing again.
+      // A render of the host with the same element publishes nothing again. The render does not run the effect that
+      // publishes (its element did not change), so the call below proves the root's own skip of the same element.
       const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
       view.rerender(<Host root={root} />);
+      root.publishOverlayContainer(overlays);
       expect(writes.mock.calls.filter(([id]) => id === OVERLAY_CONTAINER_PROPERTY_ID)).toEqual([]);
       view.unmount();
       expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
       await root.dispose();
     }, 15_000);
 
-    it('publishes the element the host rendered beside a large tree of its own, without walking that tree', async () => {
+    it('publishes the element the host rendered next to a large tree of its own, within a time bound', async () => {
       const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
       // The time the root takes to publish the element, which runs in a layout effect of the host's render.
       let spent = 0;
       const publish = root.publishOverlayContainer.bind(root);
-      vi.spyOn(root, 'publishOverlayContainer').mockImplementation((element) => {
+      const timed = vi.spyOn(root, 'publishOverlayContainer').mockImplementation((element) => {
         const start = performance.now();
         publish(element);
         spent += performance.now() - start;
       });
       const view = render(<Host root={root} rows={2000} />);
-      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(screen.getByTestId('overlays'));
+      const overlays = screen.getByTestId('overlays');
+      expect(timed).toHaveBeenCalledWith(overlays);
+      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlays);
       expect(errors.mock.calls.filter(([line]) => String(line).includes('cannot be published'))).toEqual([]);
-      // A loose bound, for a loaded machine. A publish that walks the host's tree overflows the call stack in this
-      // simulated DOM and takes seconds in a browser; one that does not takes a few milliseconds.
+      // In this simulated DOM the test proves the element is published next to a large tree: a publish that walks the
+      // host's tree overflows the call stack here, and the element is not on the domain. The time bound guards a
+      // publish that walks the tree in a browser, where it took seconds; a loose bound, for a loaded machine.
       expect(spent).toBeLessThan(500);
       view.unmount();
       await root.dispose();
     }, 30_000);
+
+    /** A host that renders two elements of its own through refs and names one of them as the overlay container. */
+    function TwoContainers({ root, use }: { root: DashboardRoot; use: 'a' | 'b' }) {
+      const [a, setA] = useState<HTMLElement | null>(null);
+      const [b, setB] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <div ref={setA} data-testid="a" />
+          <div ref={setB} data-testid="b" />
+          <Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={use === 'a' ? a : b} />
+        </>
+      );
+    }
+
+    it('gives every widget the other element the host rendered when it names that one, and the first one back', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { seen, entries: overlayEntries } = recording();
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+      const view = render(<TwoContainers root={root} use="a" />);
+      const [a, b] = [screen.getByTestId('a'), screen.getByTestId('b')];
+      const widgets = () => [...new Set([...seen.values()].map(elementIn))];
+      await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+      expect(widgets()).toEqual([a]);
+      // The holders of a and b show the type store no field of their own, so it sees the same content in both: the
+      // widgets must still get the element named last.
+      view.rerender(<TwoContainers root={root} use="b" />);
+      expect(widgets()).toEqual([b]);
+      view.rerender(<TwoContainers root={root} use="a" />);
+      expect(widgets()).toEqual([a]);
+      view.unmount();
+      await root.dispose();
+    }, 15_000);
   });
 
   it('publishes null for an undefined overlay container from untyped code, and a second undefined publishes nothing', async () => {
