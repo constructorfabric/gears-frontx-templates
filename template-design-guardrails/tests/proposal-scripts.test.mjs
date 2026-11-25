@@ -412,11 +412,11 @@ describe('the hover of the page script (frame-js of templates/proposal.html)', (
     return node;
   };
 
-  it('lights a pin numbered 1" and its note, and nothing else, without a selector error', () => {
+  it('lights a pin numbered 1" and its note in a figure whose id holds a quote, and nothing else, without a selector error', () => {
     if (!src) throw new Error('the frame script of templates/proposal.html has no function hot');
     const [pin, other, note, otherNote] = [el('span', 'd-btn', { 'data-note': '1"' }), el('span', 'd-btn', { 'data-note': '2' }), el('li', undefined, { 'data-n': '1"' }), el('li', undefined, { 'data-n': '2' })];
-    const list = { ...el('ol', 'notes', { 'data-for': 'draw-place' }), querySelectorAll: (s) => select([note, otherNote], s) };
-    const figure = { id: 'draw-place', querySelectorAll: (s) => select([pin, other], s) };
+    const list = { ...el('ol', 'notes', { 'data-for': 'draw"place' }), querySelectorAll: (s) => select([note, otherNote], s) };
+    const figure = { id: 'draw"place', querySelectorAll: (s) => select([pin, other], s) };
     const doc = { querySelector: (s) => select([list], s)[0] ?? null };
     const hot = new Function('document', 'CSS', `${src}\nreturn hot;`)(doc, { escape: cssEscape });
     hot(figure, '1"', true);
