@@ -885,8 +885,8 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * in it hold no end: no semicolon or brace inside one ends or opens anything.
  * A string also ends at an unescaped newline, as a bad string: the file reads
  * on from there, while a quote inside an unquoted url( opens no string, a
- * quoted url("...") holds a string like any other, and url( is matched in
- * any case. A rule inside a block at-rule the file never closes is not kept
+ * quoted url("...") holds a string like any other and then everything up to
+ * its ")", and url( is matched in any case. A rule inside a block at-rule the file never closes is not kept
  * and the file, given as full, is listed under skipped, once, also when the
  * file ends inside the string or url() of an at-statement there. An @media
  * nested deeper than MEDIA_DEPTH_CAP ends the reading: the rules before it
@@ -913,9 +913,10 @@ function parseCssRules(css, file = '', full = null) {
     if (f.depth === 0 && !f.quote && !f.url && f.head === 'empty' && c !== ';' && !/\s/.test(c)) f.head = c === '@' ? 'at' : 'other';
     if (f.head === 'at') {
       // A quoted string ends at its matching unescaped quote, or at an unescaped newline, which ends it as a bad
-      // string: the file reads on from there. Inside an unquoted url( a quote opens no string, so only ")" ends it;
-      // a url( whose first character after white space is a quote holds a string, read by the string branch, and the
-      // rest up to ")" is ordinary at-statement text; url( is matched in any case.
+      // string: the file reads on from there. Inside a url( only ")" ends it, and a quote opens no string; a url(
+      // whose first character after white space is a quote opens its string at once, read by the string branch while
+      // url stays set, so a ")" inside the quotes ends nothing and, once the string ends, the url reads on to its ")".
+      // url( is matched in any case.
       if (f.quote) {
         if (c === '\\') i += 1;
         else if (c === f.quote) f.quote = '';
@@ -927,8 +928,8 @@ function parseCssRules(css, file = '', full = null) {
       if ((c === 'u' || c === 'U') && /^url\(/i.test(text.slice(i, i + 4))) {
         let j = i + 4;
         while (j < text.length && /\s/.test(text[j])) j += 1;
-        if (text[j] !== '"' && text[j] !== "'") f.url = 1;
-        i = j - 1;
+        f.url = 1;
+        if (text[j] === '"' || text[j] === "'") { f.quote = text[j]; i = j; } else i = j - 1;
         continue;
       }
     }

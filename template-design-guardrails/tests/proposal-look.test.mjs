@@ -339,6 +339,8 @@ describe('the rules a stylesheet yields', () => {
     ['url("...") with a ")" inside the quotes', '@import url("a)b.css");'],
     ["url('...') with a \")\" inside the quotes", "@import url('a)b.css');"],
     ['url( "..." ) with white space around the quoted url', '@import url( "a)b.css" );'],
+    ['url("...") with a ";" and a rule after the quotes', '@import url("x" ;.root{background-color:#000000;} );'],
+    ['url("...") with braces after the quotes', '@import url("x" {.root{background-color:#000000;}} );'],
   ])('reads the .root rule after the at-statement %s as its own rule', (_, statement) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
@@ -421,6 +423,18 @@ describe('the rules a stylesheet yields', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@supports (content: ";.kpi") { .kpi { font-size: 33px; } }\n${t}` }));
     expect(result.lookFrom.stat).toBe('kit --text-kpi-size (the app sets none)');
     expect(result.skipped).toEqual([]);
+  });
+
+  // A quoted url() of an at-statement holds everything up to its ")": a ";" or brace after the quotes ends or opens
+  // nothing, so no rule is made up from inside it and the rule after the statement is read as its own.
+  it.each([
+    ['a ";" after the quotes', '@import url("x" ;.root{background-color:#000000;} );'],
+    ['braces after the quotes', '@import url("x" {.root{background-color:#000000;}} );'],
+  ])('makes up no rule from inside a quoted url() with %s, and reads the rule after it', (_, statement) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${t}\n${statement}\n.kpi { font-size: 33px; }` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.look.bg).toBe('#ffffff');
+    expect(result.lookFrom.stat).toBe(`${HOME_CSS} .kpi font-size`);
   });
 
   it('reads a kit chunk of rule-holding block at-rules whole: nothing is skipped or unresolved for it', () => {
