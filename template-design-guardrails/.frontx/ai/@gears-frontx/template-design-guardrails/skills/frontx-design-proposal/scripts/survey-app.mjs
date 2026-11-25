@@ -881,10 +881,13 @@ const RULE_HOLDING_AT_RULES = new Set(['@supports', '@layer', '@container', '@sc
  * stray semicolon. While a frame's pending text is an at-statement, a quoted
  * string ("...", '...', with backslash escapes) and the content of url(...)
  * in it hold no end: no semicolon or brace inside one ends or opens anything.
- * A rule inside an @media the file never closes is not
- * kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading: the
- * rules before it are kept and the file, given as full, is listed under
- * skipped; so does a "}" at the top level with no rule open.
+ * A string also ends at an unescaped newline, as a bad string: the file reads
+ * on from there, while a quote inside an unquoted url( opens no string and
+ * url( is matched in any case. A rule inside an @media the file never closes
+ * is not kept. An @media nested deeper than MEDIA_DEPTH_CAP ends the reading:
+ * the rules before it are kept and the file, given as full, is listed under
+ * skipped; so does a "}" at the top level with no rule open, and a file that
+ * ends inside the string or url() of an at-statement.
  */
 function parseCssRules(css, file = '', full = null) {
   const rules = [];
@@ -904,10 +907,18 @@ function parseCssRules(css, file = '', full = null) {
     // at-statement is text of the statement and says nothing of what follows.
     if (f.depth === 0 && !f.quote && !f.url && f.head === 'empty' && c !== ';' && !/\s/.test(c)) f.head = c === '@' ? 'at' : 'other';
     if (f.head === 'at') {
-      if (f.quote) { if (c === '\\') i += 1; else if (c === f.quote) f.quote = ''; continue; }
-      if (f.url) { if (c === '"' || c === "'") f.quote = c; else if (c === ')') f.url = 0; continue; }
+      // A quoted string ends at its matching unescaped quote, or at an unescaped newline, which ends it as a bad
+      // string: the file reads on from there. Inside an unquoted url( a quote opens no string, so only ")" ends it;
+      // url( is matched in any case.
+      if (f.quote) {
+        if (c === '\\') i += 1;
+        else if (c === f.quote) f.quote = '';
+        else if (c === '\n' || c === '\r' || c === '\f') f.quote = '';
+        continue;
+      }
+      if (f.url) { if (c === ')') f.url = 0; continue; }
       if (c === '"' || c === "'") { f.quote = c; continue; }
-      if (c === 'u' && text.startsWith('url(', i)) { f.url = 1; i += 3; continue; }
+      if ((c === 'u' || c === 'U') && /^url\(/i.test(text.slice(i, i + 4))) { f.url = 1; i += 3; continue; }
     }
     if (c !== '{' && c !== '}' && !(c === ';' && f.depth === 0)) continue;
     if (c === ';') {
@@ -958,6 +969,13 @@ function parseCssRules(css, file = '', full = null) {
         reset(f, i + 1);
       }
     }
+  }
+  // A string or url() of a pending at-statement still open at the end: what follows it never closes the frame, so the
+  // reading stopped inside the statement and the file is listed under skipped.
+  const last = frames[frames.length - 1];
+  if (last.quote || last.url) {
+    if (full) skip(full, `an unterminated string or url() in an at-rule: the rest of the file is not read${linkNote(full)}`);
+    return rules;
   }
   if (frames.length > 1) rules.length = frames[1].kept;
   return rules;

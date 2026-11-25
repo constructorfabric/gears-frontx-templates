@@ -334,6 +334,7 @@ describe('the rules a stylesheet yields', () => {
     ['@layer a;', '@layer a;'],
     ['@namespace', '@namespace x url(http://www.w3.org/2000/svg);'],
     ['@value', '@value x: 1px;'],
+    ['url( in any case', '@import URL(a;b.css);'],
   ])('reads the .root rule after the at-statement %s as its own rule', (_, statement) => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${statement}\n${t}` }));
     expect(result.lookFrom.bg).toBe(`${HOME_CSS} .root background-color`);
@@ -358,6 +359,30 @@ describe('the rules a stylesheet yields', () => {
     expect(result.lookFrom[key], before).toBe(from);
     expect(result.look[key], before).toBe(value);
   });
+
+  // A quoted string of an at-statement also ends at an unescaped newline, as a bad string: the file reads on from
+  // there. A quote inside the unquoted url() of an at-statement opens no string, so the ")" ends it and the statement
+  // ends at its ";". A file that ends inside a string or url() of an at-statement is listed under skipped.
+  it.each([
+    ['an at-statement whose string no newline closes', '@import "a.css\n; .x{color:red} .y{color:blue}'],
+    ['an at-statement whose unquoted url() holds a quote', '@import url(a"b); .x{color:red} .y{color:blue}'],
+  ])('reads the rules after %s as their own rules', (_, before) => {
+    const result = survey.survey(topApp({ [HOME_CSS]: (t) => `${before}\n${t}` }));
+    expect(result.skipped).toEqual([]);
+    expect(result.unresolved).not.toContain(`skipped ${HOME_CSS}`);
+    expect(result.lookFrom.bg, before).toBe(`${HOME_CSS} .root background-color`);
+    expect(result.look.bg, before).toBe('#ffffff');
+  });
+
+  it('lists a file that ends inside the url() of an at-statement under skipped with the reason', () => {
+    const result = survey.survey(topApp({ [HOME_CSS]: '@import url(a.css' }));
+    expect(result.skipped).toContainEqual(expect.objectContaining({
+      file: HOME_CSS,
+      why: expect.stringMatching(/^an unterminated string or url\(\) in an at-rule: the rest of the file is not read/),
+    }));
+    expect(result.unresolved).toContain(`skipped ${HOME_CSS}`);
+  });
+
   it('keeps the rules of a @supports block out of the look where the string of the condition would have made a made-up rule of them', () => {
     const result = survey.survey(topApp({ [HOME_CSS]: (t) => `@supports (content: ";.kpi") { .kpi { font-size: 33px; } }\n${t}` }));
     expect(result.lookFrom.stat).toBe('kit --text-kpi-size (the app sets none)');
