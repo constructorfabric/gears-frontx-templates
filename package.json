@@ -12,18 +12,23 @@
   "packageManager": "npm@10.9.4",
   "scripts": {
     "test": "vitest --run",
+    "test:e2e": "playwright test",
     "test:watch": "vitest --watch",
+    "cache:clear": "node scripts/clear-unit-cache.mjs",
     "dev:template:link": "node scripts/link-template-ecosystem.mjs",
     "validate:templates": "node scripts/validate-templates.mjs",
     "policy:template-pin-drift": "node scripts/template-pin-drift-check.mjs",
-    "policy:template-lockfile-selflink": "node scripts/template-lockfile-selflink-check.mjs",
     "policy:token-format": "node scripts/token-format-check.mjs",
     "policy:template-mfes-import-boundary": "node scripts/template-mfes-import-boundary-check.mjs",
     "policy:seeded-gitignore": "node scripts/seeded-gitignore-check.mjs",
-    "policy:version-bump-on-change": "node scripts/version-bump-on-change-check.mjs"
+    "policy:evaluation-scope": "node scripts/evaluation-scope-check.mjs",
+    "policy:size-metric": "node scripts/size-metric-check.mjs",
+    "policy:version-bump-on-change": "node scripts/version-bump-on-change-check.mjs",
+    "policy:list-completeness": "node scripts/list-completeness-check.mjs"
   },
   "devDependencies": {
     "@gears-frontx/cli": "0.3.0-alpha.6",
+    "@playwright/test": "1.64.1",
     "vitest": "4.1.4"
   },
   "overrides": {

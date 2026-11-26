@@ -15,7 +15,6 @@ describe('@gears-frontx/framework public exports', () => {
   it('the MfeRegistry registration reads return no route', () => {
     expectTypeOf<ReturnType<MfeRegistry['getExtension']>>().toEqualTypeOf<Omit<Extension, 'route'> | undefined>();
     expectTypeOf<ReturnType<MfeRegistry['getExtensionsForDomain']>>().toEqualTypeOf<Array<Omit<Extension, 'route'>>>();
-    expectTypeOf<ReturnType<MfeRegistry['getExtensionsForPackage']>>().toEqualTypeOf<Array<Omit<Extension, 'route'>>>();
     expectTypeOf<ReturnType<MfeRegistry['getDomain']>>().toEqualTypeOf<Omit<ExtensionDomain, 'route'> | undefined>();
   });
 });

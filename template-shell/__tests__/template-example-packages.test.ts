@@ -107,14 +107,7 @@ function mfePackage(name: string, options: { templateExample: boolean; port: num
     JSON.stringify({
       manifest: {
         id: manifestIdFor(name),
-        name,
-        remoteEntry: `http://localhost:${options.port}/assets/remoteEntry.js`,
         metaData: {
-          name,
-          type: 'app',
-          buildInfo: { buildVersion: '0', buildName: name },
-          remoteEntry: { name: 'remoteEntry.js', path: 'assets', type: 'module' },
-          globalName: name,
           publicPath: `http://localhost:${options.port}/`,
         },
         shared: [],
@@ -186,7 +179,7 @@ describe('isTemplateExamplePackage', () => {
   });
 
   // An unparseable manifest is the build's failure to report, through the
-  // frontxMfGts plugin's own parse. Answering "example" here would drop the
+  // vitePluginMfeGts plugin's own parse. Answering "example" here would drop the
   // package before it ever reached that build.
   it('keeps a package with an unparseable mfe.json in discovery', () => {
     const packagePath = packageWithMfeJson('broken-mfe', '{ not json');

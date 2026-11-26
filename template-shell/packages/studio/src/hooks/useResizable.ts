@@ -1,7 +1,7 @@
 // @cpt-flow:cpt-frontx-flow-studio-devtools-resize-panel:p1
 // @cpt-state:cpt-frontx-state-studio-devtools-resize:p1
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { clamp } from 'lodash';
+import clamp from 'lodash/clamp';
 import { eventBus } from '@gears-frontx/react';
 import type { Size } from '../types';
 import { loadStudioState } from '../utils/persistence';

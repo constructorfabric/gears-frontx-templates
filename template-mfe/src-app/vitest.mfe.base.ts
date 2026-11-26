@@ -29,7 +29,8 @@ export const mfeVitestBaseConfig = defineConfig({
     alias: {
       '@frontx-test-utils': frontxTestUtilsRoot,
     },
-    dedupe: ['react', 'react-dom'],
+    // Shell packages reached through the file: overrides resolve their own copy of the ecosystem packages; one instance per realm, as with react.
+    dedupe: ['react', 'react-dom', '@gears-frontx/mfes', '@gears-frontx/gts-plugin', '@gears-frontx/routing', '@gears-frontx/api'],
   },
   server: {
     fs: {

@@ -281,9 +281,8 @@ describe('hasSubstantiveChange + versionAt (via runCli)', () => {
     expect(output).toContain('template-shell/packages/react');
   });
 
-  // Change #1: template-shell itself is now governed (it publishes dist-lib
-  // built from its own src/, and is exact-pinned by template-mfe fixtures -
-  // the same #574 shape as its packages/react member).
+  // Change #1: template-shell itself is governed (its own src/ is versioned
+  // like its packages/react member).
   it('fails when template-shell\'s own src/ changes without a bump to template-shell\'s own version', async () => {
     const root = await makeRepo();
     await writeBaselineFixture(root);

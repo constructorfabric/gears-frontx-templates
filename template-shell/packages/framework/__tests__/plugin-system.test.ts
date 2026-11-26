@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrontXActions, FrontXApp, FrontXPlugin } from '../src/types';
+import type { FullPresetConfig } from '../src/presets';
 
 // One app per runtime: every test loads its own module copy.
 type Eventing = typeof import('@gears-frontx/state');
@@ -7,9 +8,9 @@ let eventBus: Eventing['eventBus'];
 let resetStore: Eventing['resetStore'];
 let createFrontX: typeof import('../src/createFrontX').createFrontX;
 let presets: typeof import('../src/presets').presets;
+let full: typeof import('../src/presets').full;
 let effects: typeof import('../src/plugins/effects').effects;
 let i18n: typeof import('../src/plugins/i18n').i18n;
-let layout: typeof import('../src/plugins/layout').layout;
 let mock: typeof import('../src/plugins/mock').mock;
 let queryCache: typeof import('../src/plugins/queryCache').queryCache;
 let themes: typeof import('../src/plugins/themes').themes;
@@ -19,10 +20,9 @@ beforeEach(async () => {
   vi.resetModules();
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
   ({ createFrontX } = await import('../src/createFrontX'));
-  ({ presets } = await import('../src/presets'));
+  ({ presets, full } = await import('../src/presets'));
   ({ effects } = await import('../src/plugins/effects'));
   ({ i18n } = await import('../src/plugins/i18n'));
-  ({ layout } = await import('../src/plugins/layout'));
   ({ mock } = await import('../src/plugins/mock'));
   ({ queryCache } = await import('../src/plugins/queryCache'));
   ({ themes } = await import('../src/plugins/themes'));
@@ -78,7 +78,7 @@ describe('plugin system contract', () => {
 
       expect(app.themeRegistry).toBeDefined();
       assertHasAction(actions, 'changeTheme');
-      assertMissingAction(actions, 'showPopup');
+      assertMissingAction(actions, 'toggleMockMode');
       assertMissingAction(actions, 'setLanguage');
     });
 
@@ -90,16 +90,25 @@ describe('plugin system contract', () => {
       expect(app.i18nRegistry).toBeDefined();
       assertHasAction(actions, 'changeTheme');
       assertHasAction(actions, 'setLanguage');
-      assertHasAction(actions, 'showPopup');
       assertHasAction(actions, 'toggleMockMode');
       assertMissingAction(actions, 'loadExtension');
+    });
+
+    it('the full preset never composes the MFE host plugin; hosts add microfrontends() themselves', () => {
+      // Fails type-checking if `FullPresetConfig` regains a `microfrontends` option.
+      const hasMicrofrontendsOption: 'microfrontends' extends keyof FullPresetConfig ? true : false = false;
+      expect(hasMicrofrontendsOption).toBe(false);
+      expect(full().map((plugin) => plugin.name)).not.toContain('microfrontends');
+    });
+
+    it('the full preset composes no layout plugin; the application adds its own', () => {
+      expect(full().map((plugin) => plugin.name)).not.toContain('layout');
     });
   });
 
   describe('plugin factories', () => {
     it('expose stable names for supported composition pieces', () => {
       expect(themes().name).toBe('themes');
-      expect(layout().name).toBe('layout');
       expect(i18n().name).toBe('i18n');
       expect(effects().name).toBe('effects');
       expect(mock({ enabledByDefault: false }).name).toBe('mock');

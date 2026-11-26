@@ -11,18 +11,26 @@ import {
   apiRegistry,
   BaseApiService,
   isMockPlugin,
+  MOCK_PLUGIN,
+  RestPlugin,
   RestProtocol,
 } from '@gears-frontx/api';
-// RestMockPlugin was relocated from @gears-frontx/api to the template in
-// Phase 9's mock separation; @gears-frontx/api ships no mocks.
-import { RestMockPlugin } from '@gears-frontx/frontx-template-shell';
+
+/**
+ * A REST plugin marked as a mock plugin. The mock effects only add and remove
+ * plugins that carry the mock marker; they never run one, so the marker is all
+ * a stand-in needs (`@gears-frontx/api` ships no mock plugin of its own).
+ */
+class TestMockPlugin extends RestPlugin {
+  static readonly [MOCK_PLUGIN] = true;
+}
 import { mockSlice } from '../src/slices/mockSlice';
 import { initMockEffects, toggleMockMode, MockEvents } from '../src/effects/mockEffects';
 
 // Test service that registers mock plugins
 class TestMockService extends BaseApiService {
   public readonly restProtocol: RestProtocol;
-  public readonly mockPlugin: RestMockPlugin;
+  public readonly mockPlugin: TestMockPlugin;
 
   constructor() {
     const rest = new RestProtocol();
@@ -30,9 +38,7 @@ class TestMockService extends BaseApiService {
     this.restProtocol = rest;
 
     // Register mock plugin (framework controls activation)
-    this.mockPlugin = new RestMockPlugin({
-      mockMap: { 'GET /api/test': () => ({ data: 'mock' }) },
-    });
+    this.mockPlugin = new TestMockPlugin();
     this.registerPlugin(rest, this.mockPlugin);
   }
 }
@@ -207,7 +213,7 @@ describe('mockEffects', () => {
           this.restProtocol = rest;
 
           // Register mock plugin
-          this.registerPlugin(rest, new RestMockPlugin({ mockMap: {} }));
+          this.registerPlugin(rest, new TestMockPlugin());
         }
       }
 
@@ -230,26 +236,26 @@ describe('mockEffects', () => {
       // Register multiple test services
       class Service1 extends BaseApiService {
         public readonly restProtocol: RestProtocol;
-        public readonly mockPlugin: RestMockPlugin;
+        public readonly mockPlugin: TestMockPlugin;
 
         constructor() {
           const rest = new RestProtocol();
           super({ baseURL: '/api/s1' }, rest);
           this.restProtocol = rest;
-          this.mockPlugin = new RestMockPlugin({ mockMap: {} });
+          this.mockPlugin = new TestMockPlugin();
           this.registerPlugin(rest, this.mockPlugin);
         }
       }
 
       class Service2 extends BaseApiService {
         public readonly restProtocol: RestProtocol;
-        public readonly mockPlugin: RestMockPlugin;
+        public readonly mockPlugin: TestMockPlugin;
 
         constructor() {
           const rest = new RestProtocol();
           super({ baseURL: '/api/s2' }, rest);
           this.restProtocol = rest;
-          this.mockPlugin = new RestMockPlugin({ mockMap: {} });
+          this.mockPlugin = new TestMockPlugin();
           this.registerPlugin(rest, this.mockPlugin);
         }
       }

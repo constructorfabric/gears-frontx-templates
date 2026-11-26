@@ -7,7 +7,8 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { useAppSelector, useFrontX, useTranslation, getLanguageMetadata, type HeaderState, type Language } from '@gears-frontx/react';
+import { useAppSelector, useFrontX, useTranslation, getLanguageMetadata, type Language } from '@gears-frontx/react';
+import type { HeaderState } from './state';
 import {
   Avatar,
   AvatarImage,

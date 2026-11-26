@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { eventBus, type ScreenExtension } from '@gears-frontx/react';
+import { eventBus } from '@gears-frontx/react';
+import type { ScreenExtension } from '../../../src/index';
 import { Menu } from './Menu';
 import { screenState } from '@/app/mfe/screenState';
 import { menuLabels } from '@/app/mfe/menuLabels';

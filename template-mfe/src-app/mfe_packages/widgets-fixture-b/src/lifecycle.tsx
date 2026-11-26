@@ -11,10 +11,12 @@ import {
   effects,
   queryCacheShared,
   mock,
+} from '@gears-frontx/react';
+import {
   ThemeAwareReactLifecycle,
   type ChildMfeBridge,
   type MfeMountContext,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
 import styles from './lifecycle.module.css';
 
 const fixtureApp = createFrontX()

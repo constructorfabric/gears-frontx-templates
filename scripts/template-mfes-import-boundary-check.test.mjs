@@ -361,6 +361,20 @@ describe('findConsumerViolations', () => {
     ]);
   });
 
+  it('allows the two sanctioned public subpaths and still forbids any other', () => {
+    const sites = findMfesImportSites(
+      "import { SharedUnitFetcher } from '@gears-frontx/mfes/unit-loader';\n" +
+        "import type { SharedDepFetchList } from '@gears-frontx/mfes/unit-format';\n" +
+        "import { x } from '@gears-frontx/mfes/unit-loader/internal';\n" +
+        "import { y } from '@gears-frontx/mfes/unit-formats';",
+      'app.ts',
+    );
+    expect(findConsumerViolations(sites)).toEqual([
+      { file: 'app.ts', kind: 'deep-import', detail: '@gears-frontx/mfes/unit-loader/internal' },
+      { file: 'app.ts', kind: 'deep-import', detail: '@gears-frontx/mfes/unit-formats' },
+    ]);
+  });
+
   it('reports a side-effect deep import — no bindings needed to reach past the barrel', () => {
     const sites = findMfesImportSites("import '@gears-frontx/mfes/runtime/DefaultMfeRegistry'", 'app.ts');
     expect(findConsumerViolations(sites)).toEqual([

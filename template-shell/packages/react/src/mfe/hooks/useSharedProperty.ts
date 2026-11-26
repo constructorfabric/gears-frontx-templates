@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useContext, useSyncExternalStore } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/framework';
+import type { ChildMfeBridge } from '@gears-frontx/framework/mfe';
 import { MfeContext } from '../MfeContext';
 
 // ============================================================================
@@ -74,7 +74,7 @@ export interface UseSharedPropertyOptions<T> {
  * up when React re-reads the snapshot after subscribing, and the value is
  * tearing-protected under concurrent rendering.
  *
- * @param propertyTypeId - GTS type ID of the shared property to subscribe to
+ * @param propertyTypeId - Type ID of the shared property to subscribe to
  * @param options - Optional bridge override and fallback
  * @returns The current property value; `T` when `options.fallback` is set,
  *   otherwise `T | undefined`

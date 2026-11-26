@@ -10,8 +10,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { type RegisterExtensionPayload, type UnregisterExtensionPayload } from '../../../src/plugins/microfrontends';
 import type { MfeRegistry } from '@gears-frontx/mfes';
-import type { Extension, ExtensionDomain } from '@gears-frontx/framework';
+import type { Extension, ExtensionDomain } from '@gears-frontx/framework/mfe';
 import type { FrontXApp } from '../../../src/types';
+import { createFakeTypeSystem } from '../../fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 // One app per runtime: every test loads its own module copy.
 let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
@@ -25,7 +28,6 @@ let selectRegisteredExtensions: typeof import('../../../src/plugins/microfronten
 let ExclusiveMountStrategy: typeof import('@gears-frontx/mfes')['ExclusiveMountStrategy'];
 let eventBus: typeof import('@gears-frontx/state')['eventBus'];
 let resetStore: typeof import('@gears-frontx/state')['resetStore'];
-let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
 let TestContainerProvider: typeof import('../../../src/testing/TestContainerProvider')['TestContainerProvider'];
 
 beforeEach(async () => {
@@ -35,7 +37,6 @@ beforeEach(async () => {
   ({ microfrontends, registerExtension, unregisterExtension, MfeEvents, selectExtensionState, selectRegisteredExtensions } = await import('../../../src/plugins/microfrontends'));
   ({ ExclusiveMountStrategy } = await import('@gears-frontx/mfes'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
-  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
   ({ TestContainerProvider } = await import('../../../src/testing/TestContainerProvider'));
 });
 
@@ -87,11 +88,11 @@ describe('dynamic registration - Phase 20', () => {
   const DEFAULT_DOMAIN_ACTION_TIMEOUT_MS = 5_000;
 
   const mockDomain: ExtensionDomain = {
-    id: 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1',
+    id: 'test.domain~test.app.test.domain.v1',
     sharedProperties: [],
     actions: [
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+      'test.action.load_ext',
+      'test.action.mount_ext',
     ],
     extensionsActions: [],
     defaultActionTimeout: DEFAULT_DOMAIN_ACTION_TIMEOUT_MS,
@@ -100,9 +101,9 @@ describe('dynamic registration - Phase 20', () => {
   };
 
   const mockExtension: Extension = {
-    id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.extension.v1',
-    domain: 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1',
-    entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+    id: 'test.extension~test.app.test.extension.v1',
+    domain: 'test.domain~test.app.test.domain.v1',
+    entry: 'test.entry~test.app.test.entry.v1',
   };
 
   describe('20.5.1 - registerExtension action emits event', () => {
@@ -135,7 +136,7 @@ describe('dynamic registration - Phase 20', () => {
 
   describe('20.5.2 - registerExtension effect calls runtime', () => {
     it('should dispatch setExtensionRegistering and setExtensionRegistered on success', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -161,7 +162,7 @@ describe('dynamic registration - Phase 20', () => {
     });
 
     it('should dispatch setExtensionError on failure', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -208,7 +209,7 @@ describe('dynamic registration - Phase 20', () => {
     });
 
     it('should call runtime.unregisterExtension', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -232,7 +233,7 @@ describe('dynamic registration - Phase 20', () => {
 
   describe('20.5.6 - slice state transitions', () => {
     it('should transition through registration states', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -263,7 +264,7 @@ describe('dynamic registration - Phase 20', () => {
 
   describe('20.5.7 - selectExtensionState selector', () => {
     it('should return unregistered for unknown extension', () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       apps.push(app);
       const state = app.store.getState();
 
@@ -271,7 +272,7 @@ describe('dynamic registration - Phase 20', () => {
     });
 
     it('should return correct state for known extension', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -289,7 +290,7 @@ describe('dynamic registration - Phase 20', () => {
 
   describe('20.5.8 - selectRegisteredExtensions selector', () => {
     it('should return empty array when no extensions registered', () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       apps.push(app);
       const state = app.store.getState();
 
@@ -297,7 +298,7 @@ describe('dynamic registration - Phase 20', () => {
     });
 
     it('should return array of registered extension IDs', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -305,8 +306,8 @@ describe('dynamic registration - Phase 20', () => {
       const testContainerProvider = new TestContainerProvider();
       mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
-      const ext1 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext1.v1' };
-      const ext2 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext2.v1' };
+      const ext1 = { ...mockExtension, id: 'test.extension~test.app.test.ext1.v1' };
+      const ext2 = { ...mockExtension, id: 'test.extension~test.app.test.ext2.v1' };
 
       registerExtension(ext1);
       registerExtension(ext2);
@@ -325,7 +326,7 @@ describe('dynamic registration - Phase 20', () => {
     });
 
     it('should not include unregistered or error state extensions', async () => {
-      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem: gtsPlugin })).build();
+      const app = createFrontX().use(effects()).use(microfrontends({ typeSystem })).build();
       const mfeRegistry = getMfeRegistry(app);
       apps.push(app);
 
@@ -333,8 +334,8 @@ describe('dynamic registration - Phase 20', () => {
       mfeRegistry.registerDomain(mockDomain, testContainerProvider.prepareForDomain(mockDomain, (ctx, hooks) => new ExclusiveMountStrategy(ctx.mounter, hooks)));
 
       // Mock one success and one failure
-      const ext1 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext1.v1' };
-      const ext2 = { ...mockExtension, id: 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext2.v1' };
+      const ext1 = { ...mockExtension, id: 'test.extension~test.app.test.ext1.v1' };
+      const ext2 = { ...mockExtension, id: 'test.extension~test.app.test.ext2.v1' };
 
       let callCount = 0;
       mfeRegistry.registerExtension = vi.fn().mockImplementation(async () => {

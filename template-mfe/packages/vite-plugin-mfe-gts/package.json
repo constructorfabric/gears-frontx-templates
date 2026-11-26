@@ -1,0 +1,64 @@
+{
+  "name": "@gears-frontx/vite-plugin-mfe-gts",
+  "version": "0.1.0-alpha.2",
+  "description": "Type-system-dependent Vite plugin for a FrontX MFE build. Derives the shared set via @gears-frontx/unit-producer's SharedSetResolver, externalizes it by root package name, mints shared units, enriches the federation manifest into the closed served manifest and entry assets, rewrites lazy dynamic imports to __frontx_lazy, attributes CSS to exposes, and validates manifest entities by registering them with @gears-frontx/gts-plugin",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit",
+    "type-check:test": "tsc -p tsconfig.test.json",
+    "test": "npm run test:unit",
+    "test:unit": "vitest --run --passWithNoTests=false",
+    "test:unit:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/unit-producer": "0.1.0-alpha.2"
+  },
+  "devDependencies": {
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/mfes": "0.7.1",
+    "@gears-frontx/unit-producer": "0.1.0-alpha.2",
+    "@module-federation/vite": "1.20.5",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "4.1.4",
+    "esbuild": "0.28.2",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "vitest": "4.1.4"
+  },
+  "peerDependencies": {
+    "@gears-frontx/mfes": "0.7.1",
+    "@module-federation/vite": "1.20.5",
+    "esbuild": "0.28.2",
+    "vite": "^6.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "frontx",
+    "microfrontend",
+    "shared-dependencies",
+    "gts",
+    "vite-plugin",
+    "typescript"
+  ],
+  "author": "Cyber Fabric",
+  "license": "Apache-2.0"
+}

@@ -8,7 +8,7 @@ import {
   RestEndpointProtocol,
   RestProtocol,
 } from '@gears-frontx/react';
-import { RestMockPlugin } from '@gears-frontx/frontx-template-shell';
+import { RestMockPlugin } from '../../../src/index';
 import type { GetCurrentUserResponse } from './types';
 import { accountsMockMap } from './mocks';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { KitThemedLifecycle } from './shared/KitThemedLifecycle';
 // The sign-in runtime's own bootstrap, not `./init`: see init-signin.ts.
 import { signInApp } from './init-signin';

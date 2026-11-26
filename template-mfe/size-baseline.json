@@ -1,0 +1,109 @@
+{
+  "page": {
+    "totalUniqueBytes": 4285005,
+    "items": {
+      "_blank-mfe (own chunks)": 105105,
+      "@gears-frontx/api": 171204,
+      "@gears-frontx/framework": 153886,
+      "@gears-frontx/gts-plugin": 452025,
+      "@gears-frontx/i18n": 27053,
+      "@gears-frontx/mfes": 263130,
+      "@gears-frontx/react": 613531,
+      "@gears-frontx/routing": 57433,
+      "@gears-frontx/routing-tanstack": 218399,
+      "@gears-frontx/state": 6904,
+      "@reduxjs/toolkit": 123945,
+      "@tanstack/react-query": 118023,
+      "demo-mfe (own chunks)": 655857,
+      "react": 19276,
+      "react-dom": 8487,
+      "react-redux": 39133,
+      "template-shell": 1213136,
+      "widgets-fixture-a (own chunks)": 20573,
+      "widgets-fixture-b (own chunks)": 17905
+    }
+  },
+  "fixtures": {
+    "_blank-mfe": {
+      "evalBytes": 2171199,
+      "ownChunkBytes": 117169,
+      "sharedBytes": 2054030,
+      "packages": {
+        "@gears-frontx/api": 171204,
+        "@gears-frontx/framework": 153886,
+        "@gears-frontx/gts-plugin": 452025,
+        "@gears-frontx/i18n": 27053,
+        "@gears-frontx/mfes": 263130,
+        "@gears-frontx/react": 613531,
+        "@gears-frontx/routing": 57433,
+        "@gears-frontx/state": 6904,
+        "@reduxjs/toolkit": 123945,
+        "@tanstack/react-query": 118023,
+        "react": 19276,
+        "react-dom": 8487,
+        "react-redux": 39133
+      }
+    },
+    "demo-mfe": {
+      "evalBytes": 2773251,
+      "ownChunkBytes": 719221,
+      "sharedBytes": 2054030,
+      "packages": {
+        "@gears-frontx/api": 171204,
+        "@gears-frontx/framework": 153886,
+        "@gears-frontx/gts-plugin": 452025,
+        "@gears-frontx/i18n": 27053,
+        "@gears-frontx/mfes": 263130,
+        "@gears-frontx/react": 613531,
+        "@gears-frontx/routing": 57433,
+        "@gears-frontx/state": 6904,
+        "@reduxjs/toolkit": 123945,
+        "@tanstack/react-query": 118023,
+        "react": 19276,
+        "react-dom": 8487,
+        "react-redux": 39133
+      }
+    },
+    "widgets-fixture-a": {
+      "evalBytes": 2356366,
+      "ownChunkBytes": 83937,
+      "sharedBytes": 2272429,
+      "packages": {
+        "@gears-frontx/api": 171204,
+        "@gears-frontx/framework": 153886,
+        "@gears-frontx/gts-plugin": 452025,
+        "@gears-frontx/i18n": 27053,
+        "@gears-frontx/mfes": 263130,
+        "@gears-frontx/react": 613531,
+        "@gears-frontx/routing": 57433,
+        "@gears-frontx/routing-tanstack": 218399,
+        "@gears-frontx/state": 6904,
+        "@reduxjs/toolkit": 123945,
+        "@tanstack/react-query": 118023,
+        "react": 19276,
+        "react-dom": 8487,
+        "react-redux": 39133
+      }
+    },
+    "widgets-fixture-b": {
+      "evalBytes": 2135299,
+      "ownChunkBytes": 81269,
+      "sharedBytes": 2054030,
+      "packages": {
+        "@gears-frontx/api": 171204,
+        "@gears-frontx/framework": 153886,
+        "@gears-frontx/gts-plugin": 452025,
+        "@gears-frontx/i18n": 27053,
+        "@gears-frontx/mfes": 263130,
+        "@gears-frontx/react": 613531,
+        "@gears-frontx/routing": 57433,
+        "@gears-frontx/state": 6904,
+        "@reduxjs/toolkit": 123945,
+        "@tanstack/react-query": 118023,
+        "react": 19276,
+        "react-dom": 8487,
+        "react-redux": 39133
+      }
+    }
+  }
+}

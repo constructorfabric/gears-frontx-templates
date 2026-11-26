@@ -5,7 +5,6 @@ npm-debug.log*
 
 node_modules
 dist
-dist-lib
 dist-ssr
 public/shared
 *.local
@@ -594,3 +593,5 @@ __pycache__/
 .windsurf/workflows/cf.md
 .cf-studio/config/kits/sdlc/
 # END Constructor Studio
+test-results/
+e2e/results/

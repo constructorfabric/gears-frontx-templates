@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, TextDirection } from '@gears-frontx/react';
+import { TextDirection } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../shellContract';
 import type { AuthLoginInput, AuthRuntime } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';

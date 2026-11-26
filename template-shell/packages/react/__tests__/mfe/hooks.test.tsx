@@ -17,14 +17,14 @@ import {
   useHostAction,
   type MfeContextValue,
 } from '../../src/mfe';
-import type { ChildMfeBridge, SharedProperty } from '@gears-frontx/framework';
+import type { ChildMfeBridge, SharedProperty } from '@gears-frontx/framework/mfe';
 
 // ============================================================================
 // Mock Data
 // ============================================================================
 
 const TEST_DOMAIN_ID =
-  'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1';
+  'test.domain~frontx.screensets.layout.sidebar.v1';
 
 /**
  * Build a ChildMfeBridge test double. Override only what the test cares
@@ -135,15 +135,15 @@ describe('MfeContext', () => {
       vi.mocked(mockBridge.subscribeToProperty).mockReturnValueOnce(unsubscribe);
 
       const { result, unmount } = renderHook(
-        () => useSharedProperty('gts.frontx.mfes.comm.shared_property.v1~test.user_data.v1'),
+        () => useSharedProperty('test.shared_property~test.user_data.v1'),
         { wrapper }
       );
 
       // Returns undefined when bridge.getProperty() returns undefined
       expect(result.current).toBeUndefined();
-      expect(mockBridge.getProperty).toHaveBeenCalledWith('gts.frontx.mfes.comm.shared_property.v1~test.user_data.v1');
+      expect(mockBridge.getProperty).toHaveBeenCalledWith('test.shared_property~test.user_data.v1');
       expect(mockBridge.subscribeToProperty).toHaveBeenCalledWith(
-        'gts.frontx.mfes.comm.shared_property.v1~test.user_data.v1',
+        'test.shared_property~test.user_data.v1',
         expect.any(Function)
       );
 
@@ -154,13 +154,13 @@ describe('MfeContext', () => {
     it('should throw when used outside MfeProvider and no explicit bridge is given', () => {
       expect(() => {
         renderHook(() =>
-          useSharedProperty('gts.frontx.mfes.comm.shared_property.v1~test.user_data.v1')
+          useSharedProperty('test.shared_property~test.user_data.v1')
         );
       }).toThrow(/MfeProvider/);
     });
 
     it('should read from an explicit bridge without requiring MfeProvider', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.explicit_bridge.v1';
+      const propertyId = 'test.shared_property~test.explicit_bridge.v1';
       const explicitBridge = makeBridge({
         extensionId: 'explicit-bridge-instance',
         getProperty: vi.fn().mockReturnValue({ id: propertyId, value: 'hello' }),
@@ -176,7 +176,7 @@ describe('MfeContext', () => {
     });
 
     it('should return fallback while the property is unpublished, then the published value', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.fallback_unset.v1';
+      const propertyId = 'test.shared_property~test.fallback_unset.v1';
       let subscribedCallback: ((property: SharedProperty) => void) | undefined;
       let currentValue: unknown = undefined;
 
@@ -203,7 +203,7 @@ describe('MfeContext', () => {
     });
 
     it('should resubscribe and reflect the new value when the bridge instance is swapped', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.bridge_swap.v1';
+      const propertyId = 'test.shared_property~test.bridge_swap.v1';
       const unsubscribeA = vi.fn();
       const unsubscribeB = vi.fn();
 
@@ -235,8 +235,8 @@ describe('MfeContext', () => {
     });
 
     it('should resubscribe and reflect the new value when propertyTypeId changes on the same bridge', () => {
-      const propertyIdA = 'gts.frontx.mfes.comm.shared_property.v1~test.resync_prop_a.v1';
-      const propertyIdB = 'gts.frontx.mfes.comm.shared_property.v1~test.resync_prop_b.v1';
+      const propertyIdA = 'test.shared_property~test.resync_prop_a.v1';
+      const propertyIdB = 'test.shared_property~test.resync_prop_b.v1';
       const unsubscribe = vi.fn();
 
       const bridge = makeBridge({
@@ -266,7 +266,7 @@ describe('MfeContext', () => {
     });
 
     it('should pick up a publish landing between render and subscription', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.commit_window.v1';
+      const propertyId = 'test.shared_property~test.commit_window.v1';
       let currentValue = 'published-before-render';
 
       // The value changes at the moment the hook subscribes, simulating a
@@ -289,7 +289,7 @@ describe('MfeContext', () => {
     });
 
     it('should treat a published null as a value, not as unpublished', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.null_value.v1';
+      const propertyId = 'test.shared_property~test.null_value.v1';
       const explicitBridge = makeBridge({
         getProperty: vi.fn().mockReturnValue({ id: propertyId, value: null }),
       });
@@ -304,7 +304,7 @@ describe('MfeContext', () => {
     });
 
     it('should not resubscribe when an inline fallback changes identity across renders', () => {
-      const propertyId = 'gts.frontx.mfes.comm.shared_property.v1~test.no_churn.v1';
+      const propertyId = 'test.shared_property~test.no_churn.v1';
       const unsubscribe = vi.fn();
       const explicitBridge = makeBridge({
         subscribeToProperty: vi.fn().mockReturnValue(unsubscribe),
@@ -333,7 +333,7 @@ describe('MfeContext', () => {
       const wrapper = createWrapper(mockMfeContextValue, store);
 
       const { result } = renderHook(
-        () => useHostAction('gts.frontx.mfes.comm.action.v1~test.navigate.v1'),
+        () => useHostAction('test.action~test.navigate.v1'),
         { wrapper }
       );
 
@@ -345,7 +345,7 @@ describe('MfeContext', () => {
       const wrapper = createWrapper(mockMfeContextValue, store);
 
       const { result } = renderHook(
-        () => useHostAction('gts.frontx.mfes.comm.action.v1~test.navigate.v1'),
+        () => useHostAction('test.action~test.navigate.v1'),
         { wrapper }
       );
 
@@ -355,7 +355,7 @@ describe('MfeContext', () => {
       // Should call bridge.executeActionsChain with proper structure
       expect(mockBridge.executeActionsChain).toHaveBeenCalledWith({
         action: {
-          type: 'gts.frontx.mfes.comm.action.v1~test.navigate.v1',
+          type: 'test.action~test.navigate.v1',
           target: mockBridge.extDomainId,
           payload: { path: '/dashboard' },
         },

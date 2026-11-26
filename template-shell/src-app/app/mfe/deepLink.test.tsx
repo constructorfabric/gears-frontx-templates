@@ -13,22 +13,24 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
+import { FrontXProvider, createFrontX, presets } from '@gears-frontx/react';
 import {
-  FrontXProvider,
-  createFrontX,
-  presets,
   microfrontends,
-  gtsPlugin,
   MfeHandlerMF,
-  FRONTX_MFE_ENTRY_MF,
-  FRONTX_ACTION_MOUNT_EXT,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
   type MfeEntryMF,
-} from '@gears-frontx/react';
-import { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
+} from '@gears-frontx/react/mfe';
+import {
+  themeSchema,
+  languageCodeSchema,
+  languageSchema,
+  screenLabelsSchema,
+  FRONTX_MFE_ENTRY_MF,
+} from '../../../src/index';
 import { MfeScreenContainer } from './MfeScreenContainer';
 import { screenState } from './screenState';
+import { gtsPlugin, FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 const SCREEN_DOMAIN = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
 const MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.deeplink.mfe.manifest.v1';
@@ -41,13 +43,7 @@ const extensionId = (name: string) =>
 
 const manifest = {
   id: MANIFEST_ID,
-  name: 'deeplinkMfe',
   metaData: {
-    name: 'deeplinkMfe',
-    type: 'app',
-    buildInfo: { buildVersion: '1.0.0', buildName: 'deeplinkMfe' },
-    remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-    globalName: 'deeplinkMfe',
     publicPath: 'http://localhost:3999/',
   },
   shared: [],
@@ -63,9 +59,9 @@ const aggregate = [
       requiredProperties: [THEME, LANGUAGE],
       actions: [],
       domainActions: [],
-      manifest,
+      manifest: manifest.id,
       exposedModule: `./${name}`,
-      exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+      exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
     })),
     extensions: screens.map((name, index) => ({
       id: extensionId(name),

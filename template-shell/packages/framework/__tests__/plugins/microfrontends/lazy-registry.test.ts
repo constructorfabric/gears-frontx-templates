@@ -5,12 +5,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrontXApp } from '../../../src/types';
+import { createFakeTypeSystem } from '../../fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 let createFrontX: typeof import('../../../src/createFrontX').createFrontX;
 let microfrontends: typeof import('../../../src/plugins/microfrontends').microfrontends;
 let MfeEvents: typeof import('../../../src/plugins/microfrontends').MfeEvents;
 let mfeRegistryFactory: typeof import('../../../src/mfe/registry').mfeRegistryFactory;
-let gtsPlugin: typeof import('@gears-frontx/gts-plugin').gtsPlugin;
 let eventBus: typeof import('@gears-frontx/state').eventBus;
 let resetStore: typeof import('@gears-frontx/state').resetStore;
 let themes: typeof import('../../../src/plugins/themes').themes;
@@ -23,7 +25,6 @@ beforeEach(async () => {
   ({ microfrontends, MfeEvents } = await import('../../../src/plugins/microfrontends'));
   ({ themes } = await import('../../../src/plugins/themes'));
   ({ mfeRegistryFactory } = await import('../../../src/mfe/registry'));
-  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
   originalBuild = mfeRegistryFactory.build.bind(mfeRegistryFactory);
   buildSpy = vi.spyOn(mfeRegistryFactory, 'build');
@@ -40,7 +41,7 @@ afterEach(() => {
 });
 
 function buildApp(): FrontXApp {
-  app = createFrontX().use(microfrontends({ typeSystem: gtsPlugin })).build();
+  app = createFrontX().use(microfrontends({ typeSystem })).build();
   return app;
 }
 
@@ -66,7 +67,7 @@ describe('microfrontends lazy registry', () => {
   it('is materialized by a registry-dependent action', () => {
     const built = buildApp();
 
-    expect(() => built.actions.mountExtension('gts.frontx.mfes.ext.extension.v1~test.app.missing.v1')).toThrowError(
+    expect(() => built.actions.mountExtension('test.extension~test.app.missing.v1')).toThrowError(
       /is not registered/
     );
 
@@ -79,9 +80,9 @@ describe('microfrontends lazy registry', () => {
 
     eventBus.emit(MfeEvents.RegisterExtensionRequested, {
       extension: {
-        id: 'gts.frontx.mfes.ext.extension.v1~test.app.eff.v1',
-        domain: 'gts.frontx.mfes.ext.domain.v1~test.app.eff.domain.v1',
-        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.eff.entry.v1',
+        id: 'test.extension~test.app.eff.v1',
+        domain: 'test.domain~test.app.eff.domain.v1',
+        entry: 'test.entry~test.app.eff.entry.v1',
       },
     });
 
@@ -96,7 +97,7 @@ describe('microfrontends with themes()', () => {
   function buildWithThemes(): FrontXApp {
     app = createFrontX()
       .use(themes())
-      .use(microfrontends({ typeSystem: gtsPlugin }))
+      .use(microfrontends({ typeSystem }))
       .build();
     return app;
   }

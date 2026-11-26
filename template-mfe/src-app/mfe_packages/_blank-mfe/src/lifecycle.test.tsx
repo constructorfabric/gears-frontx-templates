@@ -1,12 +1,9 @@
 // The add-mfe-package skill (step 7) lists which cases here go with the example screen and which must keep passing.
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import {
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMfeBridgeFixture } from '../../../__test-utils__/createMfeBridgeFixture';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from './shellContract';
 
 type BridgeFixture = ReturnType<typeof createMfeBridgeFixture>;
 type TestBridge = BridgeFixture['bridge'];
@@ -27,6 +24,17 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@gears-frontx/react')>();
   return {
     ...actual,
+    apiRegistry: {
+      getService: getServiceMock,
+    },
+    useApiQuery: useApiQueryMock,
+  };
+});
+
+vi.mock('@gears-frontx/react/mfe', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@gears-frontx/react/mfe')>();
+  return {
+    ...actual,
     ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
       constructor(public readonly app: TestApp) {}
 
@@ -36,10 +44,6 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
 
       async unmount(_container: Element | ShadowRoot): Promise<void> {}
     },
-    apiRegistry: {
-      getService: getServiceMock,
-    },
-    useApiQuery: useApiQueryMock,
   };
 });
 

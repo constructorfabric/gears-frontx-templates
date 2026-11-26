@@ -12,7 +12,10 @@
  * busy); this one pins what the real hook feeds that contract.
  */
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import {
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_THEME,
+} from '../../shellContract';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { describe, expect, it, vi } from 'vitest';

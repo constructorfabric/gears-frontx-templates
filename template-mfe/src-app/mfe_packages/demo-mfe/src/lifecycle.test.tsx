@@ -22,26 +22,22 @@ async function mountHelloWorld(bridge: TestBridge): Promise<object> {
 const superMountSpy = vi.fn();
 const fetchUserSpy = vi.fn();
 
-vi.mock('@gears-frontx/react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@gears-frontx/react')>();
-  return {
-    ...actual,
-    ActionHandler: class ActionHandler {
-      static {
-        void 0;
-      }
-    },
-    ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
-      constructor(public readonly app: TestApp) {}
+vi.mock('@gears-frontx/react/mfe', () => ({
+  ActionHandler: class ActionHandler {
+    static {
+      void 0;
+    }
+  },
+  ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
+    constructor(public readonly app: TestApp) {}
 
-      mount(container: Element | ShadowRoot, bridge: TestBridge, mountContext?: unknown): void {
-        superMountSpy(container, bridge, mountContext);
-      }
+    mount(container: Element | ShadowRoot, bridge: TestBridge, mountContext?: unknown): void {
+      superMountSpy(container, bridge, mountContext);
+    }
 
-      async unmount(_container: Element | ShadowRoot): Promise<void> {}
-    },
-  };
-});
+    async unmount(_container: Element | ShadowRoot): Promise<void> {}
+  },
+}));
 
 vi.mock('./init', () => ({
   mfeApp: { id: 'demo-mfe-app' },

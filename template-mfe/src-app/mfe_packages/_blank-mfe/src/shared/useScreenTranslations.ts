@@ -29,8 +29,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '../shellContract';
 
 interface TranslationJsonModule {
   default: Record<string, string>;

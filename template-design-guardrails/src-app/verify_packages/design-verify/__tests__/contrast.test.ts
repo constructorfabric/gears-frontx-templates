@@ -41,7 +41,7 @@ describe('contrastPairs', () => {
     // Background only, or text only: nothing to pair.
     expect(names).not.toContain('dialog-overlay');
     expect(names).not.toContain('button-link');
-    // The badge text tokens the kit 0.5.0 badge CSS paints: the -foreground
+    // The badge text tokens the kit 0.7.1 badge CSS paints: the -foreground
     // role for success, warning and danger, the plain role for info.
     const badges = Object.fromEntries(
       pairs.filter((p) => p.component.startsWith('badge-')).map((p) => [p.component, `${p.text.name} on ${p.background.name}`]),

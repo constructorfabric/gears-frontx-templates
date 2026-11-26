@@ -1,12 +1,12 @@
 // @cpt-dod:cpt-frontx-dod-unit-test-generation-and-agent-verification-blank-mfe-tests:p1
 import { act, renderHook, waitFor } from '@testing-library/react';
 import {
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
   type ChildMfeBridge,
   type SharedProperty,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useScreenTranslations } from './useScreenTranslations';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '../shellContract';
 
 afterEach(() => {
   vi.restoreAllMocks();

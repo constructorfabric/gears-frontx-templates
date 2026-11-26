@@ -46,7 +46,6 @@ let peekAppQueryClientActivator: Testing['peekAppQueryClientActivator'];
 let eventBus: typeof import('@gears-frontx/state').eventBus;
 let resetStore: typeof import('@gears-frontx/state').resetStore;
 let MockEvents: typeof import('../src/effects/mockEffects').MockEvents;
-let TenantEvents: typeof import('../src/effects/tenantEffects').TenantEvents;
 let AuthEvents: typeof import('../src/plugins/auth').AuthEvents;
 
 // ============================================================================
@@ -179,7 +178,6 @@ beforeEach(async () => {
   } = await import('../src/testing'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
   ({ MockEvents } = await import('../src/effects/mockEffects'));
-  ({ TenantEvents } = await import('../src/effects/tenantEffects'));
   ({ AuthEvents } = await import('../src/plugins/auth'));
   resetStore();
   resetSharedFetchCache();
@@ -670,7 +668,7 @@ describe('queryCache() — MockEvents.Toggle clears the cache', () => {
       expect(clearSpy).toHaveBeenCalledTimes(1);
       expect(sharedClearSpy).toHaveBeenCalledTimes(1);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '[Gears FrontX] Failed to cancel queries after a mock, tenant or session change',
+        '[Gears FrontX] Failed to cancel queries after a mock or session change',
         expect.any(Error)
       );
 
@@ -681,26 +679,19 @@ describe('queryCache() — MockEvents.Toggle clears the cache', () => {
 });
 
 // ============================================================================
-// Tenant switch and logout: same rule as a mock mode change
+// Login and logout: same rule as a mock mode change
 // ============================================================================
 
 describe('clears the cache on every cache scope change', () => {
   type ScopeChange = { name: string; change: () => void };
 
   const scopeChanges: ScopeChange[] = [
-    {
-      name: 'a tenant switch',
-      change: () => eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } }),
-    },
-    { name: 'a tenant clear', change: () => eventBus.emit(TenantEvents.Cleared, {}) },
     { name: 'a logout', change: () => eventBus.emit(AuthEvents.LoggedOut, {}) },
     { name: 'a login', change: () => eventBus.emit(AuthEvents.LoggedIn, {}) },
   ];
 
-  /** Data and a shared fetch entry cached for tenant-a. */
-  async function seedForTenantA(client: QueryClient, fetcher: () => Promise<string>): Promise<void> {
-    eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-a' } });
-    await flushQueryCacheClear();
+  /** Data and a shared fetch entry cached under the current scope. */
+  async function seedScopeData(client: QueryClient, fetcher: () => Promise<string>): Promise<void> {
     client.setQueryData(['users'], [{ id: 1 }]);
     await getSharedFetchCache().getOrFetch(['shared'], fetcher, { staleTime: 1_000 });
   }
@@ -713,7 +704,7 @@ describe('clears the cache on every cache scope change', () => {
     plugin.onInit!(stubApp());
     const client = requireSharedQueryClient();
     const fetcher = vi.fn().mockResolvedValue('first');
-    await seedForTenantA(client, fetcher);
+    await seedScopeData(client, fetcher);
     let resolveOldFetch!: (value: string) => void;
     const oldFetch = client
       .fetchQuery({
@@ -745,8 +736,8 @@ describe('clears the cache on every cache scope change', () => {
   });
 
   it.each([
-    { ...scopeChanges[0], event: () => TenantEvents.Changed },
-    { ...scopeChanges[2], event: () => AuthEvents.LoggedOut },
+    { ...scopeChanges[0], event: () => AuthEvents.LoggedOut },
+    { ...scopeChanges[1], event: () => AuthEvents.LoggedIn },
     {
       name: 'a mock toggle',
       change: () => eventBus.emit(MockEvents.Toggle, { enabled: true }),
@@ -760,29 +751,12 @@ describe('clears the cache on every cache scope change', () => {
       const plugin = queryCache();
       plugin.onInit!(stubApp());
       const client = requireSharedQueryClient();
-      await seedForTenantA(client, vi.fn().mockResolvedValue('first'));
+      await seedScopeData(client, vi.fn().mockResolvedValue('first'));
 
       change();
 
       expect(client.getQueryData(['users'])).toBeUndefined();
     });
-  });
-
-  it('keeps the cache when a tenant event does not change the tenant', async () => {
-    const plugin = queryCache();
-    plugin.onInit!(stubApp());
-    const client = requireSharedQueryClient();
-
-    // No tenant yet: a clear changes nothing.
-    client.setQueryData(['users'], [{ id: 1 }]);
-    eventBus.emit(TenantEvents.Cleared, {});
-    await flushQueryCacheClear();
-    expect(client.getQueryData(['users'])).toEqual([{ id: 1 }]);
-
-    await seedForTenantA(client, vi.fn().mockResolvedValue('first'));
-    eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-a' } });
-    await flushQueryCacheClear();
-    expect(client.getQueryData(['users'])).toEqual([{ id: 1 }]);
   });
 
   it.each(scopeChanges)(
@@ -793,7 +767,7 @@ describe('clears the cache on every cache scope change', () => {
       firstHost.onInit!(stubApp());
       sharedPlugin.onInit!(stubApp());
       const client = requireSharedQueryClient();
-      await seedForTenantA(client, vi.fn().mockResolvedValue('first'));
+      await seedScopeData(client, vi.fn().mockResolvedValue('first'));
       firstHost.onDestroy!(stubApp());
       await flushQueryCacheClear();
 
@@ -815,11 +789,10 @@ describe('clears the cache on every cache scope change', () => {
     }
   );
 
-  it('clears through createFrontX() on changeTenant, clearTenantAction and app.auth.logout', async () => {
+  it('clears through createFrontX() on app.auth.logout', async () => {
     // Same module graph as queryCache, eventBus and the store the tests read.
     const { createFrontX: createFrontXInGraph } = await import('../src/createFrontX');
     const { auth } = await import('../src/plugins/auth');
-    const { changeTenant, clearTenantAction } = await import('../src/effects/tenantActions');
     const provider = {
       getSession: vi.fn().mockResolvedValue(null),
       checkAuth: vi.fn().mockResolvedValue({ authenticated: true }),
@@ -827,16 +800,6 @@ describe('clears the cache on every cache scope change', () => {
     };
     const app = createFrontXInGraph().use(queryCache()).use(auth({ provider })).build();
     const client = requireSharedQueryClient();
-
-    changeTenant({ id: 'tenant-a' });
-    await flushQueryCacheClear();
-    client.setQueryData(['users'], 'tenant-a');
-    changeTenant({ id: 'tenant-b' });
-    await waitForQueryDataGone(client, ['users']);
-
-    client.setQueryData(['users'], 'tenant-b');
-    clearTenantAction();
-    await waitForQueryDataGone(client, ['users']);
 
     client.setQueryData(['users'], 'signed-in');
     await app.auth?.logout();

@@ -22,15 +22,16 @@ import {
   effects,
   queryCacheShared,
   mock,
+} from '@gears-frontx/react';
+import {
   microfrontends,
-  gtsPlugin,
   ActionHandler,
   ThemeAwareReactLifecycle,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_SCREEN_DOMAIN,
   type ChildMfeBridge,
   type MfeEntryLifecycle,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
+import { gtsPlugin, FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
+import { FRONTX_SCREEN_DOMAIN } from './shellContract';
 import {
   ExtensionRouter,
   navigation,
@@ -39,6 +40,7 @@ import {
   Outlet,
   useSearch,
 } from '@gears-frontx/routing-tanstack';
+import mfeJson from '../mfe.json' with { type: 'json' };
 import styles from './lifecycle.module.css';
 
 const PING_ACTION_TYPE =
@@ -220,6 +222,13 @@ class WidgetsFixtureALifecycle implements MfeEntryLifecycle<ChildMfeBridge> {
     const tree = new WidgetAMount();
     this.mounts.set(container, { tree, extensionId: bridge.extensionId });
     tree.mount(container, bridge);
+    // Owners register their own solution schemas: the ping action's schema
+    // must be on the type system before any ping is dispatched. Type-system
+    // plugin copies in one realm converge, so this registration is visible
+    // where the action's target lives.
+    for (const schema of mfeJson.schemas ?? []) {
+      gtsPlugin.registerSchema(schema as Parameters<typeof gtsPlugin.registerSchema>[0]);
+    }
     // Registered synchronously, before `mount()` returns: `DefaultMountManager`
     // treats a lifecycle's `mount()` completion as the signal that the
     // extension is reachable, and lets a chain's `next` continuation dispatch

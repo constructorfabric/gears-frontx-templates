@@ -16,7 +16,7 @@
  * routes and keeps every failure.
  */
 
-import { FRONTX_POPUP_DOMAIN, FRONTX_SCREEN_DOMAIN } from '@gears-frontx/react';
+import { FRONTX_POPUP_DOMAIN, FRONTX_SCREEN_DOMAIN } from '../../../../src/index';
 
 /** The popup domain the shell's modal extension domain is registered under. */
 export const POPUP_DOMAIN = FRONTX_POPUP_DOMAIN;

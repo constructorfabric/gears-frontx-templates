@@ -34,9 +34,10 @@ Edit `package.json`:
 - Change the port in the `"dev"` and `"preview"` scripts (e.g., from `3099` to your chosen port). The `preview` script serves the built remote for a shell to load; it is not a standalone view of the MFE
 
 Edit `vite.config.ts`:
-- Change `name` in the federation config from `"blankMfe"` to `"yourMfeName"` (camelCase)
+- No federation `name` to change: `vitePluginMfeGts` derives it from `package.json`'s `name` (`@gears-frontx/your-mfe-name` → `yourMfeName`, camelCase)
+- Add your lifecycle modules to the `exposes` map passed to `vitePluginMfeGts({ exposes })` (or to `exposes` in `mfe.json`)
 - Update the port in the dev server config if needed
-- Add `@gears-frontx/routing` to `sharedDeps`, so this MFE's runtime evaluates its own copy of it, never shared across MFEs; if the MFE renders `<ExtensionRouter>` or calls `navigation()` (both from `@gears-frontx/routing-tanstack`), add `@gears-frontx/routing-tanstack` too
+- Keep `@gears-frontx/routing` declared in `package.json` at its exact pin. Every bare package the MFE's code imports is emitted as shared units, whichever `package.json` section declares it; list a package in `mfe.json`'s `share.exclude` to keep it in the MFE's own chunks instead. If the MFE renders `<ExtensionRouter>` or calls `navigation()` (both from `@gears-frontx/routing-tanstack`), declare `@gears-frontx/routing-tanstack` under `dependencies` too
 
 ### 3. Update GTS IDs in mfe.json
 
@@ -131,14 +132,15 @@ the package.
 _blank-mfe/
 ├── package.json              # Package metadata and dependencies
 ├── tsconfig.json             # TypeScript configuration
-├── vite.config.ts            # Vite and Module Federation config
+├── vite.config.ts            # Framework plugin + vitePluginMfeGts (federation and build settings are the plugin's; exposes are declared here)
 ├── vitest.config.ts          # Test config, on the shell's shared MFE base
 ├── mfe.json                  # MFE manifest, entries, and extensions
 ├── README.md                 # This file
 └── src/
     ├── lifecycle.tsx         # MFE lifecycle: shadow-root styling + screen render
     ├── init.ts               # MFE app composition (services, slices, effects)
-    ├── api/                  # MFE-local API service, endpoint types, mocks
+    ├── shellContract.ts      # Shell contract ids this MFE uses, declared locally (an MFE never imports shell code)
+    ├── api/                  # MFE-local API service, endpoint types, mocks, own RestMockPlugin copy
     ├── actions/              # Action creators
     ├── events/               # Event definitions
     ├── effects/              # Effect handlers
@@ -331,7 +333,7 @@ project - a shell plus this template - not from either template alone.
 ### Module Federation Errors
 
 If you see "Shared module not available" errors:
-- Ensure every package listed in `sharedDeps` in `vite.config.ts` is one the shell provides, and that `@gears-frontx/routing` is listed (every MFE lists it); packages not listed there, such as `@gears-frontx/ui-kit`, are bundled into the MFE
+- Ensure every package the MFE's code imports is declared in `package.json` and `@gears-frontx/routing` is declared at its exact pin (every MFE declares it). Every bare package the code imports is emitted as shared units, whichever `package.json` section declares it; a package that must not be shared goes into `share.exclude` in `mfe.json`, never an externals list
 - Verify the host app is configured to consume your remote
 
 ### Type Errors

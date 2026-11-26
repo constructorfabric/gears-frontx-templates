@@ -1,5 +1,5 @@
 import React from 'react';
-import { upperFirst } from 'lodash';
+import upperFirst from 'lodash/upperFirst';
 import { useTheme, useTranslation } from '@gears-frontx/react';
 import { ButtonVariant } from '../uikit/types';
 import {

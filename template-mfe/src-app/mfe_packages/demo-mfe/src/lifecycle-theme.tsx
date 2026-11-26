@@ -1,6 +1,6 @@
 import React from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { ThemeAwareReactLifecycle } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import { ThemeAwareReactLifecycle } from '@gears-frontx/react/mfe';
 import { mfeApp } from './init';
 import { CurrentThemeScreen } from './screens/theme/CurrentThemeScreen';
 

@@ -23,7 +23,6 @@
       "tsconfig.node.json",
       "tsconfig.scripts.json",
       "tsconfig.test.json",
-      "tsup.config.ts",
       "postcss.config.js",
       "vite.config.ts",
       "vitest.config.ts",

@@ -1,0 +1,30 @@
+{
+  "templateExample": true,
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.lazyimport.fixture.manifest.v1",
+    "remoteEntry": "http://localhost:3301/assets/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.lazyimport.fixture.home.v1",
+      "requiredProperties": [],
+      "actions": [],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.lazyimport.fixture.manifest.v1",
+      "exposedModule": "./lifecycle"
+    }
+  ],
+  "extensions": [
+    {
+      "id": "gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.lazyimport.screens.home.v1",
+      "domain": "gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1",
+      "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.lazyimport.fixture.home.v1",
+      "route": "/lazy-import",
+      "presentation": {
+        "label": "Lazy Import",
+        "icon": "lucide:download",
+        "order": 900
+      }
+    }
+  ]
+}

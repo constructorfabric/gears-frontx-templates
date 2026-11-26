@@ -11,10 +11,8 @@ import {
   useFrontX,
   eventBus,
   Language,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_SCREEN_DOMAIN,
-  type MenuState,
 } from '@gears-frontx/react';
+import type { MenuState } from './state';
 import {
   Sidebar,
   SidebarContent,
@@ -40,6 +38,8 @@ import { menuLabels } from '@/app/mfe/menuLabels';
 import { screensInMenuOrder, type RegistryScreenExtension } from '@/app/mfe/defaultScreen';
 import { FrontXLogoIcon } from '@/app/icons/FrontXLogoIcon';
 import { FrontXLogoTextIcon } from '@/app/icons/FrontXLogoTextIcon';
+import { FRONTX_SCREEN_DOMAIN } from '../../../src/index';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 import styles from './Menu.module.css';
 
 export interface MenuProps {

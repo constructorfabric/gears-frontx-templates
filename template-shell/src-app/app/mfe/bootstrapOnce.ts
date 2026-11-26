@@ -10,11 +10,15 @@ import { bootstrapMFE, type DomainRegistration } from './bootstrap';
  * already ran and would re-invoke `bootstrapMFE`, re-registering every domain
  * and extension a second time on the same `mfeRegistry`.
  *
- * Deliberately never cleared on rejection: a `bootstrapMFE` failure can
- * leave some domains/extensions registered and others not (it is not
+ * `bootstrapMFE` rejects only when the host itself cannot go on (the aggregate
+ * is unreachable, a domain the host implements fails to register); a package
+ * or an extension that is an MFE's own fault is disabled and does not reject
+ * it. The promise is deliberately never cleared on rejection: a rejection can
+ * leave some domains/extensions registered and others not (the walk is not
  * transactional), so retrying from that partial state would not be a safe
  * repeat of the first attempt - there is no isolated "nothing happened yet"
- * state to roll back to.
+ * state to roll back to. The screen container shows its failed state, whose
+ * Retry reloads the page.
  *
  * Also never keyed on `app`: a change of `app` across a re-render still
  * resolves against whatever registry the first call bootstrapped.

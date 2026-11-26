@@ -30,10 +30,11 @@ Authoritative files:
 - `src-app/app/i18n/languagePersistence.ts` - the language the shell reads
   from storage at startup
 - `src/gts/schemas/extension_screen.v1.json` — the derived screen extension type
-- `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/screen.v1.json` -
+- `src/gts/instances/domains/screen.v1.json` -
   the screen domain instance
-- `scripts/generate-mfe-manifests.ts`, `scripts/generate-menu-icons.ts`,
-  `src/build/mf-gts.ts` - the build-time pipeline
+- `scripts/generate-mfe-manifests.ts`, `scripts/generate-menu-icons.ts` and the
+  MFE-side `vitePluginMfeGts()` (`@gears-frontx/vite-plugin-mfe-gts`) — the
+  build-time pipeline
 
 ## The menu is registry-driven
 
@@ -119,7 +120,7 @@ screen does (`demo-mfe`, `src/screens/settings/SettingsScreen.tsx`).
 
 ```text
 src-app/mfe_packages/<pkg>/mfe.json        # hand-written; source of truth
-  → <pkg>/dist/mfe-manifest.json           # build: frontxMfGts() merges mfe.json
+  → <pkg>/dist/mfe-manifest.json           # build: vitePluginMfeGts() merges mfe.json
                                            #   with Module Federation's mf-manifest.json
   → public/generated-mfe-manifests.json    # npm run generate:mfe-manifests aggregates all MFEs
   → fetch('/generated-mfe-manifests.json') # runtime: bootstrap.ts
@@ -228,8 +229,9 @@ The extensions pass treats each extension in one of two ways:
   Composition is recursive, not just shell to MFE.
 
 Both ways need the target domain on the type system. An extension whose
-domain no package declares and no host registration made fails the walk,
-whether the domain would be this host's or another runtime's: a domain
+domain no package declares and no host registration made is disabled
+like any other rejected extension, whether the domain would be this host's
+or another runtime's, and the shell boots without it: a domain
 registered after the walk admits none of the extensions the manifests
 declare for it.
 

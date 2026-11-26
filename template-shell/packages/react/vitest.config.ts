@@ -5,7 +5,7 @@ import { definePackageVitestConfig } from '../../vitest.shared';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Alias @gears-frontx/react to its own source entry so that tests importing
+// Alias @gears-frontx/react (and its subpath entries) to its own source so that tests importing
 // hooks via relative '../src/...' paths and tests importing via the package
 // name both resolve to the SAME module instance. Without this, two separate
 // copies of FrontXQueryClientContext are created (one from dist/index.js via
@@ -18,6 +18,7 @@ export default definePackageVitestConfig({
   plugins: [react()],
   alias: {
     '@gears-frontx/react/testing': path.resolve(__dirname, 'src/testing.ts'),
+    '@gears-frontx/react/mfe': path.resolve(__dirname, 'src/mfe.ts'),
     '@gears-frontx/react': path.resolve(__dirname, 'src/index.ts'),
   },
 });

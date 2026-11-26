@@ -9,7 +9,8 @@
 import React from 'react';
 import { QueryClient } from '@tanstack/react-query';
 import { vi } from 'vitest';
-import type { ChildMfeBridge, EndpointDescriptor, MfeContextValue, MutationDescriptor, StreamDescriptor } from '@gears-frontx/react';
+import type { EndpointDescriptor, MutationDescriptor, StreamDescriptor } from '@gears-frontx/react';
+import type { ChildMfeBridge, MfeContextValue } from '@gears-frontx/react/mfe';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let createFrontX: typeof import('@gears-frontx/react')['createFrontX'];
@@ -251,7 +252,7 @@ export function makeStreamDescriptor<TEvent>(config: {
  */
 export function makeMockBridge(): ChildMfeBridge {
   return {
-    extDomainId: 'gts.frontx.mfes.ext.domain.v1~test.isolation.v1',
+    extDomainId: 'test.domain~test.isolation.v1',
     extensionId: 'isolation-test',
     executeActionsChain: vi.fn().mockReturnValue(undefined),
     subscribeToProperty: vi.fn().mockReturnValue(() => undefined),
@@ -264,6 +265,6 @@ export function makeContextValue(id: string): MfeContextValue {
   return {
     bridge: makeMockBridge(),
     extensionId: id,
-    domainId: 'gts.frontx.mfes.ext.domain.v1~test.isolation.v1',
+    domainId: 'test.domain~test.isolation.v1',
   };
 }

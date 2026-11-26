@@ -63,17 +63,30 @@ interface ManifestOverrides {
   /** Writes both collections present but empty, which is what a contributing-nothing MFE emits. */
   emptyCollections?: boolean;
   labelDictionaries?: unknown;
+  /** Extra fields merged into the enriched `manifest` object (e.g. `lists`). */
+  manifestExtras?: Record<string, unknown>;
+  /** The enriched manifest's `shared[]` entries; empty by default. */
+  shared?: unknown[];
+  /** Writes the manifest with no `shared` key, as a current producer does. */
+  omitShared?: boolean;
+  /** The built manifest's `metaData.publicPath`; a concrete address by default. */
+  publicPath?: string;
+  /** The authored mfe.json `manifest.remoteEntry`, when the case has one. */
+  authoredRemoteEntry?: string;
 }
 
 /**
  * Writes one package's enriched build output, with the ids a case wants to bend.
- * Everything else is the shape the frontxMfGts plugin emits, so a refusal in a
+ * Everything else is the shape the vitePluginMfeGts plugin emits, so a refusal in a
  * case can only come from the id under test.
  */
 function mfePackageWithIds(overrides: ManifestOverrides): void {
   const packagePath = join(mfePackagesDir, PACKAGE_NAME);
   mkdirSync(join(packagePath, 'dist'), { recursive: true });
-  writeFileSync(join(packagePath, 'mfe.json'), '{ "extensions": [] }', 'utf-8');
+  writeFileSync(join(packagePath, 'mfe.json'), JSON.stringify({
+      ...(overrides.authoredRemoteEntry !== undefined && { manifest: { id: 'x', remoteEntry: overrides.authoredRemoteEntry } }),
+      extensions: [],
+    }), 'utf-8');
 
   const manifestId = overrides.manifestId ?? VALID_MANIFEST_ID;
 
@@ -82,17 +95,11 @@ function mfePackageWithIds(overrides: ManifestOverrides): void {
     JSON.stringify({
       manifest: {
         id: manifestId,
-        name: PACKAGE_NAME,
-        remoteEntry: 'http://localhost:3010/assets/remoteEntry.js',
         metaData: {
-          name: PACKAGE_NAME,
-          type: 'app',
-          buildInfo: { buildVersion: '0', buildName: PACKAGE_NAME },
-          remoteEntry: { name: 'remoteEntry.js', path: 'assets', type: 'module' },
-          globalName: PACKAGE_NAME,
-          publicPath: 'http://localhost:3010/',
+          publicPath: overrides.publicPath ?? 'http://localhost:3010/',
         },
-        shared: [],
+        ...(overrides.omitShared ? {} : { shared: overrides.shared ?? [] }),
+        ...(overrides.manifestExtras ?? {}),
       },
       ...(overrides.labelDictionaries !== undefined && { labelDictionaries: overrides.labelDictionaries }),
       ...(overrides.omitEntries
@@ -108,7 +115,7 @@ function mfePackageWithIds(overrides: ManifestOverrides): void {
                     domainActions: [],
                     manifest: manifestId,
                     exposedModule: './lifecycle',
-                    exposeAssets: { js: { async: [], sync: [] }, css: { async: [], sync: [] } },
+                    exposeAssets: { js: { sync: ['assets/lifecycle.js'] }, css: { async: [], sync: [] } },
                   },
                 ],
           }),
@@ -130,8 +137,8 @@ function mfePackageWithIds(overrides: ManifestOverrides): void {
   );
 }
 
-function generate(): void {
-  new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, null).run();
+function generate(baseUrl: string | null = null): void {
+  new ManifestGenerator(mfePackagesDir, outputFile, MFE_MANIFEST_PATH, baseUrl).run();
 }
 
 function writeDictionary(contents: unknown = {
@@ -402,5 +409,97 @@ describe('ManifestGenerator - GTS identifier validation', () => {
     generate();
 
     expect(existsSync(outputFile)).toBe(true);
+  });
+});
+
+describe('ManifestGenerator - fetch-list manifest fields', () => {
+  it('carries the unit table and the per-expose lists into the aggregate unchanged', () => {
+    const units = [
+      { location: 'react@19.2.4/index.0123abcd.js', contentHash: 'a'.repeat(64), answers: ['react'], imports: [] },
+    ];
+    const lists = {
+      './lifecycle': { units: ['a'.repeat(64)], ownChunks: ['assets/own.js'] },
+    };
+    mfePackageWithIds({ manifestExtras: { units, lists } });
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{
+      manifest: { units?: unknown; lists?: unknown };
+      entries: Array<{ manifest: string }>;
+    }>;
+    expect(aggregate[0].manifest.units).toEqual(units);
+    expect(aggregate[0].manifest.lists).toEqual(lists);
+    expect(aggregate[0].entries[0].manifest).toBe(VALID_MANIFEST_ID);
+  });
+
+  it('writes no units or lists field when the build composed none', () => {
+    mfePackageWithIds({});
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ manifest: Record<string, unknown> }>;
+    expect('units' in aggregate[0].manifest).toBe(false);
+    expect('lists' in aggregate[0].manifest).toBe(false);
+  });
+
+  it('aggregates a manifest that carries no shared entry, and writes none', () => {
+    mfePackageWithIds({ omitShared: true });
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ manifest: Record<string, unknown> }>;
+    expect('shared' in aggregate[0].manifest).toBe(false);
+  });
+
+  it('carries only the closed manifest fields into the aggregate', () => {
+    mfePackageWithIds({
+      shared: [
+        {
+          name: 'react',
+          version: '19.2.4',
+          chunkPath: 'shared/react.js',
+          unwrapKey: null,
+          requires: [],
+          graphFile: { location: 'shared/react.graph.json', contentHash: 'ff' },
+        },
+      ],
+      manifestExtras: { entryRoots: { './lifecycle': [] }, lazyChunkRoots: {} },
+    });
+
+    generate();
+
+    const aggregate = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{
+      manifest: Record<string, unknown> & { shared: Array<Record<string, unknown>> };
+    }>;
+    expect('entryRoots' in aggregate[0].manifest).toBe(false);
+    expect('lazyChunkRoots' in aggregate[0].manifest).toBe(false);
+    expect('graphFile' in aggregate[0].manifest.shared[0]).toBe(false);
+    expect('requires' in aggregate[0].manifest.shared[0]).toBe(false);
+    expect('unwrapKey' in aggregate[0].manifest.shared[0]).toBe(false);
+  });
+
+  describe('publicPath when the build wrote the "auto" placeholder', () => {
+    const publicPathOf = (): string =>
+      (JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ manifest: { metaData: { publicPath: string } } }>)[0].manifest.metaData.publicPath;
+
+    it("addresses the package at the origin of its authored mfe.json remoteEntry", () => {
+      mfePackageWithIds({ publicPath: 'auto', authoredRemoteEntry: 'http://localhost:3010/assets/remoteEntry.js' });
+      generate();
+      expect(publicPathOf()).toBe('http://localhost:3010/');
+    });
+
+    it('lets --base-url override it', () => {
+      mfePackageWithIds({ publicPath: 'auto', authoredRemoteEntry: 'http://localhost:3010/assets/remoteEntry.js' });
+      generate('http://localhost:4999');
+      expect(publicPathOf()).toBe('http://localhost:4999/');
+    });
+
+    it('never writes the served manifest a remoteEntry', () => {
+      mfePackageWithIds({ publicPath: 'auto', authoredRemoteEntry: 'http://localhost:3010/assets/remoteEntry.js' });
+      generate();
+      const [config] = JSON.parse(readFileSync(outputFile, 'utf-8')) as Array<{ manifest: Record<string, unknown> }>;
+      expect('remoteEntry' in config.manifest).toBe(false);
+    });
   });
 });

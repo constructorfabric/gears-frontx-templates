@@ -12,8 +12,7 @@
  */
 
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, Toaster } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';
@@ -21,6 +20,7 @@ import { useHostDirection } from '../../shared/useHostDirection';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { CategoryMenu } from './components/CategoryMenu';
 import styles from './UIKitElements.module.css';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../shellContract';
 
 // Lazy-loaded category components
 const LayoutElements = lazy(() =>

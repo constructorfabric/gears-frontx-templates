@@ -26,9 +26,7 @@
  * tree.
  *
  * A `npm install --no-save --no-package-lock <paths>` would do the linking too,
- * but npm rebuilds the whole ideal tree for it — pruning unrelated packages and
- * replacing the template's `file:.` self-link with a packed snapshot of
- * `dist-lib`, which breaks the template's own rebuild-on-change loop.
+ * but npm rebuilds the whole ideal tree for it, pruning unrelated packages.
  *
  * Run `npm ci` inside `template-shell` to go back to the pinned versions. There
  * is no `--unlink`: the links replace published tarball *content*, which only

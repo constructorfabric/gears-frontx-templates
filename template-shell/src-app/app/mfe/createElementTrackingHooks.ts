@@ -1,5 +1,5 @@
 import { FRONTX_THEME_HOST_ATTRIBUTE } from '@gears-frontx/react';
-import type { ContainerHooks } from '@gears-frontx/react';
+import type { ContainerHooks } from '@gears-frontx/react/mfe';
 
 /**
  * Container hooks that keep a domain's occupancy store in step with the

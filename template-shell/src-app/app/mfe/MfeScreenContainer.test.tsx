@@ -32,8 +32,16 @@ vi.mock('@gears-frontx/react', async (importOriginal) => ({
     setLanguage: () => {},
     isRTL: false,
   }),
-  screenDomain: mockScreenDomain,
+}));
+
+vi.mock('../../../src/index', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, never>>()),
   FRONTX_SCREEN_DOMAIN,
+  screenDomain: mockScreenDomain,
+}));
+
+vi.mock('@gears-frontx/react/mfe', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, never>>()),
   // `ExtensionDomainSlot` itself owns starting/stopping a routed domain's
   // observer (ADR 0036, "URL ownership") — its own suite covers that; this fake
   // only stands in for the DOM root this container renders around. One slot

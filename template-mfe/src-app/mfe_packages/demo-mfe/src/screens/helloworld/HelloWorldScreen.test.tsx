@@ -1,12 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_SCREEN_DOMAIN,
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_THEME,
-  TextDirection,
-} from '@gears-frontx/react';
+import { TextDirection } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +13,12 @@ import {
   WIDGET_ALPHA_EXTENSION_ID,
   WIDGET_PING_ACTION_TYPE,
 } from '../../shared/extension-ids';
+import {
+  FRONTX_SCREEN_DOMAIN,
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_THEME,
+} from '../../shellContract';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 /*
  * The screen module pays its whole Vite transform on first import, and the

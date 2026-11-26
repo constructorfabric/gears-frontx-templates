@@ -5,8 +5,18 @@ Signatures a screen actually needs, so a run does not re-derive them from
 that declares it. A snippet is either quoted from a shipped file, which is then named,
 or it is a `BillingApiService`-shaped illustration of the pattern `_blank-mfe` and
 `demo-mfe` ship - a name that appears in no template is an illustration. Read the
-skeleton for anything not listed here. An MFE imports the whole ecosystem from
-`@gears-frontx/react`, which re-exports the framework and SDK surfaces; name another
+skeleton for anything not listed here. An MFE imports the ecosystem from
+`@gears-frontx/react`, which re-exports the framework and SDK surfaces, and from its
+subpath `@gears-frontx/react/mfe` for the MFE surface (`ThemeAwareReactLifecycle`,
+`ChildMfeBridge`, the MFE hooks and components, the MFE runtime types and classes, and
+the MFE host plugin `microfrontends()` a nested host adds). Both are type-system
+agnostic. The shell's GTS vocabulary - the shared-property, domain and entry type IDs
+(`FRONTX_SHARED_PROPERTY_*`, `FRONTX_SCREEN_DOMAIN`, `FRONTX_MFE_ENTRY_MF`, ...), the
+base domains such as `screenDomain` and the GTS schemas - is not importable: an MFE
+declares the ids it uses itself, in its own `src/shellContract.ts`, like an independent
+repository, and never imports shell code. The GTS type system itself (`gtsPlugin`, the
+`FRONTX_ACTION_*` constants, `JSONSchema`) comes from `@gears-frontx/gts-plugin`, which only a
+package that declares custom action schemas or builds a registry needs. Name another
 package only inside a `declare module` block.
 
 Four names below spell a shape without being importable from `@gears-frontx/react`:
@@ -146,7 +156,7 @@ export const billingMockMap: MockMap = { 'GET /api/billing/status': (): GetStatu
 apiRegistry.register(BillingApiService);   // register<T extends BaseApiService>(serviceClass: new () => T): void
 apiRegistry.initialize();
 const mfeApp = createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build();
-// The host's queryCache() clears the shared cache on a mock mode or tenant change and on login, logout or a session change the auth provider reports; an MFE never clears it itself
+// The host's queryCache() clears the shared cache on a mock mode change and on login, logout or a session change the auth provider reports; an MFE never clears it itself
 registerSlice(homeSlice, initHomeEffects);
 ```
 
@@ -318,7 +328,8 @@ in an effect body is what `react-hooks/set-state-in-effect` rejects. `bridge.dom
 and `bridge.instanceId` are plain string properties.
 
 ```ts
-import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+// Declared in this MFE's own `src/shellContract.ts`, never imported from the shell.
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from './shellContract';
 
 const [theme, setTheme] = useState<string>(() => {
   const initial = bridge.getProperty(FRONTX_SHARED_PROPERTY_THEME);

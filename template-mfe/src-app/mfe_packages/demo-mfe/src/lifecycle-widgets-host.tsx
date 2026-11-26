@@ -31,41 +31,48 @@ import React, { useEffect, useState } from 'react';
 import {
   createFrontX,
   effects,
-  microfrontends,
   queryCacheShared,
   mock,
-  gtsPlugin,
+} from '@gears-frontx/react';
+import {
+  microfrontends,
   ConcurrentMountStrategy,
   ExtensionDomainImplementation,
   ExtensionDomainImplementationFactory,
   ActionHandler,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-  FRONTX_MFE_ENTRY_MF,
-  MfeHandlerMF,
   ExtensionDomainSlot,
   ThemeAwareReactLifecycle,
-  screenDomain,
   type ContainerHooks,
   type DomainContext,
   type ActionPayload,
   type MountStrategy,
   type ExtensionDomain,
   type Extension,
-  type FrontXApp,
   type MfManifest,
   type MfeEntryMF,
-  type JSONSchema,
   type ChildMfeBridge,
   type MfeMountContext,
   type MfeRegistry,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
+// A nested host reaches both shared runtimes directly: the type system it
+// registers child schemas on, and the MFE registry/handler/mediator it mounts
+// children through. Both are declared dependencies, so the shared units these
+// names resolve to are the host's — never bundled copies.
+import {
+  gtsPlugin,
+  FRONTX_ACTION_MOUNT_EXT,
+  FRONTX_ACTION_UNMOUNT_EXT,
+  type JSONSchema,
+} from '@gears-frontx/gts-plugin';
+import { MfeHandlerMF } from '@gears-frontx/mfes';
 import {
   themeSchema,
   languageCodeSchema,
   languageSchema,
   extensionScreenSchema,
-} from '@gears-frontx/frontx-template-shell';
+  FRONTX_MFE_ENTRY_MF,
+  screenDomain,
+} from './shellContract';
 import styles from './lifecycle-widgets-host.module.css';
 
 const WIDGET_PING_ACTION_TYPE =
@@ -90,6 +97,23 @@ export const widgetsHostApp = createFrontX()
 
 const WIDGETS_DOMAIN_ID =
   'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
+
+/**
+ * What `bootstrapWidgetsRuntime` reads of the nested app: the registry
+ * members it registers through and the type-system members it writes with.
+ * A `FrontXApp` satisfies it; a test passes a double of exactly this shape.
+ */
+export interface WidgetsBootstrapApp {
+  readonly mfeRegistry?: Pick<
+    MfeRegistry,
+    'getDomain' | 'getExtension' | 'registerDomain' | 'registerExtension'
+  > & {
+    readonly typeSystem: Pick<
+      MfeRegistry['typeSystem'],
+      'registerSchema' | 'register' | 'validateInstance'
+    >;
+  };
+}
 
 interface MfeManifestConfig {
   manifest: MfManifest;
@@ -163,9 +187,9 @@ class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
  *      extension already registered.
  *
  * GTS entities flow through unchanged — no spread, no override, no
- * decomposition, no L4 reconstruction. The generation script inlines the
- * resolved `MfManifest` object into each entry's `manifest` field so entries
- * are registered opaquely without any consumer-side spread. The widgets
+ * decomposition, no L4 reconstruction. Each entry names its registered
+ * manifest by id and the host registers the manifest first, so entries are
+ * registered opaquely without any consumer-side spread. The widgets
  * domain instance is authored once in `demo-mfe/mfe.json` (`domains[]`) and
  * arrives here through the same fetched manifest pipeline as every other GTS
  * entity.
@@ -178,7 +202,7 @@ class WidgetsDomainFactory extends ExtensionDomainImplementationFactory {
  * `DemoMfeWidgetsHostLifecycle.mount()`.
  */
 export async function bootstrapWidgetsRuntime(
-  app: FrontXApp,
+  app: WidgetsBootstrapApp,
 ): Promise<ExtensionDomain> {
   const registry = app.mfeRegistry;
   if (!registry) {
@@ -198,9 +222,28 @@ export async function bootstrapWidgetsRuntime(
   }
   const manifests = (await response.json()) as MfeManifestConfig[];
 
+  // A package whose registration the type system rejects is disabled alone:
+  // it is reported and left out of the later passes, and every other package
+  // registers as before.
+  const enabled = new Set(manifests);
+  // Entry or domain id of a disabled package, to that package's manifest id:
+  // what a disabled package registered before it failed is not available to
+  // any other package.
+  const disabledOwners = new Map<string, string>();
+  const disable = (config: MfeManifestConfig, error: unknown): void => {
+    enabled.delete(config);
+    const packageId = config?.manifest?.id ?? 'unknown';
+    console.error(`[demo-mfe widgets-host] Disabling the MFE package '${packageId}':`, error);
+    for (const entry of config?.entries ?? []) disabledOwners.set(entry.id, packageId);
+    for (const domain of config?.domains ?? []) disabledOwners.set(domain.id, packageId);
+  };
   for (const config of manifests) {
-    for (const schema of config.schemas ?? []) {
-      registry.typeSystem.registerSchema(schema);
+    try {
+      for (const schema of config.schemas ?? []) {
+        registry.typeSystem.registerSchema(schema);
+      }
+    } catch (error) {
+      disable(config, error);
     }
   }
 
@@ -225,16 +268,20 @@ export async function bootstrapWidgetsRuntime(
   registry.typeSystem.registerSchema(extensionScreenSchema);
 
   let widgetsDomain: ExtensionDomain | undefined;
-  for (const config of manifests) {
-    registry.typeSystem.register(config.manifest);
-    for (const domain of config.domains ?? []) {
-      registry.typeSystem.register(domain);
-      if (domain.id === WIDGETS_DOMAIN_ID) {
-        widgetsDomain = domain;
+  for (const config of enabled) {
+    try {
+      registry.typeSystem.register(config.manifest);
+      for (const domain of config.domains ?? []) {
+        registry.typeSystem.register(domain);
+        if (domain.id === WIDGETS_DOMAIN_ID) {
+          widgetsDomain = domain;
+        }
       }
-    }
-    for (const entry of config.entries) {
-      registry.typeSystem.register(entry);
+      for (const entry of config.entries) {
+        registry.typeSystem.register(entry);
+      }
+    } catch (error) {
+      disable(config, error);
     }
   }
 
@@ -276,20 +323,31 @@ export async function bootstrapWidgetsRuntime(
     registry.registerDomain(widgetsDomain, new WidgetsDomainFactory());
   }
 
-  for (const config of manifests) {
+  for (const config of enabled) {
     for (const extension of config.extensions ?? []) {
-      // Register every extension declared by any fetched manifest opaquely
-      // on this nested type system — not just the widgets-domain ones this
-      // registry owns and mounts below - so `x-gts-instance-ref` validation for an
-      // action referencing a foreign-domain extension instance (e.g. the
-      // shell's Hello World screen extension) resolves on this registry's
-      // type system whether or not the shell registered it first. This
-      // registration is type-system-only: it does not admit the extension
-      // for mounting in this registry (that stays gated by the
-      // WIDGETS_DOMAIN_ID check below, via `registerExtension`).
-      registry.typeSystem.register(extension);
-      if (extension.domain === WIDGETS_DOMAIN_ID && !registry.getExtension(extension.id)) {
-        await registry.registerExtension(extension);
+      try {
+        const ownerOf = disabledOwners.get(extension.entry) ?? disabledOwners.get(extension.domain);
+        if (ownerOf !== undefined) {
+          const what = disabledOwners.has(extension.entry)
+            ? `entry '${extension.entry}'`
+            : `domain '${extension.domain}'`;
+          throw new Error(`its ${what} belongs to the disabled MFE package '${ownerOf}'`);
+        }
+        // Register every extension declared by any fetched manifest opaquely
+        // on this nested type system — not just the widgets-domain ones this
+        // registry owns and mounts below - so `x-gts-instance-ref` validation for an
+        // action referencing a foreign-domain extension instance (e.g. the
+        // shell's Hello World screen extension) resolves on this registry's
+        // type system whether or not the shell registered it first. This
+        // registration is type-system-only: it does not admit the extension
+        // for mounting in this registry (that stays gated by the
+        // WIDGETS_DOMAIN_ID check below, via `registerExtension`).
+        registry.typeSystem.register(extension);
+        if (extension.domain === WIDGETS_DOMAIN_ID && !registry.getExtension(extension.id)) {
+          await registry.registerExtension(extension);
+        }
+      } catch (error) {
+        console.error(`[demo-mfe widgets-host] Disabling the extension '${extension?.id ?? 'unknown'}':`, error);
       }
     }
   }

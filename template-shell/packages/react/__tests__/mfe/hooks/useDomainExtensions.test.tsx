@@ -8,28 +8,34 @@
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { Extension, ExtensionDomain, FrontXApp } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { Extension, ExtensionDomain } from '@gears-frontx/framework/mfe';
+import { createFakeTypeSystem } from '../../../src/mfe/__tests__/fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
-let useDomainExtensions: typeof import('@gears-frontx/react')['useDomainExtensions'];
+let useDomainExtensions: typeof import('@gears-frontx/react/mfe')['useDomainExtensions'];
 let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
 let effects: typeof import('@gears-frontx/framework')['effects'];
-let gtsPlugin: typeof import('@gears-frontx/framework')['gtsPlugin'];
-let microfrontends: typeof import('@gears-frontx/framework')['microfrontends'];
+let microfrontends: typeof import('@gears-frontx/framework/mfe')['microfrontends'];
 let queryCache: typeof import('@gears-frontx/framework')['queryCache'];
-let OptionalMountStrategy: typeof import('@gears-frontx/framework')['OptionalMountStrategy'];
-let TestContainerProvider: typeof import('@gears-frontx/framework')['TestContainerProvider'];
+let OptionalMountStrategy: typeof import('@gears-frontx/framework/mfe')['OptionalMountStrategy'];
+let TestContainerProvider: typeof import('@gears-frontx/framework/testing')['TestContainerProvider'];
 
 beforeEach(async () => {
   vi.resetModules();
-  ({ FrontXProvider, useDomainExtensions } = await import('@gears-frontx/react'));
-  ({ createFrontX, effects, gtsPlugin, microfrontends, queryCache, TestContainerProvider, OptionalMountStrategy } = await import('@gears-frontx/framework'));
+  ({ FrontXProvider } = await import('@gears-frontx/react'));
+  ({ useDomainExtensions } = await import('@gears-frontx/react/mfe'));
+  ({ createFrontX, effects, queryCache } = await import('@gears-frontx/framework'));
+  ({ microfrontends, OptionalMountStrategy } = await import('@gears-frontx/framework/mfe'));
+  ({ TestContainerProvider } = await import('@gears-frontx/framework/testing'));
 });
 
 describe('useDomainExtensions hook - Phase 21.7', () => {
-  const sidebarDomainId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1';
-  const popupDomainId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.popup.v1';
+  const sidebarDomainId = 'test.domain~frontx.screensets.layout.sidebar.v1';
+  const popupDomainId = 'test.domain~frontx.screensets.layout.popup.v1';
 
   // Track app instances for cleanup
   const apps: FrontXApp[] = [];
@@ -44,9 +50,9 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     id: sidebarDomainId,
     sharedProperties: [],
     actions: [
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~',
+      'test.action.load_ext',
+      'test.action.mount_ext',
+      'test.action.unmount_ext',
     ],
     extensionsActions: [],
     defaultActionTimeout: 5000,
@@ -58,9 +64,9 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     id: popupDomainId,
     sharedProperties: [],
     actions: [
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
-      'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~',
+      'test.action.load_ext',
+      'test.action.mount_ext',
+      'test.action.unmount_ext',
     ],
     extensionsActions: [],
     defaultActionTimeout: 5000,
@@ -69,26 +75,26 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
   };
 
   const sidebarExtension1: Extension = {
-    id: 'gts.frontx.mfes.ext.extension.v1~test.sidebar.reg.ext1.v1',
+    id: 'test.extension~test.sidebar.reg.ext1.v1',
     domain: sidebarDomainId,
-    entry: 'gts.frontx.mfes.mfe.entry.v1~test.sidebar.reg.entry.v1',
+    entry: 'test.entry~test.sidebar.reg.entry.v1',
   };
 
   const sidebarExtension2: Extension = {
-    id: 'gts.frontx.mfes.ext.extension.v1~test.sidebar.reg.ext2.v1',
+    id: 'test.extension~test.sidebar.reg.ext2.v1',
     domain: sidebarDomainId,
-    entry: 'gts.frontx.mfes.mfe.entry.v1~test.sidebar.reg.entry.v1',
+    entry: 'test.entry~test.sidebar.reg.entry.v1',
   };
 
   const popupExtension: Extension = {
-    id: 'gts.frontx.mfes.ext.extension.v1~test.popup.reg.ext1.v1',
+    id: 'test.extension~test.popup.reg.ext1.v1',
     domain: popupDomainId,
-    entry: 'gts.frontx.mfes.mfe.entry.v1~test.sidebar.reg.entry.v1',
+    entry: 'test.entry~test.sidebar.reg.entry.v1',
   };
 
   /**
    * Helper: build app and mock registerExtension/unregisterExtension to bypass
-   * GTS validation while still dispatching store actions and tracking extensions.
+   * type-system validation while still dispatching store actions and tracking extensions.
    * The hook subscribes to store changes and calls getExtensionsForDomain(),
    * so we mock the registration methods to populate query results and dispatch
    * an action to trigger store subscribers.
@@ -97,7 +103,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
     const app = createFrontX()
       .use(effects())
       .use(queryCache())
-      .use(microfrontends({ typeSystem: gtsPlugin }))
+      .use(microfrontends({ typeSystem }))
       .build();
     apps.push(app);
 
@@ -164,7 +170,7 @@ describe('useDomainExtensions hook - Phase 21.7', () => {
       const app = createFrontX()
         .use(effects())
         .use(queryCache())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
       const testContainerProvider = new TestContainerProvider();

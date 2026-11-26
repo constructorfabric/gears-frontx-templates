@@ -33,20 +33,17 @@
  * real app built with `createFrontX()` / module-federation-loaded `mfes` registry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GtsPlugin } from '@gears-frontx/gts-plugin';
-import {
-  FRONTX_ACTION_UNMOUNT_EXT,
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_THEME,
-  screenDomain,
-} from '@gears-frontx/react';
-import type { ExtensionDomain, MfManifest } from '@gears-frontx/react';
+import { GtsPlugin, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
+import type { ExtensionDomain, MfManifest } from '@gears-frontx/react/mfe';
 import {
   themeSchema,
   languageCodeSchema,
   languageSchema,
   extensionScreenSchema,
-} from '@gears-frontx/frontx-template-shell';
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
+  FRONTX_SHARED_PROPERTY_THEME,
+  screenDomain,
+} from './shellContract';
 import { bootstrapWidgetsRuntime } from './lifecycle-widgets-host';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
@@ -79,20 +76,15 @@ const WIDGETS_DOMAIN = {
 
 /**
  * Shaped to satisfy the real `mf_manifest.v1~` GTS schema (required:
- * id/name/metaData/shared, with metaData itself requiring
- * name/type/buildInfo/remoteEntry/publicPath) — the lean `{id, remoteEntry}`
+ * id/metaData/shared, with metaData itself requiring
+ * publicPath) — the lean `{id, remoteEntry}`
  * shape in `demo-mfe/mfe.json` is only the pre-generation authoring form;
  * `scripts/generate-mfe-manifests.ts` enriches it to this shape before the
  * runtime ever registers it, and the schema validates the enriched shape.
  */
 const MANIFEST: MfManifest = {
   id: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1',
-  name: 'demo-mfe',
   metaData: {
-    name: 'demo-mfe',
-    type: 'module',
-    buildInfo: { buildVersion: '0.0.0-test', buildName: 'demo-mfe' },
-    remoteEntry: { name: 'demo-mfe', path: '/assets/remoteEntry.js', type: 'module' },
     publicPath: 'http://localhost:3001/assets/',
   },
   shared: [],

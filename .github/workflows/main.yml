@@ -78,13 +78,6 @@ jobs:
       if: github.event_name == 'pull_request'
       run: npm run policy:version-bump-on-change
 
-    # #524: npm reconciling an out-of-sync template lockfile drops the
-    # template's file:. self-link entry, writing a lockfile its own `npm ci`
-    # then rejects. This asserts every self-link a template declares still
-    # has its lockfile entry.
-    - name: Check template lockfile self-link entries
-      run: npm run policy:template-lockfile-selflink
-
     # Template design tokens are full CSS colors consumed as var(--x), never
     # shadcn-style HSL fragments consumed as hsl(var(--x)).
     - name: Check template token format (full-color vocabulary)

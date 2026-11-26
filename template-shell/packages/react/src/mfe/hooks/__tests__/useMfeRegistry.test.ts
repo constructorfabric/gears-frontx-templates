@@ -2,7 +2,7 @@
  * Unit tests for useMfeRegistry hook.
  *
  * Uses a minimal mock app — no real framework build — so tests run fast and
- * don't depend on the GTS singleton state. The hook only accesses
+ * don't depend on any type-system state. The hook only accesses
  * app.mfeRegistry.
  */
 import { describe, it, expect } from 'vitest';
@@ -10,7 +10,8 @@ import { renderHook } from '@testing-library/react';
 import React from 'react';
 import { useMfeRegistry } from '../useMfeRegistry';
 import { FrontXContext } from '../../../FrontXContext';
-import type { FrontXApp, MfeRegistry } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { MfeRegistry } from '@gears-frontx/framework/mfe';
 
 // ─── Render helper ────────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { FrontXProvider, apiRegistry, createFrontX, presets } from '@gears-frontx/react';
 import { AccountsApiService } from '@/app/api';
 import { devAuthPlugins, wireDevSignInTriggers } from '@/app/auth/devAuth';
+import { layout } from '@/app/layout/state';
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
 import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
@@ -29,6 +30,7 @@ apiRegistry.initialize({});
 // would append, dependencies included.
 const app = createFrontX()
   .useAll(presets.full())
+  .use(layout())
   // The development auth plugin (`app/auth/devAuth.ts`): that module passes
   // no auth config outside development, so a production build carries no
   // auth() plugin. The trigger only becomes observable

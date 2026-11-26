@@ -1,11 +1,10 @@
 import React, { useCallback, useRef, useState } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import type { AuthLoginInput, AuthRuntime } from '@gears-frontx/react';
 import {
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-  type AuthLoginInput,
-  type AuthRuntime,
-} from '@gears-frontx/react';
+} from '../../shellContract';
 import { Button, Input, Label } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';

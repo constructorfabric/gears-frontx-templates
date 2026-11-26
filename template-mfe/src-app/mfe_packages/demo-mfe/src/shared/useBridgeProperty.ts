@@ -32,7 +32,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 /**
  * Hook returning the live value of a shared bridge property.

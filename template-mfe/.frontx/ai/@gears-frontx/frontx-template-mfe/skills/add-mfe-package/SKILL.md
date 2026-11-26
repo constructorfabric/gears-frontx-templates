@@ -26,7 +26,7 @@ authority on each step.
 
 **A request for sign-in, login or authentication is not a screen.** It is
 routed to the sign-in extension of the host shell's modal domain (the
-framework's popup domain), which the shell already mounts from its own actions
+template's popup domain), which the shell already mounts from its own actions
 chain: add no screen, no menu item and no domain for it, and work from the
 `sign-in` guideline in the template-shell bundle and from `demo-mfe`'s sign-in
 modal (`src/screens/signin/`). This skill covers only what a signed-in user
@@ -103,12 +103,15 @@ opens from the menu.
    `mfe.json` `manifest.remoteEntry` URL
    (`http://localhost:<port>/assets/remoteEntry.js`; the `_blank-mfe` copy points at
    `3099`). `dev:all` needs `--port <N>` literally in those scripts.
-3. **Rename the Module Federation identity**: set `name` in the copied
-   `vite.config.ts` (camelCase, the camelCase of the package name from step 1,
-   so the two agree), and keep `@gears-frontx/routing` in `sharedDeps` there and
-   pinned in `package.json`, as the scaffold has it (add
-   `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the
-   MFE uses `<ExtensionRouter>` or `navigation()`).
+3. **Check the federation identity**: the Module Federation name derives from
+   the package name set in step 1. `vitePluginMfeGts` owns federation, so the
+   copied `vite.config.ts` carries no `name`/`filename`/`shared`/`manifest`, only
+   the `exposes` map passed to `vitePluginMfeGts({ exposes })`. Keep
+   `@gears-frontx/routing` declared in `package.json` at its exact pin. Every bare
+   package the code imports is shared, whichever `package.json` section declares
+   it; in `mfe.json`, `share.exclude` is the only way to keep a package in the
+   MFE's own chunks (the plugin's `include` option also narrows the set). Add `@gears-frontx/routing-tanstack` under `dependencies`
+   only when the MFE uses `<ExtensionRouter>` or `navigation()`.
 4. **Link the new workspace** - run `npm install` once at the project root (the
    applied shell), after the copy and its rename:
 
@@ -119,8 +122,8 @@ opens from the menu.
    The rename makes the package a workspace of the shell, but nothing links it
    under `node_modules/@gears-frontx/` or records it in `package-lock.json`
    until an install runs. Without that install, `npm ls` exits 1 with an
-   `UNMET DEPENDENCY <new name>@file:...` line and a `missing: <new name>,
-   required by @gears-frontx/frontx-template-shell` line, and no link appears
+   `UNMET DEPENDENCY <new name>@file:...` line and a `missing: <new name>` line,
+   and no link appears
    under `node_modules/@gears-frontx/`. `npm ci` exits 1 with:
 
    > npm ci can only install packages when your package.json and
@@ -153,7 +156,7 @@ opens from the menu.
    `generated-menu-icons.json` older than the package) renders no icon and one
    dev console warning; nothing is fetched from the network for icons.
 6. **Implement the lifecycle**: `src/lifecycle.tsx` extends `ThemeAwareReactLifecycle`
-   from `@gears-frontx/react`; the MFE's own `init.ts` builds its app instance with
+   from `@gears-frontx/react/mfe`; the MFE's own `init.ts` builds its app instance with
    `createFrontX().use(effects()).use(queryCacheShared()).use(mock()).build()` so it
    joins the host's shared `QueryClient` without owning a second one. Each API
    service gets one service-level test beside its mock-map test, modelled on
@@ -281,9 +284,8 @@ opens from the menu.
 8. **Build the shell's packages before the first package check** - run
    `npm run build:packages` once at the project root (the applied shell)
    before the initial `type-check`, `test:unit` or `build` of the new MFE. The
-   package checks resolve `@gears-frontx/react` and
-   `@gears-frontx/frontx-template-shell` through their built output (`dist/`,
-   `dist-lib/`), which a fresh seed does not carry until this build runs;
+   package checks resolve `@gears-frontx/react` through its built output
+   (`dist/`), which a fresh seed does not carry until this build runs;
    without it they stop on `TS2307: Cannot find module '@gears-frontx/react'`
    before they read any of the screen's code. The command builds the shell's
    own packages; the MFE package keeps its own workspace build script. It runs

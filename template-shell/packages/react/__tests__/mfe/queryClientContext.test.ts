@@ -2,7 +2,8 @@ import React from 'react';
 import { describe, expect, it, afterEach, vi, beforeEach } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
 import { loadOtherRuntime } from '../queryHooks.helpers';
-import type { ChildMfeBridge, EndpointDescriptor, FrontXApp } from '@gears-frontx/framework';
+import type { EndpointDescriptor, FrontXApp } from '@gears-frontx/framework';
+import type { ChildMfeBridge } from '@gears-frontx/framework/mfe';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
@@ -12,7 +13,7 @@ let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetShare
 let TestLifecycle: ReturnType<typeof defineTestLifecycle>;
 let OptionalQueryClientLifecycle: ReturnType<typeof defineOptionalQueryClientLifecycle>;
 let ApiQueryLateJoinLifecycle: ReturnType<typeof defineApiQueryLateJoinLifecycle>;
-let ThemeAwareReactLifecycle: typeof import('@gears-frontx/react')['ThemeAwareReactLifecycle'];
+let ThemeAwareReactLifecycle: typeof import('@gears-frontx/react/mfe')['ThemeAwareReactLifecycle'];
 let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
 let useQueryCache: typeof import('@gears-frontx/react')['useQueryCache'];
 let bootstrapFrontXQueryClient: typeof import('@gears-frontx/react/testing')['bootstrapFrontXQueryClient'];
@@ -22,7 +23,8 @@ let useOptionalFrontXQueryClient: typeof import('@gears-frontx/react/testing')['
 beforeEach(async () => {
   vi.resetModules();
   ({ createFrontX, queryCache, queryCacheShared, resetSharedQueryClient } = await import('@gears-frontx/framework'));
-  ({ ThemeAwareReactLifecycle, useApiQuery, useQueryCache } = await import('@gears-frontx/react'));
+  ({ useApiQuery, useQueryCache } = await import('@gears-frontx/react'));
+  ({ ThemeAwareReactLifecycle } = await import('@gears-frontx/react/mfe'));
   TestLifecycle = defineTestLifecycle();
   OptionalQueryClientLifecycle = defineOptionalQueryClientLifecycle();
   ApiQueryLateJoinLifecycle = defineApiQueryLateJoinLifecycle();

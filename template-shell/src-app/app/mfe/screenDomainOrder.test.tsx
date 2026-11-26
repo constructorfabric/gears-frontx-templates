@@ -20,13 +20,7 @@ const EXTENSION_ID =
 
 const manifest = {
   id: MANIFEST_ID,
-  name: 'orderMfe',
   metaData: {
-    name: 'orderMfe',
-    type: 'app',
-    buildInfo: { buildVersion: '1.0.0', buildName: 'orderMfe' },
-    remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-    globalName: 'orderMfe',
     publicPath: 'http://localhost:3999/',
   },
   shared: [],
@@ -41,9 +35,9 @@ const aggregate = [
         requiredProperties: [THEME, LANGUAGE],
         actions: [],
         domainActions: [],
-        manifest,
+        manifest: manifest.id,
         exposedModule: './overview',
-        exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+        exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
       },
     ],
     extensions: [
@@ -60,19 +54,21 @@ const aggregate = [
 
 async function buildApp() {
   const react = await import('@gears-frontx/react');
-  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import('@gears-frontx/frontx-template-shell');
-  react.gtsPlugin.registerSchema(themeSchema);
-  react.gtsPlugin.registerSchema(languageCodeSchema);
-  react.gtsPlugin.registerSchema(languageSchema);
-  react.gtsPlugin.registerSchema(screenLabelsSchema);
+  const { microfrontends } = await import('@gears-frontx/react/mfe');
+  const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
+  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, screenDomain } = await import('../../../src/index');
+  gtsPlugin.registerSchema(themeSchema);
+  gtsPlugin.registerSchema(languageCodeSchema);
+  gtsPlugin.registerSchema(languageSchema);
+  gtsPlugin.registerSchema(screenLabelsSchema);
   const app = react
     .createFrontX()
     .useAll(react.presets.full())
-    .use(react.microfrontends({ typeSystem: react.gtsPlugin, mfeHandlers: [] }))
+    .use(microfrontends({ typeSystem: gtsPlugin, mfeHandlers: [] }))
     .build();
   const registry = app.mfeRegistry;
   if (!registry) throw new Error('the microfrontends plugin built no registry');
-  return { react, app, registry };
+  return { react, gtsPlugin, screenDomain, app, registry };
 }
 
 describe('the screen domain and the manifest walk', () => {
@@ -88,17 +84,23 @@ describe('the screen domain and the manifest walk', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  it('the walk refuses a screen whose domain is not registered yet, and a domain registered afterwards admits nothing', async () => {
-    const { react, app, registry } = await buildApp();
+  it('the walk disables a screen whose domain is not registered yet, and a domain registered afterwards admits nothing', async () => {
+    const { gtsPlugin, app, registry } = await buildApp();
     const { bootstrapMFE } = await import('./bootstrap');
     const { registerScreenDomain } = await import('./screenDomain');
     // The screen type is on the type system, only the domain is missing. A
-    // GTS instance reference must find its entity, so the walk refuses the
-    // screen instead of recording it.
-    const { extensionScreenSchema } = await import('@gears-frontx/frontx-template-shell');
-    react.gtsPlugin.registerSchema(extensionScreenSchema);
+    // GTS instance reference must find its entity, so the walk disables the
+    // screen instead of recording it, and the shell boots.
+    const { extensionScreenSchema } = await import('../../../src/index');
+    gtsPlugin.registerSchema(extensionScreenSchema);
 
-    await expect(bootstrapMFE(app, [])).rejects.toThrow(`Referenced entity '${SCREEN_DOMAIN}' not found`);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await expect(bootstrapMFE(app, [])).resolves.toBeUndefined();
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining(EXTENSION_ID),
+      expect.objectContaining({ message: expect.stringContaining(`Referenced entity '${SCREEN_DOMAIN}' not found`) }),
+    );
+    errors.mockRestore();
     registerScreenDomain(app);
 
     expect(registry.getDomain(SCREEN_DOMAIN)).toBeDefined();

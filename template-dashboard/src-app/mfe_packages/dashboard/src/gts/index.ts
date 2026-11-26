@@ -66,8 +66,7 @@ export const STAND_IN: { schema: Record<string, unknown>; instances: Record<stri
   instances: [
     {
       id: STAND_IN_MANIFEST_ID,
-      name: 'frontx_dashboard_stand_in',
-      metaData: { name: 'frontx_dashboard_stand_in', type: 'app', buildInfo: { buildVersion: '0', buildName: 'stand-in' }, remoteEntry: { name: 'none', path: '', type: 'module' }, publicPath: '/' },
+      metaData: { publicPath: '/' },
       shared: [],
     },
     {
@@ -77,7 +76,7 @@ export const STAND_IN: { schema: Record<string, unknown>; instances: Record<stri
       domainActions: [],
       manifest: STAND_IN_MANIFEST_ID,
       exposedModule: './stand_in',
-      exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+      exposeAssets: { js: { sync: ['stand_in.js'] }, css: { sync: [], async: [] } },
     },
   ],
 };

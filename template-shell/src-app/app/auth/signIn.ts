@@ -15,16 +15,10 @@
  * a session run again once the page is back.
  */
 
-import {
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-  FRONTX_POPUP_DOMAIN,
-  FRONTX_SCREEN_DOMAIN,
-  popupDomain,
-  type ActionsChain,
-  type AuthRuntime,
-  type AuthSession,
-} from '@gears-frontx/react';
+import type { AuthRuntime, AuthSession } from '@gears-frontx/react';
+import type { ActionsChain } from '@gears-frontx/react/mfe';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
+import { FRONTX_POPUP_DOMAIN, FRONTX_SCREEN_DOMAIN, popupDomain } from '../../../src/index';
 import { CHROME_REFRESH_PAGE, CHROME_SIGN_IN } from '@/app/mfe/chrome-actions';
 
 /**

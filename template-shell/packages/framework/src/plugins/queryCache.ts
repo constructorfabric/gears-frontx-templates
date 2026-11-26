@@ -4,8 +4,8 @@
  * Framework Layer: L2
  *
  * Owns the shared QueryClient lifecycle, cache invalidation via Flux events,
- * cache clearing when mock mode, tenant or session changes (host queryCache()
- * only), and cleanup on destroy.
+ * cache clearing when mock mode or session changes (host queryCache() only),
+ * and cleanup on destroy.
  * Zero React imports — this plugin is headless.
  */
 
@@ -18,9 +18,7 @@ import { QueryClient, type Mutation } from '@tanstack/query-core';
 import { eventBus, getStore, type Subscription } from '@gears-frontx/state';
 import type { FrontXApp, FrontXPlugin } from '../types';
 import { MockEvents } from '../effects/mockEffects';
-import { TenantEvents } from '../effects/tenantEffects';
 import { AuthEvents } from './auth';
-import { TENANT_SLICE_NAME } from '../slices';
 
 const QUERY_CACHE_RUNTIME_CHANGED_EVENT = 'cache/runtime/changed' as const;
 
@@ -138,9 +136,8 @@ const cacheEffectsByClient = new WeakMap<QueryClient, CacheEffectsEntry>();
 const hostClearEffectsByClient = new WeakMap<QueryClient, CacheEffectsEntry>();
 
 type CacheScopeState = {
-  // Mock mode and tenant the cached data was fetched under.
+  // Mock mode the cached data was fetched under.
   mockEnabled: boolean;
-  tenantId: string | null;
   // The scope changed while no host was present to clear the cache.
   stale: boolean;
 };
@@ -164,7 +161,7 @@ function finalizeCacheEffectsEntry(
 }
 
 /**
- * The number of cache scope changes (mock mode, tenant, login, logout) this
+ * The number of cache scope changes (mock mode, login, logout) this
  * QueryClient has seen. A caller that records it before async work and finds
  * it moved afterwards knows its result belongs to a scope that is gone. Kept
  * on the client itself, so every runtime sharing the client reads the same
@@ -608,18 +605,6 @@ function readMockEnabled(): boolean {
   );
 }
 
-function readTenantId(): string | null {
-  const tenantState = readStoreSlice(TENANT_SLICE_NAME);
-  if (tenantState === null || typeof tenantState !== 'object' || !('tenant' in tenantState)) {
-    return null;
-  }
-
-  const tenant: unknown = tenantState.tenant;
-  return tenant !== null && typeof tenant === 'object' && 'id' in tenant && typeof tenant.id === 'string'
-    ? tenant.id
-    : null;
-}
-
 /**
  * Drops the old scope's data synchronously, so nothing written after the
  * change is wiped by a late clear. cancelQueries() aborts in-flight fetches at
@@ -632,7 +617,7 @@ function readTenantId(): string | null {
  */
 function clearForScopeChange(queryClient: QueryClient): void {
   queryClient.cancelQueries().catch((error: unknown) => {
-    console.error('[Gears FrontX] Failed to cancel queries after a mock, tenant or session change', error);
+    console.error('[Gears FrontX] Failed to cancel queries after a mock or session change', error);
   });
   queryClient.getQueryCache().getAll().forEach((query) => {
     query.reset();
@@ -742,17 +727,16 @@ function createHeldBackMutations(queryClient: QueryClient): {
 }
 
 /**
- * Tracks the scope the cached data belongs to: mock mode, tenant and session.
+ * Tracks the scope the cached data belongs to: mock mode and session.
  * An event that repeats the scope already in force (every mock() runtime with
- * enabledByDefault emits a toggle on init; a tenant change to the same tenant
- * id) changes nothing. A real change, and every login or logout, clears the query
- * cache and the shared fetch cache when a host queryCache() is present;
+ * enabledByDefault emits a toggle on init) changes nothing. A real change, and
+ * every login or logout, clears the query cache and the shared fetch cache
+ * when a host queryCache() is present;
  * otherwise the cache is marked stale and the next host to join clears it.
  */
 function createCacheScopeTracking(queryClient: QueryClient): () => void {
   const scope: CacheScopeState = {
     mockEnabled: readMockEnabled(),
-    tenantId: readTenantId(),
     stale: false,
   };
   cacheScopeByClient.set(queryClient, scope);
@@ -779,20 +763,6 @@ function createCacheScopeTracking(queryClient: QueryClient): () => void {
         return;
       }
       scope.mockEnabled = payload.enabled;
-      onScopeChanged();
-    }),
-    eventBus.on(TenantEvents.Changed, (payload) => {
-      if (payload.tenant.id === scope.tenantId) {
-        return;
-      }
-      scope.tenantId = payload.tenant.id;
-      onScopeChanged();
-    }),
-    eventBus.on(TenantEvents.Cleared, () => {
-      if (scope.tenantId === null) {
-        return;
-      }
-      scope.tenantId = null;
       onScopeChanged();
     }),
     eventBus.on(AuthEvents.LoggedOut, onScopeChanged),

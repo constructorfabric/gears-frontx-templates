@@ -10,7 +10,8 @@
  * it. Widening the viewport does not undo a collapse forced while narrow.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
-import { eventBus, useAppSelector, type MenuState } from '@gears-frontx/react';
+import { eventBus, useAppSelector } from '@gears-frontx/react';
+import type { MenuState } from './state';
 import { screenState } from '@/app/mfe/screenState';
 
 /** The viewports below 768 px, the narrow width the layout CSS Modules also target. */

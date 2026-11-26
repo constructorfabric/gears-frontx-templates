@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 const MOUNT = 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~';
@@ -177,7 +177,7 @@ class FakeConcurrentMountStrategy {
 
 /**
  * `ThemeAwareReactLifecycle` is real, unmocked, production behaviour
- * belonging to `@gears-frontx/react` (Global Constraints — not under test
+ * belonging to `@gears-frontx/react/mfe` (Global Constraints — not under test
  * here): its own `mount()` wraps `renderContent()` in `FrontXProvider`,
  * which needs a fully wired query-cache/theme `FrontXApp` this fixture does
  * not build. Standing in for it — exactly as `lifecycle.test.tsx` already
@@ -230,12 +230,19 @@ vi.mock('@gears-frontx/react', async (importOriginal) => {
   };
   return {
     ...real,
-    ConcurrentMountStrategy: FakeConcurrentMountStrategy,
-    ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle,
     createFrontX: () => {
       createFrontXSpy();
       return builder;
     },
+  };
+});
+
+vi.mock('@gears-frontx/react/mfe', async (importOriginal) => {
+  const real = await importOriginal<Record<string, unknown>>();
+  return {
+    ...real,
+    ConcurrentMountStrategy: FakeConcurrentMountStrategy,
+    ThemeAwareReactLifecycle: FakeThemeAwareReactLifecycle,
     ExtensionDomainSlot: ({ onAttached }: { onAttached?: (root: Element) => void }) => {
       const ref = React.useRef<HTMLDivElement | null>(null);
       // Like the real slot: attaches once, on mount, and always calls the

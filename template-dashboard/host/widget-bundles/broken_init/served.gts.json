@@ -3,21 +3,8 @@
   "instances": [
     {
       "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.test.widgets.missing_bundle.v1",
-      "name": "widget_missing_bundle",
       "metaData": {
-        "publicPath": "/widgets/missing_bundle/",
-        "name": "widget_missing_bundle",
-        "type": "app",
-        "buildInfo": {
-          "buildVersion": "1.0.0",
-          "buildName": "widget_missing_bundle"
-        },
-        "remoteEntry": {
-          "name": "remoteEntry.js",
-          "path": "",
-          "type": "module"
-        },
-        "globalName": "widget_missing_bundle"
+        "publicPath": "/widgets/missing_bundle/"
       },
       "shared": []
     },
@@ -37,8 +24,7 @@
         "js": {
           "sync": [
             "assets/lifecycle-missing.js"
-          ],
-          "async": []
+          ]
         },
         "css": {
           "sync": [],

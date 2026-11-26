@@ -42,27 +42,16 @@ entries, the fixture's own name for the widget fixtures
 `area` for a widget domain, and `action` or `test` for the two shipped custom
 actions.
 
-**What a short instance segment actually costs.** Not resolution: the runtime
-registers an extension under its ID verbatim, looks it up by domain and entry,
-and the only ID-shape gate anywhere is a prefix match on the type segment, which
-a segment of any length passes. What breaks is package attribution.
-`extractGtsPackage` (`@gears-frontx/mfes`) takes the first two dot-tokens of the
-instance segment as the package ID, so a segment that opens with something other
-than vendor + package is filed under a wrong key in `DefaultMfeRegistry.packages`
-- collapse the pair into one token and `demo.screens.home.v1` files under
-`demo.screens` instead of `frontx.demo`. A segment ending in `~`, or one holding
-fewer than two dot-tokens, makes that function throw, and the registry catches
-the throw and skips package tracking for that extension altogether. Every pattern
-below therefore spells the vendor and the package as two separate placeholders,
+**Pattern shape.** The runtime registers an extension under its ID verbatim, looks it up by domain and entry, and the only ID-shape gate anywhere is a prefix match on the type segment; it derives no package from an identifier. The convention below is for readability and consistency. Every pattern
+below spells the vendor and the package as two separate placeholders,
 and every one of them expands to exactly the five tokens of the real example
 beside it.
 
 ### The instance segment is the last non-empty `~`-separated segment
 
 Non-empty matters: an ID that ends in `~` - a custom action, a fixed shared
-property, a fixed lifecycle action - has an empty last element, and
-`extractGtsPackage` implements the rule literally and throws on exactly that
-shape rather than stepping back a segment. The instance segment of
+property, a fixed lifecycle action - has an empty last element, so the instance
+segment is the last element that is not empty. The instance segment of
 `...comm.action.v1~frontx.demo.action.refresh_profile.v1~` is
 `frontx.demo.action.refresh_profile.v1`, and the trailing `~` is the open-reference
 marker, not a segment.
@@ -84,7 +73,7 @@ gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.blank
   is the host template's, not the ecosystem's**: `@gears-frontx/mfes` defines no
   specific extension-domain values (MFES-2, MFES-3) and registers no such domain,
   and this id is declared by template-shell, in
-  `packages/framework/src/plugins/microfrontends/gts/frontx.screensets/instances/domains/screen.v1.json`.
+  `src/gts/instances/domains/screen.v1.json`.
   An MFE built for a host that declares a different screen domain copies that
   host's id here instead. Either way the five tokens are the host's to author and
   never this MFE's.

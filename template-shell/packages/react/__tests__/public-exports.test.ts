@@ -4,7 +4,7 @@
  * implementation mounted, and no route state is exposed to shell code.
  */
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { Extension } from '@gears-frontx/framework';
+import type { Extension } from '@gears-frontx/framework/mfe';
 import * as react from '../src/index';
 import type { useDomainExtensions } from '../src/mfe/hooks/useDomainExtensions';
 

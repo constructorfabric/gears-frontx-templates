@@ -1,6 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_ACTION_MOUNT_EXT, FRONTX_SCREEN_DOMAIN, FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import {
   Button,
   Card,
@@ -24,6 +23,12 @@ import {
 } from '../../shared/extension-ids';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import styles from './HelloWorldScreen.module.css';
+import {
+  FRONTX_SCREEN_DOMAIN,
+  FRONTX_SHARED_PROPERTY_THEME,
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
+} from '../../shellContract';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 /**
  * Props for the HelloWorldScreen component.

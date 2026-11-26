@@ -1,0 +1,13 @@
+{
+  "description": "HTTP/1.1 shell boot baseline (median ms, HTTP/1.1, no compression, cold). HTTP/1.1 office-LAN and Fast 4G boot are reported every run and must not regress from these numbers beyond the noise margin; they are not gated against the old rule.",
+  "origin": {
+    "commit": "16ed318b",
+    "workingTree": "that commit (HEAD of feature/issue-718-redo) plus the bump of @gears-frontx/mfes and @gears-frontx/gts-plugin to the published 0.7.1",
+    "measurement": "5-run medians of the load-gate-cells harness on the development machine",
+    "measuredAt": "2026-11-26"
+  },
+  "bootMs": {
+    "office-lan": 199,
+    "fast-4g": 9547
+  }
+}

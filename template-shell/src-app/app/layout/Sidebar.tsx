@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { useAppSelector, type SidebarState } from '@gears-frontx/react';
+import { useAppSelector } from '@gears-frontx/react';
+import type { SidebarState } from './state';
 import styles from './Sidebar.module.css';
 
 export interface SidebarProps {

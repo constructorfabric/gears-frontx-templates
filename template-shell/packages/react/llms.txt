@@ -7,7 +7,9 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 ## Core API
 
 - [FrontXProvider](https://frontx.dev/docs/react/provider): Root context provider
-- [MFE Components](https://frontx.dev/docs/react/mfe): ExtensionDomainSlot, MfeProvider
+- [MFE Components](https://frontx.dev/docs/react/mfe): ExtensionDomainSlot, MfeProvider (from `@gears-frontx/react/mfe`)
+- Subpath: `@gears-frontx/react/mfe` carries the MFE context, hooks, components, MFE runtime re-exports and the MFE host plugin `microfrontends()` with its actions, selectors and state types; nothing the main barrel exports reaches it at runtime
+- Type-system agnostic: no entry re-exports a concrete type system or declares an action or shared-property type ID; the host's type system defines them
 - `FrontXProvider` resolves the shared `QueryClient` from `queryCache()` / `queryCacheShared()` through the app instance; mounted MFEs reuse the host cache by building their local app with `queryCacheShared()`, which joins the same shared `QueryClient` without mutating L1 contracts
 
 ## Hooks
@@ -21,7 +23,7 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 | `useScreenTranslations()` | Lazy load screen translations |
 | `useTheme()` | Theme utilities (currentTheme, themes, setTheme) |
 
-## MFE Hooks
+## MFE Hooks (`@gears-frontx/react/mfe`)
 
 | Hook | Purpose |
 |------|---------|
@@ -36,7 +38,7 @@ Part of the FrontX React Layer (L3) - depends on @gears-frontx/framework. Peer d
 import { createFrontX, FrontXProvider, presets, useTranslation, useFrontX } from '@gears-frontx/react';
 
 // One app per runtime, built once at module level (the full preset here;
-// `presets.full({ microfrontends: config })` also adds microfrontends)
+// a host adds `.use(microfrontends(config))` from '@gears-frontx/react/mfe')
 const app = createFrontX().useAll(presets.full()).build();
 
 // Wrap app with provider
@@ -68,14 +70,14 @@ function MyComponent() {
 ### Using ExtensionDomainSlot
 
 ```tsx
-import { ExtensionDomainSlot } from '@gears-frontx/react';
+import { ExtensionDomainSlot } from '@gears-frontx/react/mfe';
 
 function LayoutScreen() {
   return (
     <ExtensionDomainSlot
       registry={registry}
-      domainId="screen"
-      extensionId="home"
+      // the host type system's screen domain id
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );
@@ -85,17 +87,18 @@ function LayoutScreen() {
 ### Using MFE Bridge
 
 ```tsx
-import { useMfeBridge, useSharedProperty, FRONTX_ACTION_LOAD_EXT, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { useMfeBridge, useSharedProperty } from '@gears-frontx/react/mfe';
 
+// LOAD_EXT_ACTION_ID and THEME_PROPERTY_ID stand for the host type system's IDs.
 function MyExtension() {
   const bridge = useMfeBridge();
-  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME);
+  const theme = useSharedProperty(THEME_PROPERTY_ID);
 
   // executeActionsChain is acceptance-only: it returns void, never throws,
   // and never yields anything to await for the chain's own execution.
   const handleAction = () => {
     bridge.executeActionsChain({
-      action: { type: FRONTX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
+      action: { type: LOAD_EXT_ACTION_ID, target: 'screen', payload: { subject: 'other' } }
     });
   };
 
@@ -108,8 +111,7 @@ function MyExtension() {
 `useSharedProperty(propertyTypeId, options)` takes an explicit `bridge` for components that never mount `MfeProvider`, plus a `fallback` returned until the host publishes the property (only `undefined` is substituted; a published `null` is a value). With `fallback` set the result type is `T`. There is no consumer-side validation option: the host validates published values against the property's schema before delivery, so `T` is the caller's declaration of that schema.
 
 ```tsx
-import { useSharedProperty } from '@gears-frontx/react';
-import type { ChildMfeBridge } from '@gears-frontx/framework';
+import { useSharedProperty, type ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 function StandaloneComponent({ bridge }: { bridge: ChildMfeBridge }) {
   const label = useSharedProperty<string>(LABEL_PROPERTY_ID, {
@@ -126,7 +128,7 @@ Omitting `bridge` falls back to `MfeContext`; the hook still throws when neither
 ### Subscribing to Domain Extensions
 
 ```tsx
-import { useDomainExtensions } from '@gears-frontx/react';
+import { useDomainExtensions } from '@gears-frontx/react/mfe';
 
 function ScreenList() {
   const screenExtensions = useDomainExtensions('screen');

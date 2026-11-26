@@ -13,8 +13,8 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { GtsPlugin } from '@gears-frontx/gts-plugin';
-import { extensionScreenSchema, languageCodeSchema, languageSchema, themeSchema } from '@gears-frontx/frontx-template-shell';
-import type { ExtensionDomain, Extension } from '@gears-frontx/react';
+import { extensionScreenSchema, languageCodeSchema, languageSchema, themeSchema } from './shellContract';
+import type { ExtensionDomain, Extension } from '@gears-frontx/react/mfe';
 import { PROFILE_EXTENSION_ID, DEMO_ACTION_REFRESH_PROFILE } from './shared/extension-ids';
 import refreshProfileSchemaJson from '../mfe.json' with { type: 'json' };
 
@@ -40,13 +40,7 @@ const PROFILE_ENTRY_ID =
 // and the manifest that entry names, are registered before the extension.
 const MANIFEST = {
   id: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1',
-  name: 'demoMfe',
   metaData: {
-    name: 'demoMfe',
-    type: 'app',
-    buildInfo: { buildVersion: '1.0.0', buildName: 'demoMfe' },
-    remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-    globalName: 'demoMfe',
     publicPath: 'http://localhost:3001/',
   },
   shared: [],
@@ -59,7 +53,7 @@ const PROFILE_ENTRY = {
   domainActions: [],
   manifest: MANIFEST.id,
   exposedModule: './profile',
-  exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+  exposeAssets: { js: { sync: ['assets/lifecycle.js'] }, css: { sync: [], async: [] } },
 };
 
 const PROFILE_EXTENSION = {

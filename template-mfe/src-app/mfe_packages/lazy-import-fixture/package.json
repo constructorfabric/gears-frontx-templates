@@ -1,0 +1,26 @@
+{
+  "name": "@gears-frontx/lazy-import-fixture",
+  "private": true,
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "Browser fixture for bare lazy imports of shared packages. The MFE reaches lazy-own-kit only through its own dynamic import(), and lazy-leaf-kit only through a dynamic import() inside the shared package lazy-host-kit. The kits are stand-ins carried in kits/.",
+  "scripts": {
+    "dev": "vite build && vite preview --port 3301",
+    "build": "vite build",
+    "cache:clear": "node -e \"require('node:fs').rmSync('node_modules/.cache/frontx-unit-producer',{recursive:true,force:true})\"",
+    "build:clean": "npm run cache:clear && vite build",
+    "preview": "vite preview --port 3301"
+  },
+  "dependencies": {
+    "lazy-host-kit": "file:./kits/lazy-host-kit",
+    "lazy-leaf-kit": "file:./kits/lazy-leaf-kit",
+    "lazy-own-kit": "file:./kits/lazy-own-kit"
+  },
+  "devDependencies": {
+    "@gears-frontx/gts-plugin": "0.7.1",
+    "@gears-frontx/mfes": "0.7.1",
+    "@gears-frontx/vite-plugin-mfe-gts": "0.1.0-alpha.2",
+    "@module-federation/vite": "1.20.5",
+    "vite": "6.4.6"
+  }
+}

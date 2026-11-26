@@ -60,17 +60,10 @@ function builtPackage(name: string, port: number, manifestId: string = manifestI
     JSON.stringify({
       manifest: {
         id: manifestId,
-        name,
-        remoteEntry: `http://localhost:${port}/remoteEntry.js`,
         metaData: {
-          name,
-          type: 'app',
-          buildInfo: { buildVersion: '0', buildName: name },
-          remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-          globalName: name,
           publicPath: `http://localhost:${port}/`,
         },
-        shared: [{ name: 'react', version: '19.2.4', chunkPath: 'shared/react.js', unwrapKey: null }],
+        shared: [{ name: 'react', version: '19.2.4', chunkPath: 'shared/react.js' }],
       },
       entries: [
         {
@@ -80,7 +73,7 @@ function builtPackage(name: string, port: number, manifestId: string = manifestI
           domainActions: [],
           manifest: manifestId,
           exposedModule: './lifecycle',
-          exposeAssets: { js: { async: [], sync: ['assets/lifecycle-abc123.js'] }, css: { async: [], sync: [] } },
+          exposeAssets: { js: { sync: ['assets/lifecycle-abc123.js'] }, css: { async: [], sync: [] } },
         },
       ],
       extensions: [{ id: `${EXTENSION_TYPE}~fixture.${token(name)}.screens.home.v1`, domain: SCREEN_DOMAIN, entry: entryId }],
@@ -99,7 +92,6 @@ function generateAndCopyAggregate(): void {
 
 interface Config {
   manifest: { id: string; metaData: { publicPath: string } };
-  entries: Array<{ manifest: { metaData: { publicPath: string } } }>;
 }
 
 function readAggregate(...segments: string[]): Config[] {
@@ -107,10 +99,7 @@ function readAggregate(...segments: string[]): Config[] {
 }
 
 function publicPaths(configs: Config[]): string[] {
-  return configs.flatMap((config) => [
-    config.manifest.metaData.publicPath,
-    ...config.entries.map((entry) => entry.manifest.metaData.publicPath),
-  ]);
+  return configs.map((config) => config.manifest.metaData.publicPath);
 }
 
 beforeEach(() => {
@@ -140,7 +129,7 @@ describe('layoutDist', () => {
     }
   });
 
-  it('addresses each screen in the dist aggregate relative to the aggregate, in the manifest and in every entry', () => {
+  it('addresses each screen in the dist aggregate relative to the aggregate, in the manifest', () => {
     builtPackage('orders-mfe', 3010);
     generateAndCopyAggregate();
 
@@ -148,7 +137,7 @@ describe('layoutDist', () => {
 
     const configs = readAggregate('dist');
     expect(configs.map((config) => config.manifest.id)).toEqual([manifestIdFor('orders-mfe')]);
-    expect(publicPaths(configs)).toEqual(['mfe/orders-mfe/', 'mfe/orders-mfe/']);
+    expect(publicPaths(configs)).toEqual(['mfe/orders-mfe/']);
   });
 
   it('leaves the dev aggregate in public/ on the preview ports', () => {
@@ -157,7 +146,7 @@ describe('layoutDist', () => {
 
     layoutDist(project);
 
-    expect(publicPaths(readAggregate('public'))).toEqual(['http://localhost:3010/', 'http://localhost:3010/']);
+    expect(publicPaths(readAggregate('public'))).toEqual(['http://localhost:3010/']);
   });
 
   it('replaces a layout an earlier build left behind', () => {

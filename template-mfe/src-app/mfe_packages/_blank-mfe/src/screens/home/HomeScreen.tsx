@@ -1,17 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import {
-  FRONTX_SHARED_PROPERTY_THEME,
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  useApiQuery,
-  apiRegistry,
-} from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import { useApiQuery, apiRegistry } from '@gears-frontx/react';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { kitThemeScopeFor } from '../../shared/kitThemeScope';
 import { DEFAULT_THEME_ID, readBridgeProperty } from '../../shared/readBridgeProperty';
 import { _BlankApiService } from '../../api/_BlankApiService';
 import styles from './HomeScreen.module.css';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../shellContract';
 
 // Stable reference for translation modules (hoisted to module level to prevent re-render loops)
 const languageModules = import.meta.glob('./i18n/*.json') as Record<

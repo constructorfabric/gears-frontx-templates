@@ -16,7 +16,7 @@ import React from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientContext } from '@tanstack/react-query';
 import type { MockState } from '@gears-frontx/framework';
-import type { MfeContextValue } from '@gears-frontx/react';
+import type { MfeContextValue } from '@gears-frontx/react/mfe';
 import {
   loadFreshHelpers,
   ownedApps,

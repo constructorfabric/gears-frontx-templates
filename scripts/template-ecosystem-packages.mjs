@@ -25,9 +25,9 @@
  *
  * `packages/*` is not the whole truth, though (#501): a template can pin
  * ANOTHER template's own identity or one of that template's workspace members
- * - `template-mfe` pins `@gears-frontx/frontx-template-shell` and every one of
- * `template-shell/packages/*` (react, auth, framework, i18n, state) to exact
- * versions, and none of those names live under this repo's own `packages/*`.
+ * - `template-mfe` pins members of `template-shell/packages/*` (react, auth,
+ * framework, i18n, state, unit-producer) to exact versions, and none of those
+ * names live under this repo's own `packages/*`.
  * `readTemplateEcosystemPackages` asks each template the same question
  * `packages/*` already answers - what do you publish, and at what version -
  * and `readEcosystemTruthVersions` folds the answer in on top. Its own
@@ -376,8 +376,8 @@ export function readEcosystemPackages(rootDir) {
  *
  * `packages/*` is not the whole truth: a template can pin another template's
  * own identity or one of that template's workspace members (`template-mfe`
- * pinning `@gears-frontx/frontx-template-shell` and `template-shell/packages/*`
- * - #501), and neither lives under this repo's `packages/*`. Those
+ * pinning `template-shell/packages/*` - #501), and neither lives under this
+ * repo's `packages/*`. Those
  * contributions are folded in on top, from `readTemplateEcosystemPackages`.
  *
  * `packages/*` is folded in FIRST and never overwritten by a template
@@ -649,7 +649,7 @@ function workspaceMemberDirs(rootDir, pattern) {
  * `template-mfe/package.json` (`frontx-template-mfe-monorepo-harness`,
  * unscoped, `private: true`, deliberately carrying no version - see that
  * file's own leading comment) sit right next to `template-shell/package.json`
- * (`@gears-frontx/frontx-template-shell`) without either needing a special
+ * (`@gears-frontx/frontx-template-shell`, in scope) without either needing a special
  * case: one is in scope and the other isn't, and only that decides.
  *
  * Once a name IS in scope, though, it is unconditionally a truth candidate,
@@ -680,10 +680,10 @@ function ecosystemScopedNameVersion(manifest, manifestPath, isEcosystemScopeName
  * `template-shell/packages/auth`).
  *
  * WHY templates need asking at all (#501): `template-mfe` pins subpackages of
- * `template-shell` (its own workspace members) and `template-shell` itself,
- * and none of those names live under this repo's `packages/*` - so without
- * this, every one of those pins is structurally unverifiable, not merely
- * unpinned coincidence. This closes that gap the same way `packages/*` is
+ * `template-shell` (its own workspace members), and none of those names live
+ * under this repo's `packages/*` - so without this, every one of those pins
+ * is structurally unverifiable, not merely unpinned coincidence. This closes
+ * that gap the same way `packages/*` is
  * built: derived from manifests on disk, never declared.
  *
  * This deliberately does NOT restrict which `workspaces` pattern counts - not

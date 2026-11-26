@@ -7,7 +7,7 @@
  * them from drifting apart.
  */
 
-import { screenDomain, type ScreenExtension } from '@gears-frontx/react';
+import { screenDomain, type ScreenExtension } from '../../../src/index';
 
 /** A screen extension as the registry hands it out: without its `route`, which only the injected router receives. */
 export type RegistryScreenExtension = Omit<ScreenExtension, 'route'>;

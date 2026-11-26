@@ -1,12 +1,12 @@
 // @vitest-environment node
 /**
- * Every MFE package lists `@gears-frontx/routing` in its `vite.config.ts`
- * `sharedDeps`, so each MFE runtime evaluates exactly one copy of it, never
- * shared across MFEs: the copy the MFE's registry receives through the
- * framework must be the copy `<ExtensionRouter>` and `navigation()` of
- * `@gears-frontx/routing-tanstack` read. Without the entry, the framework's
- * shared chunk and the routing-tanstack shared chunk each inline a copy of
- * their own.
+ * Every MFE package builds its shared dependencies through
+ * `@gears-frontx/vite-plugin-mfe-gts` — the plugin resolves the shared set
+ * over the build graph from each package's declared dependencies, so each MFE
+ * runtime evaluates exactly one copy of `@gears-frontx/routing` (and of every
+ * other shared package), never a second copy inlined next to the host's.
+ * A scaffold config therefore declares no sharedDeps or externals list of its
+ * own: a curated list would silently fight the plugin's resolution.
  *
  * The check covers every package under `src-app/mfe_packages/`, discovered the
  * way the shell's scanners discover them (a directory with an `mfe.json`, not
@@ -28,31 +28,36 @@ function mfePackageDirs(): string[] {
     .filter((dir) => fs.existsSync(path.join(dir, 'mfe.json')));
 }
 
-/** The string literals of `vite.config.ts`'s `const sharedDeps = [...]`, comments stripped. */
-function readSharedDeps(packageDir: string): string[] {
-  const viteConfigPath = path.join(packageDir, 'vite.config.ts');
-  const source = fs.readFileSync(viteConfigPath, 'utf-8');
-  const match = /const sharedDeps\s*=\s*\[([\s\S]*?)\];/.exec(source);
-  if (!match) {
-    throw new Error(`Could not find a "const sharedDeps = [...]" array in ${viteConfigPath}`);
-  }
-  const withoutComments = match[1]!
-    .split('\n')
-    .map((line) => line.replace(/\/\/.*$/, ''))
-    .join('\n');
-  return [...withoutComments.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]!);
+function readViteConfig(packageDir: string): string {
+  return fs.readFileSync(path.join(packageDir, 'vite.config.ts'), 'utf-8');
 }
 
-describe('MFE packages — @gears-frontx/routing is a shared dependency', () => {
+describe('MFE packages — shared deps through vite-plugin-mfe-gts', () => {
   it('discovers the MFE packages, this one included', () => {
     const names = mfePackageDirs().map((dir) => path.basename(dir));
     expect(names).toContain(path.basename(PACKAGE_ROOT));
   });
 
-  it('every MFE package lists @gears-frontx/routing in its sharedDeps', () => {
+  it('every MFE package calls vitePluginMfeGts() in its vite.config.ts', () => {
     const missing = mfePackageDirs()
-      .filter((dir) => !readSharedDeps(dir).includes('@gears-frontx/routing'))
+      .filter((dir) => !/\bvitePluginMfeGts\(/.test(readViteConfig(dir)))
       .map((dir) => path.basename(dir));
     expect(missing).toEqual([]);
+  });
+
+  it('no MFE package declares a sharedDeps array or externals list of its own', () => {
+    const offenders = mfePackageDirs().flatMap((dir) => {
+      const source = readViteConfig(dir);
+      const name = path.basename(dir);
+      const problems: string[] = [];
+      if (/\bconst sharedDeps\b/.test(source)) problems.push(`${name}: sharedDeps array`);
+      if (/\bexternal\s*:/.test(source)) problems.push(`${name}: external option`);
+      const sharedMatch = /\bshared\s*:\s*([\s\S]*?)\n?\s*,/m.exec(source);
+      if (sharedMatch && sharedMatch[1]!.trim() !== '{}') {
+        problems.push(`${name}: non-empty federation shared list`);
+      }
+      return problems;
+    });
+    expect(offenders).toEqual([]);
   });
 });

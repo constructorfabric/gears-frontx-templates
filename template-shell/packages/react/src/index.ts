@@ -4,7 +4,16 @@
  * This package provides:
  * - FrontXProvider context provider
  * - Type-safe hooks for state and actions
- * - MFE context, hooks, and components
+ *
+ * The MFE context, hooks and components, the MFE runtime re-exports and the
+ * MFE host plugin `microfrontends()` (with its actions, selectors and state
+ * types) live on the `@gears-frontx/react/mfe` subpath. Nothing this main
+ * barrel exports reaches it at runtime, so a consumer of the React bindings
+ * alone never reaches the MFE runtime.
+ *
+ * The package is type-system agnostic: it names no concrete type system, type
+ * ID, schema or instance. The type system, its IDs and the domain
+ * declarations belong to the application template.
  *
  * Layer: L3 (Depends on @gears-frontx/framework)
  */
@@ -56,31 +65,6 @@ export type {
 } from './hooks/QueryCache';
 
 // ============================================================================
-// MFE Context and Hooks
-// ============================================================================
-
-export {
-  MfeContext,
-  useMfeContext,
-  MfeProvider,
-  useMfeBridge,
-  ThemeAwareReactLifecycle,
-  useSharedProperty,
-  useHostAction,
-  useMfeRegistry,
-  useDomainExtensions,
-  useRegisteredPackages,
-  ExtensionDomainSlot,
-} from './mfe';
-
-export type {
-  MfeContextValue,
-  MfeProviderProps,
-  ExtensionDomainSlotProps,
-  UseSharedPropertyOptions,
-} from './mfe';
-
-// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -121,15 +105,16 @@ export {
 
   // Plugins
   themes,
-  layout,
   i18n,
   effects,
   queryCache,
   queryCacheShared,
   subscribeQueryCacheRuntimeChanged,
+  mock,
 
   // Registries
   createThemeRegistry,
+  FRONTX_THEME_HOST_ATTRIBUTE,
 
   // Flux (Event bus + Store)
   // NOTE: eventBus is re-exported separately below with augmented EventPayloadMap type
@@ -141,66 +126,7 @@ export {
   hasSlice,
   createSlice,
 
-  // Layout domain exports
-  layoutReducer,
-  layoutDomainReducers,
-  LAYOUT_SLICE_NAME,
-  headerSlice,
-  footerSlice,
-  menuSlice,
-  sidebarSlice,
-  popupSlice,
-  overlaySlice,
-  headerActions,
-  footerActions,
-  menuActions,
-  sidebarActions,
-  popupActions,
-  overlayActions,
-  // Individual reducer functions - header
-  setUser,
-  setHeaderLoading,
-  clearUser,
-  // Individual reducer functions - footer
-  setFooterVisible,
-  setFooterConfig,
-  toggleMenu,
-  setMenuCollapsed,
-  setMenuItems,
-  setMenuVisible,
-  setMenuConfig,
-  toggleSidebar,
-  setSidebarCollapsed,
-  setSidebarPosition,
-  setSidebarTitle,
-  setSidebarContent,
-  setSidebarVisible,
-  setSidebarWidth,
-  setSidebarConfig,
-  openPopup,
-  closePopup,
-  closeTopPopup,
-  closeAllPopups,
-  showOverlay,
-  hideOverlay,
-  setOverlayVisible,
-
-  // Tenant (app-level, not layout)
-  TENANT_SLICE_NAME,
-  tenantSlice,
-  tenantActions,
-  tenantReducer,
-  setTenant,
-  setTenantLoading,
-  clearTenant,
-  // Tenant effects and events
-  initTenantEffects,
-  changeTenant,
-  clearTenantAction,
-  setTenantLoadingState,
-  TenantEvents,
-
-  // Mock (app-level, not layout)
+  // Mock (app-level)
   mockSlice,
   mockActions,
   setMockEnabled,
@@ -253,6 +179,7 @@ export type {
   // Config
   FrontXConfig,
   FrontXPlugin,
+  FrontXActions,
   FrontXAppBuilder,
   FrontXApp,
   // Endpoint descriptors — L3 components import from @gears-frontx/react
@@ -270,7 +197,6 @@ export type {
   ThemeConfig,
   Preset,
   Presets,
-  ShowPopupPayload,
   ChangeThemePayload,
   SetLanguagePayload,
   AuthPluginConfig,
@@ -306,32 +232,6 @@ export type {
   SliceObject,
   FrontXStore,
   ReducerPayload,
-
-  // Layout
-  LayoutDomainState,
-  HeaderUser,
-  HeaderConfig,
-  HeaderState,
-  FooterConfig,
-  FooterState,
-  MenuItem,
-  MenuState,
-  SidebarPosition,
-  SidebarState,
-  PopupConfig,
-  PopupState,
-  PopupSliceState,
-  OverlayConfig,
-  OverlayState,
-  LayoutState,
-  RootStateWithLayout,
-  LayoutDomainReducers,
-
-  // Tenant types
-  Tenant,
-  TenantState,
-  TenantChangedPayload,
-  TenantClearedPayload,
 
   // Mock types
   MockState,
@@ -375,145 +275,6 @@ export type {
 } from '@gears-frontx/framework';
 
 // ============================================================================
-// MFE Re-exports from @gears-frontx/framework (Layering Compliance)
-// ============================================================================
-
-// MFE Plugin factories
-export {
-  microfrontends,
-  mock,
-} from '@gears-frontx/framework';
-
-// MFE Action functions
-export {
-  loadExtension,
-  mountExtension,
-  unmountExtension,
-  registerExtension,
-  unregisterExtension,
-} from '@gears-frontx/framework';
-
-// MFE Selectors
-export {
-  selectExtensionState,
-  selectRegisteredExtensions,
-  selectExtensionError,
-} from '@gears-frontx/framework';
-
-// MFE Domain constants
-export {
-  FRONTX_POPUP_DOMAIN,
-  FRONTX_SIDEBAR_DOMAIN,
-  FRONTX_SCREEN_DOMAIN,
-  FRONTX_OVERLAY_DOMAIN,
-  // Base ExtensionDomain constants
-  screenDomain,
-  sidebarDomain,
-  popupDomain,
-  overlayDomain,
-} from '@gears-frontx/framework';
-
-// MFE Type constants
-export {
-  FRONTX_SCREEN_EXTENSION_TYPE,
-  FRONTX_MFE_ENTRY_MF,
-} from '@gears-frontx/framework';
-
-// MFE Action constants
-export {
-  FRONTX_ACTION_LOAD_EXT,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-} from '@gears-frontx/framework';
-
-// MFE Shared Property constants
-export {
-  FRONTX_SHARED_PROPERTY_THEME,
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-} from '@gears-frontx/framework';
-
-// Theme host attribute constant
-export { FRONTX_THEME_HOST_ATTRIBUTE } from '@gears-frontx/framework';
-
-// MFE Types
-export type {
-  MfeMountContext,
-  Extension,
-  ScreenExtension,
-  ExtensionPresentation,
-  ExtensionDomain,
-  ActionsChain,
-  Action,
-  SharedProperty,
-  LifecycleStage,
-  LifecycleHook,
-  MfeEntryLifecycle,
-  MfeEntry,
-  MfeEntryMF,
-  JSONSchema,
-  LoadExtPayload,
-  MountExtPayload,
-  UnmountExtPayload,
-  MfeRegistryConfig,
-  TypeSystemPlugin,
-  // MF2 manifest types
-  MfManifest,
-  MfManifestMetaData,
-  MfManifestRemoteEntry,
-  MfManifestBuildInfo,
-  MfManifestShared,
-  MfManifestAssets,
-} from '@gears-frontx/framework';
-
-// MFE Abstract classes
-export {
-  ChildMfeBridge,
-  ParentMfeBridge,
-  MfeHandler,
-  MfeBridgeFactory,
-  MfeRegistry,
-  MfeRegistryFactory,
-  mfeRegistryFactory,
-  ActionHandler,
-  ExtensionDomainImplementation,
-  ExtensionDomainImplementationFactory,
-  ExtensionMounter,
-  MountStrategy,
-  ConcurrentMountStrategy,
-  OptionalMountStrategy,
-  ExclusiveMountStrategy,
-} from '@gears-frontx/framework';
-
-export type {
-  ContainerHooks,
-  DomainContext,
-  ActionPayload,
-} from '@gears-frontx/framework';
-
-// MFE Concrete implementations
-export { MfeHandlerMF, gtsPlugin } from '@gears-frontx/framework';
-
-// GTS derived schemas (themeSchema, languageSchema, extensionScreenSchema) and the
-// protocol-specific mock plugins (RestMockPlugin, SseMockPlugin, MockEventSource)
-// are application-layer symbols owned by @gears-frontx/frontx-template-shell and
-// are no longer re-exported here — import them from the template package (#601).
-
-// MFE Utilities
-export {
-  createShadowRoot,
-  injectCssVariables,
-  extractGtsPackage,
-} from '@gears-frontx/framework';
-
-// MFE Plugin types
-export type {
-  MfeState,
-  ExtensionRegistrationState,
-  RegisterExtensionPayload,
-  UnregisterExtensionPayload,
-} from '@gears-frontx/framework';
-
-// ============================================================================
 // Module Augmentation Support - EventPayloadMap Re-declaration
 // ============================================================================
 
@@ -521,7 +282,7 @@ export type {
  * Re-declare EventPayloadMap to enable module augmentation on @gears-frontx/react
  *
  * This creates a new declaration site in @gears-frontx/react that TypeScript can augment.
- * App-layer code can now use `declare module '@gears-frontx/react'` instead of importing
+ * App-layer code uses `declare module '@gears-frontx/react'` instead of importing
  * from L1 packages directly, maintaining proper layer architecture.
  *
  * ARCHITECTURE: This pattern allows L3+ code to augment event types without
@@ -543,8 +304,7 @@ export type {
  * }
  * ```
  */
-import type { EventPayloadMap as FrameworkEventPayloadMap, EventBus } from '@gears-frontx/framework';
-import { eventBus as frameworkEventBus } from '@gears-frontx/framework';
+import type { EventPayloadMap as FrameworkEventPayloadMap } from '@gears-frontx/framework';
 
 export interface EventPayloadMap extends FrameworkEventPayloadMap { }
 
@@ -552,5 +312,6 @@ export interface EventPayloadMap extends FrameworkEventPayloadMap { }
  * Re-export eventBus with augmented EventPayloadMap type.
  * This ensures that code importing eventBus from @gears-frontx/react gets
  * type-safe access to both framework events and app-layer augmented events.
+ * Defined in its own module so this barrel stays pure (re-exports only).
  */
-export const eventBus: EventBus<EventPayloadMap> = frameworkEventBus as EventBus<EventPayloadMap>;
+export { eventBus } from './eventBus';

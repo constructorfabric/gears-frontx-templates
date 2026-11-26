@@ -696,11 +696,13 @@ The system **MUST** ship one manifest per widget type, `gts.frontx.mfes.mfe.mf_m
 | Field | Source | Content |
 |-------|--------|---------|
 | `id` | authored in the bundle's `mfe.json` | `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.<widget_type>.v1` |
-| `remoteEntry` | authored in the bundle's `mfe.json` | location of the entry file of the bundle's build; the served part leaves it out |
+| `remoteEntry` | authored in the bundle's `mfe.json` | location of the entry file of the bundle's build; an authoring input of `mfe.json` only, not a field of the served manifest |
 | `metaData.publicPath` | set by the build (`WIDGET_BUNDLE_BASE`, `/widgets/` by default, then `<widget_type>/`) | the address the FrontX MF handler loads the bundle's chunks from |
-| every other manifest field | produced by the FrontX manifest pipeline (the `frontx-mf-gts` build plugin) from the build | as FrontX defines the manifest type, with the shared modules and their content hashes |
+| `metaData.sharedBase` | produced by the FrontX manifest pipeline (the `vitePluginMfeGts` build plugin of `template-mfe`), when the bundle has shared units | the base the shared units' chunk paths resolve against |
+| `units` | produced by the manifest pipeline, when the build lists shared-unit modules | each shared unit once: `location`, `contentHash`, `answers` and `imports` |
+| `lists` | produced by the manifest pipeline, when the build lists shared-unit modules | each exposed module's fetch list, naming units by `contentHash`, with its `ownChunks` and its nested `lazy` and `patterns` lists |
 
-A full JSON instance block is not shown because the manifest pipeline produces the manifest from the build; only `id` and `remoteEntry` are authored in `mfe.json`.
+The served manifest carries exactly `id`, `metaData` (`publicPath`, `sharedBase?`), `units?` and `lists?`, the closed manifest contract of FrontX; the `shared[]` list is something older producers write, and the runtime still reads it from their manifests. Each served entry carries its base fields, `manifest` (the id of the bundle's manifest), `exposedModule` and `exposeAssets` (`js.sync`, non-empty, and `css.sync` and `css.async`), which the manifest pipeline adds when the bundle is built. A full JSON instance block is not shown because the manifest pipeline produces the manifest from the build; only `id` and `remoteEntry` are authored in `mfe.json`.
 
 **Implements**: `cpt-frontx-dashboard-nfr-bundle-budget` (manifest side).
 
@@ -723,13 +725,13 @@ The catalog FEATURE applies these obligations to each of the 15 types, for the t
 
 - [ ] `p3` - **ID**: `cpt-frontx-dashboard-dod-widget-contract-shared-deps`
 
-Every widget entry **MUST** list its packages in `shared`, built as shared dependencies, fetched once by contentHash (FrontX ADR-0034/0035).
+Every widget entry **MUST** share its packages as units held in the manifest's `units` and named by its `lists`, built as shared dependencies and fetched once by contentHash (FrontX ADR-0034/0035).
 
 Download budgets, provisional and confirmed by measurement, counted per DESIGN §4.1 (transferred gzipped bytes on a cold load of the reference dashboard, each shared dependency once in the page total):
 - The dashboard root **MUST** stay under 500 KB gzipped, CEL library included.
 - Each widget entry **MUST** stay under 100 KB gzipped, own code only.
 
-Stateful packages are listed in `shared` too, and per-instance memory is held per extension id until unload, bounded by deterministic ids. Package subtrees live under `src-app/mfe_packages/{dashboard,widgets}/`; the architecture documents are not shipped.
+Stateful packages are shared as units too, and per-instance memory is held per extension id until unload, bounded by deterministic ids. Package subtrees live under `src-app/mfe_packages/{dashboard,widgets}/`; the architecture documents are not shipped.
 
 **Dependency sets per entry**:
 
@@ -802,12 +804,12 @@ A walkthrough with someone who did not build the template verifies the guide. A 
 - [ ] The `widgets` extension type narrows `domain` to the `widgets` domain id and adds no field; a generated extension's `entry` is the entry named by the widget type's `entry` trait.
 - [ ] The `widgets` domain instance declares `sharedProperties` theme and language, `actions` `mount_ext` and `unmount_ext`, `extensionsActions` `render_widget`, `extensionsTypeId` the `widget_ext` extension type, `defaultActionTimeout` 30000, and both lifecycle-stage lists empty.
 - [ ] The domain and every entry refer to the FrontX theme and language ids; the root registers the template's minimal schema for each only when the type store has none under that id, and never replaces a schema already registered.
-- [ ] In each bundle's `mfe.json` the widget author writes the manifest's `id` and `remoteEntry`; the FrontX manifest pipeline produces the rest of the manifest and adds the entry's `exposeAssets` when the bundle is built.
+- [ ] In each bundle's `mfe.json` the widget author writes the manifest's `id` and `remoteEntry` (an authoring input, not served); the FrontX manifest pipeline produces the served manifest's remaining fields (`metaData`, `units`, `lists`) and adds the entry's `exposeAssets` when the bundle is built.
 - [ ] A generated extension id is the `widget_ext` type followed by `UUIDv5(namespace, widget id | role | entry id)`; a stamped data id is the data type followed by `UUIDv5(namespace, widget id | role)`; a stamped render id is the render type (or the render base) followed by `UUIDv5(namespace, widget id | role | render)`; name parts are joined with `|`, in UTF-8, with ids in lowercase; ids are never persisted.
 - [ ] A widget entry is a plain FrontX `entry_mf` instance with no derived type and no extra field, written without `exposeAssets`; its `mount` resolves only after it registers its `render_widget` handler.
 - [ ] A widget entry follows the obligations: no requests, theme mapping, ui-kit tokens, formats, text not markup, no cut-off, no meaning by colour alone, keyboard-operable, and usable with a screen reader (name, role and state on each control; empty and cannot-be-shown states as text; a text alternative for values shown only as graphics).
 - [ ] A widget entry resolves its `render_widget` handler before drawing; a widget whose drawing fails shows its own cannot-be-shown state in its area; an action that ends in fallback or times out makes the cell cannot-be-shown. The guide states the limit that a widget that fails without showing anything leaves its cell blank.
 - [ ] Given a widget whose drawing fails, or whose own check fails, when it shows its own cannot-be-shown state, then the state shows the static text "This widget cannot be shown" (English, like every widget-owned wording; gears-frontx-templates#105), the same words as the cell placeholder's default, with no error text; a screen reader reads that text; and the cell frame stays.
-- [ ] Every widget entry lists its packages in `shared`, fetched once by contentHash. Measured per DESIGN §4.1 against the provisional budgets: the dashboard root under 500 KB gzipped, CEL library included; each widget entry under 100 KB gzipped, own code only.
+- [ ] Every widget entry shares its packages as units held in `units` and named by `lists`, fetched once by contentHash. Measured per DESIGN §4.1 against the provisional budgets: the dashboard root under 500 KB gzipped, CEL library included; each widget entry under 100 KB gzipped, own code only.
 - [ ] The widget-author guide covers every topic of its DoD, checked as a list, including the limitations of PRD §6.3 and the DESIGN limits of DESIGN §5, and someone who did not build the template adopts it in a walkthrough using only the guide.
 - [ ] In a walkthrough, a product developer who did not build the template adopts it using only the shipped guides: copies it, gives the root the product's `DashboardHost`, places the dashboard root with what the host must provide, serves the product's copy of the GTS file, and points a template widget type to another entry in a bundle's `mfe.json`, and a dashboard from that copy shows.

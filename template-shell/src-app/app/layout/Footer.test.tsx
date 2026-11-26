@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { FooterState } from '@gears-frontx/react';
+import type { FooterState } from './state';
 import { Footer } from './Footer';
 
 let mockFooterState: FooterState | undefined;

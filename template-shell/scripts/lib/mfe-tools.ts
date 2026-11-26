@@ -105,7 +105,7 @@ export function isTemplateExamplePackage(packagePath: string): boolean {
     parsed = JSON.parse(readFileSync(mfeJsonPath, 'utf-8'));
   } catch {
     // An `mfe.json` that does not parse is the build's failure to report: the
-    // `frontxMfGts` plugin parses this same file, and its throw surfaces through
+    // `vitePluginMfeGts` plugin parses this same file, and its throw surfaces through
     // `buildMfesSequentially` as "MFE build failed for <name>". (Manifest
     // generation never sees it - that reads `dist/mfe-manifest.json`.) Answering
     // "not an example" leaves the package in discovery so it reaches that build,

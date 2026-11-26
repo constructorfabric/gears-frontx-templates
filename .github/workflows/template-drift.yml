@@ -89,11 +89,11 @@ jobs:
         FRONTX_ECOSYSTEM_DIR: ${{ github.workspace }}/gears-frontx
       run: node scripts/pin-template-ecosystem-to-local.mjs
 
-    # `npm install`, not `npm ci` (the rewrite above desyncs the lockfile), and
-    # `--no-package-lock` avoids npm/cli#524. See CONTRIBUTING.md.
+    # `npm install`, not `npm ci`: the rewrite above desyncs the lockfile.
+    # See CONTRIBUTING.md.
     - name: Install template with the gears-frontx checkout's ecosystem packages
       working-directory: gears-frontx-templates/template-shell
-      run: npm install --no-audit --no-fund --no-package-lock
+      run: npm install --no-audit --no-fund
 
     # The rewrite is an install-time device and nothing more: the committed
     # manifests come back before anything is built, so build and type-check

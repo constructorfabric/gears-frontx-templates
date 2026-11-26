@@ -1,9 +1,5 @@
 // The add-mfe-package skill (step 7) lists which cases here go with the example screen and which must keep passing.
 import { act, render, screen, within } from '@testing-library/react';
-import {
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  FRONTX_SHARED_PROPERTY_THEME,
-} from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -41,6 +37,7 @@ vi.mock('../../shared/useScreenTranslations', () => ({
 }));
 
 import { HomeScreen } from './HomeScreen';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../shellContract';
 
 // Neutral fixture values — test-controlled, not tied to any template placeholder.
 const TEST_THEME = 'smoke-theme';

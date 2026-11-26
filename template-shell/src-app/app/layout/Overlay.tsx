@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { useAppSelector, type OverlayState } from '@gears-frontx/react';
+import { useAppSelector } from '@gears-frontx/react';
+import type { OverlayState } from './state';
 import styles from './Overlay.module.css';
 
 export interface OverlayProps {

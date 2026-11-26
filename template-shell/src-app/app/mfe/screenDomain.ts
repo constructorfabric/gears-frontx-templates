@@ -15,17 +15,19 @@ import {
   ExtensionDomainImplementationFactory,
   ExclusiveMountStrategy,
   ActionHandler,
-  FRONTX_ACTION_MOUNT_EXT,
-  screenDomain,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
+import type { FrontXApp } from '@gears-frontx/react';
 import type {
-  FrontXApp,
   ContainerHooks,
   DomainContext,
   ActionPayload,
   MountStrategy,
-} from '@gears-frontx/react';
-import { extensionScreenSchema, languageCodeSchema } from '@gears-frontx/frontx-template-shell';
+} from '@gears-frontx/react/mfe';
+import {
+  extensionScreenSchema,
+  languageCodeSchema,
+  screenDomain,
+} from '../../../src/index';
 import { claimAutomaticReload } from './automaticReload';
 import { isShellLanguage } from '@/app/i18n/shellLanguages';
 import {
@@ -39,6 +41,7 @@ import { createElementTrackingHooks } from './createElementTrackingHooks';
 import { reloadPage } from './pageReload';
 import { readHistoryIntent, screenLoadFailure } from './screenLoadFailure';
 import { screenState } from './screenState';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 // The readers below state, to TypeScript, an invariant the type system
 // already enforces at runtime: `chrome-actions.ts` closes each chrome payload

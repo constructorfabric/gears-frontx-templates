@@ -1,12 +1,11 @@
 import React, { useCallback, useRef, useState } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import { getLanguageMetadata, Language } from '@gears-frontx/react';
 import {
   FRONTX_SCREEN_DOMAIN,
   FRONTX_SHARED_PROPERTY_LANGUAGE,
   FRONTX_SHARED_PROPERTY_THEME,
-  getLanguageMetadata,
-  Language,
-} from '@gears-frontx/react';
+} from '../../shellContract';
 import {
   Card,
   CardContent,

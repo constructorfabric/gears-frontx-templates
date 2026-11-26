@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { useAppSelector, type FooterState } from '@gears-frontx/react';
+import { useAppSelector } from '@gears-frontx/react';
+import type { FooterState } from './state';
 import styles from './Footer.module.css';
 
 export interface FooterProps {

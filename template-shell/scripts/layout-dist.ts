@@ -58,7 +58,6 @@ interface AggregateManifest {
 
 interface AggregateConfig {
   manifest?: AggregateManifest;
-  entries?: Array<{ manifest?: unknown }>;
 }
 
 function readJson(file: string, projectDir: string): unknown {
@@ -175,10 +174,8 @@ export function layoutDist(
   for (const { config, packageDir } of layout) {
     copyPackageDist(join(mfePackagesDir, packageDir, 'dist'), join(mfeDir, packageDir));
     const publicPath = remotePublicPath(packageDir);
-    // The generator inlines the manifest into every entry, and JSON gives each
-    // entry its own copy, so every copy is rewritten.
+    // An entry names its manifest by id, so the config's manifest is the only copy.
     setPublicPath(config.manifest, publicPath);
-    for (const entry of config.entries ?? []) setPublicPath(entry.manifest, publicPath);
   }
 
   writeFileSync(aggregateFile, `${JSON.stringify(configs, null, 2)}\n`, 'utf-8');

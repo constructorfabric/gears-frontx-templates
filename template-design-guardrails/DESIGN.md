@@ -1,7 +1,7 @@
 ---
 name: "FrontX"
-version: "0.5.0"
-description: "Names the @gears-frontx/ui-kit 0.5.0 design tokens; their values live in the installed kit theme (@gears-frontx/ui-kit/theme.css) and the product theme, never here. Check the names and the version against the installed kit with node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs from the project root."
+version: "0.7.1"
+description: "Names the @gears-frontx/ui-kit 0.7.1 design tokens; their values live in the installed kit theme (@gears-frontx/ui-kit/theme.css) and the product theme, never here. Check the names and the version against the installed kit with node .frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/scripts/check-design-md.mjs from the project root."
 colors:
   background: "var(--background)"
   foreground: "var(--foreground)"

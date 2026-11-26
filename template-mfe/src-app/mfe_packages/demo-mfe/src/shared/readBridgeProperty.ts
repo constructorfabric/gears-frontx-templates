@@ -5,7 +5,7 @@
  * and demo-mfe's screens read the theme through useBridgeProperty.
  */
 
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 /**
  * The theme identifier assumed while the host has not published its theme

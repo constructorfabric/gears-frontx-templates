@@ -9,7 +9,8 @@
 import type React from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
-import type { ChildMfeBridge, FrontXApp } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { ChildMfeBridge } from '@gears-frontx/framework/mfe';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let app: FrontXApp;

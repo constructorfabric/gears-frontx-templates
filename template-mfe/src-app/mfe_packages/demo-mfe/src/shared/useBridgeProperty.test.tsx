@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
-import { FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { describe, expect, it } from 'vitest';
 import { useBridgeProperty } from './useBridgeProperty';
+import { FRONTX_SHARED_PROPERTY_THEME } from '../shellContract';
 
 const TEST_DOMAIN_ID = 'test-domain';
 const TEST_INSTANCE_ID = 'test-instance';

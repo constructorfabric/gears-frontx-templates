@@ -7,15 +7,6 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  FRONTX_POPUP_DOMAIN,
-  FRONTX_SCREEN_DOMAIN,
-  gtsPlugin,
-  popupDomain,
-  screenDomain,
-  sidebarDomain,
-  type JSONSchema,
-} from '@gears-frontx/react';
 // The GTS solution schemas are application-layer and owned by the template
 // package; `@gears-frontx/react` stopped re-exporting them so that framework and
 // react resolve for a consumer outside this workspace (#601). `main.tsx` reaches
@@ -25,7 +16,12 @@ import {
   languageCodeSchema,
   languageSchema,
   themeSchema,
-} from '@gears-frontx/frontx-template-shell';
+  FRONTX_POPUP_DOMAIN,
+  FRONTX_SCREEN_DOMAIN,
+  popupDomain,
+  screenDomain,
+  sidebarDomain,
+} from '../../../src/index';
 
 import {
   CHROME_ACTION_SCHEMAS,
@@ -36,6 +32,7 @@ import {
   CHROME_SET_THEME,
   CHROME_SIGN_IN,
 } from './chrome-actions';
+import { gtsPlugin, type JSONSchema } from '@gears-frontx/gts-plugin';
 
 /** Every chrome action type with a payload its schema accepts, so a case
  * that fails does so over the target and nothing else. */

@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import { FRONTX_SHARED_PROPERTY_THEME } from '../shellContract';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { KitThemedLifecycle } from './KitThemedLifecycle';
 
 const superMountSpy = vi.fn();
 
-vi.mock('@gears-frontx/react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@gears-frontx/react')>();
+vi.mock('@gears-frontx/react/mfe', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@gears-frontx/react/mfe')>();
   return {
     ...actual,
     ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {

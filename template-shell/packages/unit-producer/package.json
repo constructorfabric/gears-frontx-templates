@@ -1,0 +1,82 @@
+{
+  "name": "@gears-frontx/unit-producer",
+  "version": "0.1.0-alpha.2",
+  "description": "Shared-dependency unit producer for FrontX — bundler-parity (pinned Rollup + terser), emitting content-addressed units and fetch lists typed against @gears-frontx/mfes ./unit-format",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit",
+    "type-check:test": "tsc -p tsconfig.test.json",
+    "test": "npm run test:unit",
+    "test:unit": "vitest --run --passWithNoTests=false",
+    "test:unit:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@babel/parser": "7.29.9",
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-json": "6.1.0",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-replace": "6.0.3",
+    "@rollup/plugin-url": "8.0.2",
+    "cjs-module-lexer": "2.3.0",
+    "esbuild": "0.28.2",
+    "rollup": "4.67.4",
+    "terser": "5.51.2"
+  },
+  "devDependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@gears-frontx/mfes": "0.7.1",
+    "@hookform/resolvers": "7.0.1",
+    "@mui/material": "9.5.0",
+    "@reduxjs/toolkit": "2.13.0",
+    "@tanstack/react-query": "5.105.1",
+    "@tanstack/react-router": "1.170.46",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "4.1.4",
+    "axios": "1.21.0",
+    "date-fns": "4.4.0",
+    "lodash": "4.18.1",
+    "lodash-es": "4.18.1",
+    "lucide-react": "1.66.0",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "react-hook-form": "7.91.0",
+    "react-is": "19.1.10",
+    "recharts": "3.10.1",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.4",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@gears-frontx/mfes": "0.7.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "frontx",
+    "microfrontend",
+    "shared-dependencies",
+    "unit-format",
+    "rollup",
+    "terser",
+    "typescript"
+  ],
+  "author": "Cyber Fabric",
+  "license": "Apache-2.0"
+}

@@ -1,6 +1,7 @@
 import isEqual from 'lodash/isEqual';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Language, clearUser, headerSlice, setHeaderLoading, setUser, type AuthRuntime } from '@gears-frontx/react';
+import { Language, type AuthRuntime } from '@gears-frontx/react';
+import { clearUser, headerSlice, setHeaderLoading, setUser } from '@/app/layout/state';
 import { UserRole } from '@/app/api/types';
 import { LANGUAGE_STORAGE_KEY } from '@/app/i18n/languagePersistence';
 

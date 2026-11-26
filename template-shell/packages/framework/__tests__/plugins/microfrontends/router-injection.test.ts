@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MfeHandler, MfeRegistry, TypeSystemPlugin } from '@gears-frontx/mfes';
 import type { FrontXApp } from '../../../src/types';
+import { createFakeTypeSystem } from '../../fakeTypeSystem';
 
 const { routerSentinel } = vi.hoisted(() => ({ routerSentinel: Object.freeze({}) }));
 
@@ -53,7 +54,7 @@ beforeEach(async () => {
   ({ microfrontends } = await import('../../../src/plugins/microfrontends'));
   ({ mfeRegistryFactory } = await import('../../../src/mfe/registry'));
   ({ resetStore } = await import('@gears-frontx/state'));
-  ({ gtsPlugin: typeSystem } = await import('@gears-frontx/gts-plugin'));
+  typeSystem = createFakeTypeSystem();
   buildSpy = vi.spyOn(mfeRegistryFactory, 'build').mockImplementation(() => fakeRegistry());
 });
 

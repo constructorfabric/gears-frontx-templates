@@ -10,14 +10,13 @@
 // @cpt-dod:cpt-frontx-dod-framework-composition-shared-property:p1
 
 import { eventBus } from '@gears-frontx/state';
-import type { FrontXPlugin, ChangeThemePayload, ThemePropagationFailedPayload } from '../types';
+import type { FrontXPlugin, ChangeThemePayload } from '../types';
 import { createThemeRegistry } from '../registries/themeRegistry';
 
 // Define theme events for module augmentation
 declare module '@gears-frontx/state' {
   interface EventPayloadMap {
     'theme/changed': ChangeThemePayload;
-    'theme/propagation/failed': ThemePropagationFailedPayload;
   }
 }
 

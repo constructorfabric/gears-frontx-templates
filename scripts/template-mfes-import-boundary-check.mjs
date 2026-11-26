@@ -24,7 +24,8 @@
  * for the bridge factory, `<Contract>Default`), and the abstract contracts
  * never carry that affix. No file under any template directory here may
  * import a concrete-implementation name from `@gears-frontx/mfes`, and no
- * file may deep-import a subpath (`@gears-frontx/mfes/...`) at all - a deep
+ * file may deep-import a subpath (`@gears-frontx/mfes/...`) other than the
+ * two sanctioned public ones (`SANCTIONED_MFES_SUBPATHS`) - a deep
  * import reaches past the barrel into exactly the internals it exists to
  * hide. Aliasing does not launder a name: the ORIGINAL binding is checked,
  * not the local alias, and `import type` counts - a type-level dependency on
@@ -53,6 +54,16 @@ import { pathToFileURL } from 'node:url';
 import { findGuardedTemplateDirs } from './template-discovery.mjs';
 
 export const MFES_PACKAGE_NAME = '@gears-frontx/mfes';
+
+/**
+ * The public package subpaths consumers may import besides the barrel
+ * (ecosystem ADR-0034, mfes DESIGN section 3.3). Every other subpath
+ * stays a forbidden deep import.
+ */
+export const SANCTIONED_MFES_SUBPATHS = new Set([
+  `${MFES_PACKAGE_NAME}/unit-format`,
+  `${MFES_PACKAGE_NAME}/unit-loader`,
+]);
 
 /** Directories never walked: generated output and third-party trees. */
 const SKIPPED_DIR_NAMES = new Set(['node_modules', 'dist', 'coverage']);
@@ -489,7 +500,7 @@ export function findConsumerViolations(sites) {
   /** @type {Violation[]} */
   const violations = [];
   for (const site of sites) {
-    if (site.specifier !== MFES_PACKAGE_NAME) {
+    if (site.specifier !== MFES_PACKAGE_NAME && !SANCTIONED_MFES_SUBPATHS.has(site.specifier)) {
       violations.push({ file: site.file, kind: 'deep-import', detail: site.specifier });
       continue;
     }

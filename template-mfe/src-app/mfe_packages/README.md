@@ -14,13 +14,18 @@ This directory is **add-only**. It ships with `frontx-template-mfe`, which has
 no root `package.json`, no build/test/lint tooling, and no host application —
 those are owned by `frontx-template-shell`. A package here declares exact
 published versions of its FrontX dependencies (`@gears-frontx/react`,
-`@gears-frontx/framework`, `@gears-frontx/frontx-template-shell` itself, …)
+`@gears-frontx/framework`, …)
 alongside its ordinary third-party ones, and installs them all from the
 registry — there are no `file:` paths to dangle.
+A package never imports shell code. Like an independent repository, it declares
+the shell contract ids it uses itself (the shared-property and domain ids, and
+the GTS schemas it registers) in its own `src/shellContract.ts`.
 What an applied shell actually supplies is the **runtime host**: the
-`src-app/app/` shell that mounts these MFEs, and — at build/dev time — the
-`frontxMfGts` plugin loaded from `@gears-frontx/frontx-template-shell/build/mf-gts`.
-Without an applied shell there is no host to mount into and no plugin to load,
+`src-app/app/` shell that mounts these MFEs. The `vitePluginMfeGts` plugin a
+package builds with is not shell-supplied — each package declares
+`@gears-frontx/vite-plugin-mfe-gts` as its own dependency and loads it from
+there.
+Without an applied shell there is no host to mount into,
 even though `npm install` alone would succeed.
 
 ```bash
@@ -74,12 +79,20 @@ Then, inside `my-mfe/`:
    package here already uses (the copy above already set `name`).
 2. **`mfe.json`** — declare your entries and extensions (screen, sidebar, popup,
    or overlay) with GTS IDs following this template's ID conventions guideline.
-3. **`vite.config.ts`** — keep the `frontxMfGts` build plugin wired, and add
-   your lifecycle modules to the Module Federation `exposes` map so the shell
-   can load them at runtime. Keep `@gears-frontx/routing` in `sharedDeps` and
-   pinned in `package.json`, as the scaffold has it; an MFE that uses
-   `<ExtensionRouter>` or `navigation()` adds `@gears-frontx/routing-tanstack`
-   to both, under `dependencies`.
+3. **`vite.config.ts`** — keep the `vitePluginMfeGts` build plugin wired, and add
+   your lifecycle modules to its `exposes` map (or `mfe.json`'s `exposes`) so
+   the shell can load them at runtime. Module Federation itself is the
+   plugin's: the federation name derives from `package.json`'s `name`,
+   `remoteEntry.js`, `shared: {}` and the manifest are fixed, and the
+   `build.target`/`modulePreload`/`minify`/`cssCodeSplit` settings are
+   enforced — wiring `federation()` by hand is a build error. Sharing
+   follows the build graph: every bare package the code imports, whichever
+   `package.json` section declares it, is shared — emitted as
+   content-addressed units the enriched manifest lists. Keep
+   `@gears-frontx/routing` pinned in `package.json`, as the scaffold has it.
+   An MFE that uses `<ExtensionRouter>` or `navigation()` adds
+   `@gears-frontx/routing-tanstack` there too, under `dependencies`. Opt out per package with `share.exclude`
+   in `mfe.json` (never by hand-editing an externals list — there is none).
 
 The `add-mfe-package` skill carries the full list, from the port through the
 manifests and the final gate.

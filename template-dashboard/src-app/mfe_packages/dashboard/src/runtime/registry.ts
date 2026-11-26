@@ -68,16 +68,33 @@ export class WidgetEntryHandler extends MfeHandler<MfeEntryMF> {
   async load(entry: MfeEntryMF, extensionId: string): Promise<MfeEntryLifecycle> {
     const create = this.entries[entry.id];
     if (create) return create();
-    const manifest = (typeof entry.manifest === 'string' ? this.typeSystem?.getSchema(entry.manifest) : entry.manifest) as MfManifest | undefined;
+    const manifest = this.typeSystem?.getSchema(entry.manifest) as MfManifest | undefined;
     const publicPath = manifest?.metaData?.publicPath;
     // Module Federation writes "auto" when a build sets no publicPath; it names no address.
     if (typeof publicPath !== 'string' || !publicPath || publicPath === 'auto') throw new Error(`the bundle of entry ${entry.id} has no bundle address: its manifest is missing or has no publicPath`);
-    // Every file the handler fetches resolves against the bundle's base: the base itself, the shared modules and the
-    // entry's chunks and stylesheets. A shared module or an asset may be written as an absolute address, so each is checked.
+    // Every file the handler fetches resolves against the bundle's base: the base itself, the shared modules (under
+    // the shared base, which resolves against the bundle's base, through the manifest's unit table) and the entry's
+    // chunks and stylesheets. A shared module, the shared base, a unit or an asset may be written as an absolute
+    // address, so each is checked; a relative address cannot leave the origin of what it resolves against.
     const assets = entry.exposeAssets;
+    const unitTable = manifest as
+      | {
+          metaData?: { sharedBase?: unknown };
+          units?: Array<{ location?: unknown } | undefined>;
+          lists?: Record<string, { ownChunks?: unknown } | undefined>;
+        }
+      | undefined;
+    const sharedBase = unitTable?.metaData?.sharedBase;
     const files = [
+      ...(sharedBase === undefined ? [] : [sharedBase]),
+      ...(unitTable?.units ?? []).map((unit) => unit?.location),
+      // A list is keyed by the location of the chunk it belongs to and names the own chunks it reaches.
+      ...Object.entries(unitTable?.lists ?? {}).flatMap(([key, list]) => [
+        key,
+        ...(Array.isArray(list?.ownChunks) ? (list.ownChunks as unknown[]) : []),
+      ]),
       ...(manifest?.shared ?? []).map((shared) => shared?.chunkPath),
-      ...[assets?.js?.sync, assets?.js?.async, assets?.css?.sync, assets?.css?.async].flatMap((list) => (Array.isArray(list) ? list : [])),
+      ...[assets?.js?.sync, assets?.css?.sync, assets?.css?.async].flatMap((list) => (Array.isArray(list) ? list : [])),
     ];
     let base: URL | undefined;
     try {

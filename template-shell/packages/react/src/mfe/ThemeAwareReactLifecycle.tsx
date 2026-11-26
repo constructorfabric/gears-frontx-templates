@@ -1,11 +1,11 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import type { FrontXApp } from '@gears-frontx/framework';
 import type {
-  FrontXApp,
   MfeEntryLifecycle,
   ChildMfeBridge,
   MfeMountContext,
-} from '@gears-frontx/framework';
+} from '@gears-frontx/framework/mfe';
 import { FrontXProvider } from '../FrontXProvider';
 import { hasFrontXQueryClientActivator, resolveFrontXQueryClient } from '../queryClient';
 import { collectDomainTeardowns } from './domainTeardownCollector';

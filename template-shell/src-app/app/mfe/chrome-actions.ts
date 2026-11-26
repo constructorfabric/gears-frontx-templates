@@ -15,7 +15,7 @@
  * its own screen-domain declaration.
  */
 
-import type { JSONSchema } from '@gears-frontx/react';
+import type { JSONSchema } from '@gears-frontx/gts-plugin';
 
 import setLanguageActionSchema from './gts/frontx.screensets/schemas/chrome/set_language.v1.json';
 import setMenuCollapsedActionSchema from './gts/frontx.screensets/schemas/chrome/set_menu_collapsed.v1.json';
@@ -77,7 +77,7 @@ export const CHROME_REFRESH_PAGE =
  * set_language constrains its payload through a `$ref` to
  * `gts://gts.frontx.i18n.lang.code.v1~`, the SDK's language list. Registering
  * this array on a type system therefore also requires `languageCodeSchema`
- * (`@gears-frontx/frontx-template-shell`) on that same type system, registered
+ * (`src/gts`) on that same type system, registered
  * ahead of these schemas: `registerSchema` resolves no references itself.
  */
 export const CHROME_ACTION_SCHEMAS: JSONSchema[] = [

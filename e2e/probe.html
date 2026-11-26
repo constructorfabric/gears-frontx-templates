@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>probe</title>
+  </head>
+  <body>
+    <div id="result">pending</div>
+    <!-- Deliberately nonce-less: under a nonce-gated CSP this script is
+         blocked and __noncelessInlineRan stays absent, which the spec
+         asserts to prove the policy was actually enforced on this
+         document rather than silently absent. -->
+    <script>
+      window.__noncelessInlineRan = true;
+    </script>
+    <script type="module" nonce="e2e">
+      const el = document.getElementById('result');
+      const mode = new URL(location.href).searchParams.get('mode') ?? 'blob';
+      const finish = (text) => {
+        el.textContent = text;
+        document.title = text;
+      };
+      const makeBlobUrl = () =>
+        URL.createObjectURL(new Blob(['export default 42;'], { type: 'text/javascript' }));
+      if (mode === 'revoked') {
+        const url = makeBlobUrl();
+        URL.revokeObjectURL(url);
+        import(/* @vite-ignore */ url)
+          .then(() => finish('revoked-import:resolved'))
+          .catch((e) => finish(`revoked-import:rejected:${e?.name ?? 'error'}`));
+      } else {
+        const url = makeBlobUrl();
+        import(/* @vite-ignore */ url)
+          .then((m) => finish(m?.default === 42 ? 'blob-import:ok' : 'blob-import:wrong-value'))
+          .catch((e) => finish(`blob-import:rejected:${e?.name ?? 'error'}`));
+      }
+    </script>
+  </body>
+</html>

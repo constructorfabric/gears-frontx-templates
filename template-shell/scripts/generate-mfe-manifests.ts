@@ -3,18 +3,20 @@
 /**
  * MFE Manifest Generation Script
  *
- * Reads the enriched mfe-manifest.json (produced by the frontx-mf-gts Vite
- * plugin into each MFE's dist directory) and writes the aggregated manifest
+ * Reads the enriched mfe-manifest.json (produced by the vitePluginMfeGts Vite
+ * plugin (`@gears-frontx/vite-plugin-mfe-gts`) into each MFE's dist directory) and writes the aggregated manifest
  * to a public asset (`public/generated-mfe-manifests.json`) served by Vite next
  * to the shell's `index.html`. Every FrontX app instance (root host AND any
  * nested app) reads it at runtime. This is the dev aggregate: it addresses each
  * package at its preview server. `npm run build` copies it into `dist/` and
  * `scripts/layout-dist.ts` rewrites that copy with addresses relative to it.
  *
- * The enriched mfe-manifest.json already contains all required data:
- * - manifest.metaData: publicPath, remoteEntry, buildInfo from mf-manifest.json
- * - manifest.shared[]: standalone ESM deps with resolved versions and chunkPaths
- * - entries[].exposeAssets: from mf-manifest.json exposes[]
+ * The enriched mfe-manifest.json already contains all required data, in the
+ * closed served contract:
+ * - manifest.id, manifest.metaData (publicPath, sharedBase?)
+ * - manifest.units? and manifest.lists?; manifest.shared[] (name, version,
+ *   chunkPath, contentHash?) only in a manifest an older producer wrote
+ * - entries[].exposeAssets: js.sync, css.sync, css.async
  *
  * Pipeline per MFE package:
  *   1. Read dist/mfe-manifest.json — enriched by the build plugin
@@ -22,12 +24,9 @@
  *      typo fails the build instead of the host's bootstrap
  *   3. Inject resolved publicPath (overrides build-time placeholder)
  *   4. Copy shared dep `chunkPath` entries unchanged from the enriched manifest
- *   5. Map entries to MfeEntryMF shape with the resolved MfManifest object
- *      inlined into each entry's `manifest` field (the schema accepts both
- *      string ID and inline object; inline removes the need for any consumer
- *      to spread/override the entry to attach the manifest reference at
- *      registration time, so consumers can pass entries opaquely to
- *      `typeSystem.register()`)
+ *   5. Map entries to MfeEntryMF shape; each entry's `manifest` is the
+ *      identifier of the package's manifest, which the config carries beside
+ *      its entries and the host registers before them
  *
  * A package whose `mfe.json` declares `"templateExample": true` is left out of
  * the aggregate entirely: it is content the template ships to be read and
@@ -41,6 +40,9 @@
  *
  * When --base-url is omitted, publicPath comes from manifest.metaData.publicPath
  * in the enriched mfe-manifest.json (set by the build plugin from mf-manifest.json).
+ * When that is Module Federation's "auto" placeholder, the package is addressed
+ * at the origin of the authored `manifest.remoteEntry` in its own mfe.json (an
+ * authoring input; the served manifest never carries it), else at "/".
  * Either way this sets the dev aggregate only: `npm run build` lays the screens
  * out next to the shell and readdresses them there (`scripts/layout-dist.ts`).
  */
@@ -50,6 +52,7 @@ import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Gts } from '@globaltypesystem/gts-ts';
+import type { SharedDepFetchList, SharedDepUnit } from '@gears-frontx/mfes/unit-format';
 import languageCodeSchema from '../src/gts/schemas/language_code.v1.json';
 import screenLabelsSchema from '../src/gts/schemas/screen_labels.v1.json';
 
@@ -73,24 +76,26 @@ const screenLabelsType = screenLabelsSchema.$id.replace(/^gts:\/\//, '');
 // ---------------------------------------------------------------------------
 
 interface RawMetaData {
-  name: string;
-  type: string;
-  buildInfo: { buildVersion: string; buildName: string };
-  remoteEntry: { name: string; path: string; type: string };
-  globalName: string;
   publicPath: string;
+  sharedBase?: string;
 }
+
+// The contract shapes of the unit table and the per-expose fetch lists are
+// taken from the manifest contract itself (type-only import, erased at run
+// time, so the script still has no runtime dependency on @gears-frontx
+// packages).
+type RawUnits = SharedDepUnit[];
+type RawLists = Record<string, SharedDepFetchList>;
 
 interface RawShared {
   name: string;
   version: string;
   chunkPath: string;
-  unwrapKey: string | null;
   contentHash?: string;
 }
 
 interface RawExposeAssets {
-  js: { async: string[]; sync: string[] };
+  js: { sync: string[] };
   css: { async: string[]; sync: string[] };
 }
 
@@ -130,13 +135,14 @@ interface RawDomain {
 
 interface RawManifest {
   id: string;
-  name: string;
-  remoteEntry: string;
   metaData: RawMetaData;
-  shared: RawShared[];
+  /** Whole-package entries an older producer wrote; a current producer writes none. */
+  shared?: RawShared[];
+  units?: RawUnits;
+  lists?: RawLists;
 }
 
-/** Enriched mfe-manifest.json shape produced by the frontx-mf-gts Vite plugin. */
+/** Enriched mfe-manifest.json shape produced by the vitePluginMfeGts Vite plugin (`@gears-frontx/vite-plugin-mfe-gts`). */
 interface RawEnrichedMfeJson {
   manifest: RawManifest;
   domains?: RawDomain[];
@@ -155,26 +161,22 @@ interface OutMfManifestShared {
   name: string;
   version: string;
   chunkPath: string;
-  unwrapKey: string | null;
   contentHash?: string;
 }
 
 interface OutMfManifest {
   id: string;
-  name: string;
   metaData: {
-    name: string;
-    type: string;
-    buildInfo: { buildVersion: string; buildName: string };
-    remoteEntry: { name: string; path: string; type: string };
-    globalName: string;
     publicPath: string;
+    sharedBase?: string;
   };
-  shared: OutMfManifestShared[];
+  shared?: OutMfManifestShared[];
+  units?: RawUnits;
+  lists?: RawLists;
 }
 
 interface OutMfManifestAssets {
-  js: { async: string[]; sync: string[] };
+  js: { sync: string[] };
   css: { async: string[]; sync: string[] };
 }
 
@@ -184,7 +186,7 @@ interface OutMfeEntryMF {
   optionalProperties?: string[];
   actions: string[];
   domainActions: string[];
-  manifest: OutMfManifest;
+  manifest: string;
   exposedModule: string;
   exposeAssets: OutMfManifestAssets;
 }
@@ -338,7 +340,7 @@ export class ManifestGenerator {
     this.assertRequiredCollectionsArePresent(mfeJson, packageDir);
     this.assertGtsIdsAreValid(mfeJson, pkgPath, packageDir);
     const labelDictionaries = this.validateLabelDictionaries(mfeJson, pkgPath, packageDir);
-    const publicPath = this.resolvePublicPath(mfeJson, packageDir);
+    const publicPath = this.resolvePublicPath(mfeJson, pkgPath, packageDir);
 
     const outManifest = this.buildManifest(mfeJson.manifest, publicPath);
     const outEntries = this.buildEntries(mfeJson.entries, outManifest, packageDir);
@@ -422,7 +424,7 @@ export class ManifestGenerator {
     if (!existsSync(manifestFilePath)) {
       throw new Error(
         `[${packageDir}] ${this.mfeManifestPath} not found. ` +
-          `Build the MFE package first and ensure the frontxMfGts plugin is configured in vite.config.ts.`
+          `Build the MFE package first and ensure the vitePluginMfeGts plugin (@gears-frontx/vite-plugin-mfe-gts) is configured in vite.config.ts.`
       );
     }
     let mfeJson: RawEnrichedMfeJson;
@@ -434,7 +436,7 @@ export class ManifestGenerator {
     if (!mfeJson.manifest?.metaData) {
       throw new Error(
         `[${packageDir}] ${this.mfeManifestPath} is missing manifest.metaData. ` +
-          `Build the MFE package first and ensure the frontxMfGts plugin is configured in vite.config.ts.`
+          `Build the MFE package first and ensure the vitePluginMfeGts plugin (@gears-frontx/vite-plugin-mfe-gts) is configured in vite.config.ts.`
       );
     }
     return mfeJson;
@@ -444,7 +446,7 @@ export class ManifestGenerator {
    * Refuse a manifest that does not carry both collections the aggregate is
    * built from.
    *
-   * `entries` and `extensions` are required by the contract, and the frontxMfGts
+   * `entries` and `extensions` are required by the contract, and the vitePluginMfeGts
    * plugin writes both, so an absent one means an incomplete build rather than a
    * package that chose to have none - an MFE with no extensions writes
    * `"extensions": []`.
@@ -473,7 +475,7 @@ export class ManifestGenerator {
     throw new Error(
       `[${packageDir}] ${this.mfeManifestPath} carries no ${named} ` +
         `${missing.length === 1 ? 'array' : 'arrays'}.\n` +
-        `Both are required, and the frontxMfGts plugin writes them, so this is an ` +
+        `Both are required, and the vitePluginMfeGts plugin writes them, so this is an ` +
         `incomplete build rather than a package without any: an MFE that contributes ` +
         `nothing still writes an empty array. Rebuild the package.`
     );
@@ -539,11 +541,13 @@ export class ManifestGenerator {
    *   1. --base-url CLI flag (global override for all packages)
    *   2. publicPath from enriched mfe-manifest.json manifest.metaData (set by plugin) —
    *      ONLY when it is a concrete, already-resolved value
-   *   3. Origin from mfe-manifest.json manifest.remoteEntry URL (per-package default)
+   *   3. Origin of the package's authored mfe.json manifest.remoteEntry (the
+   *      authoring input; the served manifest never carries it)
    *   4. "/" as final fallback
    */
   private resolvePublicPath(
     mfeJson: RawEnrichedMfeJson,
+    pkgPath: string,
     packageDir: string
   ): string {
     if (this.globalBaseUrl !== null) {
@@ -579,12 +583,11 @@ export class ManifestGenerator {
         : `${manifestPublicPath}/`;
     }
 
-    // Fall back to mfe-manifest.json manifest.remoteEntry origin.
-    const remoteEntry = mfeJson.manifest.remoteEntry;
+    // Fall back to the origin of the authored mfe.json manifest.remoteEntry.
+    const remoteEntry = this.readAuthoredRemoteEntry(pkgPath);
     if (remoteEntry) {
       try {
-        const url = new URL(remoteEntry);
-        return `${url.origin}/`;
+        return `${new URL(remoteEntry).origin}/`;
       } catch {
         console.warn(
           `[${packageDir}] Cannot parse remoteEntry URL "${remoteEntry}", defaulting publicPath to "/"`
@@ -595,33 +598,51 @@ export class ManifestGenerator {
     return '/';
   }
 
+  /** The authored `manifest.remoteEntry` of the package's mfe.json, when it has one. */
+  private readAuthoredRemoteEntry(pkgPath: string): string | undefined {
+    try {
+      const authored = JSON.parse(readFileSync(join(pkgPath, 'mfe.json'), 'utf-8')) as {
+        manifest?: { remoteEntry?: unknown };
+      };
+      const value = authored.manifest?.remoteEntry;
+      return typeof value === 'string' ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private buildManifest(rawManifest: RawManifest, publicPath: string): OutMfManifest {
     return {
       id: rawManifest.id,
-      name: rawManifest.name,
       metaData: {
-        name: rawManifest.metaData.name,
-        type: rawManifest.metaData.type,
-        buildInfo: {
-          buildVersion: rawManifest.metaData.buildInfo.buildVersion,
-          buildName: rawManifest.metaData.buildInfo.buildName,
-        },
-        remoteEntry: {
-          name: rawManifest.metaData.remoteEntry.name,
-          path: rawManifest.metaData.remoteEntry.path,
-          type: rawManifest.metaData.remoteEntry.type,
-        },
-        globalName: rawManifest.metaData.globalName,
         // Inject resolved publicPath — overrides the "/" placeholder from the build
         publicPath,
+        // The shared-file base the producer recorded, when it did: unit
+        // locations and whole-package chunkPaths resolve against
+        // it instead of publicPath. Copied through unchanged — the runtime
+        // applies the same resolution rules as for chunkPath.
+        ...(rawManifest.metaData.sharedBase !== undefined
+          ? { sharedBase: rawManifest.metaData.sharedBase }
+          : {}),
       },
-      shared: rawManifest.shared.map((s) => ({
-        name: s.name,
-        version: s.version,
-        chunkPath: s.chunkPath,
-        unwrapKey: s.unwrapKey,
-        ...(s.contentHash !== undefined ? { contentHash: s.contentHash } : {}),
-      })),
+      // A manifest an older producer wrote carries whole-package entries;
+      // one a current producer wrote carries none. Only the fields the
+      // runtime reads are copied, so no older-producer field is carried on.
+      ...(rawManifest.shared !== undefined
+        ? {
+            shared: rawManifest.shared.map((s) => ({
+              name: s.name,
+              version: s.version,
+              chunkPath: s.chunkPath,
+              ...(s.contentHash !== undefined ? { contentHash: s.contentHash } : {}),
+            })),
+          }
+        : {}),
+      // The unit table and the fetch list per exposed module pass through
+      // unchanged. The runtime reads the list, requests its missing units
+      // together with the entry module in one round and mints them in order.
+      ...(rawManifest.units !== undefined ? { units: rawManifest.units } : {}),
+      ...(rawManifest.lists !== undefined ? { lists: rawManifest.lists } : {}),
     };
   }
 
@@ -635,7 +656,7 @@ export class ManifestGenerator {
         throw new Error(
           `[${packageDir}] Entry "${entry.id}" has no exposeAssets. ` +
             `This usually means the manifest was not enriched by the build plugin. ` +
-            `Rebuild the MFE package and ensure the frontxMfGts plugin is configured.`
+            `Rebuild the MFE package and ensure the vitePluginMfeGts plugin (@gears-frontx/vite-plugin-mfe-gts) is configured.`
         );
       }
 
@@ -644,11 +665,10 @@ export class ManifestGenerator {
         requiredProperties: entry.requiredProperties,
         actions: entry.actions,
         domainActions: entry.domainActions,
-        manifest: outManifest,
+        manifest: outManifest.id,
         exposedModule: entry.exposedModule,
         exposeAssets: {
           js: {
-            async: entry.exposeAssets.js.async,
             sync: entry.exposeAssets.js.sync,
           },
           css: {

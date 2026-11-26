@@ -1,15 +1,21 @@
 /**
- * Tests for theme and language propagation - decouple-domain-contracts
+ * Tests for theme and language propagation through the microfrontends() plugin.
  *
- * Verifies that theme/changed and i18n/language/changed events propagate
- * shared properties to the mfeRegistry through the microfrontends() plugin.
+ * The plugin is type-system agnostic: it forwards the theme's CSS variables to
+ * the mfeRegistry (`setTheme`) and publishes no shared property of its own -
+ * which shared properties a host publishes, under which type IDs, is the
+ * host's wiring.
  *
  * @packageDocumentation
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach, type MockInstance } from 'vitest';
+import type { MfeRegistry } from '@gears-frontx/mfes';
 import type { FrontXApp } from '../../../src/types';
+import { createFakeTypeSystem } from '../../fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 // One app per runtime: every test loads its own module copy.
 let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
@@ -17,11 +23,9 @@ let effects: typeof import('../../../src/plugins/effects')['effects'];
 let themes: typeof import('../../../src/plugins/themes')['themes'];
 let i18n: typeof import('../../../src/plugins/i18n')['i18n'];
 let microfrontends: typeof import('../../../src/plugins/microfrontends')['microfrontends'];
+let mfeRegistryFactory: typeof import('../../../src/mfe/registry')['mfeRegistryFactory'];
 let eventBus: typeof import('@gears-frontx/state')['eventBus'];
 let resetStore: typeof import('@gears-frontx/state')['resetStore'];
-let FRONTX_SHARED_PROPERTY_THEME: typeof import('../../../src/mfe/constants')['FRONTX_SHARED_PROPERTY_THEME'];
-let FRONTX_SHARED_PROPERTY_LANGUAGE: typeof import('../../../src/mfe/constants')['FRONTX_SHARED_PROPERTY_LANGUAGE'];
-let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
 
 beforeEach(async () => {
   vi.resetModules();
@@ -30,12 +34,27 @@ beforeEach(async () => {
   ({ themes } = await import('../../../src/plugins/themes'));
   ({ i18n } = await import('../../../src/plugins/i18n'));
   ({ microfrontends } = await import('../../../src/plugins/microfrontends'));
+  ({ mfeRegistryFactory } = await import('../../../src/mfe/registry'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
-  ({ FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } = await import('../../../src/mfe/constants'));
-  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
 });
 
-describe('Theme and Language Propagation - decouple-domain-contracts', () => {
+/**
+ * Spies on `setTheme` and `updateSharedProperty` of the registry the plugin
+ * builds, from the moment it is built.
+ */
+function spyOnBuiltRegistry(): { setTheme?: MockInstance; updateSharedProperty?: MockInstance } {
+  const spies: { setTheme?: MockInstance; updateSharedProperty?: MockInstance } = {};
+  const realBuild = mfeRegistryFactory.build.bind(mfeRegistryFactory);
+  vi.spyOn(mfeRegistryFactory, 'build').mockImplementation((config) => {
+    const registry: MfeRegistry = realBuild(config);
+    spies.setTheme = vi.spyOn(registry, 'setTheme');
+    spies.updateSharedProperty = vi.spyOn(registry, 'updateSharedProperty');
+    return registry;
+  });
+  return spies;
+}
+
+describe('Theme and Language Propagation', () => {
   let apps: FrontXApp[] = [];
 
   beforeEach(() => {
@@ -53,11 +72,11 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
   });
 
   describe('theme propagation via themes() plugin', () => {
-    it('should call setTheme and updateSharedProperty when theme/changed event fires', () => {
+    it('should call setTheme and publish no shared property when theme/changed event fires', () => {
       const app = createFrontX()
         .use(effects())
         .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
@@ -73,52 +92,72 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       eventBus.emit('theme/changed', { themeId: 'dark' });
 
       expect(setThemeSpy).toHaveBeenCalledWith({ '--color-bg': 'color-mix(in oklab, var(--primary) 90%, transparent)' });
-      expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_THEME, 'dark');
+      expect(updateSpy).not.toHaveBeenCalled();
     });
 
-    it('should emit theme/propagation/failed when updateSharedProperty throws', () => {
+    it('should start a registry built after the app from the current theme variables only', () => {
       const app = createFrontX()
         .use(effects())
         .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(i18n())
+        .use(microfrontends({ typeSystem }))
+        .build();
+      apps.push(app);
+      app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: { '--color-bg': 'black' } });
+      app.themeRegistry.apply('dark');
+      const spies = spyOnBuiltRegistry();
+
+      void app.mfeRegistry;
+
+      expect(spies.setTheme).toHaveBeenCalledWith({ '--color-bg': 'black' });
+      expect(spies.updateSharedProperty).not.toHaveBeenCalled();
+    });
+
+    it('only logs when setTheme throws', () => {
+      const app = createFrontX()
+        .use(effects())
+        .use(themes())
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
-      const propagationError = new Error('GTS validation failed');
-      vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
+      app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
+      const propagationError = new Error('theme variables rejected');
+      vi.spyOn(app.mfeRegistry!, 'setTheme').mockImplementation(() => {
         throw propagationError;
       });
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const emitSpy = vi.spyOn(eventBus, 'emit');
 
-      const failHandler = vi.fn();
-      eventBus.on('theme/propagation/failed', failHandler);
+      eventBus.emit('theme/changed', { themeId: 'dark' });
 
-      eventBus.emit('theme/changed', { themeId: 'bad-theme' });
-
-      expect(failHandler).toHaveBeenCalledWith({
-        themeId: 'bad-theme',
-        error: propagationError,
-      });
+      expect(consoleError).toHaveBeenCalledWith(
+        '[Gears FrontX] Failed to propagate theme to MFE domains',
+        propagationError,
+      );
+      // The failure is reported through the log alone: no further event follows the trigger.
+      expect(emitSpy.mock.calls.map(([event]) => event)).toEqual(['theme/changed']);
     });
 
-    it('should still apply the theme when updateSharedProperty throws', () => {
+    it('should still apply the theme when setTheme throws', () => {
       // microfrontends() first, so its failing subscriber runs before the one that applies the theme.
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .use(themes())
         .build();
       apps.push(app);
 
       app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
-      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
-        throw new Error('GTS validation failed');
+      const setThemeSpy = vi.spyOn(app.mfeRegistry!, 'setTheme').mockImplementation(() => {
+        throw new Error('theme variables rejected');
       });
       const applySpy = vi.spyOn(app.themeRegistry, 'apply');
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
       eventBus.emit('theme/changed', { themeId: 'dark' });
 
-      expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_THEME, 'dark');
+      expect(setThemeSpy).toHaveBeenCalled();
       expect(applySpy).toHaveBeenCalledWith('dark');
     });
 
@@ -126,11 +165,12 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       const app = createFrontX()
         .use(effects())
         .use(themes())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
+      app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
       const applySpy = vi.spyOn(app.themeRegistry, 'apply');
-      const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty');
+      const setThemeSpy = vi.spyOn(app.mfeRegistry!, 'setTheme');
 
       app.destroy();
       apps = apps.filter((built) => built !== app);
@@ -138,104 +178,35 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       eventBus.emit('theme/changed', { themeId: 'dark' });
 
       expect(applySpy).not.toHaveBeenCalled();
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(setThemeSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe('language propagation via i18n() plugin', () => {
-    it('should call updateSharedProperty with language when i18n/language/changed event fires', async () => {
+  describe('language changes via i18n() plugin', () => {
+    it('should publish no shared property when i18n/language/changed event fires', async () => {
       const app = createFrontX()
         .use(effects())
         .use(i18n())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
       const updateSpy = vi.spyOn(app.mfeRegistry!, 'updateSharedProperty');
+      const setLanguageSpy = vi.spyOn(app.i18nRegistry, 'setLanguage');
 
       eventBus.emit('i18n/language/changed', { language: 'de' });
 
-      // The i18n event handler is async and internally awaits several promises.
-      // Use vi.waitFor so the assertion is driven by observable state rather
-      // than by a fixed microtask count that would break if the handler's
-      // async chain grows or shrinks.
       await vi.waitFor(() => {
-        expect(updateSpy).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+        expect(setLanguageSpy).toHaveBeenCalledWith('de');
       });
+      expect(updateSpy).not.toHaveBeenCalled();
     });
 
-    it('should not throw when i18n/language/changed fires even if updateSharedProperty throws', async () => {
+    it('should unsubscribe language handling when the plugin app is destroyed', () => {
       const app = createFrontX()
         .use(effects())
         .use(i18n())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
-        throw new Error('GTS validation failed');
-      });
-
-      // Track unhandled rejections to surface async failures that a simple
-      // not.toThrow assertion would silently miss.
-      const unhandled: unknown[] = [];
-      function onUnhandled(reason: unknown): void {
-        unhandled.push(reason);
-      }
-      process.on('unhandledRejection', onUnhandled);
-
-      try {
-        const failHandler = vi.fn();
-        eventBus.on('i18n/propagation/failed', failHandler);
-
-        await expect(
-          (async () => {
-            eventBus.emit('i18n/language/changed', { language: 'xx' });
-            // Wait for the propagation-failed event as a proxy for the async
-            // chain settling; ensures no rejection escapes the handler.
-            await vi.waitFor(() => {
-              expect(failHandler).toHaveBeenCalled();
-            });
-          })()
-        ).resolves.not.toThrow();
-
-        expect(unhandled).toEqual([]);
-      } finally {
-        process.off('unhandledRejection', onUnhandled);
-      }
-    });
-
-    it('should emit i18n/propagation/failed when updateSharedProperty throws', async () => {
-      const app = createFrontX()
-        .use(effects())
-        .use(i18n())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
-        .build();
-      apps.push(app);
-
-      const propagationError = new Error('GTS validation failed');
-      vi.spyOn(app.mfeRegistry!, 'updateSharedProperty').mockImplementation(() => {
-        throw propagationError;
-      });
-
-      const failHandler = vi.fn();
-      eventBus.on('i18n/propagation/failed', failHandler);
-
-      eventBus.emit('i18n/language/changed', { language: 'xx' });
-
-      await vi.waitFor(() => {
-        expect(failHandler).toHaveBeenCalledWith({
-          language: 'xx',
-          error: propagationError,
-        });
-      });
-    });
-
-    it('should unsubscribe language propagation when the plugin app is destroyed', () => {
-      const app = createFrontX()
-        .use(effects())
-        .use(i18n())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
       const setLanguageSpy = vi.spyOn(app.i18nRegistry, 'setLanguage');
@@ -264,7 +235,7 @@ describe('Theme and Language Propagation - decouple-domain-contracts', () => {
       app.themeRegistry.register({ id: 'dark', name: 'Dark', variables: {} });
       const applySpy = vi.spyOn(app.themeRegistry, 'apply');
 
-      // Optional chaining skips updateSharedProperty silently: no subscriber fails.
+      // No registry, so no subscriber forwards anything and none fails.
       const consoleError = vi.spyOn(console, 'error');
       eventBus.emit('theme/changed', { themeId: 'dark' });
       expect(consoleError).not.toHaveBeenCalled();

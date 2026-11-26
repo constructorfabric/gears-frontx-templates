@@ -1,12 +1,6 @@
 import React, { useCallback, useRef } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import {
-  FRONTX_SHARED_PROPERTY_THEME,
-  FRONTX_SHARED_PROPERTY_LANGUAGE,
-  useApiQuery,
-  useApiMutation,
-  apiRegistry,
-} from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
+import { useApiQuery, useApiMutation, apiRegistry } from '@gears-frontx/react';
 import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle, Skeleton } from '@gears-frontx/ui-kit';
 import { useScreenTranslations } from '../../shared/useScreenTranslations';
 import { useBridgeProperty } from '../../shared/useBridgeProperty';
@@ -17,6 +11,7 @@ import type { GetCurrentUserResponse } from '../../api/types';
 import { ProfileDetailsCard, type ProfileFormValues } from './components/ProfileDetailsCard';
 import { applyOptimisticProfileUpdate } from './profileOptimisticUpdate';
 import styles from './ProfileScreen.module.css';
+import { FRONTX_SHARED_PROPERTY_THEME, FRONTX_SHARED_PROPERTY_LANGUAGE } from '../../shellContract';
 
 type UpdateProfileContext = {
   snapshot: GetCurrentUserResponse | undefined;

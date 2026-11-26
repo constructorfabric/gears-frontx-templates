@@ -31,7 +31,6 @@ import {
 let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
 let AuthEvents: typeof import('@gears-frontx/framework')['AuthEvents'];
 let MockEvents: typeof import('@gears-frontx/framework')['MockEvents'];
-let TenantEvents: typeof import('@gears-frontx/framework')['TenantEvents'];
 let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
 let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
 let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
@@ -40,7 +39,7 @@ let useApiQuery: typeof import('@gears-frontx/react')['useApiQuery'];
 beforeEach(async () => {
   vi.resetModules();
   await loadFreshHelpers();
-  ({ eventBus, AuthEvents, MockEvents, TenantEvents, resetSharedFetchCache, resetSharedQueryClient } =
+  ({ eventBus, AuthEvents, MockEvents, resetSharedFetchCache, resetSharedQueryClient } =
     await import('@gears-frontx/framework'));
   ({ FrontXProvider, useApiQuery } = await import('@gears-frontx/react'));
 });
@@ -293,7 +292,6 @@ describe('useApiQuery', () => {
 
 describe('useApiQuery on a mounted screen when the cache scope changes', () => {
   it.each([
-    { name: 'a tenant switch', change: () => eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } }) },
     { name: 'a logout', change: () => eventBus.emit(AuthEvents.LoggedOut, {}) },
     { name: 'a login', change: () => eventBus.emit(AuthEvents.LoggedIn, {}) },
     { name: 'a mock toggle', change: () => eventBus.emit(MockEvents.Toggle, { enabled: true }) },

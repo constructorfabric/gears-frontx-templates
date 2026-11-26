@@ -1,13 +1,12 @@
 /**
- * GTS Solution Schemas — FrontX Standard Template
+ * GTS vocabulary of the FrontX standard template.
  *
- * Application-specific derived schemas that extend the core GTS type system.
- * These schemas constrain property values to the set of values a standard
- * FrontX application supports (registered themes, supported languages,
- * screen extension type).
- *
- * Relocated from @gears-frontx/framework in Phase 4 (F3 GTS extraction).
- * The framework re-exports these via its own gts/index.ts redirect.
+ * Everything GTS this template ships: the application-specific derived
+ * schemas that extend the core GTS type system (constraining property values
+ * to the set a standard FrontX application supports: registered themes,
+ * supported languages, screen extension type), the template's GTS type and
+ * instance IDs, and the base layout domain declarations. The framework and
+ * React packages are type-system agnostic and name none of it.
  *
  * @packageDocumentation
  */
@@ -26,3 +25,18 @@ export const languageCodeSchema = languageCodeSchemaJson as JSONSchema;
 export const screenLabelsSchema = screenLabelsSchemaJson as JSONSchema;
 export const extensionScreenSchema = extensionScreenSchemaJson as JSONSchema;
 export const extensionModalSchema = extensionModalSchemaJson as JSONSchema;
+
+export {
+  FRONTX_POPUP_DOMAIN,
+  FRONTX_SIDEBAR_DOMAIN,
+  FRONTX_SCREEN_DOMAIN,
+  FRONTX_OVERLAY_DOMAIN,
+  FRONTX_MFE_ENTRY_MF,
+  FRONTX_SCREEN_EXTENSION_TYPE,
+  FRONTX_SHARED_PROPERTY_THEME,
+  FRONTX_SHARED_PROPERTY_LANGUAGE,
+} from './constants';
+
+export { screenDomain, sidebarDomain, popupDomain, overlayDomain } from './domains';
+
+export type { ScreenExtension, ExtensionPresentation } from './screen-extension';

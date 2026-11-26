@@ -45,11 +45,8 @@
  * `template-shell` ITSELF is NOT one of these: its own manifest declares
  * `private: true` (a full app template meant to be seeded, not installed as
  * a dependency), and the non-`private` filter this section opens with
- * excludes it the same as any other private package. It is exact-pinned by
- * four `template-mfe` fixture manifests via a `file:` self-link, not a
- * published version, so a missed bump there shows up as
- * `policy:template-lockfile-selflink` or a stale local resolution, never as
- * a registry drift this gate would need to also cover.
+ * excludes it the same as any other private package. Nothing pins it by a
+ * published version, so there is no registry drift for this gate to cover.
  *
  * `template-mfe` and its four `src-app/mfe_packages/*` fixture apps
  * (`@gears-frontx/demo-mfe` and friends) ARE in the ecosystem's npm scope -
@@ -195,7 +192,7 @@ export function discoverPackageRoots(rootDir) {
   // `packages/*` of its own - `ecosystem` above is always `[]`, and scoping
   // solely off it would recognize no `@gears-frontx` name at all, which
   // would make every template contribution below invisible too (a template
-  // pinning `@gears-frontx/frontx-template-shell` reads as "not our scope").
+  // pinning `@gears-frontx/react` reads as "not our scope").
   // `ecosystemScopeMatcherFromTemplates` seeds the same scope from the
   // templates' own manifests instead - see its docblock. A fixture that DOES
   // set up a local `packages/*` (existing unit tests) still gets that as the

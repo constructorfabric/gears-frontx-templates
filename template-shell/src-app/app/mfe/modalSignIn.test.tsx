@@ -19,6 +19,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 import userEvent from '@testing-library/user-event';
 import { SIGN_IN_EXTENSION_ID } from '@/app/auth/signIn';
 import { claimAutomaticReload, clearAutomaticReload } from './automaticReload';
@@ -290,7 +291,7 @@ describe('the sign-in chain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: SIGN_IN_EXTENSION_ID },
         },
@@ -429,7 +430,7 @@ describe('the sign-in chain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: SIGN_IN_EXTENSION_ID },
         },
@@ -442,7 +443,7 @@ describe('the sign-in chain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: SECOND_MODAL_EXTENSION_ID },
         },
@@ -491,7 +492,7 @@ describe('the sign-in chain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: SIGN_IN_EXTENSION_ID },
         },
@@ -715,7 +716,7 @@ describe('the sign-in chain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: SIGN_IN_EXTENSION_ID },
         },

@@ -14,8 +14,9 @@
  * afresh, since the once-guard is its module state.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as react from '@gears-frontx/react';
 import type { AuthProvider, FrameworkTransportErrorEvent, FrontXApp } from '@gears-frontx/react';
+import { FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
+import { FRONTX_POPUP_DOMAIN } from '../../../src/index';
 import { SIGN_IN_EXTENSION_ID } from './signIn';
 
 /** The event shape of the provider hook the 401 trigger wraps; the package
@@ -272,8 +273,8 @@ describe('wireSignInTriggers', () => {
     const chain = executeActionsChain.mock.calls[0][0] as {
       action: { type: string; target: string; payload: { subject: string; history: string } };
     };
-    expect(chain.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
-    expect(chain.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(chain.action.type).toBe(FRONTX_ACTION_UNMOUNT_EXT);
+    expect(chain.action.target).toBe(FRONTX_POPUP_DOMAIN);
     expect(chain.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
 
     await flush();
@@ -387,8 +388,8 @@ describe('wireSignInTriggers', () => {
     const unmount = executeActionsChain.mock.calls[0][0] as {
       action: { type: string; target: string; payload: { subject: string; history: string } };
     };
-    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
-    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.type).toBe(FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(FRONTX_POPUP_DOMAIN);
     expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
     await flush();
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
@@ -437,8 +438,8 @@ describe('wireSignInTriggers', () => {
     const unmount = executeActionsChain.mock.calls[0][0] as {
       action: { type: string; target: string; payload: { subject: string; history: string } };
     };
-    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
-    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.type).toBe(FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(FRONTX_POPUP_DOMAIN);
     expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
     await flush();
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
@@ -465,8 +466,8 @@ describe('wireSignInTriggers', () => {
     const unmount = executeActionsChain.mock.calls[0][0] as {
       action: { type: string; target: string; payload: { subject: string; history: string } };
     };
-    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
-    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.type).toBe(FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(FRONTX_POPUP_DOMAIN);
     expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
     await flush();
     expect(executeActionsChain).toHaveBeenCalledTimes(1);
@@ -538,8 +539,8 @@ describe('wireSignInTriggers', () => {
     const unmount = executeActionsChain.mock.calls[0][0] as {
       action: { type: string; target: string; payload: { subject: string; history: string } };
     };
-    expect(unmount.action.type).toBe(react.FRONTX_ACTION_UNMOUNT_EXT);
-    expect(unmount.action.target).toBe(react.FRONTX_POPUP_DOMAIN);
+    expect(unmount.action.type).toBe(FRONTX_ACTION_UNMOUNT_EXT);
+    expect(unmount.action.target).toBe(FRONTX_POPUP_DOMAIN);
     expect(unmount.action.payload).toEqual({ subject: SIGN_IN_EXTENSION_ID, history: 'replace' });
     await flush();
     expect(executeActionsChain).toHaveBeenCalledTimes(1);

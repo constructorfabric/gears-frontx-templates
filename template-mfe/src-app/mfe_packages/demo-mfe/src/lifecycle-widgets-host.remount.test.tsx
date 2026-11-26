@@ -57,14 +57,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ExtensionDomainSlot,
   MfeHandlerMF,
-  FRONTX_ACTION_MOUNT_EXT,
   type ChildMfeBridge,
+  type ExtensionDomain,
   type MfeEntryLifecycle,
   type MfeEntryMF,
   type MfManifest,
   type MfeRegistry,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
 import { bootstrapWidgetsRuntime, widgetsHostApp } from './lifecycle-widgets-host';
+import { FRONTX_ACTION_MOUNT_EXT } from '@gears-frontx/gts-plugin';
 
 const WIDGETS_DOMAIN_ID = 'gts.frontx.mfes.ext.domain.v1~frontx.widgets.area.main.v1';
 
@@ -138,12 +139,7 @@ async function loadTestLifecycle(_entry: MfeEntryMF, extensionId: string): Promi
 function buildManifest(id: string, name: string): MfManifest {
   return {
     id,
-    name,
     metaData: {
-      name,
-      type: 'module',
-      buildInfo: { buildVersion: '0.0.0-test', buildName: name },
-      remoteEntry: { name, path: `/assets/${name}/remoteEntry.js`, type: 'module' },
       publicPath: `http://localhost:0/${name}/assets/`,
     },
     shared: [],
@@ -163,10 +159,10 @@ const FIXTURE_B_MANIFEST = buildManifest(
   'widgets-fixture-b',
 );
 
-const EXPOSE_ASSETS = { js: { sync: ['assets/lifecycle.js'], async: [] }, css: { sync: [], async: [] } };
+const EXPOSE_ASSETS = { js: { sync: ['assets/lifecycle.js'] }, css: { sync: [], async: [] } };
 
 /** Copied verbatim (field-for-field) from `demo-mfe/mfe.json`'s own `domains[0]` — the same real fixture `lifecycle-widgets-host.gts-order.test.ts` uses, for the same reason. */
-const WIDGETS_DOMAIN = {
+const WIDGETS_DOMAIN: ExtensionDomain = {
   id: WIDGETS_DOMAIN_ID,
   route: 'widgets',
   sharedProperties: [],
@@ -189,7 +185,7 @@ const WIDGETS_DOMAIN = {
     'gts.frontx.mfes.lifecycle.stage.v1~frontx.mfes.lifecycle.deactivated.v1',
     'gts.frontx.mfes.lifecycle.stage.v1~frontx.mfes.lifecycle.destroyed.v1',
   ],
-} as unknown as import('@gears-frontx/react').ExtensionDomain;
+};
 
 /** Copied field-for-field from `widgets-fixture-a/mfe.json`, enriched with the `exposeAssets` field `scripts/generate-mfe-manifests.ts` adds before publishing (this file stands in for that generated output, the same way `bootstrapWidgetsRuntime`'s own regression test fixture does). */
 const FIXTURE_A_ENTRY = {

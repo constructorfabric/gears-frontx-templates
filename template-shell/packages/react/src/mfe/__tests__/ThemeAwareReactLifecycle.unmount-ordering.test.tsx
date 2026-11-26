@@ -18,12 +18,13 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
-import type { ActionsChain, ChildMfeBridge, Extension, ExtensionDomain, ExtensionDomainImplementationFactory, ExtensionMounter as ExtensionMounterType, FrontXApp, MfeRegistry, TypeSystemPlugin } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { ActionsChain, ChildMfeBridge, Extension, ExtensionDomain, ExtensionDomainImplementationFactory, ExtensionMounter as ExtensionMounterType, MfeRegistry, TypeSystemPlugin } from '@gears-frontx/framework/mfe';
 
 // Each test loads a fresh module copy: a runtime builds one app.
 let createFrontX: typeof import('@gears-frontx/framework')['createFrontX'];
-let ExtensionMounter: typeof import('@gears-frontx/framework')['ExtensionMounter'];
-let MfeRegistryBase: typeof import('@gears-frontx/framework')['MfeRegistry'];
+let ExtensionMounter: typeof import('@gears-frontx/framework/mfe')['ExtensionMounter'];
+let MfeRegistryBase: typeof import('@gears-frontx/framework/mfe')['MfeRegistry'];
 let fixtures: ReturnType<typeof defineFixtures>;
 let ThemeAwareReactLifecycle: typeof import('../ThemeAwareReactLifecycle')['ThemeAwareReactLifecycle'];
 let ExtensionDomainSlot: typeof import('../components/ExtensionDomainSlot')['ExtensionDomainSlot'];
@@ -31,7 +32,8 @@ let registerDomainTeardown: typeof import('../domainTeardownCollector')['registe
 
 beforeEach(async () => {
   vi.resetModules();
-  ({ createFrontX, ExtensionMounter, MfeRegistry: MfeRegistryBase } = await import('@gears-frontx/framework'));
+  ({ createFrontX } = await import('@gears-frontx/framework'));
+  ({ ExtensionMounter, MfeRegistry: MfeRegistryBase } = await import('@gears-frontx/framework/mfe'));
   ({ ThemeAwareReactLifecycle } = await import('../ThemeAwareReactLifecycle'));
   ({ ExtensionDomainSlot } = await import('../components/ExtensionDomainSlot'));
   ({ registerDomainTeardown } = await import('../domainTeardownCollector'));
@@ -110,12 +112,6 @@ function defineFixtures() {
       return undefined;
     }
     getExtensionsForDomain(_id: string): Extension[] {
-      return [];
-    }
-    getRegisteredPackages(): string[] {
-      return [];
-    }
-    getExtensionsForPackage(_id: string): Extension[] {
       return [];
     }
     setTheme(_v: Record<string, string>): void {}

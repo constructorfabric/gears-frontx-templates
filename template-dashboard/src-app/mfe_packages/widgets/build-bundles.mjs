@@ -84,14 +84,13 @@ if (only !== undefined) {
   const { build } = await import('vite');
   process.env.WIDGET_TYPE = only;
   await build({ configFile: path.join(here, 'vite.bundle.config.ts'), logLevel: 'warn' });
+  // The producer writes the closed served manifest and entries; they go into the served file as written.
   const { manifest, entries, schemas } = JSON.parse(readFileSync(path.join(outDir, only, 'mfe-manifest.json'), 'utf-8'));
-  // The served file names the manifest by id; its own `remoteEntry` field is the authoring input only.
-  const { remoteEntry: _authored, ...served } = manifest;
   // The part's types are the ones the bundle's mfe.json declares in schemas (the widget, render and data types of
   // its widget type, carried through the build), then the types of its own served.gts.json when it has one.
   const extraPath = path.join(bundlesDir, only, 'served.gts.json');
   const extra = existsSync(extraPath) ? JSON.parse(readFileSync(extraPath, 'utf-8')) : { types: [], instances: [] };
-  const part = { types: [...(schemas ?? []), ...(extra.types ?? [])], instances: [served, ...entries, ...(extra.instances ?? [])] };
+  const part = { types: [...(schemas ?? []), ...(extra.types ?? [])], instances: [manifest, ...entries, ...(extra.instances ?? [])] };
   writeFileSync(path.join(outDir, only, 'widget.gts.json'), `${JSON.stringify(part, null, 2)}\n`);
   console.log(`built ${only}`);
 } else {

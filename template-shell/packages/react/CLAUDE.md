@@ -99,7 +99,7 @@ function ProfileScreen({ teamId }: { teamId?: string }) {
 Cache keys are derived automatically by the service — `QueryCache` methods accept
 endpoint descriptors directly (e.g., `queryCache.get(service.getCurrentUser)`).
 
-The `queryCache` a mutation callback receives is bound to the cache scope (mock mode, tenant, session) the mutation started under: once that scope changes, its writes (`set`, `remove`, `invalidate`, `invalidateMany`, `cancel`) do nothing and reads still work, so a response or snapshot from the old scope never lands in the new cache. Nothing else is scope-bound: a `useQueryCache()` handle, the raw `QueryClient`, `cache/*` eventBus emits and per-call `mutate(vars, { onSuccess })` options write to whatever scope is current, so a write after an `await` or inside a mutation callback must go through the callback's `queryCache`.
+The `queryCache` a mutation callback receives is bound to the cache scope (mock mode, session) the mutation started under: once that scope changes, its writes (`set`, `remove`, `invalidate`, `invalidateMany`, `cancel`) do nothing and reads still work, so a response or snapshot from the old scope never lands in the new cache. Nothing else is scope-bound: a `useQueryCache()` handle, the raw `QueryClient`, `cache/*` eventBus emits and per-call `mutate(vars, { onSuccess })` options write to whatever scope is current, so a write after an `await` or inside a mutation callback must go through the callback's `queryCache`.
 
 ### SSE Streaming with Stream Descriptors
 
@@ -190,11 +190,11 @@ function MyComponent() {
 Type-safe Redux hooks:
 
 ```tsx
-import { useAppDispatch, useAppSelector } from '@gears-frontx/react';
+import { useAppDispatch, useAppSelector, type MockState } from '@gears-frontx/react';
 
 function MyComponent() {
   const dispatch = useAppDispatch();
-  const activeScreen = useAppSelector((state) => state.layout.screen.activeScreen);
+  const mockEnabled = useAppSelector((state) => (state.mock as MockState).enabled);
 }
 ```
 
@@ -261,13 +261,17 @@ function ThemeToggle() {
 
 ### MFE Hooks
 
+The MFE hooks and components live on the `@gears-frontx/react/mfe` subpath; the main
+barrel exports none of them. The package is type-system agnostic: it declares no
+action or shared-property type ID. The IDs in the examples below (`LOAD_EXT_ACTION_ID`,
+`THEME_PROPERTY_ID`) stand for the ones the host's type system defines.
+
 #### useMfeBridge
 
 Access the MFE bridge for child MFEs:
 
 ```tsx
-import { useMfeBridge } from '@gears-frontx/react';
-import { FRONTX_ACTION_LOAD_EXT, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { useMfeBridge } from '@gears-frontx/react/mfe';
 
 function MyExtension() {
   const bridge = useMfeBridge();
@@ -277,12 +281,12 @@ function MyExtension() {
     // throws, and never yields anything to await for the chain's own
     // execution.
     bridge.executeActionsChain({
-      action: { type: FRONTX_ACTION_LOAD_EXT, target: 'screen', payload: { subject: 'other' } }
+      action: { type: LOAD_EXT_ACTION_ID, target: 'screen', payload: { subject: 'other' } }
     });
   };
 
   // Get shared property
-  const theme = bridge.getProperty(FRONTX_SHARED_PROPERTY_THEME);
+  const theme = bridge.getProperty(THEME_PROPERTY_ID);
 }
 ```
 
@@ -293,10 +297,10 @@ Subscribe to shared property changes. Two forms: the context form reads the brid
 **Context form** — `useSharedProperty(propertyTypeId)`. Reads the bridge from `MfeContext` and throws if no `MfeProvider` is mounted. Returns the value (or `undefined` if the host has not published it), updating on every host publish.
 
 ```tsx
-import { useSharedProperty, FRONTX_SHARED_PROPERTY_THEME } from '@gears-frontx/react';
+import { useSharedProperty } from '@gears-frontx/react/mfe';
 
 function ThemedComponent() {
-  const theme = useSharedProperty(FRONTX_SHARED_PROPERTY_THEME);
+  const theme = useSharedProperty(THEME_PROPERTY_ID);
 
   return <div style={{ backgroundColor: theme?.primaryColor }}>...</div>;
 }
@@ -305,8 +309,7 @@ function ThemedComponent() {
 **Options form** — `useSharedProperty(propertyTypeId, { bridge, fallback })`. Use it for components that never mount `MfeProvider`, or to show a value until the host publishes one.
 
 ```tsx
-import { useSharedProperty } from '@gears-frontx/react';
-import type { ChildMfeBridge } from '@gears-frontx/framework';
+import { useSharedProperty, type ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 function StandaloneComponent({ bridge }: { bridge: ChildMfeBridge }) {
   const label = useSharedProperty<string>(LABEL_PROPERTY_ID, {
@@ -332,10 +335,10 @@ Both forms read through `useSyncExternalStore`, so the first render shows the ho
 Invoke actions on the host application:
 
 ```tsx
-import { useHostAction, FRONTX_ACTION_LOAD_EXT } from '@gears-frontx/react';
+import { useHostAction } from '@gears-frontx/react/mfe';
 
 function MyExtension() {
-  const loadExtension = useHostAction(FRONTX_ACTION_LOAD_EXT);
+  const loadExtension = useHostAction(LOAD_EXT_ACTION_ID);
 
   const handleClick = () => {
     loadExtension({ subject: 'other' });
@@ -350,7 +353,7 @@ function MyExtension() {
 Subscribe to extensions in a domain:
 
 ```tsx
-import { useDomainExtensions } from '@gears-frontx/react';
+import { useDomainExtensions } from '@gears-frontx/react/mfe';
 
 function ScreenList() {
   const screenExtensions = useDomainExtensions('screen');
@@ -365,44 +368,6 @@ function ScreenList() {
 }
 ```
 
-#### useRegisteredPackages
-
-Subscribe to registered GTS packages:
-
-```tsx
-import { useRegisteredPackages } from '@gears-frontx/react';
-
-function PackageList() {
-  const packages = useRegisteredPackages();
-
-  return (
-    <ul>
-      {packages.map((pkg) => (
-        <li key={pkg}>{pkg}</li>
-      ))}
-    </ul>
-  );
-}
-```
-
-#### useActivePackage
-
-Subscribe to the active GTS package (the package of the currently mounted screen extension):
-
-```tsx
-import { useActivePackage } from '@gears-frontx/react';
-
-function ActivePackageIndicator() {
-  const activePackage = useActivePackage();
-
-  if (!activePackage) {
-    return <div>No active screen</div>;
-  }
-
-  return <div>Active: {activePackage}</div>;
-}
-```
-
 ### MFE Components
 
 #### MfeProvider
@@ -410,7 +375,7 @@ function ActivePackageIndicator() {
 Provide MFE context for child extensions:
 
 ```tsx
-import { MfeProvider } from '@gears-frontx/react';
+import { MfeProvider } from '@gears-frontx/react/mfe';
 
 function MfeHost() {
   return (
@@ -426,47 +391,32 @@ function MfeHost() {
 Render extensions into a domain slot:
 
 ```tsx
-import { ExtensionDomainSlot } from '@gears-frontx/react';
+import { ExtensionDomainSlot } from '@gears-frontx/react/mfe';
 
 function LayoutScreen() {
   return (
     <ExtensionDomainSlot
       registry={registry}
-      domainId="screen"
-      extensionId="home"
+      // the host type system's screen domain id
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );
 }
 ```
 
-`ExtensionDomainSlot` is the preferred host-side renderer for screen MFEs. It
-owns mount/unmount and loading/error UI while host bootstrap handles domain
-registration and shared property setup before slot-driven `mount_ext`.
+`ExtensionDomainSlot` is the preferred host-side renderer for a domain. It
+renders one root element, attaches the domain's mounter to it
+(`registry.getMounter(domainId).attach(element)`) and detaches it on cleanup,
+which unmounts every extension mounted in the domain; the host bootstrap
+registers the domain and publishes its shared properties before any
+`mount_ext`. `SCREEN_DOMAIN_ID` stands for the domain id the host's own type
+system declares.
 The host `QueryClient` is reused by MFE React trees through
 `queryCacheShared()`, not by embedding a `QueryClient` on `MfeMountContext`
 or expecting host React context inside Shadow DOM.
 
-When the domain's `ContainerProvider` must point at the same DOM node rendered
-by the slot, pass `containerRef` to `ExtensionDomainSlot` and share that ref
-with `RefContainerProvider`.
-
-#### RefContainerProvider
-
-Provide container references for MFE mounting:
-
-```tsx
-import { RefContainerProvider } from '@gears-frontx/react';
-
-function Layout() {
-  return (
-    <RefContainerProvider>
-      <ScreenContainer />
-      <SidebarContainer />
-    </RefContainerProvider>
-  );
-}
-```
+`onAttached(root)` and `onDetached()` report the attach and the detach.
 
 ### Components
 
@@ -478,28 +428,49 @@ function Layout() {
 4. **Service is the cache contract** - The service IS the data layer; cache keys are derived automatically
 5. **QueryCache uses descriptors** - `queryCache.get(service.endpoint)`, not raw key arrays
 6. **Lazy load translations** - Use `useScreenTranslations` for screen-level i18n
-7. **Use MFE hooks for extensions** - `useMfeBridge`, `useSharedProperty`, `useHostAction`, `useDomainExtensions`
+7. **Use MFE hooks for extensions** - `useMfeBridge`, `useSharedProperty`, `useHostAction`, `useDomainExtensions` (from `@gears-frontx/react/mfe`)
 8. **NO Layout components here** - Layout and UI components belong in L4 (user's project via CLI scaffolding)
 
 ## Re-exports
 
-For convenience, this package re-exports everything from @gears-frontx/framework:
+For convenience, this package re-exports the @gears-frontx/framework surface. The MFE
+re-exports live on the `@gears-frontx/react/mfe` subpath, mirroring
+`@gears-frontx/framework/mfe`. No entry re-exports a concrete type system: there is no
+`/gts` subpath.
+
+- `@gears-frontx/react/mfe` — the MFE context, hooks and components of this package
+  (`MfeContext`, `useMfeContext`, `MfeProvider`, `useMfeBridge`, `useSharedProperty`,
+  `useHostAction`, `useMfeRegistry`, `useDomainExtensions`,
+  `ThemeAwareReactLifecycle`, `ExtensionDomainSlot`) plus every
+  `@gears-frontx/framework/mfe` re-export: bridge classes (`ChildMfeBridge`,
+  `ParentMfeBridge`), `MfeHandlerMF`, `mfeRegistryFactory`, `ActionHandler`, the mount
+  strategies, MFE types/contracts, `createShadowRoot`, `injectCssVariables`, and the
+  MFE host plugin `microfrontends` with its actions
+  (`loadExtension`, `mountExtension`, `unmountExtension`, `registerExtension`,
+  `unregisterExtension`), selectors (`selectExtensionState`,
+  `selectRegisteredExtensions`, `selectExtensionError`) and types
+  (`MfeState`, `ExtensionRegistrationState`, `RegisterExtensionPayload`,
+  `UnregisterExtensionPayload`).
+
+Nothing the main barrel (`@gears-frontx/react`) exports reaches the MFE runtime at
+runtime, so a leaf MFE that only uses the React bindings never loads it. It carries the React bindings and the framework main-barrel surface:
 
 - All SDK primitives (eventBus, createStore, etc.)
-- All plugins (screensets, themes, layout, microfrontends, etc.)
+- The plugins other than the MFE host plugin (themes, i18n, effects, queryCache,
+  queryCacheShared, mock, auth); a host adds `microfrontends()` from
+  `@gears-frontx/react/mfe` itself. No layout plugin, slices or layout state
+  types: the application owns its layout and types the actions its own
+  plugins contribute by augmenting `FrontXActions`
 - All registries and factory functions
-- All types (including MFE types)
-- All MFE actions, selectors, and domain constants
 
-This allows users to import everything from `@gears-frontx/react` without needing `@gears-frontx/framework` directly.
+This allows users to import everything from `@gears-frontx/react` and its subpaths without needing `@gears-frontx/framework` directly.
 
 ## Exports
 
 ### Components
 - `FrontXProvider` - Main context provider
-- `MfeProvider` - MFE context provider
-- `ExtensionDomainSlot` - Domain slot renderer
-- `RefContainerProvider` - Container reference provider
+- `MfeProvider` - MFE context provider (`@gears-frontx/react/mfe`)
+- `ExtensionDomainSlot` - Domain slot renderer (`@gears-frontx/react/mfe`)
 
 ### Hooks
 - `useFrontX` - Access app instance
@@ -512,16 +483,14 @@ This allows users to import everything from `@gears-frontx/react` without needin
 - `useTranslation` - Translation utilities
 - `useScreenTranslations` - Screen translation loading
 - `useTheme` - Theme utilities
-- `useMfeBridge` - Access MFE bridge
-- `useSharedProperty` - Subscribe to shared property, via `MfeContext` or an explicit bridge
-- `useHostAction` - Invoke host action
-- `useDomainExtensions` - Subscribe to domain extensions
-- `useRegisteredPackages` - Subscribe to registered GTS packages
-- `useActivePackage` - Subscribe to active GTS package
+- `useMfeBridge` - Access MFE bridge (`@gears-frontx/react/mfe`)
+- `useSharedProperty` - Subscribe to shared property, via `MfeContext` or an explicit bridge (`@gears-frontx/react/mfe`)
+- `useHostAction` - Invoke host action (`@gears-frontx/react/mfe`)
+- `useDomainExtensions` - Subscribe to domain extensions (`@gears-frontx/react/mfe`)
 
 ### Context
 - `FrontXContext` - React context (for advanced use)
-- `MfeContext` - MFE context (for advanced use)
+- `MfeContext` - MFE context (for advanced use; `@gears-frontx/react/mfe`)
 
 ### Types
 - `FrontXProviderProps`
@@ -531,74 +500,41 @@ This allows users to import everything from `@gears-frontx/react` without needin
 - `ApiStreamOptions` - Stream hook options (mode, enabled)
 - `QueryCache` - Restricted cache interface (accepts descriptors or raw keys)
 - `MutationCallbackContext` - Context with queryCache injected into mutation callbacks
-- `MfeProviderProps`, `ExtensionDomainSlotProps`
-- `UseSharedPropertyOptions<T>` - Options for `useSharedProperty` (bridge, fallback)
+- `MfeProviderProps`, `ExtensionDomainSlotProps` (`@gears-frontx/react/mfe`)
+- `UseSharedPropertyOptions<T>` - Options for `useSharedProperty` (bridge, fallback; `@gears-frontx/react/mfe`)
 - `UseTranslationReturn`, `UseThemeReturn`
 - All types from @gears-frontx/framework (including `EndpointDescriptor`, `MutationDescriptor`, `StreamDescriptor`, `StreamStatus`)
 
-## Migration from Legacy API
+## Navigating Between Screens
 
-The `useNavigation` hook has been removed. Use MFE hooks and actions instead:
+A component asks for a screen through the app's actions. `mountExtension`
+dispatches an actions chain through the acceptance-only registry surface and
+returns nothing to await:
 
-### Removed Hook
-- `useNavigation()` (replaced by MFE actions and hooks)
-
-### Migration Examples
-
-**OLD**: Navigate using hook
-```tsx
-import { useNavigation } from '@gears-frontx/react';
-
-function MyComponent() {
-  const { navigateToScreen } = useNavigation();
-
-  return (
-    <button onClick={() => navigateToScreen('demo', 'home')}>
-      Go Home
-    </button>
-  );
-}
-```
-
-**NEW**: Mount extension using app actions
 ```tsx
 import { useFrontX } from '@gears-frontx/react';
 
 function MyComponent() {
   const app = useFrontX();
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleNavigate = () => {
-    if (containerRef.current) {
-      // Fire-and-forget: dispatches an actions chain through the
-      // acceptance-only registry surface and returns nothing to await.
-      app.actions.mountExtension('home');
-    }
-  };
-
-  return (
-    <>
-      <button onClick={handleNavigate}>Go Home</button>
-      <div ref={containerRef} />
-    </>
-  );
+  return <button onClick={() => app.actions.mountExtension('home')}>Go Home</button>;
 }
 ```
 
-**NEW (Preferred for host screen slots)**: Use ExtensionDomainSlot
+A host screen slot renders the domain's extensions with `ExtensionDomainSlot`:
+
 ```tsx
-import { ExtensionDomainSlot } from '@gears-frontx/react';
+import { ExtensionDomainSlot } from '@gears-frontx/react/mfe';
 
 function MyComponent() {
   return (
     <ExtensionDomainSlot
       registry={app.mfeRegistry}
-      domainId="screen"
-      extensionId="home"
+      domainId={SCREEN_DOMAIN_ID}
       loadingComponent={<Loading />}
     />
   );
 }
 ```
 
-See the MFE migration guide in the project documentation for detailed migration steps.
+See the MFE guide in the project documentation for the full flow.

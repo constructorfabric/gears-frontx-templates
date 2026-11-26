@@ -32,16 +32,8 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  useFrontX,
-  ExtensionDomainSlot,
-  screenDomain,
-  popupDomain,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-  FRONTX_SCREEN_DOMAIN,
-  type MfeRegistry,
-} from '@gears-frontx/react';
+import { useFrontX } from '@gears-frontx/react';
+import { ExtensionDomainSlot, type MfeRegistry } from '@gears-frontx/react/mfe';
 import { bootstrapOnce } from './bootstrapOnce';
 import { registerScreenDomain } from './screenDomain';
 import {
@@ -56,6 +48,8 @@ import { useLoadFailedText, type LoadFailedProps } from './loadFailedText';
 import { screenLoadFailure, useScreenLoadFailure } from './screenLoadFailure';
 import { addressScreenEntry, firstScreenId, type RegistryScreenExtension } from './defaultScreen';
 import { screenState } from './screenState';
+import { FRONTX_SCREEN_DOMAIN, screenDomain, popupDomain } from '../../../src/index';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
 import styles from './MfeScreenContainer.module.css';
 
 /**

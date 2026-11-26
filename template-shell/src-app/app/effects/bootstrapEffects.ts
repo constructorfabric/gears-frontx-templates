@@ -11,14 +11,11 @@ import trim from 'lodash/trim';
 import {
   AuthEvents,
   eventBus,
-  clearUser,
-  setUser,
-  setHeaderLoading,
   apiRegistry,
   type AppDispatch,
   type AuthRuntime,
-  type HeaderUser,
 } from '@gears-frontx/react';
+import { clearUser, setUser, setHeaderLoading, type HeaderUser } from '@/app/layout/state';
 import { AccountsApiService, type ApiUser } from '@/app/api';
 import { readOnProviderInUse } from '@/app/auth/signIn';
 import { applyProfileLanguage } from '@/app/i18n/languagePersistence';

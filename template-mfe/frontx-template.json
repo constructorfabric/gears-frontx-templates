@@ -8,6 +8,7 @@
       "src-app/mfe_packages/README.md",
       "src-app/mfe_packages/_blank-mfe/",
       "src-app/mfe_packages/demo-mfe/",
+      "src-app/mfe_packages/lazy-import-fixture/",
       "src-app/mfe_packages/widgets-fixture-a/",
       "src-app/mfe_packages/widgets-fixture-b/",
       ".frontx/ai/@gears-frontx/frontx-template-mfe/"

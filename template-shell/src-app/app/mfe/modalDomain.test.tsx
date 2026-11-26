@@ -19,6 +19,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
 import styles from './MfeScreenContainer.module.css';
 import {
   POPUP_DOMAIN,
@@ -84,7 +85,7 @@ describe('the modal domain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: extensionId('terms') },
         },
@@ -106,7 +107,7 @@ describe('the modal domain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_UNMOUNT_EXT,
+          type: FRONTX_ACTION_UNMOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: extensionId('terms') },
         },
@@ -128,7 +129,7 @@ describe('the modal domain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_MOUNT_EXT,
+          type: FRONTX_ACTION_MOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: extensionId('locked') },
         },
@@ -148,7 +149,7 @@ describe('the modal domain through the real runtime', () => {
     act(() => {
       registry?.executeActionsChain({
         action: {
-          type: built.react.FRONTX_ACTION_UNMOUNT_EXT,
+          type: FRONTX_ACTION_UNMOUNT_EXT,
           target: POPUP_DOMAIN,
           payload: { subject: extensionId('locked') },
         },

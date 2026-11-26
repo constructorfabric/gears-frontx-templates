@@ -26,9 +26,8 @@ new MFE.
    copy in step 2, before dispatching, so no subagent can start one. The build
    reads only the shell's own packages, so running it first costs nothing. The
    per-package `type-check`, `test:unit` and `build` in Phase 2 resolve
-   `@gears-frontx/react` and `@gears-frontx/frontx-template-shell` through
-   their built output (`dist/`, `dist-lib/`), which a fresh seed does not
-   carry, so a package check before this build stops on
+   `@gears-frontx/react` through its built output (`dist/`), which a fresh
+   seed does not carry, so a package check before this build stops on
    `TS2307: Cannot find module '@gears-frontx/react'`. The lead runs it once;
    subagents do not run it themselves. `npm run build:mfes` and
    `npm run dev:all` build the shell packages themselves, so this explicit

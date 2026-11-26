@@ -5,7 +5,7 @@
  * property, so the read lives here once and the two sides cannot drift apart.
  */
 
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 /**
  * The theme identifier assumed while the host has not published its theme

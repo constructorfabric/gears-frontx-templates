@@ -1,6 +1,6 @@
 {
   "name": "@gears-frontx/react",
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "description": "React bindings and hooks for FrontX framework",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./mfe": {
+      "types": "./dist/mfe.d.ts",
+      "import": "./dist/mfe.js",
+      "require": "./dist/mfe.cjs"
     },
     "./testing": {
       "types": "./dist/testing.d.ts",
@@ -88,5 +93,6 @@
     "typescript"
   ],
   "author": "Cyber Fabric",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "sideEffects": false
 }

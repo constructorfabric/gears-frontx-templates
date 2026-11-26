@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { federation } from '@module-federation/vite';
+import { vitePluginShell } from '@gears-frontx/vite-plugin-shell';
 import path from 'path';
 
 // https://vitejs.dev/config/
@@ -12,28 +12,38 @@ export default defineConfig({
   base: './',
   plugins: [
     react(),
-    federation({
-      name: 'host',
-      shared: {
-        react: { singleton: true, requiredVersion: '^19.0.0' },
-        'react-dom': { singleton: true, requiredVersion: '^19.0.0' },
-        // Same React Query instance as the host when remotes use federation scope;
-        // separately mounted MFEs still receive the host QueryClient via runtime mount context.
-        '@tanstack/react-query': {
-          singleton: true,
-          requiredVersion: '^5.90.0',
-        },
-      },
+    // The host is hosted and loaded like a Module Federation host: the
+    // plugin derives the shared set from this package's package.json
+    // (the shared set over the build graph, no curated list), applies the bundler settings
+    // sharing requires (resolve.dedupe for the whole set, dev
+    // optimizeDeps for its CJS packages and their used subpaths),
+    // externalizes the set, emits content-addressed units and fetch
+    // lists into this build's own dist (under shared/), and generates
+    // an inline import map so the emitted index.html boots the shell
+    // natively — the browser fetches the shared chunks straight off
+    // this dist. From the shell entry, a small fill chunk importing
+    // @gears-frontx/mfes/unit-loader refills the realm content-identity
+    // text cache from the boot list so MFE loads reuse those sources
+    // and mint their own instances. Packages that are not runtime code
+    // packages, uninstalled declarations) never join the shared set on
+    // their own; `exclude` stays the escape hatch for JavaScript that is
+    // not browser code:
+    //  - `esbuild` is a non-optional peer for the library build — a Node
+    //    build tool, never browser code; bundling it into a unit fails on
+    //    its Node builtins.
+    //  - `tailwindcss-animate` is a Tailwind plugin `tailwind.config.ts`
+    //    loads at build time, and `tailwindcss` (which it imports) the
+    //    Node CSS compiler — neither is browser code, and minting either
+    //    fails on Node builtins. Excluded together: excluding a package a
+    //    still-shared package imports is rejected.
+    vitePluginShell({
+      exclude: ['esbuild', 'tailwindcss-animate', 'tailwindcss'],
     }),
   ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src-app'),
     },
-    dedupe: ['@gears-frontx/api', '@gears-frontx/framework', '@gears-frontx/react'],
-  },
-  optimizeDeps: {
-    include: ['react', 'react-dom', 'react/jsx-runtime', '@globaltypesystem/gts-ts'],
   },
   build: {
     target: 'esnext',
@@ -41,74 +51,6 @@ export default defineConfig({
     // `manifestsUrl` in src-app/app/mfe/bootstrap.ts reads the manifest
     // aggregate one level up from its own module for that reason.
     assetsDir: 'assets',
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          // Split node_modules into vendor chunks
-          if (id.includes('node_modules')) {
-            // Split React and React DOM separately
-            if (id.includes('react-dom')) {
-              return 'vendor-react-dom';
-            }
-            if (id.includes('react/') || id.includes('react\\')) {
-              return 'vendor-react';
-            }
-
-            // Split large charting library
-            if (id.includes('recharts')) {
-              return 'vendor-recharts';
-            }
-
-            // Split date libraries
-            if (id.includes('date-fns') || id.includes('react-day-picker')) {
-              return 'vendor-dates';
-            }
-
-            // Split carousel library
-            if (id.includes('embla-carousel')) {
-              return 'vendor-embla';
-            }
-
-            // Split drawer library
-            if (id.includes('vaul')) {
-              return 'vendor-vaul';
-            }
-
-            // Split OTP library
-            if (id.includes('input-otp')) {
-              return 'vendor-input-otp';
-            }
-
-            // Split form libraries (react-hook-form + zod + resolvers)
-            if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) {
-              return 'vendor-forms';
-            }
-
-            // Split Radix UI primitives (they're relatively small individually but many)
-            if (id.includes('@radix-ui')) {
-              return 'vendor-radix';
-            }
-
-            // Split other large utilities
-            if (id.includes('lodash')) {
-              return 'vendor-lodash';
-            }
-
-            // All other node_modules go to vendor chunk
-            return 'vendor';
-          }
-
-          // Split framework and react packages into separate chunk
-          if (id.includes('@gears-frontx/framework') || id.includes('@gears-frontx/react')) {
-            return 'frontx-core';
-          }
-          // Split React and React DOM
-          if (id.includes('react') || id.includes('react-dom')) {
-            return 'react';
-          }
-        },
-      },
-    },
     // Increase chunk size warning limit or disable it
     chunkSizeWarningLimit: 500,
   },

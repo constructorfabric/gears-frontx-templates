@@ -21,6 +21,10 @@ Three scanners read this directory: manifest generation
 `dev:all` and `build:mfes`), and `type-check:mfe`. Every rule below holds in all
 three, on one shared predicate per rule rather than a copy each.
 
+- A package never imports shell code. Like an independent repository, it
+  declares the shell contract ids it uses itself (shared-property ids, domain
+  ids, the GTS schemas it registers) in its own source, and carries its own
+  copy of any helper it needs, such as a mock plugin.
 - `<name>` must not start with `.` and must not be `shared` — all three exclude
   these (`shared` is reserved for cross-MFE helper code the isolation boundary
   still applies to; it is never itself an MFE).
@@ -64,33 +68,46 @@ three, on one shared predicate per rule rather than a copy each.
    widget the package contributes), plus the optional `templateExample` flag
    described above. Optional `labelDictionaries[]` entries name a supported language code (`gts.frontx.i18n.lang.code.v1~`, each at most once) and a JSON file relative to the MFE's served root. Put those files in `public/labels/`. Each is an instance of `gts.frontx.i18n.dict.screen_labels.v1~`: `type` set to that id, `language` equal to the manifest entry's, and `labels` as `{ extension, label }` items naming only this package's own screen extensions, each once, with a non-empty label (the `template-mfe` `navigation-contribution` guideline shows one). Manifest generation fails the build on a missing or non-conforming file; a dictionary that cannot be loaded at runtime is ignored and the menu shows `presentation.label`. See the `gts-id-conventions` guideline in the `template-mfe`
    AI bundle for the ID taxonomy these fields use.
-3. **`vite.config.ts`** that runs `@module-federation/vite`'s `federation()`
-   plugin, then `frontxMfGts()` (imported from
-   `@gears-frontx/frontx-template-shell/build/mf-gts`), whose build plugin is
-   `enforce: 'post'` so it runs after federation. Building without
-   `frontxMfGts()` fails manifest generation with an explicit error naming
-   the missing plugin. The config's
-   `sharedDeps` constant (which feeds `rollupOptions.external`) always
-   includes `@gears-frontx/routing`, so each MFE runtime evaluates exactly one
-   copy of it, never shared across MFEs: the copy the MFE's registry receives
-   must be the copy `<ExtensionRouter>` and `navigation()` read. The
-   constant includes `@gears-frontx/routing-tanstack` only when the MFE renders
-   `<ExtensionRouter>` or calls `navigation()`. A package declares each of the
-   two it lists in its own `package.json` too, at an exact version
-   (`@gears-frontx/routing-tanstack` under `dependencies`), so it resolves from
-   the package's own root without relying on hoisting, and
-   `policy:template-pin-drift` checks its version.
+3. **`vite.config.ts`** that runs the framework plugin plus
+   `vitePluginMfeGts(...)` (imported from
+   `@gears-frontx/vite-plugin-mfe-gts`, a normal dependency of the package).
+   `vitePluginMfeGts` owns Module Federation itself — it configures
+   `@module-federation/vite` internally (federation name derived from the
+   package's `package.json` `name`, fixed `remoteEntry.js`, `shared` always
+   `{}`, `manifest` always `true`) and enforces the build settings
+   (`target: 'esnext'`, `modulePreload: false`, `minify: true`,
+   `cssCodeSplit: true`); adding `federation()` by hand is a build error and
+   a conflicting build setting is warned about and ignored. The MFE declares
+   only its `exposes` map — passed to `vitePluginMfeGts({ exposes })` or
+   carried as `exposes` in `mfe.json`. Building without
+   `vitePluginMfeGts()` fails manifest generation with an explicit error
+   naming the missing plugin. The shared set is derived from the build
+   graph — every bare package the code imports, whichever `package.json`
+   section declares it, plus the runtime dependencies of `dependencies` and
+   non-optional `peerDependencies`, with a `share.exclude` opt-out — and the
+   plugin externalizes it by root package name; there is no `sharedDeps` constant
+   and no `rollupOptions.external` to keep in sync. Every shared package
+   the MFE imports is declared in its own `package.json` at an exact
+   version, so it resolves from the package's own root without relying on
+   hoisting, and `policy:template-pin-drift` checks its version.
 
 ## Build-output contract (produced by `vite build`, consumed by the shell)
 
 - `dist/mf-manifest.json` — the raw Module Federation manifest, written by
   `@module-federation/vite` itself.
-- `dist/mfe-manifest.json` — the **enriched** manifest `frontxMfGts()` writes in
-  its `closeBundle` hook: `mfe.json` merged with `dist/mf-manifest.json`'s
-  `metaData`/`exposes`, plus resolved shared-dependency versions and standalone
-  ESM chunk paths. `scripts/generate-mfe-manifests.ts` reads **this** file, not
+- `dist/mfe-manifest.json` — the **enriched** manifest `vitePluginMfeGts()`
+  writes in its `closeBundle` hook: `mfe.json` merged with
+  `dist/mf-manifest.json`'s `metaData`/`exposes`, closed to the contract the
+  runtime reads: the manifest carries only `id`, `metaData` (`publicPath`,
+  `sharedBase` when the shared output lives under one directory), `units` (every shared unit once)
+  and `lists` (the fetch list of each exposed module, naming units by content
+  hash); each entry
+  carries `exposeAssets` (`js.sync`, `css.sync`, `css.async`) and names the
+  manifest by its id. The authored `remoteEntry` of `mfe.json` is an input
+  only and is never served.
+  `scripts/generate-mfe-manifests.ts` reads **this** file, not
   `mf-manifest.json` directly, and throws if it is missing or was not built by
-  a `frontxMfGts()`-configured pipeline.
+  a `vitePluginMfeGts()`-configured pipeline.
 - `npm run build` copies the `dist/` of each package the aggregate carries
   into the shell's `dist/mfe/<name>/` (`scripts/layout-dist.ts`, which finds
   packages by the same rules as manifest generation and refuses a manifest id
@@ -103,32 +120,39 @@ three, on one shared predicate per rule rather than a copy each.
 
 ## Shared dependencies
 
-The strings in `build.rollupOptions.external` are the package's shared
-dependencies. Rollup leaves their imports bare, `frontxMfGts()` builds each one
-into a standalone ESM file under `dist/shared/`, and at runtime the handler
-points every bare import at that file. ES modules link by name, so
-`frontxMfGts()` fails the build when a chunk imports a name that the shared
-chunk for that package does not export. The error names the chunk, the name
-and the package. When the importing chunk is itself a shared chunk, the two
-packages' installed versions most likely do not fit each other. A shared chunk
-does not export a name that two of its `export * from` lines supply from
-different bindings, as ES modules link it, so importing that name fails the
-build too. This happens when two shared packages each bundle their own copy of
-a third package they both re-export; sharing the third package as well fixes it.
+The shared set is derived, not listed: `vitePluginMfeGts()` shares every
+bare package the MFE's code imports, whichever `package.json` section
+declares it, plus the runtime dependencies of its `dependencies` and
+non-optional `peerDependencies` (`share.exclude` opts out, rejected when a
+shared package depends on the excluded one). Rollup leaves their imports
+bare through the plugin's `external` predicate. In `closeBundle`
+`@gears-frontx/unit-producer` splits each shared package into
+content-addressed **units** under `dist/shared/` by entry-point chunking: one
+chunk per entry point (its `exports` subpaths and the modules a public barrel
+re-exports), with the internals two entry points share in shared internal
+chunks. The split is computed from the package's own complete entry set, so
+every consumer gets the same bytes. Each exposed module gets a **fetch list**
+naming the units (and own chunks) it needs; the enriched manifest holds each
+unit once in `units` and every list once in `lists`, keyed by exposed module
+and, for a lazy target's list, by the target's chunk location; a shared
+package the code imports dynamically by bare specifier is keyed by that bare
+specifier, the key the runtime looks a bare `__frontx_lazy` argument up under.
+Within one producer version, unit bytes depend only on `package@version` —
+byte-identical builds dedupe across MFEs and the host by content hash. The
+specification is `cpt-template-shell-feature-unit-producer-output`; template-mfe's
+build plugin owns the assembly of the lists.
 
-A CommonJS package needs one more step. esbuild gives its chunk only a default
-export, the package's whole `module.exports`, so `frontxMfGts()` finds the
-named exports by loading the package with Node's `require()` at build time. A
-package that cannot load in Node, for example because it reads `window` when
-it loads, keeps only the default export. **Such a package can stay shared if
-its users read it through the default import**
-(`import pkg from 'pkg'; pkg.name`). A named import of it
-(`import { name } from 'pkg'`) fails the build. Switch that import to the
-default import, or stop sharing the package: remove it from
-`build.rollupOptions.external` and Vite bundles it into the MFE. Names read
-through a namespace import (`import * as R from 'react'; R.useState`) cannot be
-checked. For a package whose discovery failed they are `undefined`, so the
-build warns about such an import, and the default import fixes it.
+Consumer-side, the plugin rewrites the MFE's named imports from a shared
+package's barrel to the defining modules (only for packages declaring
+side-effect freedom; explicit side-effect imports are never rewritten), so the
+fetch list names just the units that define the used bindings. A rewrite
+no produced unit answers falls back to the barrel in the emitted chunks;
+the build report lists every kept barrel with its reason.
+
+In `mfe.json`, `share.exclude` is the way a package leaves the shared set — and
+only when no shared package depends on it (the plugin's `exclude` and `include`
+options do the same from `vite.config.ts`). There is no per-import opt-out and no externals list
+to edit.
 
 ## CSS delivery into shadow roots
 
@@ -148,9 +172,11 @@ what the package owns:
    on is in the head before any MFE mounts: the shell's entry
    (`src-app/app/main.tsx`) imports `globals.css`, which holds the base
    reset. What the copy carries is the host's own stylesheets: globals, the
-   theme tokens, and the kit CSS of the components the host itself uses; a
-   screen's kit CSS arrives through its manifest (path 2), not through this
-   copy. Theme changes are not affected: the shell's theme variables reach the
+   theme tokens, and the kit CSS of the components the host itself uses (the
+   kit is a shared package, so `vitePluginShell()` imports each used
+   component's stylesheets where the host imports the component, and the
+   host's own CSS carries them); a screen's kit CSS arrives through its
+   manifest (path 2), not through this copy. Theme changes are not affected: the shell's theme variables reach the
    shadow root through CSS inheritance, not through the copy.
 2. **Package-owned CSS imported plainly (the default).** A plain
    `import './styles.css'` or a CSS Module (`import styles from
@@ -161,7 +187,7 @@ what the package owns:
    `@module-federation/vite` lists only the CSS of the expose's own chunk; when
    several exposes import one styled module, Rollup puts its CSS into a chunk
    they share, and federation lists that file for none of them.
-   `frontxMfGts()` completes the lists: every expose gets the CSS files of the
+   `vitePluginMfeGts()` completes the lists: every expose gets the CSS files of the
    chunks it reaches, static imports in `css.sync`, chunks reached only
    through a dynamic import in `css.async`. The host appends the files in list
    order, so each list puts a chunk's CSS after the CSS of what it imports,
@@ -178,7 +204,18 @@ what the package owns:
    Every CSS file of the chunks an expose reaches is listed, a file built
    only from `node_modules` stylesheets (UI-kit component styles) included:
    the screen is styled at its own kit version, so its kit rules must arrive
-   with it rather than rely on the host's. Rules the host also adopts are
+   with it rather than rely on the host's. A shared package (the UI kit is
+   one: every bare package the code imports is shared) is not bundled into the MFE's chunks — its modules
+   are shared units, where a stylesheet import loads nothing — so
+   `vitePluginMfeGts()` imports the stylesheets a shared module's static
+   import graph loads right where the MFE's code imports that module, in the
+   order evaluating the graph loads them (after the barrel rewrite, so only
+   the used components' stylesheets): Vite then extracts them into the MFE's
+   own CSS chunks like any `node_modules` stylesheet the package imports
+   itself. A side-effect-only import of a module its package declares
+   side-effect free contributes no stylesheet, and a shared package's CSS
+   Modules are not delivered this way (their class map lives in the
+   package's JavaScript). Rules the host also adopts are
    duplicated; that is harmless at the same kit version. At a different one
    the kit's class names differ, so the host's copy does not match the
    screen's components; where a selector is the same in both, the screen's
@@ -198,21 +235,17 @@ what the package owns:
    case below where the recorder is not placed: nothing of it reaches a CSS
    file, with per-chunk CSS on and off. "Compiles to" is judged on the CSS
    the plugin's recorder sees after every transform that can still change
-   the CSS, immediately before Vite stores it, wherever `frontxMfGts()` sits
-   in the plugin list of a single-environment `vite build`. When the plugin
-   warns that it could not place the recorder before `vite:css-post`,
+   the CSS, immediately before Vite stores it, wherever `vitePluginMfeGts()`
+   sits in the plugin list of a single-environment `vite build`. When the
+   plugin warns that it could not place the recorder before `vite:css-post`,
    empty-stylesheet exclusions are off for that build: an empty stylesheet
-   counts like any other and can fail it. With `cssCodeSplit: false` all CSS
-   goes into one file no chunk names, which federation lists for every expose
-   whose own chunk holds a `.css`, `.scss` or `.less` module (it recognises
-   no other stylesheet extension there); a stylesheet several exposes import
-   goes into a chunk they share and does not count for any of them. Kit
-   styles then reach only those exposes, and every other expose that reaches
-   a stylesheet fails the build. That check covers every stylesheet language
-   Vite compiles to CSS (`.css`, `.less`, `.sass`, `.scss`, `.styl`,
-   `.stylus`, `.pcss`, `.postcss`, `.sss`), not only `.css`. Imports Vite
-   does not extract (`?inline`, `?raw`, `?url`) are not CSS to deliver and
-   never fail it.
+   counts like any other and can fail it. The plugin enforces per-chunk CSS
+   (`cssCodeSplit: false` is warned about and ignored), so the single style
+   file no chunk names never occurs. That check covers every stylesheet
+   language Vite compiles to CSS (`.css`, `.less`, `.sass`, `.scss`,
+   `.styl`, `.stylus`, `.pcss`, `.postcss`, `.sss`), not only `.css`.
+   Imports Vite does not extract (`?inline`, `?raw`, `?url`) are not CSS to
+   deliver and never fail it.
 3. **`?inline` + `initializeStyles()`, for a plain stylesheet one lifecycle
    owns.** Import the stylesheet as a string (`import styles from
    './styles.css?inline'`) and append it in an `initializeStyles(container)`

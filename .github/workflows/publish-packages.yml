@@ -1,5 +1,6 @@
-# Publishes the six publishable template-shell workspace subpackages
-# (template-shell/packages/*), version-gated, in dependency order.
+# Publishes the publishable workspace packages of template-shell
+# (template-shell/packages/*) and template-mfe (template-mfe/packages/*),
+# version-gated, in dependency order.
 # `template-shell` itself is `"private": true` - a full app template meant to
 # be seeded, not installed as a dependency - so it is never published; the
 # `detect-template` job below skips any manifest with `private: true` before
@@ -79,6 +80,21 @@ jobs:
             MANIFESTS+=(template-shell/$glob/package.json)
           done
 
+          # template-mfe is a second governed root: its own workspaces field
+          # (packages/* plus the private fixture MFEs) is read the same way,
+          # so a publishable package added under template-mfe/packages/*
+          # (@gears-frontx/vite-plugin-mfe-gts) is discovered structurally —
+          # never from a hardcoded list. The private fixtures and the
+          # private monorepo harness itself are dropped by the IS_PRIVATE
+          # filter below, same as template-shell's private root.
+          MANIFESTS+=("template-mfe/package.json")
+          if [ -f template-mfe/package.json ]; then
+            mapfile -t MFE_WORKSPACE_GLOBS < <(jq -r '.workspaces[]? // empty' template-mfe/package.json)
+            for glob in "${MFE_WORKSPACE_GLOBS[@]}"; do
+              MANIFESTS+=(template-mfe/$glob/package.json)
+            done
+          fi
+
           for pkg_json in "${MANIFESTS[@]}"; do
             [ -f "$pkg_json" ] || continue
 
@@ -111,7 +127,7 @@ jobs:
 
   publish-template:
     # Job id kept as `publish-template` (other jobs reference it via `needs`);
-    # the display name says what actually gets published - the six workspace
+    # the display name says what actually gets published - the workspace
     # subpackages, never the private `template-shell` root itself.
     name: Publish template subpackages
     needs: [detect-template]
@@ -138,8 +154,23 @@ jobs:
         working-directory: template-shell
         run: |
           npm ci
-          npm run build:package
           npm run build:packages
+
+      # template-mfe's publishable workspaces (template-mfe/packages/*) build
+      # from template-mfe's own root; `npm install` rather than `npm ci`
+      # because template-mfe's lockfile intentionally stays a dev-harness
+      # artifact — the workspace list is the discovery mechanism.
+      - name: Install + build template-mfe packages
+        working-directory: template-mfe
+        run: |
+          npm install --no-audit --no-fund
+          for dir in packages/*/; do
+            [ -f "$dir/package.json" ] || continue
+            IS_PRIVATE=$(jq -r '.private // false' "$dir/package.json")
+            if [ "$IS_PRIVATE" != "true" ] && jq -e '.scripts.build' "$dir/package.json" >/dev/null; then
+              ( cd "$dir" && npm run build )
+            fi
+          done
 
       - name: Publish template packages
         id: publish
@@ -185,12 +216,17 @@ jobs:
           # template-shell root before PACKAGES is ever built, so it can
           # never appear in this sort - a rank for a name this list cannot
           # contain is dead weight, not defense in depth.
+          # vite-plugin-mfe-gts publishes from template-mfe/packages/* and
+          # depends on unit-producer, so it ranks after it — same structural
+          # rule, still no package list maintained here beyond the ranking.
           SORTED=$(echo "$PACKAGES" | jq -c 'sort_by(.name |
             if . == "@gears-frontx/state" or . == "@gears-frontx/i18n" or . == "@gears-frontx/auth" then 1
-            elif . == "@gears-frontx/framework" then 2
-            elif . == "@gears-frontx/react" then 3
-            elif . == "@gears-frontx/studio" then 4
-            else 5 end)')
+            elif . == "@gears-frontx/unit-producer" then 2
+            elif . == "@gears-frontx/framework" then 3
+            elif . == "@gears-frontx/react" then 4
+            elif . == "@gears-frontx/studio" then 5
+            elif . == "@gears-frontx/vite-plugin-mfe-gts" then 7
+            else 6 end)')
 
           echo "Publishing order:"
           echo "$SORTED" | jq -r '.[] | "  - \(.name)@\(.version)"'

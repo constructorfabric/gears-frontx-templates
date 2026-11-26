@@ -18,7 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentType } from 'react';
-import type { ScreenExtension } from '@gears-frontx/react';
+import type { ScreenExtension } from '../../../src/index';
 import type { IconifyJSON } from '@iconify/react';
 
 const mockBootstrapSettled = vi.fn();

@@ -1,0 +1,63 @@
+{
+  "name": "@gears-frontx/vite-plugin-shell",
+  "version": "0.1.0-alpha.2",
+  "description": "Generic, framework- and type-system-agnostic Vite plugin for a host build \u2014 emits the host's shared-dependency units and fetch lists into the host's own dist via @gears-frontx/unit-producer, generates an inline import map so the shell boots natively, and emits a small fill chunk importing @gears-frontx/mfes/unit-loader that refills the realm text cache from the shell entry (production builds only; vite dev stays native)",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js",
+      "require": "./dist/runtime.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit",
+    "type-check:test": "tsc -p tsconfig.test.json",
+    "test": "npm run test:unit",
+    "test:unit": "vitest --run --passWithNoTests=false",
+    "test:unit:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@gears-frontx/unit-producer": "0.1.0-alpha.2"
+  },
+  "devDependencies": {
+    "@gears-frontx/mfes": "0.7.1",
+    "@gears-frontx/unit-producer": "0.1.0-alpha.2",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "4.1.4",
+    "esbuild": "0.28.2",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "vitest": "4.1.4"
+  },
+  "peerDependencies": {
+    "@gears-frontx/mfes": "0.7.1",
+    "esbuild": "0.28.2",
+    "vite": "^6.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "frontx",
+    "microfrontend",
+    "shared-dependencies",
+    "vite-plugin",
+    "typescript"
+  ],
+  "author": "Cyber Fabric",
+  "license": "Apache-2.0"
+}

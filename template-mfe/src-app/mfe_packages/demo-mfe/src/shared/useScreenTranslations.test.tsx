@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useScreenTranslations } from './useScreenTranslations';
+import { FRONTX_SHARED_PROPERTY_LANGUAGE } from '../shellContract';
 
 function screenTranslationsTestBridge(
   overrides: Partial<Pick<ChildMfeBridge, 'getProperty' | 'subscribeToProperty'>>

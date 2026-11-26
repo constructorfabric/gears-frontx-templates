@@ -65,7 +65,7 @@ export const SCANNED_EXTENSIONS = new Set(['.css', '.scss', '.ts', '.tsx', '.js'
  * in build output always has a source-tree twin, and node_modules is not
  * ours to lint.
  */
-export const SKIPPED_DIRS = new Set(['node_modules', 'dist', 'dist-lib', 'coverage', '.vite', '.__mf__temp', '.git']);
+export const SKIPPED_DIRS = new Set(['node_modules', 'dist', 'coverage', '.vite', '.__mf__temp', '.git']);
 
 /**
  * Scans one file's content for forbidden token consumptions.

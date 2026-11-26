@@ -75,7 +75,9 @@ module.exports = {
     {
       name: 'no-circular',
       severity: 'error',
-      from: { path: '^(?!.*node_modules)' },
+      // Test fixtures are deliberate input to the code under test, and some of
+      // them are cycles on purpose (`unit-producer`'s `esm-cycle`).
+      from: { path: '^(?!.*node_modules)', pathNot: '(^|/)__tests__/fixtures/' },
       to: { circular: true, viaOnly: { dependencyTypesNot: TYPE_ONLY_DEPENDENCY_TYPES } },
       comment:
         'Circular dependencies create tight coupling and make code harder to reason about.',

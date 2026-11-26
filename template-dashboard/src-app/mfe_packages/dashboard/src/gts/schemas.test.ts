@@ -18,8 +18,7 @@ function plugin() {
   for (const schema of BUNDLE_SCHEMAS) gts.registerSchema(schema);
   gts.register({
     id: TEST_MANIFEST,
-    name: 'test',
-    metaData: { name: 'test', type: 'app', buildInfo: { buildVersion: '1', buildName: 'test' }, remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' }, publicPath: '/' },
+    metaData: { publicPath: '/' },
     shared: [],
   });
   gts.register({
@@ -29,7 +28,7 @@ function plugin() {
     domainActions: [],
     manifest: TEST_MANIFEST,
     exposedModule: './test',
-    exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+    exposeAssets: { js: { sync: ['test.js'] }, css: { sync: [], async: [] } },
   });
   gts.registerSchema({
     $id: `gts://${TEST_WIDGET}`,

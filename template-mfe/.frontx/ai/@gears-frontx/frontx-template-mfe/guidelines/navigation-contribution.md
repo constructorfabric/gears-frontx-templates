@@ -82,10 +82,17 @@ navigation. An extension without a `route` of its own, or mounted into a
 domain without one, has no router access: `ExtensionRouter` and `navigation()`
 refuse with an error there.
 
-Every MFE lists `@gears-frontx/routing` in its shared dependencies in
-`vite.config.ts`, so its runtime evaluates one copy of it, never shared across
-MFEs. An MFE that renders `<ExtensionRouter>` or calls `navigation()` lists
-`@gears-frontx/routing-tanstack` there too.
+Every MFE declares `@gears-frontx/routing` in its `package.json`; there is no
+shared-dependencies list in `vite.config.ts` to keep in sync. Sharing follows
+the build graph: `vitePluginMfeGts()` shares every bare package the MFE's code
+imports, whichever `package.json` section declares it, together with the
+runtime dependencies of `dependencies` and non-optional `peerDependencies`.
+In `mfe.json`, `share.exclude` is the only opt-out (the plugin's `include`
+option also narrows the set); it keeps a package in the MFE's own chunks. A shared package arrives as content-addressed units, and
+every MFE runtime still evaluates its own copy, so routing state is never
+shared across MFEs. An MFE that renders `<ExtensionRouter>` or calls
+`navigation()` declares `@gears-frontx/routing-tanstack` in `package.json`
+the same way.
 
 An MFE is tested inside a shell — a simple dummy shell, for instance the template shell via `npm run dev:all`; it has no standalone preview.
 
@@ -103,7 +110,8 @@ involvement.
 
 ## Where declarations travel
 
-`mfe.json` is read at build time by the shell's `frontxMfGts()` plugin, merged
+`mfe.json` is read at build time by the package's `vitePluginMfeGts()` plugin
+(`@gears-frontx/vite-plugin-mfe-gts`), merged
 into `dist/mfe-manifest.json`, aggregated into
 `public/generated-mfe-manifests.json`, and registered by the host at runtime.
 Nothing else reads it — a change to `mfe.json` takes effect after the package

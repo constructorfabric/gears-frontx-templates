@@ -1,7 +1,7 @@
 /**
  * Vitest project for this repo's root `scripts/` toolchain - the guards that
  * validate the templates (manifest + content self-containment, pin-drift,
- * lockfile self-links, token format, version-bump-on-change) - plus the
+ * token format, version-bump-on-change) - plus the
  * design-guardrails template's own tests in `template-design-guardrails/tests/`
  * (the design skill map and the skill's `check-design-md.mjs` script). That
  * template's root has no Vitest config, so the root project runs

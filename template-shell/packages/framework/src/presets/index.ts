@@ -9,20 +9,16 @@
 
 import type { FrontXPlugin, Presets } from '../types';
 import { themes } from '../plugins/themes';
-import { layout } from '../plugins/layout';
 import { i18n } from '../plugins/i18n';
 import { effects } from '../plugins/effects';
 import { queryCache } from '../plugins/queryCache';
 import { mock } from '../plugins/mock';
-import { microfrontends, type MicrofrontendsConfig } from '../plugins/microfrontends';
 import { auth, type AuthPluginConfig } from '../plugins/auth';
 
 /**
  * Full preset configuration.
  */
 export interface FullPresetConfig {
-  /** Configuration for microfrontends plugin */
-  microfrontends?: MicrofrontendsConfig;
   /** Optional auth plugin config. When provided, `auth()` is added to the preset. */
   auth?: AuthPluginConfig;
 }
@@ -33,24 +29,30 @@ export interface FullPresetConfig {
  *
  * Includes:
  * - themes (theme registry, changeTheme action)
- * - layout (all layout domain slices and effects)
  * - i18n (i18n registry, setLanguage action)
  * - effects (effect coordination)
  * - mock (mock mode control for API services)
- * - microfrontends (MFE registry, actions, effects)
+ * - auth (only when `config.auth` is provided)
+ *
+ * The MFE host plugin is not part of the preset: it lives on
+ * `@gears-frontx/framework/mfe`, so an app that hosts MFEs adds
+ * `microfrontends()` itself and an app that hosts none never reaches the MFE
+ * runtime through this preset. Layout state (header, menu, sidebar, popup,
+ * overlay) is the application's own business, so the preset composes no
+ * layout plugin; the application adds its own.
  *
  * @param config - Optional preset configuration
  *
  * @example
  * ```typescript
- * import { MfeHandlerMF } from '@gears-frontx/mfes';
- * import { createFrontX, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/framework';
- * import { gtsPlugin } from '@gears-frontx/gts-plugin';
+ * import { createFrontX, full } from '@gears-frontx/framework';
+ * import { microfrontends, MfeHandlerMF } from '@gears-frontx/framework/mfe';
  *
+ * // `myTypeSystem` implements the TypeSystemPlugin contract; `MY_ENTRY_TYPE`
+ * // is the host's own MFE entry type ID.
  * const app = createFrontX()
- *   .use(full({
- *     microfrontends: { typeSystem: gtsPlugin, mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)] }
- *   }))
+ *   .useAll(full())
+ *   .use(microfrontends({ typeSystem: myTypeSystem, mfeHandlers: [new MfeHandlerMF(MY_ENTRY_TYPE)] }))
  *   .build();
  * ```
  */
@@ -60,14 +62,10 @@ export function full(config?: FullPresetConfig): FrontXPlugin[] {
   const plugins: FrontXPlugin[] = [
     effects(),
     themes(),
-    layout(),
     i18n(),
     queryCache(),
     mock(),
   ];
-  if (config?.microfrontends) {
-    plugins.push(microfrontends(config.microfrontends));
-  }
   if (config?.auth) {
     plugins.push(auth(config.auth));
   }
@@ -77,7 +75,7 @@ export function full(config?: FullPresetConfig): FrontXPlugin[] {
 
 /**
  * Minimal preset - Themes only.
- * For users who want basic FrontX patterns without full layout management.
+ * For users who want basic FrontX patterns only.
  *
  * Includes:
  * - themes (theme registry, changeTheme action)

@@ -105,7 +105,7 @@ code.
 # 1. Install dependencies
 npm install
 
-# 2. Build the solution packages (the library builds first, via prebuild:packages)
+# 2. Build the solution packages
 npm run build:packages
 
 # 3. Start everything — host + any MFE dev servers present
@@ -150,7 +150,7 @@ my-app/
 ├── packages/                # Solution packages: react, framework, state, i18n, studio, auth
 ├── public/                  # Static assets + generated-mfe-manifests.json
 ├── scripts/                 # dev-all, build-mfes, manifest generation, dist layout
-├── vite.config.ts           # Host Vite + Module Federation config
+├── vite.config.ts           # Host Vite config (`vitePluginShell`)
 └── .frontx/                 # Template provenance (managed by the frontx CLI)
 ```
 
@@ -180,15 +180,16 @@ per-test and hook timeout for every test lane; unset or empty keeps 30000 ms.
 
 ```text
 dist/
-├── index.html                    # the shell
+├── index.html                    # the shell, with its import map and boot preloads
 ├── assets/                       # the shell's modules and styles, hashed names
+├── shared/                       # the shell's shared units: <package>@<version>/<name>.<content hash>.js
 ├── generated-mfe-manifests.json  # every screen, addressed as mfe/<package>/
 └── mfe/<package>/                # one folder per screen package
     ├── remoteEntry.js
     ├── mf-manifest.json
     ├── assets/                   # hashed names
     ├── labels/                   # optional per-language menu labels
-    └── shared/                   # shared dependencies, names without a hash
+    └── shared/                   # the screen's shared units, content hash in the name
 ```
 
 A screen package's preview page, type bundles, build statistics and enriched
@@ -214,21 +215,28 @@ folder's `index.html` directly with no rewrite. If the host answers unknown
 paths with `index.html` (a single-page fallback), use it only for paths below
 the shell's folder and answer them with a redirect to the folder that keeps the
 query string, not with the file itself: the shell's relative addresses resolve
-against the requested path. Never answer a missing file under `assets/` or
-`mfe/` with `index.html`: a missing module has to stay a 404, or the browser
-reports a wrong content type in place of the missing file.
+against the requested path. Never answer a missing file under `assets/`,
+`shared/` or `mfe/` with `index.html`: a missing module has to stay a 404, or the browser
+reports a wrong content type in place of the missing file. Under `shared/` the
+rule is a contract: the shell's cache fill trusts the content hash a unit
+declares and computes none, so an unknown path there must return 404, never
+`index.html`.
 
 **Cache headers.** Only the hashed build output may be cached for long:
 
 | Files | `Cache-Control` |
 |-------|-----------------|
-| `assets/*` and `mfe/*/assets/*` (names carry a content hash) | `public, max-age=31536000, immutable` |
-| everything else: `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, `mfe/*/shared/*`, files copied from a `public/` folder | `no-cache` (revalidate on every request) |
+| `assets/*` and `mfe/*/assets/*`, and the files under `shared/` and `mfe/*/shared/` whose name ends in a content hash (`<name>.<64 hex characters>.js`) | `public, max-age=31536000, immutable` |
+| everything else: `index.html`, `generated-mfe-manifests.json`, `mfe/*/remoteEntry.js`, `mfe/*/mf-manifest.json`, a file under `shared/` or `mfe/*/shared/` without a hash in its name, files copied from a `public/` folder | `no-cache` (revalidate on every request) |
 
 A file without a hash in its name changes content under the same name on every
 release, so a long cache on it would keep serving the previous release. Keep
 files of your own out of a `public/assets/` folder, which would land under a
 path cached as hashed.
+
+**Protocol.** HTTP/2 is required for production: serve `dist/` over it. The
+shell boots from many small shared units requested in one parallel batch;
+HTTP/1.1 queues requests per connection, so boot is slower.
 
 **When a screen does not load.** A screen whose files fail to load shows an
 error state with a Retry in its place, and navigation and the other screens
@@ -240,6 +248,71 @@ same state, and its Retry reloads the page.
 A screen that reads the shell's own files by an absolute address (the
 `demo-mfe` widgets host fetches `/generated-mfe-manifests.json`) works only at
 the root of a domain until screens can learn the shell's address.
+
+## Tuning the boot for slow connections
+
+The build shares the packages your shell imports between the shell and its
+screens (`vitePluginShell` in `vite.config.ts`). The shell fetches the shared
+files its boot evaluates straight away; what only a lazily loaded chunk imports
+is not fetched ahead of the boot. Three levers let a company shorten the boot
+further, most useful for users on a high-latency HTTP/1.1 connection, where
+every extra request costs a round trip.
+
+**`include`: a lighter shell.** `include` names the packages to share; the
+packages they depend on at runtime are shared with them, and the build report
+lists the whole set. Leave it unset to share every package the build graph
+imports (the default), or name the few packages you want shared so the shell
+loads fewer shared files. `include` and `exclude` are mutually exclusive:
+setting both fails the build, so replace the `exclude` list this template
+ships in `vite.config.ts` when you switch to `include`.
+
+```ts
+vitePluginShell({ include: ['react', 'react-dom'] });
+```
+
+The cache fill starts when the fill chunk has loaded, which is after the shell
+entry has run (document order) and after the MFE handler has published the realm
+cache; it does not wait for window load. It fetches at low priority with cache
+`'force-cache'`, so the boot's HTTP-cache copies serve it when `dist/` is served
+with cacheable headers. Fill and MFE loads join each other's in-flight entries,
+whichever publishes first, so a unit is downloaded once, and an MFE waits only
+for the units it needs, never the whole fill.
+
+**`include: []`: a fully native shell.** An empty list shares nothing with the
+shell. The shell then boots from its own `dist/` files only, like any Vite
+application, with no import map and no cache fill, and the screens
+still share their dependencies among themselves.
+
+```ts
+vitePluginShell({ include: [] });
+```
+
+**`load_ext` in an extension's init actions: early loading.** An extension
+declares lifecycle hooks, and the `init` stage runs when the shell registers the
+extension. An `init` actions chain that runs `load_ext` with an extension as the
+subject (itself, or another extension) loads that extension and its shared
+files before anyone opens it, so the first open finds them in the cache. An
+`init` chain that runs `mount_ext` on itself mounts the extension at startup.
+
+```json
+{
+  "stage": "gts.frontx.mfes.lifecycle.stage.v1~frontx.mfes.lifecycle.init.v1",
+  "actions_chain": {
+    "action": {
+      "type": "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~",
+      "target": "<domain id>",
+      "payload": { "subject": "<extension id>" }
+    }
+  }
+}
+```
+
+**High-latency HTTP/1.1.** A browser opens a handful of connections per origin
+on HTTP/1.1, so a long list of shared files queues behind them. Production
+serves the build over HTTP/2; on an HTTP/1.1 connection, combine the levers: shrink the
+shared set with `include` so the shell has fewer files to fetch, and load the
+startup extensions early with `load_ext` so their files are fetched while the
+shell renders instead of when the user opens them.
 
 ## Tech stack
 

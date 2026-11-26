@@ -11,7 +11,7 @@
 // @cpt-dod:cpt-frontx-dod-react-bindings-mfe-hooks:p1
 
 import { createContext, useContext } from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/framework';
+import type { ChildMfeBridge } from '@gears-frontx/framework/mfe';
 
 // ============================================================================
 // Context Value Types

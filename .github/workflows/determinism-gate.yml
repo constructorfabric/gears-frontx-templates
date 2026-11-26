@@ -1,0 +1,93 @@
+name: Determinism Gate
+
+# The two-tier determinism gate: a no-change rebuild must emit
+# byte-identical output. `scripts/determinism-gate.mjs` builds the shell and
+# the MFE fixtures, hashes every emitted file, and compares the hashed trees
+# of two builds per comparison; a difference fails naming the file and the
+# stage.
+#
+# - `fix` tier: cold vs warm and serial vs parallel, on the shell and one
+#   MFE. Runs on pull requests.
+# - `full` tier: all four comparisons (cold vs warm, serial vs parallel,
+#   two checkout folders, npm install vs workspace link) on the shell and
+#   every MFE. Runs on `workflow_dispatch` and on pushes.
+#
+# The gate needs both templates installed; it builds their packages itself
+# and uses no browser. The JSON result and every step log are uploaded.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'template-shell/**'
+      - 'template-mfe/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/determinism-gate.yml'
+  push:
+    branches: [ main, feature/** ]
+    paths:
+      - 'template-shell/**'
+      - 'template-mfe/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/determinism-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  determinism-gate:
+    name: Determinism Gate
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '25.x'
+        cache: 'npm'
+
+    - name: Enable Corepack
+      run: corepack enable
+
+    - name: Install the root workspace
+      run: npm ci
+
+    - name: Install template-shell
+      run: npm ci
+      working-directory: template-shell
+
+    - name: Install template-mfe
+      run: npm ci
+      working-directory: template-mfe
+
+    - name: Select tier
+      id: tier
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "tier=fix" >> "$GITHUB_OUTPUT"
+        else
+          echo "tier=full" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run determinism gate
+      run: node scripts/determinism-gate.mjs --tier=${{ steps.tier.outputs.tier }}
+
+    - name: Upload the determinism-gate result and step logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: determinism-gate-${{ steps.tier.outputs.tier }}-${{ github.run_id }}
+        path: |
+          e2e/results/determinism-gate-*.json
+          e2e/results/logs/determinism-*.log
+        if-no-files-found: warn

@@ -10,7 +10,7 @@
 import { useSyncExternalStore, useCallback, useRef } from 'react';
 import { useFrontX } from '../../FrontXContext';
 import { resolveMfeRegistry } from './useMfeRegistry';
-import type { Extension } from '@gears-frontx/framework';
+import type { Extension } from '@gears-frontx/framework/mfe';
 
 // ============================================================================
 // Hook Implementation
@@ -28,7 +28,7 @@ import type { Extension } from '@gears-frontx/framework';
  * @example
  * ```tsx
  * function SidebarExtensions() {
- *   const extensions = useDomainExtensions('gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1');
+ *   const extensions = useDomainExtensions(SIDEBAR_DOMAIN_ID);
  *
  *   return (
  *     <div>

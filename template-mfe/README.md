@@ -35,20 +35,22 @@ This makes local edits to `template-shell/packages/*` (`react`, `auth`,
 `framework`, `i18n`, `state`) visible immediately, since the MFE packages
 import those names directly and the override resolves straight to that
 source. It does the same for direct imports of `packages/api`,
-`packages/gts-plugin`, and `packages/mfes`. **It does not** reach edits to
-those same three packages through `@gears-frontx/frontx-template-shell`'s own
-pre-built `dist-lib/build/mf-gts` — `template-shell/package.json` pins
+`packages/gts-plugin`, and `packages/mfes`. **It does not** reach the
+`@gears-frontx/vite-plugin-mfe-gts` and `@gears-frontx/unit-producer` that
+`template-shell` builds with: `template-shell/package.json` pins
 `gts-plugin`/`mfes`/`api` to their own published versions with no local
-override of its own, so whatever `frontxMfGts` bundles at `template-shell`'s
-build time reflects those registry versions, not edits made here, until
-`template-shell` is rebuilt. The same not-part-of-the-template status applies
+override of its own, so whatever `vitePluginMfeGts` produces at
+`template-shell`'s build time reflects those registry versions, not edits made
+here, until `template-shell` is rebuilt. An MFE declares the shell contract
+ids it uses itself, like an independent repository, and never imports shell
+code. The same not-part-of-the-template status applies
 to `frontx-template.json` and this README — a template directory holds
 shipped payload *and* authoring machinery, and the manifest's boundaries are
 what separate the two.
 
 Bootstrap order for working in this monorepo. Installing the harness alone is
-**not** sufficient: an MFE's `vite.config.ts` loads `frontxMfGts`, which reaches
-into the shell's own subpackages, and each of those resolves through a `dist/`
+**not** sufficient: an MFE's `vite.config.ts` loads `vitePluginMfeGts`, which
+reaches into shared-package code, and each of those resolves through a `dist/`
 that does not exist until built.
 
 ```bash
@@ -56,8 +58,7 @@ that does not exist until built.
 npm ci && npm run build:packages
 
 # 2. the shell, whole — `build` composes the steps in the order they depend on
-#    each other, publishable package first so the subpackages can type-check
-#    against its declarations
+#    each other
 cd template-shell && npm install && npm run build
 
 # 3. the MFEs
@@ -65,26 +66,15 @@ cd ../template-mfe && npm install
 ```
 
 Use `template-shell`'s own `npm run build` to build the whole shell: it
-sequences the publishable package, the subpackages, the MFEs, and the manifest
-step. Calling `npm run build:packages` by hand is safe too: its
-`prebuild:packages` runs `build:package` first, so the subpackages type-check
-against declarations that exist. `build:package` on its own builds only the
-publishable package, not the subpackages.
-
-If step 2 fails on `@gears-frontx/framework` with `TS2307: Cannot find module
-'@gears-frontx/frontx-template-shell'`, the shell's self-link is missing from its
-own `node_modules`. An incremental `npm install` over an existing tree does not
-always restore it, and Node hides the problem — it resolves the package through
-the `exports` self-reference, so only the type build notices. `rm -rf
-template-shell/node_modules && npm install` recreates the link.
+sequences the subpackages, the MFEs, and the manifest step. Calling
+`npm run build:packages` by hand is safe too: it builds only the subpackages.
 
 For a seeded project (not this monorepo), the shell arrives as source: its
-subpackages (`@gears-frontx/react`, `@gears-frontx/frontx-template-shell` and the
-rest) carry no `dist/` or `dist-lib/` until they are built, so run
-`npm run build:packages` once before checking an MFE package on its own
-(`type-check`, `test:unit` or `build` of that workspace). `npm run build:mfes`
-and `npm run dev:all` build those packages themselves, so they need no separate
-step.
+subpackages (`@gears-frontx/react` and the rest) carry no `dist/` until they
+are built, so run `npm run build:packages` once before checking an MFE package
+on its own (`type-check`, `test:unit` or `build` of that workspace).
+`npm run build:mfes` and `npm run dev:all` build those packages themselves, so
+they need no separate step.
 
 ```bash
 frontx seed frontx-template-shell ./my-app
@@ -99,8 +89,8 @@ npm run build:packages      # once, before a scoped MFE package check
 
 - `src-app/mfe_packages/*` — one directory per MFE package, each with its own
   `package.json` (port in `dev`/`preview` via `--port <N>`), `mfe.json` manifest,
-  and `vite.config.ts` wired for Module Federation + the shell's `frontxMfGts`
-  build plugin. See the shell's `mfe-package-contract` AI guideline for the full
+  and `vite.config.ts` wired for Module Federation + `vitePluginMfeGts`
+  (from `@gears-frontx/vite-plugin-mfe-gts`). See the shell's `mfe-package-contract` AI guideline for the full
   contract every package here conforms to.
 - An AI-extension bundle (`.frontx/ai/@gears-frontx/frontx-template-mfe/`) with
   the `add-mfe-package` skill, its workflow, a GTS ID conventions guideline, and

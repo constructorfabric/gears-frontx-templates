@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 
 /** Records `createRoot(container)` calls: each container gets its own Root. */
 const createRootSpy = vi.fn();
@@ -50,37 +50,48 @@ vi.mock('@gears-frontx/react', () => {
     },
   };
   return {
-    ActionHandler: class ActionHandler {
-      static {
-        void 0;
-      }
-    },
-    ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
-      constructor(private readonly app: { mfeRegistry: unknown }) {
-        themeAwareConstructSpy();
-      }
-      mount(container: Element | ShadowRoot): void {
-        void this.app.mfeRegistry;
-        createRootSpy(container);
-        rootRenderSpy();
-      }
-      async unmount(): Promise<void> {
-        rootUnmountSpy();
-      }
-    },
     createFrontX: () => {
       createFrontXSpy();
       return fakeAppBuilder;
     },
-    microfrontends: () => ({}),
     effects: () => ({}),
     queryCacheShared: () => ({}),
     mock: () => ({}),
-    gtsPlugin: {},
-    FRONTX_ACTION_MOUNT_EXT: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
-    FRONTX_SCREEN_DOMAIN: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
   };
 });
+
+vi.mock('@gears-frontx/react/mfe', () => ({
+  microfrontends: () => ({}),
+  ActionHandler: class ActionHandler {
+    static {
+      void 0;
+    }
+  },
+  ThemeAwareReactLifecycle: class ThemeAwareReactLifecycle {
+    constructor(private readonly app: { mfeRegistry: unknown }) {
+      themeAwareConstructSpy();
+    }
+    mount(container: Element | ShadowRoot): void {
+      void this.app.mfeRegistry;
+      createRootSpy(container);
+      rootRenderSpy();
+    }
+    async unmount(): Promise<void> {
+      rootUnmountSpy();
+    }
+  },
+}));
+
+vi.mock('./shellContract', () => ({
+  FRONTX_SCREEN_DOMAIN: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1',
+}));
+
+vi.mock('@gears-frontx/gts-plugin', () => ({
+  // Owners register their mfe.json schemas on this plugin at mount; the
+  // lifecycle reads `registerSchema` and the mount action ID, nothing else.
+  gtsPlugin: { registerSchema: vi.fn() },
+  FRONTX_ACTION_MOUNT_EXT: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~',
+}));
 
 vi.mock('@gears-frontx/routing-tanstack', () => {
   const ownSubroute = {

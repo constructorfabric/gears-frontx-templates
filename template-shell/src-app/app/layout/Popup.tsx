@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { useAppSelector, type PopupSliceState } from '@gears-frontx/react';
+import { useAppSelector } from '@gears-frontx/react';
+import type { PopupSliceState } from './state';
 import styles from './Popup.module.css';
 
 export interface PopupProps {

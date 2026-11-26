@@ -9,9 +9,14 @@
 import type React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from '@testing-library/react';
-import type { ChildMfeBridge, FrontXApp } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { ChildMfeBridge } from '@gears-frontx/framework/mfe';
+import { createFakeTypeSystem } from './fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 let fw: typeof import('@gears-frontx/framework');
+let fwMfe: typeof import('@gears-frontx/framework/mfe');
 let app: FrontXApp | undefined;
 let ThemeAwareReactLifecycle: typeof import('../ThemeAwareReactLifecycle')['ThemeAwareReactLifecycle'];
 let ProbeLifecycle: ReturnType<typeof defineProbeLifecycle>;
@@ -28,6 +33,7 @@ beforeEach(async () => {
   // A runtime builds one app, so each case loads its own module copy.
   vi.resetModules();
   fw = await import('@gears-frontx/framework');
+  fwMfe = await import('@gears-frontx/framework/mfe');
   ({ ThemeAwareReactLifecycle } = await import('../ThemeAwareReactLifecycle'));
   ProbeLifecycle = defineProbeLifecycle();
 });
@@ -78,8 +84,8 @@ describe('ThemeAwareReactLifecycle.mount registry materialization', () => {
   });
 
   it('builds the runtime registry exactly once, inside mount, through the real lazy accessor', async () => {
-    const buildSpy = vi.spyOn(fw.mfeRegistryFactory, 'build');
-    app = fw.createFrontX().use(fw.microfrontends({ typeSystem: fw.gtsPlugin })).build();
+    const buildSpy = vi.spyOn(fwMfe.mfeRegistryFactory, 'build');
+    app = fw.createFrontX().use(fwMfe.microfrontends({ typeSystem })).build();
     const lifecycle = new ProbeLifecycle(app);
     expect(buildSpy).not.toHaveBeenCalled();
 

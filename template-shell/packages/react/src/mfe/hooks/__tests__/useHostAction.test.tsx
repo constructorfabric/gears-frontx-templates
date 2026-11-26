@@ -22,7 +22,7 @@ function renderWithBridge(executeActionsChain: (...args: unknown[]) => unknown) 
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(MfeContext.Provider, { value }, children);
 
-  return renderHook(() => useHostAction('gts.frontx.mfes.comm.action.v1~test.action.v1'), { wrapper });
+  return renderHook(() => useHostAction('test.action~test.action.v1'), { wrapper });
 }
 
 describe('useHostAction', () => {
@@ -38,7 +38,7 @@ describe('useHostAction', () => {
 
     expect(executeActionsChain).toHaveBeenCalledWith({
       action: {
-        type: 'gts.frontx.mfes.comm.action.v1~test.action.v1',
+        type: 'test.action~test.action.v1',
         target: 'test.domain',
         payload: { a: 1 },
       },

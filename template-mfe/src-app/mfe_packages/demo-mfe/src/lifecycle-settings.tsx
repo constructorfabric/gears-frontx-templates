@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { KitThemedLifecycle } from './shared/KitThemedLifecycle';
 import { mfeApp } from './init';
 import { SettingsScreen } from './screens/settings/SettingsScreen';

@@ -1,0 +1,317 @@
+name: MFE Build Gates
+
+# Build-level gates for the MFE shared-dependency contract:
+# a build-time list-completeness gate over every emitted fetch list
+# (every chunk reachable from an entry must be on its list), an
+# evaluation-scope gate over each fixture's emitted per-entry lists,
+# and a size metric over the page's unique download bytes (shell + all
+# fixture MFEs, deduped by content identity) vs the committed old-rule
+# baseline, plus a report-only per-extension evaluation number and a
+# version-drift report. They compose
+# template-mfe onto template-shell exactly the way `frontx add` does — the
+# overlay cannot be built in place — then build the shell and each MFE
+# fixture with the real plugins. A second job runs the browser suite and
+# the timing gate on built previews; a third runs the build plugins' own
+# unit suites.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'template-shell/**'
+      - 'template-mfe/**'
+      - 'scripts/**'
+      - 'e2e/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mfe-build-gates.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'template-shell/**'
+      - 'template-mfe/**'
+      - 'scripts/**'
+      - 'e2e/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mfe-build-gates.yml'
+  # Same fork-trigger convention as main.yml / template-drift.yml.
+  workflow_dispatch:
+
+# Every job here only reads the repo: nothing pushes, comments, or releases.
+permissions:
+  contents: read
+
+jobs:
+  mfe-build-gates:
+    name: MFE Build Gates
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '25.x'
+        cache: 'npm'
+
+    - name: Enable Corepack
+      run: corepack enable
+
+    # Compose the overlay onto the shell the way `frontx add` does (same
+    # mechanism as main.yml's "Validate shell + overlay composition"), into a
+    # copy placed OUTSIDE the checkout so no ancestor node_modules can supply
+    # what the composed install misses. template-mfe's exclusiveSubtrees come
+    # from its own frontx-template.json, not a hardcoded list.
+    - name: Compose template-mfe onto template-shell
+      run: |
+        set -euo pipefail
+        shell=template-shell
+        overlay=template-mfe
+
+        subtrees="$(node -e '
+          const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+          const s = m.ownershipBoundaries && m.ownershipBoundaries.exclusiveSubtrees;
+          if (!s || !s.length) { console.error("no exclusiveSubtrees in " + process.argv[1]); process.exit(1); }
+          console.log(s.join("\n"));
+        ' "$overlay/frontx-template.json")"
+
+        while read -r subtree; do
+          [ -n "$subtree" ] || continue
+          if [ -d "$overlay/$subtree" ]; then
+            mkdir -p "$shell/${subtree%/}"
+            cp -R "$overlay/$subtree/." "$shell/${subtree%/}/"
+          elif [ -f "$overlay/$subtree" ]; then
+            mkdir -p "$shell/$(dirname "$subtree")"
+            cp "$overlay/$subtree" "$shell/$subtree"
+          else
+            echo "::error::$overlay declares exclusiveSubtree '$subtree', which does not exist"
+            exit 1
+          fi
+        done <<< "$subtrees"
+
+        composed="$RUNNER_TEMP/composed-shell"
+        rm -rf "$composed" && mkdir -p "$composed"
+        tar -C "$shell" --exclude=node_modules -cf - . | tar -C "$composed" -xf -
+
+        # The overlay's gate inputs the composed copy does not own:
+        # size-baseline.json and size-gate-exceptions.json live at the
+        # template-mfe root (outside exclusiveSubtrees), and the gate scripts
+        # live at the repo root.
+        mkdir -p "$composed/template-mfe"
+        cp "$overlay/size-baseline.json" "$overlay/size-gate-exceptions.json" "$composed/template-mfe/"
+        mkdir -p "$composed/scripts"
+        cp scripts/evaluation-scope-check.mjs scripts/size-metric-check.mjs scripts/list-completeness-check.mjs scripts/shared-unit-reach.mjs "$composed/scripts/"
+
+        # Point the gate scripts' template-mfe/ expectations at the composed
+        # layout: mfe_packages land under src-app/, so carry them under
+        # template-mfe/src-app/ inside the composed copy for the gates while
+        # the real composed paths stay canonical.
+        mkdir -p "$composed/template-mfe/src-app"
+        ln -s ../../src-app/mfe_packages "$composed/template-mfe/src-app/mfe_packages"
+
+        echo "COMPOSED_DIR=$composed" >> "$GITHUB_ENV"
+
+    # npm install, not npm ci: the shell's committed lockfile is generated
+    # without the overlay, so it has no mfe_packages entries and `ci` would
+    # fail as out of sync (same reason as main.yml).
+    - name: Install composed workspace
+      run: |
+        set -euo pipefail
+        cd "$COMPOSED_DIR"
+        npm install
+
+    # FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1: every fixture ships with
+    # "templateExample": true, so without the opt-in the scanners skip them
+    # and the gates would measure nothing.
+    - name: Build template packages, the shell, and MFE fixtures
+      env:
+        FRONTX_INCLUDE_TEMPLATE_EXAMPLES: '1'
+      run: |
+        set -euo pipefail
+        cd "$COMPOSED_DIR"
+        npm run build:packages
+        for dir in src-app/mfe_packages/*/; do
+          if [ -f "$dir/mfe.json" ]; then
+            echo "==> vite build $dir"
+            (cd "$dir" && npx vite build)
+          fi
+        done
+        # The shell dist is a size-metric input: the page's unique download
+        # bytes include the shell bundle (boot chunk + its units).
+        # The shell fetches public/generated-menu-icons.json at run time and
+        # only this generator writes it; a bare `vite build` does not run it.
+        npx tsx scripts/generate-menu-icons.ts
+        echo "==> vite build (shell)"
+        npx vite build
+
+    - name: Evaluation-scope gate
+      run: |
+        cd "$COMPOSED_DIR"
+        node scripts/evaluation-scope-check.mjs
+
+    - name: List-completeness gate
+      run: |
+        cd "$COMPOSED_DIR"
+        node scripts/list-completeness-check.mjs --shell-dist dist
+
+    - name: Size metric
+      run: |
+        cd "$COMPOSED_DIR"
+        node scripts/size-metric-check.mjs --shell-dist dist
+
+  mfe-browser-gates:
+    name: MFE Browser Gates (Playwright suite + load-time gate)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '25.x'
+        cache: 'npm'
+
+    - name: Enable Corepack
+      run: corepack enable
+
+    - name: Install e2e dependencies
+      run: npm ci
+
+    - name: Install Playwright browser
+      run: npx playwright install --with-deps chromium
+
+    - name: Build template-shell (packages + app)
+      env:
+        FRONTX_INCLUDE_TEMPLATE_EXAMPLES: '1'
+      run: |
+        set -euo pipefail
+        cd template-shell
+        npm ci
+        npm run build:packages
+        # The shell fetches public/generated-menu-icons.json at run time and
+        # only this generator writes it; a bare `vite build` does not run it.
+        npx tsx scripts/generate-menu-icons.ts
+        npx vite build
+
+    # The fixtures' Vite configs load vite-plugin-mfe-gts from its built
+    # `dist/`, which is not committed, so the plugin is built first.
+    - name: Build MFE fixtures
+      env:
+        FRONTX_INCLUDE_TEMPLATE_EXAMPLES: '1'
+      run: |
+        set -euo pipefail
+        cd template-mfe
+        npm ci
+        npm run build --workspace=@gears-frontx/vite-plugin-mfe-gts
+        for dir in src-app/mfe_packages/*/; do
+          if [ -f "$dir/mfe.json" ]; then
+            echo "==> vite build $dir"
+            (cd "$dir" && npx vite build)
+          fi
+        done
+
+    # The timing gate compares MFE load-to-mount against the old rule built
+    # from the same inputs — a checkout of templates main eb10640, installed
+    # and built exactly as the old rule shipped it. `actions/checkout` reads
+    # only a full 40-character SHA as a commit.
+    - name: Checkout the old-rule baseline (main eb10640)
+      uses: actions/checkout@v5
+      with:
+        ref: eb10640fec9ffe562511b1c0e7f810a4eee3af6f
+        path: old-rule
+        persist-credentials: false
+
+    - name: Build the old-rule shell and fixtures
+      run: |
+        set -euo pipefail
+        cd old-rule/template-shell
+        npm install
+        npm run build:packages
+        FRONTX_INCLUDE_TEMPLATE_EXAMPLES=1 npx vite build
+        # The harness is installed once, at its root, as that tree's README
+        # bootstrap does. An `npm install` run from inside one workspace member
+        # reaches the same root, but on some npm versions it leaves out
+        # the `file:` link to the shell that each MFE's vite.config.ts imports.
+        (cd ../template-mfe && npm install)
+        for dir in ../template-mfe/src-app/mfe_packages/*/; do
+          if [ -f "$dir/mfe.json" ]; then
+            (cd "$dir" && npx vite build)
+          fi
+        done
+
+    - name: Record old-rule timing baseline
+      env:
+        E2E_VARIANT: old
+        E2E_SERVE_ROOT: ${{ github.workspace }}/old-rule
+      run: npx playwright test e2e/load-time.spec.ts
+
+    - name: Browser suite + gates (round-count, timing)
+      run: npx playwright test
+
+    - name: Upload the browser-gate results and failure traces
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: browser-gates-${{ github.run_id }}
+        path: |
+          e2e/results/*.json
+          test-results/
+        if-no-files-found: warn
+
+  # The build plugins' own unit suites. Template Validate runs the shell's
+  # workspace suites inside its composed copy, but not template-mfe's
+  # packages, so each plugin package runs its own `npm test` here.
+  plugin-package-tests:
+    name: Plugin package tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '25.x'
+        cache: 'npm'
+        cache-dependency-path: |
+          template-*/package-lock.json
+
+    - name: Enable Corepack
+      run: corepack enable
+
+    - name: Install and build template-shell packages
+      run: |
+        set -euo pipefail
+        cd template-shell
+        npm ci
+        npm run build:packages
+
+    - name: unit-producer tests
+      run: npm test
+      working-directory: template-shell/packages/unit-producer
+
+    - name: vite-plugin-shell tests
+      run: npm test
+      working-directory: template-shell/packages/vite-plugin-shell
+
+    - name: Install template-mfe
+      run: npm ci
+      working-directory: template-mfe
+
+    - name: vite-plugin-mfe-gts tests
+      run: npm test
+      working-directory: template-mfe/packages/vite-plugin-mfe-gts

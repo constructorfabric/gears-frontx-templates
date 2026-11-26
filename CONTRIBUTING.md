@@ -59,17 +59,11 @@ Two ways to lose the links without meaning to:
 - **any `npm install` inside the template** (say, while adding a dependency) reifies the tree from the lockfile and silently puts the registry tarballs back. Relink afterwards.
 - an ecosystem rebuild that removes `packages/*/dist` (`npm run clean:artifacts` in the `gears-frontx` checkout) leaves the links pointing at nothing. Rebuilding restores them; the link script refuses to run at all if the build is missing.
 
-### Why Template Drift CI installs without a lockfile
+### Why Template Drift CI uses `npm install`
 
-[`template-drift.yml`](.github/workflows/template-drift.yml) checks out `gears-frontx`'s `main` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install --no-package-lock` instead of `npm ci`. Both departures from the ordinary install exist for reasons that are easy to re-break without this record.
+[`template-drift.yml`](.github/workflows/template-drift.yml) checks out `gears-frontx`'s `main` branch into a sibling path, builds its packages, points the template's pins at that checkout (`scripts/pin-template-ecosystem-to-local.mjs`), then installs with `npm install` instead of `npm ci`.
 
-**Why not `npm ci` against the rewritten manifests.** Rewriting the pins ahead of install desyncs the template's `package-lock.json` from its `package.json` by construction, and `npm ci` refuses to run against a desynced lockfile. `npm install` reconciles it instead - which is exactly the operation that trips `--no-package-lock`'s reason below.
-
-**Why `--no-package-lock` is load-bearing.** `template-shell` pins its own root package to itself via a `file:.` override, materialized as an npm-managed symlink that `packages/framework` resolves through. Reconciling a desynced lockfile is exactly the operation npm `<= 11.13.0` gets wrong for a self-referential `file:.` entry (npm/cli#524, already referenced by `scripts/template-lockfile-selflink-check.mjs`): it drops the link from the *installed tree*, not just the lockfile, and the build fails. Skipping lockfile reconciliation with `--no-package-lock` sidesteps the bug regardless of the runner's npm version.
-
-**The tradeoff this accepts.** Without the lockfile guiding resolution, transitive dependencies float to their latest in-range version instead of the exact pinned one. That's acceptable for this job specifically, since its purpose is detecting drift between the ecosystem checkout and the template, not verifying that the exact pinned dependency tree installs cleanly - that's `main.yml`'s `template-validate` job, which runs an unmodified `npm ci`.
-
-**Committing a regenerated `template-shell/package-lock.json` needs the same care by hand.** Every ordinary reconciliation - `npm install` after editing `package.json`, or even a from-scratch `npm ci` immediately followed by `npm install` - rewrites the single lockfile entry keyed `node_modules/@gears-frontx/frontx-template-shell` (the root's `file:.` self-link). Observed on every npm release tried while diagnosing this (11.7.0, 11.12.1, 11.14.0): the entry either loses its `resolved`/`link` fields entirely (dropped from the *installed tree*, matching npm/cli#524's description) or gets mis-written to resolve through a sibling workspace package (`packages/framework`) instead of the root itself - `npm ls` then prints it as an "invalid" alias, and worse, a plain `npm install` done later by something else entirely (`main.yml`'s `template-validate` job composing `template-mfe` onto a copy of the shell) can fail outright with `ETARGET No matching version found for @gears-frontx/frontx-template-shell` trying to satisfy `template-mfe`'s exact-version pins on it. No currently released npm has been found that reconciles this entry correctly from scratch. The fix used here whenever the lockfile needs to change: let npm regenerate everything else normally, then restore just that one entry to `{ "resolved": "", "link": true }` (its previous, correct committed value) before committing - `npm ci` (and `policy:template-lockfile-selflink`) both still pass against the patched file, because neither one ever needs to *write* that entry, only read it.
+Rewriting the pins ahead of install desyncs the template's `package-lock.json` from its `package.json` by construction, and `npm ci` refuses to run against a desynced lockfile. `npm install` reconciles it instead. The unmodified `npm ci` against the committed lockfile is `main.yml`'s `template-validate` job; this job exists to detect drift between the ecosystem checkout and the template.
 
 ## Validation
 
@@ -78,7 +72,6 @@ npm ci
 npm test                              # scripts/**/*.test.mjs, including the design skill map check
 npm run validate:templates
 npm run policy:template-pin-drift     # registry mode locally; set FRONTX_ECOSYSTEM_DIR for sibling mode
-npm run policy:template-lockfile-selflink
 npm run policy:token-format
 npm run policy:template-mfes-import-boundary
 ```

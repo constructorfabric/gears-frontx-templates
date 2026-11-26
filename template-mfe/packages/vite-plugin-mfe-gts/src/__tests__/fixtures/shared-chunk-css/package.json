@@ -1,0 +1,8 @@
+{
+  "name": "shared-chunk-css-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "fixture-shared-kit": "1.0.0"
+  }
+}

@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { gtsPlugin, screenDomain } from '@gears-frontx/react';
 import {
   extensionScreenSchema,
   languageCodeSchema,
   languageSchema,
   screenLabelsSchema,
   themeSchema,
-} from '@gears-frontx/frontx-template-shell';
+  screenDomain,
+} from '../../../src/index';
 import { labelDictionaryUrl, MenuLabels } from './menuLabels';
+import { gtsPlugin } from '@gears-frontx/gts-plugin';
 
 const extension = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.demo.screens.profile.v1';
 const blankExtension = 'gts.frontx.mfes.ext.extension.v1~frontx.screensets.layout.screen.v1~frontx.blank.screens.home.v1';
@@ -52,13 +53,7 @@ const profileEntry = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~f
 const blankEntry = 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.blank.mfe.home.v1';
 const manifest = {
   id: 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.demo.mfe.manifest.v1',
-  name: 'demoMfe',
   metaData: {
-    name: 'demoMfe',
-    type: 'app',
-    buildInfo: { buildVersion: '1.0.0', buildName: 'demoMfe' },
-    remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-    globalName: 'demoMfe',
     publicPath: 'http://localhost:3999/',
   },
   shared: [],
@@ -70,7 +65,7 @@ const entry = (id: string) => ({
   domainActions: [],
   manifest: manifest.id,
   exposedModule: './screen',
-  exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+  exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
 });
 
 afterEach(() => vi.unstubAllGlobals());

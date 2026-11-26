@@ -24,8 +24,11 @@ import {
 import { router } from '@gears-frontx/routing';
 import { mfeRegistryFactory } from '../../mfe/registry';
 import { eventBus } from '@gears-frontx/state';
-import type { ChangeThemePayload, FrontXApp, FrontXPlugin, SetLanguagePayload } from '../../types';
-import { FRONTX_SHARED_PROPERTY_LANGUAGE, FRONTX_SHARED_PROPERTY_THEME } from '../../mfe/constants';
+import type { ChangeThemePayload, FrontXApp, FrontXPlugin } from '../../types';
+// The theme event this plugin forwards is declared on the event map by the
+// plugin that owns it; this type-only import brings that declaration into
+// scope wherever this module is compiled on its own.
+import type {} from '../themes';
 import { mfeSlice } from './slice';
 import { initMfeEffects } from './effects';
 import {
@@ -70,20 +73,24 @@ export interface MicrofrontendsConfig {
  * - Builds mfeRegistry lazily, on first read of `app.mfeRegistry`, with the provided TypeSystemPlugin
  * - Same TypeSystemPlugin instance is propagated throughout
  * - Integrates MFE lifecycle with Flux data flow (actions, effects, slice)
+ * - Type-system agnostic: it names no shared property. It pushes only the
+ *   current theme's CSS variables to the registry (`registry.setTheme`);
+ *   which shared properties a host publishes to its MFEs, and under which
+ *   type IDs, is the host's own wiring (`registry.updateSharedProperty`).
  *
  * @param config - Configuration: `typeSystem` (required) and `mfeHandlers` (optional array)
  *
  * @example
  * ```typescript
- * import { createFrontX, microfrontends } from '@gears-frontx/framework';
- * import { MfeHandlerMF } from '@gears-frontx/mfes';
- * import { FRONTX_MFE_ENTRY_MF } from '@gears-frontx/framework';
- * import { gtsPlugin } from '@gears-frontx/gts-plugin';
+ * import { createFrontX } from '@gears-frontx/framework';
+ * import { microfrontends, MfeHandlerMF } from '@gears-frontx/framework/mfe';
  *
+ * // `myTypeSystem` implements the TypeSystemPlugin contract; `MY_ENTRY_TYPE`
+ * // and `sidebarDomain` are the host's own entry type ID and domain declaration.
  * const app = createFrontX()
  *   .use(microfrontends({
- *     typeSystem: gtsPlugin,
- *     mfeHandlers: [new MfeHandlerMF(FRONTX_MFE_ENTRY_MF)],
+ *     typeSystem: myTypeSystem,
+ *     mfeHandlers: [new MfeHandlerMF(MY_ENTRY_TYPE)],
  *   }))
  *   .build();
  *
@@ -112,21 +119,16 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
   let builtApp: FrontXApp | undefined;
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
 
-  // The registry starts from the current theme and language when it is built;
-  // later changes are forwarded below, only once it exists.
+  // The registry starts from the current theme's CSS variables when it is
+  // built; later changes are forwarded below, only once it exists.
   const applyCurrentState = (built: MfeRegistry, app: FrontXApp): void => {
     try {
       const theme = app.themeRegistry?.getCurrent();
       if (theme) {
         built.setTheme(theme.variables);
-        built.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, theme.id);
-      }
-      const language = app.i18nRegistry?.getLanguage();
-      if (language) {
-        built.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, language);
       }
     } catch (error) {
-      console.error('[Gears FrontX] Failed to apply current theme/language to the MFE registry', error);
+      console.error('[Gears FrontX] Failed to apply the current theme to the MFE registry', error);
     }
   };
 
@@ -180,8 +182,8 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
       // Initialize effects and store cleanup references
       effectsCleanup = initMfeEffects(initializeRegistry);
 
-      // Forward later theme/language changes to the registry, only if it has
-      // been built (a registry built later starts from the current values).
+      // Forward later theme changes' CSS variables to the registry, only if it
+      // has been built (a registry built later starts from the current theme).
       subscriptions.push(
         eventBus.on('theme/changed', (payload: ChangeThemePayload) => {
           if (!registry) return;
@@ -190,19 +192,8 @@ export function microfrontends(config: MicrofrontendsConfig): FrontXPlugin {
             if (themeConfig) {
               registry.setTheme(themeConfig.variables);
             }
-            registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_THEME, payload.themeId);
           } catch (error) {
             console.error('[Gears FrontX] Failed to propagate theme to MFE domains', error);
-            eventBus.emit('theme/propagation/failed', { themeId: payload.themeId, error });
-          }
-        }),
-        eventBus.on('i18n/language/changed', (payload: SetLanguagePayload) => {
-          if (!registry) return;
-          try {
-            registry.updateSharedProperty(FRONTX_SHARED_PROPERTY_LANGUAGE, payload.language);
-          } catch (error) {
-            console.error('[Gears FrontX] Failed to propagate language to MFE domains', error);
-            eventBus.emit('i18n/propagation/failed', { language: payload.language, error });
           }
         })
       );
@@ -254,19 +245,5 @@ export {
   type ExtensionRegistrationState,
 } from './slice';
 
-// Re-export FrontX layout domain constants and MfeEvents
-export {
-  FRONTX_POPUP_DOMAIN,
-  FRONTX_SIDEBAR_DOMAIN,
-  FRONTX_SCREEN_DOMAIN,
-  FRONTX_OVERLAY_DOMAIN,
-  MfeEvents,
-} from './constants';
-
-// Re-export base ExtensionDomain constants
-export {
-  screenDomain,
-  sidebarDomain,
-  popupDomain,
-  overlayDomain,
-} from './base-domains';
+// Re-export MfeEvents
+export { MfeEvents } from './constants';

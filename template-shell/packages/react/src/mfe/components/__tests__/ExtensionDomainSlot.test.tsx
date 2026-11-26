@@ -8,11 +8,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { ExtensionDomainSlot, type ExtensionDomainSlotProps } from '../ExtensionDomainSlot';
-import { ExtensionMounter } from '@gears-frontx/framework';
-import { MfeRegistry } from '@gears-frontx/framework';
-import type { ActionsChain, ExtensionDomain, Extension } from '@gears-frontx/framework';
-import type { ExtensionDomainImplementationFactory } from '@gears-frontx/framework';
-import type { TypeSystemPlugin } from '@gears-frontx/framework';
+import { ExtensionMounter } from '@gears-frontx/framework/mfe';
+import { MfeRegistry } from '@gears-frontx/framework/mfe';
+import type { ActionsChain, ExtensionDomain, Extension } from '@gears-frontx/framework/mfe';
+import type { ExtensionDomainImplementationFactory } from '@gears-frontx/framework/mfe';
+import type { TypeSystemPlugin } from '@gears-frontx/framework/mfe';
 
 // ─── FakeMounter ─────────────────────────────────────────────────────────────
 
@@ -77,8 +77,6 @@ class FakeRegistry extends MfeRegistry {
   getExtension(_id: string): Extension | undefined { return undefined; }
   getDomain(_id: string): ExtensionDomain | undefined { return undefined; }
   getExtensionsForDomain(_id: string): Extension[] { return []; }
-  getRegisteredPackages(): string[] { return []; }
-  getExtensionsForPackage(_id: string): Extension[] { return []; }
   setTheme(_v: Record<string, string>): void {}
   dispose(): Promise<void> {
     return Promise.resolve();

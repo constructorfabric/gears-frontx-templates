@@ -1,0 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { definePackageVitestConfig } from '../../vitest.shared';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default definePackageVitestConfig({
+  rootDir: __dirname,
+  environment: 'node',
+});

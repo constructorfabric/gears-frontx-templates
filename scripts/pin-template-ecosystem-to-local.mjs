@@ -124,10 +124,7 @@ export function toPosixRelative(relativePath) {
  * `DEPENDENCY_FIELDS`. It is exported for its own unit tests; the ecosystem
  * repo's companion writer that once imported it here,
  * `pin-unpublished-ecosystem-to-local-pack.mjs`, did not come along with the
- * templates (see this file's own docblock). `template-lockfile-selflink-
- * check.mjs` keeps its own same-valued list on purpose regardless: it READS an
- * install tree and asks which fields materialise an entry there, a different
- * question that happens to have the same answer today.
+ * templates (see this file's own docblock).
  */
 export const INSTALLED_DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'optionalDependencies']);
 

@@ -31,7 +31,6 @@ import {
 // Each test loads a fresh module copy: a runtime builds one app.
 let eventBus: typeof import('@gears-frontx/framework')['eventBus'];
 let AuthEvents: typeof import('@gears-frontx/framework')['AuthEvents'];
-let TenantEvents: typeof import('@gears-frontx/framework')['TenantEvents'];
 let FrontXProvider: typeof import('@gears-frontx/react')['FrontXProvider'];
 let resetSharedFetchCache: typeof import('@gears-frontx/framework')['resetSharedFetchCache'];
 let resetSharedQueryClient: typeof import('@gears-frontx/framework')['resetSharedQueryClient'];
@@ -41,7 +40,7 @@ let createQueryCache: typeof import('../src/hooks/QueryCache')['createQueryCache
 beforeEach(async () => {
   vi.resetModules();
   await loadFreshHelpers();
-  ({ eventBus, AuthEvents, TenantEvents, resetSharedFetchCache, resetSharedQueryClient } =
+  ({ eventBus, AuthEvents, resetSharedFetchCache, resetSharedQueryClient } =
     await import('@gears-frontx/framework'));
   ({ FrontXProvider } = await import('@gears-frontx/react'));
   ({ useApiMutation } = await import('../src/hooks/useApiMutation'));
@@ -634,10 +633,10 @@ describe('useApiMutation when the cache scope changes while a mutation is in fli
       mutatePromise = result.current.mutateAsync();
     });
     act(() => {
-      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+      eventBus.emit(AuthEvents.LoggedIn, {});
     });
     await act(async () => {
-      resolveMutation('tenant A response');
+      resolveMutation('old scope response');
       await mutatePromise;
     });
 
@@ -953,7 +952,7 @@ describe('useApiMutation when the cache scope changes while a mutation is in fli
       mutatePromise = result.current.mutateAsync();
     });
     act(() => {
-      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+      eventBus.emit(AuthEvents.LoggedIn, {});
     });
     await act(async () => {
       releaseOnMutate();
@@ -964,7 +963,7 @@ describe('useApiMutation when the cache scope changes while a mutation is in fli
   });
 
   it('lands an onSuccess write of a mutation started after the scope changed', async () => {
-    const endpoint = makeMutationDescriptor<string, void>(['newScopeSave'], async () => 'tenant B response');
+    const endpoint = makeMutationDescriptor<string, void>(['newScopeSave'], async () => 'new scope response');
 
     const { client, result } = await renderOnHost(() =>
       useApiMutation<string, Error, void>({
@@ -976,13 +975,13 @@ describe('useApiMutation when the cache scope changes while a mutation is in fli
     );
 
     act(() => {
-      eventBus.emit(TenantEvents.Changed, { tenant: { id: 'tenant-b' } });
+      eventBus.emit(AuthEvents.LoggedIn, {});
     });
     await act(async () => {
       await result.current.mutateAsync();
     });
 
-    expect(client.getQueryData(QUERY_KEY)).toBe('tenant B response');
+    expect(client.getQueryData(QUERY_KEY)).toBe('new scope response');
   });
 
   it('writes to the QueryClient it started under when the provider swaps its client', async () => {

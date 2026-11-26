@@ -47,17 +47,11 @@ export const IN_BUNDLE_PARTS: ServedFile = {
   instances: bundles.flatMap(({ source }) => [
     {
       id: source.manifest.id,
-      name: source.manifest.id,
       metaData: {
-        name: source.manifest.id,
-        type: 'app',
-        buildInfo: { buildVersion: '0.0.0', buildName: source.manifest.id },
-        remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-        globalName: source.manifest.id,
         publicPath: new URL('./', new URL(source.manifest.remoteEntry, 'http://localhost/')).pathname,
       },
       shared: [],
     },
-    ...source.entries.map((entry) => ({ ...entry, exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } } })),
+    ...source.entries.map((entry) => ({ ...entry, exposeAssets: { js: { sync: ['lifecycle.js'] }, css: { sync: [], async: [] } } })),
   ]),
 };

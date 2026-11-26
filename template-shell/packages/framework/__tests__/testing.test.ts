@@ -26,7 +26,7 @@ describe('TestContainerProvider (factory adapter)', () => {
   it('prepareForDomain returns the factory instance for chaining', () => {
     const provider = new TestContainerProvider();
     const declaration = {
-      id: 'gts.frontx.mfes.ext.domain.v1~test.app.domain.v1',
+      id: 'test.domain~test.app.domain.v1',
       sharedProperties: [],
       actions: [],
       extensionsActions: [],
@@ -41,7 +41,7 @@ describe('TestContainerProvider (factory adapter)', () => {
     const MOUNT = 'mount_ext';
     const UNMOUNT = 'unmount_ext';
     const declare = (actions: string[]) => ({
-      id: 'gts.frontx.mfes.ext.domain.v1~test.app.domain.v1',
+      id: 'test.domain~test.app.domain.v1',
       sharedProperties: [],
       actions,
       extensionsActions: [],

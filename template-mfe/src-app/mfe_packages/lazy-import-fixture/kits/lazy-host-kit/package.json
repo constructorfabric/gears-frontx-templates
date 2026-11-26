@@ -1,0 +1,1 @@
+{ "name": "lazy-host-kit", "version": "1.0.0", "type": "module", "exports": { ".": "./index.js" }, "dependencies": { "lazy-leaf-kit": "1.0.0" } }

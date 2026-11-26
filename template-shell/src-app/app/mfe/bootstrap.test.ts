@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActionHandler } from '@gears-frontx/react';
+import type { FrontXActions, FrontXApp } from '@gears-frontx/react';
+import type { ActionHandler, Extension, MfeRegistry } from '@gears-frontx/react/mfe';
 
 const registerDomain = vi.fn();
 const updateSharedProperty = vi.fn();
@@ -8,7 +9,7 @@ const registerInstance = vi.fn();
 const registerExtension = vi.fn().mockResolvedValue(undefined);
 const getDomain = vi.fn();
 const getExtension = vi.fn();
-const getExtensionsForDomain = vi.fn((_domainId: string): unknown[] => []);
+const getExtensionsForDomain = vi.fn((_domainId: string): Array<Omit<Extension, 'route'>> => []);
 const executeActionsChain = vi.fn(() => undefined);
 // A real `ExclusiveMountStrategy` needs a fully wired
 // `mfes` registry/mounter/bridge to mount anything - out of scope here (that
@@ -61,35 +62,57 @@ class FakeExclusiveMountStrategy {
     }
   }
 }
-const mockMfeRegistry = {
-  registerDomain,
-  updateSharedProperty,
-  registerExtension,
-  getDomain,
-  getExtension,
-  getExtensionsForDomain,
-  executeActionsChain,
-  typeSystem: {
-    register: registerInstance,
-    registerSchema,
-  },
-};
+/**
+ * The real host app, its registry's members replaced by the recording mocks
+ * above, so the code under test receives the real `FrontXApp` type.
+ */
+async function mockHostApp(): Promise<FrontXApp> {
+  // Built once per file, as a runtime builds one app, and imported here
+  // because the module mocks below are hoisted above a static import.
+  if (host === undefined) {
+    host = (await import('@frontx-test-utils/createHostApp')).createHostApp();
+    // From the module graph the app was built in, so it listens on the event
+    // bus the app's actions emit on.
+    publishOnHost = (await import('./sharedProperties')).publishThemeAndLanguage;
+  }
+  const { app, registry } = host;
+  vi.spyOn(registry, 'registerDomain').mockImplementation(registerDomain);
+  vi.spyOn(registry, 'updateSharedProperty').mockImplementation(updateSharedProperty);
+  vi.spyOn(registry, 'registerExtension').mockImplementation(registerExtension);
+  vi.spyOn(registry, 'getDomain').mockImplementation(getDomain);
+  vi.spyOn(registry, 'getExtension').mockImplementation(getExtension);
+  vi.spyOn(registry, 'getExtensionsForDomain').mockImplementation(getExtensionsForDomain);
+  vi.spyOn(registry, 'executeActionsChain').mockImplementation(executeActionsChain);
+  vi.spyOn(registry.typeSystem, 'register').mockImplementation(registerInstance);
+  vi.spyOn(registry.typeSystem, 'registerSchema').mockImplementation(registerSchema);
+  vi.spyOn(app.themeRegistry, 'getCurrent').mockReturnValue(undefined);
+  vi.spyOn(app.i18nRegistry, 'getLanguage').mockReturnValue(null);
+  return app;
+}
 
-const mockApp = {
-  mfeRegistry: mockMfeRegistry,
-  themeRegistry: { getCurrent: () => undefined },
-  i18nRegistry: { getLanguage: () => null },
-};
+let host: { app: FrontXApp; registry: MfeRegistry } | undefined;
+/** `publishThemeAndLanguage` as `main.tsx` calls it, for the host app. */
+let publishOnHost: ((app: FrontXApp, registry: MfeRegistry) => () => void) | undefined;
+
+/** The app's own actions, as the case found them: chrome cases add and remove some. */
+let originalActions: FrontXApp['actions'] | undefined;
+let app: FrontXApp;
 
 // The screen domain needs a valid `route`: the injected router rejects a
 // routed domain that declares none, and `bootstrapMFE` would then throw before
 // ever reaching the manifest fetch these cases exercise.
-vi.mock('@gears-frontx/react', async (importOriginal) => {
+vi.mock('../../../src/index', async (importOriginal) => {
   const real = await importOriginal<Record<string, never>>();
   return {
     ...real,
     // `actions` is spread by the host bootstrap to append the chrome actions.
     screenDomain: { id: 'screen-domain', route: 'screen', actions: [] },
+  };
+});
+vi.mock('@gears-frontx/react/mfe', async (importOriginal) => {
+  const real = await importOriginal<Record<string, never>>();
+  return {
+    ...real,
     ExclusiveMountStrategy: FakeExclusiveMountStrategy,
   };
 });
@@ -101,10 +124,10 @@ const reloadPage = vi.hoisted(() => vi.fn());
 vi.mock('./pageReload', () => ({ reloadPage }));
 
 /** `bootstrapMFE` freshly imported, run with the screen domain the shell implements. */
-async function loadBootstrap(): Promise<{ bootstrapMFE: (app: never) => Promise<void> }> {
+async function loadBootstrap(): Promise<{ bootstrapMFE: (app: FrontXApp) => Promise<void> }> {
   const { bootstrapMFE } = await import('./bootstrap');
   const { registerScreenDomain } = await import('./screenDomain');
-  return { bootstrapMFE: (app) => bootstrapMFE(app, [registerScreenDomain]) };
+  return { bootstrapMFE: (hostApp) => bootstrapMFE(hostApp, [registerScreenDomain]) };
 }
 
 describe('bootstrapMFE (host-app)', () => {
@@ -120,7 +143,7 @@ describe('bootstrapMFE (host-app)', () => {
     fetchSpy.mockImplementation(async () => new Response(body, init));
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     registerDomain.mockReset();
     updateSharedProperty.mockReset();
@@ -139,11 +162,14 @@ describe('bootstrapMFE (host-app)', () => {
     FakeExclusiveMountStrategy.last = undefined;
 
     fetchSpy = vi.spyOn(globalThis, 'fetch');
+    app = await mockHostApp();
+    originalActions ??= { ...app.actions };
   });
 
   afterEach(() => {
     fetchSpy.mockRestore();
     vi.restoreAllMocks();
+    Object.assign(app.actions, originalActions);
   });
 
   it('registers the screen domain and the screen extension type before fetching manifests', async () => {
@@ -151,8 +177,8 @@ describe('bootstrapMFE (host-app)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    const { extensionScreenSchema } = await import('@gears-frontx/frontx-template-shell');
-    await bootstrapMFE(mockApp as never);
+    const { extensionScreenSchema } = await import('../../../src/index');
+    await bootstrapMFE(app);
 
     expect(registerDomain).toHaveBeenCalledTimes(1);
     expect(registerDomain.mock.calls[0][0].id).toBe('screen-domain');
@@ -178,12 +204,32 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    await expect(bootstrapMFE(mockApp as never)).resolves.toBeUndefined();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
 
     // Both requests went out, and the icons one is not queued behind the
     // manifests: it is the first fetch of the bootstrap.
     expect(requestedUrls.some((url) => url.includes('generated-menu-icons.json'))).toBe(true);
     expect(requestedUrls[0].includes('generated-menu-icons.json')).toBe(true);
+  });
+
+  it('requests the extension manifest aggregate with high fetch priority', async () => {
+    serve('[]', { status: 200 });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await bootstrapMFE(app);
+
+    // Two requests and no more: the menu icons bundle and the aggregate,
+    // fetched once, with high priority.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const aggregateCalls = fetchSpy.mock.calls.filter(([input]: unknown[]) =>
+      String(input).includes('generated-mfe-manifests.json'),
+    );
+    expect(aggregateCalls).toHaveLength(1);
+    expect(aggregateCalls[0][1]).toEqual({ priority: 'high' });
+    expect(
+      fetchSpy.mock.calls.filter(([input]: unknown[]) => String(input).includes('generated-menu-icons.json')),
+    ).toHaveLength(1);
   });
 
   it('configures menu labels on the registry type system', async () => {
@@ -198,13 +244,13 @@ describe('bootstrapMFE (host-app)', () => {
     const { menuLabels } = await import('./menuLabels');
     const configure = vi.spyOn(menuLabels, 'configure');
 
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     expect(configure).toHaveBeenCalledTimes(1);
     const [manifests, aggregateUrl, typeSystem] = configure.mock.calls[0];
     expect(manifests).toEqual(aggregate);
     expect(aggregateUrl).toMatch(/generated-mfe-manifests\.json$/);
-    expect(typeSystem).toBe(mockMfeRegistry.typeSystem);
+    expect(typeSystem).toBe(app.mfeRegistry?.typeSystem);
   });
 
   it('registers no domain and no screen type when the host implements none', async () => {
@@ -212,7 +258,7 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await import('./bootstrap');
-    await bootstrapMFE(mockApp as never, []);
+    await bootstrapMFE(app, []);
 
     expect(registerDomain).not.toHaveBeenCalled();
     expect(registerSchema).not.toHaveBeenCalled();
@@ -230,8 +276,8 @@ describe('bootstrapMFE (host-app)', () => {
       CHROME_SET_MENU_COLLAPSED,
       CHROME_SET_THEME,
     } = await import('./chrome-actions');
-    const { languageCodeSchema } = await import('@gears-frontx/frontx-template-shell');
-    await bootstrapMFE(mockApp as never);
+    const { languageCodeSchema } = await import('../../../src/index');
+    await bootstrapMFE(app);
 
     const [screenDeclaration] = registerDomain.mock.calls[0];
     expect(screenDeclaration.actions).toEqual([
@@ -264,7 +310,7 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     const [, screenFactory] = registerDomain.mock.calls[0];
     const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
@@ -294,7 +340,7 @@ describe('bootstrapMFE (host-app)', () => {
 
     const { bootstrapMFE } = await loadBootstrap();
     const { screenState } = await import('./screenState');
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     const [, screenFactory] = registerDomain.mock.calls[0];
     const handlers = new Map<string, { handleAction: (t: string, p: unknown) => unknown }>();
@@ -377,7 +423,7 @@ describe('bootstrapMFE (host-app)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { bootstrapMFE } = await loadBootstrap();
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     const [screenDeclaration, screenFactory] = registerDomain.mock.calls[0];
     const handlers = new Map<string, unknown>();
@@ -398,10 +444,10 @@ describe('bootstrapMFE (host-app)', () => {
     serve('not found', { status: 404, statusText: 'Not Found' });
 
     const { bootstrapMFE } = await loadBootstrap();
-    await expect(bootstrapMFE(mockApp as never)).rejects.toThrow(/Failed to load MFE manifests/);
+    await expect(bootstrapMFE(app)).rejects.toThrow(/Failed to load MFE manifests/);
   });
 
-  it('registers schemas, manifest, entries, and extensions for each package', async () => {
+  it('registers the aggregate action schemas before entries so entry type-refs validate', async () => {
     const screenDomainId = 'screen-domain';
     getDomain.mockImplementation((id: string) => (id === screenDomainId ? { id } : undefined));
 
@@ -425,12 +471,20 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await loadBootstrap();
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
-    // Every shipped schema with a $id is registered, declared action or not.
+    // The aggregate's `schemas` (the action schemas entries' type-refs
+    // name) must be on the type system BEFORE the entries register, or
+    // entry validation fails with "Referenced entity not found". The MFE
+    // still registers its own solution schemas at mount for dispatch.
     expect(registerSchema).toHaveBeenCalledWith(schemaActionA);
     expect(registerSchema).toHaveBeenCalledWith(schemaActionB);
     expect(registerSchema).toHaveBeenCalledWith(schemaUnrelated);
+    // Schemas land before the manifest — entry registration reads the
+    // type system later, so the types it names resolve.
+    expect(
+      registerSchema.mock.invocationCallOrder[0],
+    ).toBeLessThan(registerInstance.mock.invocationCallOrder[0]);
     expect(registerInstance).toHaveBeenCalledWith(manifestEntity);
     expect(registerInstance).toHaveBeenCalledWith(entry);
     expect(registerExtension).toHaveBeenCalledWith(ext);
@@ -448,7 +502,7 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await loadBootstrap();
-    await expect(bootstrapMFE(mockApp as never)).resolves.toBeUndefined();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
 
     expect(registerExtension).toHaveBeenCalledWith(extA);
     expect(registerExtension).toHaveBeenCalledWith(extB);
@@ -476,7 +530,7 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await loadBootstrap();
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     const orderOf = (id: string): number => {
       const index = registerInstance.mock.calls.findIndex(([instance]) => (instance as { id: string }).id === id);
@@ -488,6 +542,261 @@ describe('bootstrapMFE (host-app)', () => {
     expect(registerSchema.mock.invocationCallOrder[schemaIndex]).toBeLessThan(orderOf('manifest.widget'));
     expect(orderOf('widgets-domain')).toBeLessThan(orderOf('ext.widget'));
     expect(orderOf('entry.widget')).toBeLessThan(orderOf('ext.widget'));
+  });
+
+  it('disables only the package whose manifest the type system rejects, and registers every other package', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'manifest.broken') throw new Error('rejected manifest');
+    });
+    const goodExt = { id: 'ext.good', domain: 'screen-domain', entry: 'entry.good' };
+    const brokenExt = { id: 'ext.broken', domain: 'screen-domain', entry: 'entry.broken' };
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.broken' }, entries: [{ id: 'entry.broken' }], extensions: [brokenExt] },
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.good' }], extensions: [goodExt] },
+      ]),
+      { status: 200 },
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(goodExt);
+    expect(registerExtension).not.toHaveBeenCalledWith(brokenExt);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('manifest.broken'), expect.any(Error));
+  });
+
+  it('disables only the package whose entry the type system rejects', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const goodExt = { id: 'ext.good', domain: 'screen-domain' };
+    const brokenExt = { id: 'ext.broken', domain: 'screen-domain' };
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.broken' }, entries: [{ id: 'entry.broken' }], extensions: [brokenExt] },
+        { manifest: { id: 'manifest.good' }, entries: [], extensions: [goodExt] },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(goodExt);
+    expect(registerExtension).not.toHaveBeenCalledWith(brokenExt);
+  });
+
+  it('disables only the extension the registry rejects', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    const bad = { id: 'ext.bad', domain: 'screen-domain' };
+    const good = { id: 'ext.good', domain: 'screen-domain' };
+    registerExtension.mockImplementation(async (extension: { id: string }) => {
+      if (extension.id === 'ext.bad') throw new Error('rejected extension');
+    });
+    serve(JSON.stringify([{ manifest: { id: 'manifest.demo' }, entries: [], extensions: [bad, good] }]), { status: 200 });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(good);
+  });
+
+  it('disables an extension whose domain is on no package and not on the host, and the shell boots', async () => {
+    getDomain.mockReturnValue(undefined);
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'ext.lost') throw new Error("Referenced entity 'domain.nobody' not found");
+    });
+    serve(
+      JSON.stringify([
+        {
+          manifest: { id: 'manifest.demo' },
+          entries: [],
+          extensions: [{ id: 'ext.fine', domain: 'screen-domain' }, { id: 'ext.lost', domain: 'domain.nobody' }],
+        },
+      ]),
+      { status: 200 },
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('ext.lost'), expect.any(Error));
+  });
+
+  it('disables only the extension whose foreign domain a package declares but the type system rejects at that extension', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'ext.bad') throw new Error('rejected extension');
+    });
+    const good = { id: 'ext.good', domain: 'screen-domain' };
+    serve(
+      JSON.stringify([
+        {
+          manifest: { id: 'manifest.demo' },
+          domains: [{ id: 'domain.foreign' }],
+          entries: [],
+          extensions: [{ id: 'ext.bad', domain: 'domain.foreign' }, good],
+        },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+    expect(registerExtension).toHaveBeenCalledWith(good);
+  });
+
+  it('logs one summary naming every package and extension it disabled', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'manifest.broken') throw new Error('rejected manifest');
+    });
+    registerExtension.mockImplementation(async (extension: { id: string }) => {
+      if (extension.id === 'ext.bad') throw new Error('rejected extension');
+    });
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.broken' }, entries: [], extensions: [] },
+        {
+          manifest: { id: 'manifest.good' },
+          entries: [],
+          extensions: [{ id: 'ext.bad', domain: 'screen-domain' }, { id: 'ext.good', domain: 'screen-domain' }],
+        },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith('[MFE Bootstrap] Disabled 2: manifest.broken, ext.bad');
+  });
+
+  it.each([
+    ['entry', { id: 'ext.user', domain: 'screen-domain', entry: 'entry.broken' }, /entry 'entry\.broken'.*manifest\.broken/],
+    ['domain', { id: 'ext.user', domain: 'domain.broken', entry: 'entry.fine' }, /domain 'domain\.broken'.*manifest\.broken/],
+  ])('rejects a later extension whose %s belongs to a disabled package, with a clear message', async (_kind, user, message) => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const fine = { id: 'ext.fine', domain: 'screen-domain', entry: 'entry.fine' };
+    serve(
+      JSON.stringify([
+        {
+          manifest: { id: 'manifest.broken' },
+          domains: [{ id: 'domain.broken' }],
+          entries: [{ id: 'entry.broken' }],
+          extensions: [],
+        },
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.fine' }], extensions: [user, fine] },
+      ]),
+      { status: 200 },
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(fine);
+    expect(registerExtension).not.toHaveBeenCalledWith(user);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('ext.user'),
+      expect.objectContaining({ message: expect.stringMatching(message) }),
+    );
+  });
+
+  it('keeps a host domain and an entry another package registered usable when a package naming them is disabled', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const shared = { id: 'ext.shared', domain: 'screen-domain', entry: 'entry.shared' };
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.shared' }], extensions: [shared] },
+        {
+          manifest: { id: 'manifest.broken' },
+          domains: [{ id: 'screen-domain' }],
+          entries: [{ id: 'entry.shared' }, { id: 'entry.broken' }],
+          extensions: [],
+        },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(shared);
+  });
+
+  it('registers a later package\'s extension on an entry a disabled earlier package only declared', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'entry.broken') throw new Error('rejected entry');
+    });
+    const shared = { id: 'ext.shared', domain: 'screen-domain', entry: 'entry.shared' };
+    serve(
+      JSON.stringify([
+        {
+          manifest: { id: 'manifest.broken' },
+          entries: [{ id: 'entry.broken' }, { id: 'entry.shared' }],
+          extensions: [],
+        },
+        { manifest: { id: 'manifest.good' }, entries: [{ id: 'entry.shared' }], extensions: [shared] },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    expect(registerExtension).toHaveBeenCalledWith(shared);
+  });
+
+  it('hands the menu only the packages that were not disabled', async () => {
+    getDomain.mockImplementation((id: string) => (id === 'screen-domain' ? { id } : undefined));
+    registerInstance.mockImplementation((instance: { id: string }) => {
+      if (instance.id === 'manifest.broken') throw new Error('rejected manifest');
+    });
+    serve(
+      JSON.stringify([
+        { manifest: { id: 'manifest.broken' }, entries: [], extensions: [], labelDictionaries: [{ id: 'labels.broken' }] },
+        {
+          manifest: { id: 'manifest.good' },
+          entries: [],
+          extensions: [{ id: 'ext.good', domain: 'screen-domain' }],
+          labelDictionaries: [{ id: 'labels.good' }],
+        },
+      ]),
+      { status: 200 },
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const { bootstrapMFE } = await loadBootstrap();
+    const { menuLabels } = await import('./menuLabels');
+    const configure = vi.spyOn(menuLabels, 'configure').mockImplementation(() => undefined);
+    await expect(bootstrapMFE(app)).resolves.toBeUndefined();
+
+    const handed = configure.mock.calls[0]![0];
+    expect(handed.map((config) => Reflect.get(config.manifest, 'id'))).toEqual(['manifest.good']);
   });
 
   it('skips extension registration when host does not own the target domain', async () => {
@@ -504,7 +813,7 @@ describe('bootstrapMFE (host-app)', () => {
     );
 
     const { bootstrapMFE } = await loadBootstrap();
-    await bootstrapMFE(mockApp as never);
+    await bootstrapMFE(app);
 
     expect(registerExtension).not.toHaveBeenCalled();
   });
@@ -517,12 +826,19 @@ describe('bootstrapMFE (host-app)', () => {
      * under test are the ones the real bootstrap would have installed.
      */
     async function chromeHandlersFor(
-      actions: Record<string, unknown>,
+      actions: Pick<Partial<FrontXActions>, 'changeTheme' | 'toggleMenuCollapsed' | 'setLanguage'>,
     ): Promise<Map<string, ActionHandler>> {
+      // A host runs a chrome plugin or it does not: the actions the case
+      // names are present, the other chrome actions are absent.
+      for (const name of ['changeTheme', 'toggleMenuCollapsed', 'setLanguage'] as const) {
+        const action = actions[name];
+        if (action === undefined) Reflect.deleteProperty(app.actions, name);
+        else Reflect.set(app.actions, name, action);
+      }
       serve('[]', { status: 200 });
 
       const { bootstrapMFE } = await loadBootstrap();
-      await bootstrapMFE({ ...mockApp, actions } as never);
+      await bootstrapMFE(app);
 
       const handlers = new Map<string, ActionHandler>();
       const [, screenFactory] = registerDomain.mock.calls[0];
@@ -582,32 +898,21 @@ describe('bootstrapMFE (host-app)', () => {
 
     it('changes the language a set_language action names through the host i18n plugin, and the language shared property follows', async () => {
       const { CHROME_SET_LANGUAGE } = await import('./chrome-actions');
+      const { FRONTX_SHARED_PROPERTY_LANGUAGE } = await import('../../../src/index');
       // The real host app is the only witness for both halves of this case.
       // The handler forwards the code to `app.actions.setLanguage`, the action
       // the i18n plugin provides, and the event that action emits is what the
-      // microfrontends plugin republishes the `language` shared property from.
-      // The registry that plugin builds is not the mock the screen domain
-      // registers on above, so the propagation is observed on the real one.
-      const react = await import('@gears-frontx/react');
-      const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
-        '@gears-frontx/frontx-template-shell',
-      );
-      // The schemas `main.tsx` puts on the type system, so the registry
-      // validates the shared property value the way the app itself runs.
-      react.gtsPlugin.registerSchema(themeSchema);
-      react.gtsPlugin.registerSchema(languageCodeSchema);
-      react.gtsPlugin.registerSchema(languageSchema);
-      react.gtsPlugin.registerSchema(screenLabelsSchema);
-      const host = react
-        .createFrontX()
-        .use(react.effects())
-        .use(react.i18n())
-        .use(react.microfrontends({ typeSystem: react.gtsPlugin }))
-        .build();
+      // shell republishes the `language` shared property from, wired the way
+      // `main.tsx` wires it, through the registry's `updateSharedProperty` the
+      // cases record. The i18n registry reads the real language here, not the
+      // cases' stub.
+      vi.mocked(app.i18nRegistry.getLanguage).mockRestore();
+      const before = app.i18nRegistry.getLanguage();
+      const setLanguage = originalActions!.setLanguage;
+      const stopPublishing = publishOnHost!(app, app.mfeRegistry!);
 
       try {
-        const updateSpy = vi.spyOn(host.mfeRegistry!, 'updateSharedProperty');
-        const handlers = await chromeHandlersFor({ setLanguage: host.actions.setLanguage });
+        const handlers = await chromeHandlersFor({ setLanguage });
 
         // A code the shell lists: the handler forwards it to the i18n plugin.
         // `es` below in the refusal cases is admitted by the schema but never
@@ -619,11 +924,15 @@ describe('bootstrapMFE (host-app)', () => {
         // The registry holds the new language, and the microfrontends plugin
         // passed it on as the `language` shared property value.
         await vi.waitFor(() => {
-          expect(host.i18nRegistry.getLanguage()).toBe('de');
-          expect(updateSpy).toHaveBeenCalledWith(react.FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
+          expect(app.i18nRegistry.getLanguage()).toBe('de');
+          expect(updateSharedProperty).toHaveBeenCalledWith(FRONTX_SHARED_PROPERTY_LANGUAGE, 'de');
         });
       } finally {
-        host.destroy();
+        stopPublishing();
+        // One app per runtime: the next case finds the language it started with.
+        if (before !== null && before !== app.i18nRegistry.getLanguage()) {
+          setLanguage({ language: before });
+        }
       }
     });
 
@@ -696,24 +1005,27 @@ describe('bootstrapMFE (host-app)', () => {
       // case makes both calls in the mediator's order against the real type
       // system: the schema's `$ref` to the language code type refuses the
       // payload, so the handler never reaches the i18n plugin.
-      const react = await import('@gears-frontx/react');
-      const actual = await vi.importActual<typeof import('@gears-frontx/react')>(
-        '@gears-frontx/react',
+      const actual = await vi.importActual<typeof import('../../../src/index')>(
+        '../../../src/index',
       );
       const {
         themeSchema,
         languageCodeSchema,
         languageSchema,
         extensionScreenSchema,
-      } = await import('@gears-frontx/frontx-template-shell');
+      } = await import('../../../src/index');
       const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
       const setLanguage = vi.fn();
       const handlers = await chromeHandlersFor({ setLanguage });
       const screenDomainTypeId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
+      // The host's own type system, its registration stubs taken off so it
+      // validates what this case registers.
+      const typeSystem = app.mfeRegistry!.typeSystem;
+      vi.mocked(typeSystem.register).mockRestore();
+      vi.mocked(typeSystem.registerSchema).mockRestore();
 
       // The real screen domain instance is what the schema's `target` ref
-      // resolves against; the file's `@gears-frontx/react` mock replaces the
-      // export, so take the actual one.
+      // resolves against; the file's `src/index` mock replaces the export, so take the actual one.
       for (const schema of [
         themeSchema,
         languageCodeSchema,
@@ -721,12 +1033,12 @@ describe('bootstrapMFE (host-app)', () => {
         extensionScreenSchema,
         ...CHROME_ACTION_SCHEMAS,
       ]) {
-        react.gtsPlugin.registerSchema(schema);
+        typeSystem.registerSchema(schema);
       }
-      react.gtsPlugin.register(actual.screenDomain);
+      typeSystem.register(actual.screenDomain);
 
       const dispatch = (language: string) => {
-        react.gtsPlugin.register({
+        typeSystem.register({
           type: CHROME_SET_LANGUAGE,
           target: screenDomainTypeId,
           payload: { language },
@@ -753,20 +1065,24 @@ describe('bootstrapMFE (host-app)', () => {
       // the SDK's codes and `'xx'` is not, so unlike the case above this
       // dispatch passes the type system and reaches the handler: the guard in
       // the handler is what refuses it, and the plugin is never called.
-      const react = await import('@gears-frontx/react');
-      const actual = await vi.importActual<typeof import('@gears-frontx/react')>(
-        '@gears-frontx/react',
+      const actual = await vi.importActual<typeof import('../../../src/index')>(
+        '../../../src/index',
       );
       const {
         themeSchema,
         languageCodeSchema,
         languageSchema,
         extensionScreenSchema,
-      } = await import('@gears-frontx/frontx-template-shell');
+      } = await import('../../../src/index');
       const { CHROME_ACTION_SCHEMAS, CHROME_SET_LANGUAGE } = await import('./chrome-actions');
       const setLanguage = vi.fn();
       const handlers = await chromeHandlersFor({ setLanguage });
       const screenDomainTypeId = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
+      // The host's own type system, its registration stubs taken off so it
+      // validates what this case registers.
+      const typeSystem = app.mfeRegistry!.typeSystem;
+      vi.mocked(typeSystem.register).mockRestore();
+      vi.mocked(typeSystem.registerSchema).mockRestore();
 
       for (const schema of [
         themeSchema,
@@ -775,11 +1091,11 @@ describe('bootstrapMFE (host-app)', () => {
         extensionScreenSchema,
         ...CHROME_ACTION_SCHEMAS,
       ]) {
-        react.gtsPlugin.registerSchema(schema);
+        typeSystem.registerSchema(schema);
       }
-      react.gtsPlugin.register(actual.screenDomain);
+      typeSystem.register(actual.screenDomain);
 
-      react.gtsPlugin.register({
+      typeSystem.register({
         type: CHROME_SET_LANGUAGE,
         target: screenDomainTypeId,
         payload: { language: 'es' },
@@ -828,7 +1144,7 @@ describe('bootstrapMFE (host-app)', () => {
       serve('[]', { status: 200 });
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { bootstrapMFE } = await loadBootstrap();
-      await bootstrapMFE(mockApp as never);
+      await bootstrapMFE(app);
       const handlers = new Map<string, ActionHandler>();
       const [, screenFactory] = registerDomain.mock.calls[0];
       screenFactory.build({

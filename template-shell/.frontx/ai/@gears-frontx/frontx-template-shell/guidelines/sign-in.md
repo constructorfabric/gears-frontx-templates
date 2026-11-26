@@ -27,10 +27,11 @@ Authoritative files:
 
 ## The domain and the presentation
 
-The shell implements the framework's popup domain (`popupDomain`, route
-`popup`) as its modal extension domain. `modalDomain.ts` registers it with
-`OptionalMountStrategy`, so `mount_ext` opens one modal and displaces the one
-before it, and `unmount_ext` closes it. The domain pins a derived extension
+The shell implements the template's popup domain (`popupDomain` from
+`src/gts`, route `popup`) as its modal extension
+domain. `modalDomain.ts` registers it with `OptionalMountStrategy`, so
+`mount_ext` opens one modal and displaces the one before it, and `unmount_ext`
+closes it. The domain pins a derived extension
 type, `extension_modal.v1.json`, that adds two presentation properties, both
 required: `size`, `full` or `medium`, and `cancelable`, whether the user can
 close the modal from the UI (Escape, the close button).

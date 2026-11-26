@@ -20,22 +20,21 @@ import {
   ActionHandler,
   ExtensionDomainImplementation,
   ExtensionDomainImplementationFactory,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-  AuthEvents,
   OptionalMountStrategy,
-  eventBus,
-  popupDomain,
-} from '@gears-frontx/react';
+} from '@gears-frontx/react/mfe';
+import { AuthEvents, eventBus, type FrontXApp } from '@gears-frontx/react';
 import type {
   ActionPayload,
   DomainContext,
   Extension,
-  ExtensionPresentation,
-  FrontXApp,
   MountStrategy,
-} from '@gears-frontx/react';
-import { extensionModalSchema } from '@gears-frontx/frontx-template-shell';
+} from '@gears-frontx/react/mfe';
+import { FRONTX_ACTION_MOUNT_EXT, FRONTX_ACTION_UNMOUNT_EXT } from '@gears-frontx/gts-plugin';
+import {
+  extensionModalSchema,
+  popupDomain,
+  type ExtensionPresentation,
+} from '../../../src/index';
 import { clearAutomaticReload } from './automaticReload';
 import {
   buildSignInUnmountChain,

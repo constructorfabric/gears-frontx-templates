@@ -4,6 +4,11 @@
  * Action functions for MFE lifecycle and registration operations.
  * Lifecycle actions call executeActionsChain() directly (fire-and-forget).
  * Registration actions emit events that MFE effects handle.
+ *
+ * The lifecycle action type IDs come from the registry's injected type system
+ * (`registry.typeSystem.resolve*ActionId()`), never from a concrete type-system
+ * package: the MFE host plugin works with whichever type system the host
+ * passes in, so it must not depend on GTS.
  */
 
 // @cpt-flow:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1
@@ -13,11 +18,6 @@
 import { eventBus } from '@gears-frontx/state';
 import { MfeEvents } from './constants';
 import { type Extension, type MfeRegistry } from '@gears-frontx/mfes';
-import {
-  FRONTX_ACTION_LOAD_EXT,
-  FRONTX_ACTION_MOUNT_EXT,
-  FRONTX_ACTION_UNMOUNT_EXT,
-} from '@gears-frontx/gts-plugin';
 
 // ============================================================================
 // Module-Level Registry Reference
@@ -98,8 +98,8 @@ declare module '@gears-frontx/state' {
  *
  * @example
  * ```typescript
- * import { loadExtension } from '@gears-frontx/framework';
- * loadExtension('gts.frontx.mfes.ext.extension.v1~my.extension.v1');
+ * import { loadExtension } from '@gears-frontx/framework/mfe';
+ * loadExtension('my.extension.v1');
  * ```
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-1
@@ -110,7 +110,7 @@ export function loadExtension(extensionId: string): void {
   // Call executeActionsChain fire-and-forget (no await)
   registry.executeActionsChain({
     action: {
-      type: FRONTX_ACTION_LOAD_EXT,
+      type: registry.typeSystem.resolveLoadExtActionId(),
       target: domainId,
       payload: { subject: extensionId },
     },
@@ -128,8 +128,8 @@ export function loadExtension(extensionId: string): void {
  *
  * @example
  * ```typescript
- * import { mountExtension } from '@gears-frontx/framework';
- * mountExtension('gts.frontx.mfes.ext.extension.v1~my.extension.v1');
+ * import { mountExtension } from '@gears-frontx/framework/mfe';
+ * mountExtension('my.extension.v1');
  * ```
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-2
@@ -140,7 +140,7 @@ export function mountExtension(extensionId: string): void {
   // Call executeActionsChain fire-and-forget (no await)
   registry.executeActionsChain({
     action: {
-      type: FRONTX_ACTION_MOUNT_EXT,
+      type: registry.typeSystem.resolveMountExtActionId(),
       target: domainId,
       payload: { subject: extensionId },
     },
@@ -156,8 +156,8 @@ export function mountExtension(extensionId: string): void {
  *
  * @example
  * ```typescript
- * import { unmountExtension } from '@gears-frontx/framework';
- * unmountExtension('gts.frontx.mfes.ext.extension.v1~my.extension.v1');
+ * import { unmountExtension } from '@gears-frontx/framework/mfe';
+ * unmountExtension('my.extension.v1');
  * ```
  */
 // @cpt-begin:cpt-frontx-flow-framework-composition-mfe-lifecycle:p1:inst-3
@@ -170,11 +170,12 @@ export function unmountExtension(extensionId: string): void {
       `MFE unmount failed: domain '${domainId}' is not registered (extension '${extensionId}'). Register the domain before unmounting.`
     );
   }
-  const supportsUnmount = domain.actions.includes(FRONTX_ACTION_UNMOUNT_EXT);
+  const unmountActionId = registry.typeSystem.resolveUnmountExtActionId();
+  const supportsUnmount = domain.actions.includes(unmountActionId);
 
   if (!supportsUnmount) {
     console.warn(
-      `[MFE] Skipping unmount for ${extensionId}: domain '${domainId}' uses the Exclusive strategy and does not support ${FRONTX_ACTION_UNMOUNT_EXT}.`
+      `[MFE] Skipping unmount for ${extensionId}: domain '${domainId}' uses the Exclusive strategy and does not support ${unmountActionId}.`
     );
     return;
   }
@@ -182,7 +183,7 @@ export function unmountExtension(extensionId: string): void {
   // Call executeActionsChain fire-and-forget (no await)
   registry.executeActionsChain({
     action: {
-      type: FRONTX_ACTION_UNMOUNT_EXT,
+      type: unmountActionId,
       target: domainId,
       payload: { subject: extensionId },
     },
@@ -198,11 +199,11 @@ export function unmountExtension(extensionId: string): void {
  *
  * @example
  * ```typescript
- * import { registerExtension } from '@gears-frontx/framework';
+ * import { registerExtension } from '@gears-frontx/framework/mfe';
  * const extension: Extension = {
- *   id: 'gts.frontx.mfes.ext.extension.v1~my.extension.v1',
- *   domain: 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.sidebar.v1',
- *   entry: 'gts.frontx.mfes.mfe.entry.v1~my.entry.v1',
+ *   id: 'my.extension.v1',
+ *   domain: 'my.domain.v1',
+ *   entry: 'my.entry.v1',
  * };
  * registerExtension(extension);
  * ```
@@ -221,8 +222,8 @@ export function registerExtension(extension: Extension): void {
  *
  * @example
  * ```typescript
- * import { unregisterExtension } from '@gears-frontx/framework';
- * unregisterExtension('gts.frontx.mfes.ext.extension.v1~my.extension.v1');
+ * import { unregisterExtension } from '@gears-frontx/framework/mfe';
+ * unregisterExtension('my.extension.v1');
  * ```
  */
 export function unregisterExtension(extensionId: string): void {

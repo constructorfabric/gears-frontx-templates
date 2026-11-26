@@ -43,7 +43,10 @@ each step names the concrete command or file template-mfe ships.
      - `dev`: `vite --port {port}`
      - `preview`: `vite preview --port {port}`
    - `src-app/mfe_packages/{screenset}-mfe/vite.config.ts`:
-     - Module Federation `name`: `{screenset}Mfe` (camelCase of the package name)
+     - No federation `name` to set — `vitePluginMfeGts` derives it from
+       `package.json`'s `name` (`@gears-frontx/{screenset}-mfe` → `{screenset}Mfe`).
+       Only the `exposes` map passed to `vitePluginMfeGts({ exposes })` is
+       the MFE's own.
 
 4. **Link the workspace**
    ```bash
@@ -52,7 +55,7 @@ each step names the concrete command or file template-mfe ships.
    Run once at the project root, after the copy and its rename. Until it runs
    the package is a declared workspace but not a linked one: `npm ls` exits 1
    with an `UNMET DEPENDENCY <package-name>@file:...` line, a `missing:` line
-   naming the package and `@gears-frontx/frontx-template-shell`, and no link
+   naming the package, and no link
    under `node_modules/@gears-frontx/`; `npm ci` exits 1 with
    `Missing: <package-name>@<version> from lock file`. The scoped checks pass
    on the unlinked workspace, so they are no evidence of the link. Commit the
@@ -106,9 +109,8 @@ each step names the concrete command or file template-mfe ships.
    npm run build:packages
    ```
    The MFE's `type-check`, `test:unit` and `build` resolve
-   `@gears-frontx/react` and `@gears-frontx/frontx-template-shell` through
-   their built output (`dist/`, `dist-lib/`), which a fresh seed does not carry
-   until these packages are built. Without this step they stop on
+   `@gears-frontx/react` through its built output (`dist/`), which a fresh
+   seed does not carry until these packages are built. Without this step they stop on
    `TS2307: Cannot find module '@gears-frontx/react'` before they read any of the
    screen's code. The command builds the shell's own packages only; the MFE
    package keeps its own `build` script. `npm run build:mfes` and

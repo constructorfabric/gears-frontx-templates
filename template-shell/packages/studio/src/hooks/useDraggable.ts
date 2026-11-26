@@ -7,7 +7,7 @@
 // @cpt-dod:cpt-frontx-dod-studio-devtools-viewport-clamping:p1
 // @cpt-state:cpt-frontx-state-studio-devtools-drag:p1
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { clamp } from 'lodash';
+import clamp from 'lodash/clamp';
 import { eventBus } from '@gears-frontx/react';
 import type { Position, Size } from '../types';
 import { loadStudioState } from '../utils/persistence';

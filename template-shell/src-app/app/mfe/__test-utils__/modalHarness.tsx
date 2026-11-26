@@ -13,15 +13,8 @@
  */
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { expect, vi } from 'vitest';
-import type {
-  AuthProvider,
-  AuthSession,
-  ChildMfeBridge,
-  FrontXApp,
-  FrontXPlugin,
-  MfeEntryLifecycle,
-  MfeEntryMF,
-} from '@gears-frontx/react';
+import type { AuthProvider, AuthSession, FrontXApp, FrontXPlugin } from '@gears-frontx/react';
+import type { ChildMfeBridge, MfeEntryLifecycle, MfeEntryMF } from '@gears-frontx/react/mfe';
 import { POPUP_DOMAIN, releaseRoutedDomains, SCREEN_DOMAIN } from './releaseRoutedDomains';
 
 // The domain ids live with the release helper, so the modal and default-screen
@@ -47,16 +40,9 @@ export function extensionId(name: string): string {
 
 /** The manifest of one MFE, the way the aggregate endpoint answers it. */
 function makeManifest(prefix: string) {
-  const name = `${prefix}Mfe`;
   return {
     id: `gts.frontx.mfes.mfe.mf_manifest.v1~frontx.${prefix}.mfe.manifest.v1`,
-    name,
     metaData: {
-      name,
-      type: 'app',
-      buildInfo: { buildVersion: '1.0.0', buildName: name },
-      remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-      globalName: name,
       publicPath: 'http://localhost:3999/',
     },
     shared: [],
@@ -80,9 +66,9 @@ export function makeModalAggregate() {
         requiredProperties: [THEME, LANGUAGE],
         actions: [],
         domainActions: [],
-        manifest,
+        manifest: manifest.id,
         exposedModule: `./${name}`,
-        exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+        exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
       })),
       extensions: modals.map(({ name, label, size, cancelable }) => ({
         id: extensionId(name),
@@ -111,9 +97,9 @@ export function makeSignInAggregate(signInExtensionId: string) {
           requiredProperties: [THEME, LANGUAGE],
           actions: [],
           domainActions: [],
-          manifest,
+          manifest: manifest.id,
           exposedModule: './signin',
-          exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+          exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
         },
       ],
       extensions: [
@@ -166,11 +152,11 @@ let heldAuth: { plugin: FrontXPlugin; app: FrontXApp } | undefined;
 
 /**
  * Builds one app per case, the way `main.tsx` does in development: the
- * application schemas go on the type system first, the auth config rides on
- * the builder rather than the preset (the exported `Presets` type declares
- * `full` without arguments, and `auth()` is the same plugin `full({ auth })`
- * would append), and the microfrontends plugin builds the registry with the
- * real router. The modal and screen domains are the container's to register,
+ * application schemas go on the type system first, the shell's layout plugin
+ * follows the preset, the auth config rides on the builder rather than the
+ * preset (the exported `Presets` type declares `full` without arguments, and
+ * `auth()` is the same plugin `full({ auth })` would append), and the
+ * microfrontends plugin builds the registry with the real router. The modal and screen domains are the container's to register,
  * so they are not here. `options.failSignInLoad` makes the sign-in entry's
  * load reject, the deterministic mount failure the reload guard's cases drive
  * the chain's fallback with. `options.joinAuth` builds the app with `auth()`
@@ -182,16 +168,18 @@ export async function buildApp(options?: {
   failSignInLoad?: () => boolean;
 }) {
   const react = await import('@gears-frontx/react');
-  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
-    '@gears-frontx/frontx-template-shell',
-  );
-  react.gtsPlugin.registerSchema(themeSchema);
-  react.gtsPlugin.registerSchema(languageCodeSchema);
-  react.gtsPlugin.registerSchema(languageSchema);
-  react.gtsPlugin.registerSchema(screenLabelsSchema);
+  const mfe = await import('@gears-frontx/react/mfe');
+  const { layout } = await import('@/app/layout/state');
+  const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
+  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, FRONTX_MFE_ENTRY_MF } =
+    await import('../../../../src/index');
+  gtsPlugin.registerSchema(themeSchema);
+  gtsPlugin.registerSchema(languageCodeSchema);
+  gtsPlugin.registerSchema(languageSchema);
+  gtsPlugin.registerSchema(screenLabelsSchema);
 
   /** The real Module Federation handler, except that a load answers a lifecycle that renders the entry's own name. */
-  class InlineMfeHandler extends react.MfeHandlerMF {
+  class InlineMfeHandler extends mfe.MfeHandlerMF {
     override load(entry: MfeEntryMF): Promise<MfeEntryLifecycle<ChildMfeBridge>> {
       if (options?.failSignInLoad?.() && entry.exposedModule === './signin') {
         return Promise.reject(new Error('the sign-in remote failed to load'));
@@ -215,11 +203,12 @@ export async function buildApp(options?: {
   const app = react
     .createFrontX()
     .useAll(react.presets.full())
+    .use(layout())
     .use(authPlugin ? [authPlugin] : [])
     .use(
-      react.microfrontends({
-        typeSystem: react.gtsPlugin,
-        mfeHandlers: [new InlineMfeHandler(react.FRONTX_MFE_ENTRY_MF)],
+      mfe.microfrontends({
+        typeSystem: gtsPlugin,
+        mfeHandlers: [new InlineMfeHandler(FRONTX_MFE_ENTRY_MF)],
       }),
     )
     .build();

@@ -78,7 +78,7 @@ scaffold step deletes it.
    ```tsx
    // src/screens/my-screen/MyScreen.tsx
    import React from 'react';
-   import type { ChildMfeBridge } from '@gears-frontx/react';
+   import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
    import styles from './MyScreen.module.css';
 
    export const MyScreen: React.FC<{ bridge: ChildMfeBridge }> = () => (
@@ -110,7 +110,7 @@ scaffold step deletes it.
 2. **Wrap it in a Module Federation lifecycle**
    ```tsx
    // src/lifecycle-my-screen.tsx
-   import { ThemeAwareReactLifecycle } from '@gears-frontx/react';
+   import { ThemeAwareReactLifecycle } from '@gears-frontx/react/mfe';
    import { mfeApp } from './init';
    import { MyScreen } from './screens/my-screen/MyScreen';
 
@@ -159,7 +159,7 @@ fails to say so.
 
 Then update its `package.json` name and preview `--port`, declare your entries
 and screen extensions in `mfe.json`, and expose your lifecycle modules in its
-`vite.config.ts`, keeping `@gears-frontx/routing` in its `sharedDeps` and pinned in its `package.json`, as the scaffold has it (add `@gears-frontx/routing-tanstack` to both, under `dependencies`, only when the MFE uses `<ExtensionRouter>` or `navigation()`).
+`vite.config.ts`, keeping `@gears-frontx/routing` pinned in its `package.json` - it is shared by default like every `dependencies` entry (add `@gears-frontx/routing-tanstack` under `dependencies` only when the MFE uses `<ExtensionRouter>` or `navigation()`).
 `dev:all` discovers MFEs automatically by scanning `src-app/mfe_packages/` -
 there is no registry file to edit. See the shell's `mfe-package-contract` AI
 guideline for the exact shape a new package must have.
@@ -190,6 +190,11 @@ const MenuToggle = () => {
   );
 };
 ```
+
+The `layout/*` state and events come from the shell's own layout plugin in
+`src-app/app/layout/state/` (`layout()`, added in `main.tsx`): the header,
+footer, menu, sidebar, popup and overlay slices, and the layout actions it adds
+to `app.actions`. Change them there.
 
 The app is **event-driven**: prefer emitting events over dispatching directly.
 Hooks such as `useTheme`, `useTranslation`, and `useApiQuery` subscribe to

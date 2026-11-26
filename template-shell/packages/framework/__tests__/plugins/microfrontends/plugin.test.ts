@@ -11,6 +11,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { type Extension } from '@gears-frontx/mfes';
 import type { FrontXApp } from '../../../src/types';
+import { createFakeTypeSystem } from '../../fakeTypeSystem';
+
+const typeSystem = createFakeTypeSystem();
 
 // One app per runtime: every test loads its own module copy.
 let createFrontX: typeof import('../../../src/createFrontX')['createFrontX'];
@@ -23,7 +26,6 @@ let selectExtensionState: typeof import('../../../src/plugins/microfrontends')['
 let selectExtensionError: typeof import('../../../src/plugins/microfrontends')['selectExtensionError'];
 let eventBus: typeof import('@gears-frontx/state')['eventBus'];
 let resetStore: typeof import('@gears-frontx/state')['resetStore'];
-let gtsPlugin: typeof import('@gears-frontx/gts-plugin')['gtsPlugin'];
 
 beforeEach(async () => {
   vi.resetModules();
@@ -31,7 +33,6 @@ beforeEach(async () => {
   ({ effects } = await import('../../../src/plugins/effects'));
   ({ microfrontends, loadExtension, unmountExtension, MfeEvents, selectExtensionState, selectExtensionError } = await import('../../../src/plugins/microfrontends'));
   ({ eventBus, resetStore } = await import('@gears-frontx/state'));
-  ({ gtsPlugin } = await import('@gears-frontx/gts-plugin'));
 });
 
 describe('microfrontends plugin - Phase 13', () => {
@@ -48,7 +49,7 @@ describe('microfrontends plugin - Phase 13', () => {
   });
   describe('13.8.1 - plugin registration', () => {
     it('should register plugin with Flux wiring', () => {
-      const plugin = microfrontends({ typeSystem: gtsPlugin });
+      const plugin = microfrontends({ typeSystem });
 
       expect(plugin.name).toBe('microfrontends');
       expect(plugin.provides).toBeDefined();
@@ -62,7 +63,7 @@ describe('microfrontends plugin - Phase 13', () => {
     });
 
     it('should provide MFE actions', () => {
-      const plugin = microfrontends({ typeSystem: gtsPlugin });
+      const plugin = microfrontends({ typeSystem });
 
       expect(plugin.provides?.actions).toHaveProperty('loadExtension');
       expect(plugin.provides?.actions).toHaveProperty('mountExtension');
@@ -73,7 +74,7 @@ describe('microfrontends plugin - Phase 13', () => {
     it('should make MFE actions available on app.actions', () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
@@ -88,16 +89,16 @@ describe('microfrontends plugin - Phase 13', () => {
     it('should call executeActionsChain for loadExtension', () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
-      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
-      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testDomainId = 'test.domain~test.app.test.domain.v1';
+      const testExtensionId = 'test.extension~test.app.test.ext.v1';
       const testExtension: Extension = {
         id: testExtensionId,
         domain: testDomainId,
-        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+        entry: 'test.entry~test.app.test.entry.v1',
       };
 
       const registry = app.mfeRegistry;
@@ -109,7 +110,7 @@ describe('microfrontends plugin - Phase 13', () => {
 
       expect(spy).toHaveBeenCalledWith({
         action: {
-          type: 'gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.load_ext.v1~',
+          type: 'test.action.load_ext',
           target: testDomainId,
           payload: { subject: testExtensionId },
         },
@@ -119,16 +120,16 @@ describe('microfrontends plugin - Phase 13', () => {
     it('should throw when unmountExtension resolves a domain that is not registered on the registry', () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
-      const testDomainId = 'gts.frontx.mfes.ext.domain.v1~test.app.test.domain.v1';
-      const testExtensionId = 'gts.frontx.mfes.ext.extension.v1~test.app.test.ext.v1';
+      const testDomainId = 'test.domain~test.app.test.domain.v1';
+      const testExtensionId = 'test.extension~test.app.test.ext.v1';
       const testExtension: Extension = {
         id: testExtensionId,
         domain: testDomainId,
-        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.test.entry.v1',
+        entry: 'test.entry~test.app.test.entry.v1',
       };
 
       const registry = app.mfeRegistry;
@@ -140,7 +141,7 @@ describe('microfrontends plugin - Phase 13', () => {
       expect(() => {
         unmountExtension(testExtensionId);
       }).toThrow(
-        /domain 'gts\.frontx\.mfes\.ext\.domain\.v1~test\.app\.test\.domain\.v1' is not registered.*extension 'gts\.frontx\.mfes\.ext\.extension\.v1~test\.app\.test\.ext\.v1'/
+        /domain 'test\.domain~test\.app\.test\.domain\.v1' is not registered.*extension 'test\.extension~test\.app\.test\.ext\.v1'/
       );
       expect(chainSpy).not.toHaveBeenCalled();
     });
@@ -150,9 +151,9 @@ describe('microfrontends plugin - Phase 13', () => {
       const unsub = eventBus.on(MfeEvents.RegisterExtensionRequested, eventSpy);
 
       const testExtension: Extension = {
-        id: 'gts.frontx.mfes.ext.extension.v1~test.ext.v1',
-        domain: 'gts.frontx.mfes.ext.domain.v1~test.domain.v1',
-        entry: 'gts.frontx.mfes.mfe.entry.v1~test.entry.v1',
+        id: 'test.extension~test.ext.v1',
+        domain: 'test.domain~test.domain.v1',
+        entry: 'test.entry~test.entry.v1',
       };
 
       // Use event bus directly (not the action, which is async)
@@ -168,7 +169,7 @@ describe('microfrontends plugin - Phase 13', () => {
     it('should initialize MFE slice in store', () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
@@ -181,7 +182,7 @@ describe('microfrontends plugin - Phase 13', () => {
     it('should track registration state via selectors', () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
@@ -201,7 +202,7 @@ describe('microfrontends plugin - Phase 13', () => {
     it('initializes MFE effects on init so bus events invoke the registry', async () => {
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
       apps.push(app);
 
@@ -212,9 +213,9 @@ describe('microfrontends plugin - Phase 13', () => {
         .mockResolvedValue(undefined);
 
       const extension: Extension = {
-        id: 'gts.frontx.mfes.ext.extension.v1~test.app.init.ext.v1',
-        domain: 'gts.frontx.mfes.ext.domain.v1~test.app.init.domain.v1',
-        entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.init.entry.v1',
+        id: 'test.extension~test.app.init.ext.v1',
+        domain: 'test.domain~test.app.init.domain.v1',
+        entry: 'test.entry~test.app.init.entry.v1',
       };
       eventBus.emit(MfeEvents.RegisterExtensionRequested, { extension });
 
@@ -227,7 +228,7 @@ describe('microfrontends plugin - Phase 13', () => {
       // Fresh app so we control its destroy ordering independently of afterEach.
       const app = createFrontX()
         .use(effects())
-        .use(microfrontends({ typeSystem: gtsPlugin }))
+        .use(microfrontends({ typeSystem }))
         .build();
 
       const registry = app.mfeRegistry;
@@ -240,9 +241,9 @@ describe('microfrontends plugin - Phase 13', () => {
 
       eventBus.emit(MfeEvents.RegisterExtensionRequested, {
         extension: {
-          id: 'gts.frontx.mfes.ext.extension.v1~test.app.post-destroy.ext.v1',
-          domain: 'gts.frontx.mfes.ext.domain.v1~test.app.post-destroy.domain.v1',
-          entry: 'gts.frontx.mfes.mfe.entry.v1~test.app.post-destroy.entry.v1',
+          id: 'test.extension~test.app.post-destroy.ext.v1',
+          domain: 'test.domain~test.app.post-destroy.domain.v1',
+          entry: 'test.entry~test.app.post-destroy.entry.v1',
         },
       });
 

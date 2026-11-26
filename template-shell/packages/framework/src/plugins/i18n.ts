@@ -11,13 +11,12 @@
 
 import { eventBus } from '@gears-frontx/state';
 import { i18nRegistry as singletonI18nRegistry, Language } from '@gears-frontx/i18n';
-import type { FrontXPlugin, SetLanguagePayload, LanguagePropagationFailedPayload } from '../types';
+import type { FrontXPlugin, SetLanguagePayload } from '../types';
 
 // Define i18n events for module augmentation
 declare module '@gears-frontx/state' {
   interface EventPayloadMap {
     'i18n/language/changed': SetLanguagePayload;
-    'i18n/propagation/failed': LanguagePropagationFailedPayload;
   }
 }
 

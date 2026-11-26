@@ -484,7 +484,7 @@ const mutationScopes = new WeakMap<MutationFunctionContext, MutationScope>();
 
 /**
  * A queryCache whose writes do nothing once the cache scope (mock mode,
- * tenant, session) has changed since the mutation started, so a response or a
+ * session) has changed since the mutation started, so a response or a
  * snapshot from the old scope never lands in the new scope's cache. Reads
  * still go through.
  */

@@ -10,7 +10,8 @@
  */
 
 import { useFrontX } from '../../FrontXContext';
-import type { FrontXApp, MfeRegistry } from '@gears-frontx/framework';
+import type { FrontXApp } from '@gears-frontx/framework';
+import type { MfeRegistry } from '@gears-frontx/framework/mfe';
 
 // ============================================================================
 // Internal Guard

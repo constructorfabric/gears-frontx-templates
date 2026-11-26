@@ -9,4 +9,3 @@ export { useSharedProperty, type UseSharedPropertyOptions } from './useSharedPro
 export { useHostAction } from './useHostAction';
 export { useMfeRegistry } from './useMfeRegistry';
 export { useDomainExtensions } from './useDomainExtensions';
-export { useRegisteredPackages } from './useRegisteredPackages';

@@ -47,7 +47,6 @@ export default [
     ignores: [
       'dist/**',
       '**/dist/**',
-      'dist-lib/**', // tsup output of the template's own library build
       '**/.__mf__temp/**',
       '**/coverage/**',
       'node_modules/**',
@@ -357,9 +356,14 @@ export default [
                 'REACT VIOLATION: Import from @gears-frontx/framework instead.',
             },
             {
-              group: ['@gears-frontx/mfes', '@gears-frontx/mfes/*', '@gears-frontx/gts-plugin', '@gears-frontx/gts-plugin/*'],
+              group: ['@gears-frontx/mfes', '@gears-frontx/mfes/*'],
               message:
                 'REACT VIOLATION: Import from @gears-frontx/framework instead.',
+            },
+            {
+              group: ['@gears-frontx/gts-plugin', '@gears-frontx/gts-plugin/*'],
+              message:
+                'REACT VIOLATION: The React bindings are type-system agnostic; a concrete type system belongs to the application template.',
             },
             {
               group: ['@gears-frontx/api', '@gears-frontx/api/*'],
@@ -387,8 +391,8 @@ export default [
     },
   },
 
-  // ============ @gears-frontx/frontx-template-shell (package root, src/) ============
-  // Allow unknown/object types: build utilities (mf-gts.ts AST transforms, lazy-import-transform)
+  // ============ shell shared modules (src/) ============
+  // Allow unknown/object types: build utilities (vite-plugin-mfe-gts AST transforms, lazy-import-transform)
   // use unknown for dynamic module shapes and generic AST node types — architecturally required.
   {
     files: ['src/**/*.ts', 'src/**/*.tsx'],
@@ -466,8 +470,11 @@ export default [
               message:
                 'LAYER VIOLATION: App-layer code must import from @gears-frontx/react, not directly from @gears-frontx/i18n (Layer 1).',
             },
+            // The GTS type system is not in this list: the framework and React
+            // packages are type-system agnostic and re-export none of it, so the
+            // template connects `@gears-frontx/gts-plugin` itself.
             {
-              group: ['@gears-frontx/mfes', '@gears-frontx/mfes/*', '@gears-frontx/gts-plugin', '@gears-frontx/gts-plugin/*'],
+              group: ['@gears-frontx/mfes', '@gears-frontx/mfes/*'],
               message:
                 'LAYER VIOLATION: App-layer code must import from @gears-frontx/react, not directly from @gears-frontx/mfes (Layer 1).',
             },

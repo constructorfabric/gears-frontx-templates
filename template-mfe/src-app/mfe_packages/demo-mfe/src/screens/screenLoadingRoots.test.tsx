@@ -13,7 +13,7 @@
  */
 import React from 'react';
 import { render } from '@testing-library/react';
-import type { ChildMfeBridge } from '@gears-frontx/react';
+import type { ChildMfeBridge } from '@gears-frontx/react/mfe';
 import { createMfeBridgeFixture } from '@frontx-test-utils/createMfeBridgeFixture';
 import { mockShadowHost } from '@frontx-test-utils/mockShadowHost';
 import { describe, expect, it, vi } from 'vitest';

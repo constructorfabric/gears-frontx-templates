@@ -1,15 +1,24 @@
 /// <reference types="vite/client" />
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { FrontXProvider, apiRegistry, createFrontX, presets, microfrontends, MfeHandlerMF, gtsPlugin, FRONTX_MFE_ENTRY_MF } from '@gears-frontx/react';
-import { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } from '@gears-frontx/frontx-template-shell';
+import { FrontXProvider, apiRegistry, createFrontX, presets } from '@gears-frontx/react';
+import { microfrontends, MfeHandlerMF } from '@gears-frontx/react/mfe';
+import { gtsPlugin } from '@gears-frontx/gts-plugin';
+import {
+  themeSchema,
+  languageCodeSchema,
+  languageSchema,
+  screenLabelsSchema,
+  FRONTX_MFE_ENTRY_MF,
+} from '../../src/index';
 import { Toaster } from '@/app/components/ui/sonner';
+import { layout } from '@/app/layout/state';
 import { AccountsApiService } from '@/app/api';
 import { devAuthPlugins, wireDevSignInTriggers } from '@/app/auth/devAuth';
 import '@gears-frontx/ui-kit/theme.css'; // UI-kit design tokens (imported exactly once, at the app entry)
 import './font.css'; // Registers Inter, the face the kit's --font-sans and --font-heading name first
 import './globals.css'; // Global styles with CSS variables
-import '@gears-frontx/ui-kit'; // side-effect: styles the host's own ui-kit components in the host document; screens get their kit CSS through their manifest. Must come after globals.css so component rules beat the base reset there on specificity ties.
+import '@gears-frontx/ui-kit/utilities.css'; // ui-kit global utility classes in the host document, where MFE shadow roots adopt them (ThemeAwareReactLifecycle). The host's own ui-kit components are styled by the build: each one's stylesheet is imported where the host imports the component (vite-plugin-shell), so the host document carries the kit CSS of the components the host uses; screens get their kit CSS through their manifest. Must come after globals.css so these rules beat the base reset there on specificity ties.
 import '@/app/events/bootstrapEvents'; // Register app-level events (type augmentation)
 import '@/app/i18n/shellTranslations'; // Register the shell namespace's translation loader before the first render
 import { applyPersistedLanguage } from '@/app/i18n/languagePersistence'; // Restore the remembered language before the first render
@@ -24,6 +33,7 @@ import { lightTheme } from '@/app/themes/light';
 import { draculaTheme } from '@/app/themes/dracula';
 import { draculaLargeTheme } from '@/app/themes/dracula-large';
 import { applyPersistedTheme } from '@/app/themes/themePersistence';
+import { publishThemeAndLanguage } from '@/app/mfe/sharedProperties';
 import { stampAppliedThemeId } from '@/app/themes/themeIdAttribute';
 
 // Register application-specific GTS schemas before constructing the FrontX app.
@@ -50,6 +60,7 @@ apiRegistry.initialize({});
 // is the same one `full({ auth })` would append, dependencies included.
 const app = createFrontX()
   .useAll(presets.full())
+  .use(layout())
   // The development auth plugin (`app/auth/devAuth.ts`): that module passes
   // no auth config outside development, so a production build carries no
   // auth() plugin.
@@ -67,8 +78,9 @@ const app = createFrontX()
 wireDevSignInTriggers(app);
 
 // The root registry is built eagerly: the shell is the root runtime, so its
-// registry is not tied to any mount window.
-void app.mfeRegistry;
+// registry is not tied to any mount window. From its construction on, the
+// shell publishes its theme and language to its MFEs.
+publishThemeAndLanguage(app, app.mfeRegistry!);
 
 // Register app-level effects (pass store dispatch, and the auth runtime when there is one)
 registerBootstrapEffects(app.store.dispatch, app.auth);

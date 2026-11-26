@@ -17,7 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
-import type { ChildMfeBridge, MfeEntryLifecycle, MfeEntryMF } from '@gears-frontx/react';
+import type { ChildMfeBridge, MfeEntryLifecycle, MfeEntryMF } from '@gears-frontx/react/mfe';
 
 const SCREEN_DOMAIN = 'gts.frontx.mfes.ext.domain.v1~frontx.screensets.layout.screen.v1';
 const MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.themehost.mfe.manifest.v1';
@@ -31,13 +31,7 @@ const extensionId = (name: string) =>
 
 const manifest = {
   id: MANIFEST_ID,
-  name: 'themehostMfe',
   metaData: {
-    name: 'themehostMfe',
-    type: 'app',
-    buildInfo: { buildVersion: '1.0.0', buildName: 'themehostMfe' },
-    remoteEntry: { name: 'remoteEntry.js', path: '', type: 'module' },
-    globalName: 'themehostMfe',
     publicPath: 'http://localhost:3999/',
   },
   shared: [],
@@ -52,9 +46,9 @@ const aggregate = [
         requiredProperties: [THEME, LANGUAGE],
         actions: [],
         domainActions: [],
-        manifest,
+        manifest: manifest.id,
         exposedModule: './overview',
-        exposeAssets: { js: { sync: [], async: [] }, css: { sync: [], async: [] } },
+        exposeAssets: { js: { sync: ['assets/screen.js'] }, css: { sync: [], async: [] } },
       },
     ],
     extensions: [
@@ -71,15 +65,16 @@ const aggregate = [
 
 async function buildApp() {
   const react = await import('@gears-frontx/react');
-  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema } = await import(
-    '@gears-frontx/frontx-template-shell'
-  );
-  react.gtsPlugin.registerSchema(themeSchema);
-  react.gtsPlugin.registerSchema(languageCodeSchema);
-  react.gtsPlugin.registerSchema(languageSchema);
-  react.gtsPlugin.registerSchema(screenLabelsSchema);
+  const mfe = await import('@gears-frontx/react/mfe');
+  const { gtsPlugin } = await import('@gears-frontx/gts-plugin');
+  const { themeSchema, languageCodeSchema, languageSchema, screenLabelsSchema, FRONTX_MFE_ENTRY_MF } =
+    await import('../../../src/index');
+  gtsPlugin.registerSchema(themeSchema);
+  gtsPlugin.registerSchema(languageCodeSchema);
+  gtsPlugin.registerSchema(languageSchema);
+  gtsPlugin.registerSchema(screenLabelsSchema);
 
-  class InlineMfeHandler extends react.MfeHandlerMF {
+  class InlineMfeHandler extends mfe.MfeHandlerMF {
     override load(entry: MfeEntryMF): Promise<MfeEntryLifecycle<ChildMfeBridge>> {
       return Promise.resolve({
         mount: (container: Element | ShadowRoot) => {
@@ -98,9 +93,9 @@ async function buildApp() {
     .createFrontX()
     .useAll(react.presets.full())
     .use(
-      react.microfrontends({
-        typeSystem: react.gtsPlugin,
-        mfeHandlers: [new InlineMfeHandler(react.FRONTX_MFE_ENTRY_MF)],
+      mfe.microfrontends({
+        typeSystem: gtsPlugin,
+        mfeHandlers: [new InlineMfeHandler(FRONTX_MFE_ENTRY_MF)],
       }),
     )
     .build();
