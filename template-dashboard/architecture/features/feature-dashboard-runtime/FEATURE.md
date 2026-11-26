@@ -42,6 +42,7 @@ description: "Feature: the dashboard runtime — hosting-agnostic mounting, the 
   - [Placeholder](#placeholder)
   - [Theme and language publishing](#theme-and-language-publishing)
   - [Owner state machine and load lifecycle](#owner-state-machine-and-load-lifecycle)
+  - [Refresh and dispose](#refresh-and-dispose)
   - [Initial render](#initial-render)
   - [No persistence](#no-persistence)
 - [6. Acceptance Criteria](#6-acceptance-criteria)

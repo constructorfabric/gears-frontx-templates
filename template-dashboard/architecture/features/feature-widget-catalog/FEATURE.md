@@ -20,7 +20,7 @@ description: "Feature: the widget catalog: the 15 v1 widget types, each with its
   - [Sort and page a grid](#sort-and-page-a-grid)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Render a markdown card safely](#render-a-markdown-card-safely)
-  - [Take chart colours from kit tokens](#take-chart-colours-from-kit-tokens)
+  - [Take chart colours from the series palette](#take-chart-colours-from-the-series-palette)
   - [Validate grid columns and groups](#validate-grid-columns-and-groups)
   - [Sort and page grid rows](#sort-and-page-grid-rows)
   - [Check the heatmap scale and calendar](#check-the-heatmap-scale-and-calendar)
