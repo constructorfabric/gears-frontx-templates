@@ -252,9 +252,10 @@ export class DashboardRoot {
 
   /**
    * Reads the served file again; each shown `Dashboard` then loads its dashboard from the new definitions and redraws
-   * it, and one whose definition is unchanged keeps its cells as they are. Widget code already loaded is not loaded
-   * again; a widget whose type changed loads the code of its new type, if not loaded yet. A dashboard missing from the
-   * new file shows its cannot-be-shown state, as on a first load.
+   * it, and one whose definition is unchanged keeps its cells as they are. A generated extension already registered
+   * mounts the code it loaded, which is not loaded again; a cell with a new generated extension (a new widget, or a
+   * widget whose type changed) loads its own copy of the code, even when another cell already loaded that type. A
+   * dashboard missing from the new file shows its cannot-be-shown state, as on a first load.
    *
    * On any failure (the file request, the base file the type store rejects, a base type defined otherwise than the
    * type store holds it, or a type of a widget part defined otherwise than the store holds it from that same part,
