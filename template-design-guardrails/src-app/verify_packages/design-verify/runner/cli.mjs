@@ -51,6 +51,12 @@ import { CONTRAST_CHECK, contrastPairs, contrastState, ContrastInputError, probe
 import { coversRendered, loadWaivers, waiverReport, WaiverError } from './waivers.mjs';
 
 const SWEEP_LINE = /\[design-defects\]/;
+/** The pause before a second look at a started command that the URL answered for. */
+const SERVER_EXIT_RECHECK_MS = 500;
+/** How long a headless Chrome may take to announce its DevTools endpoint. */
+const CHROME_LAUNCH_TIMEOUT_MS = 20_000;
+/** The exit code a shell reports for a death by each signal the run stops on. */
+const SIGNAL_EXIT_CODES = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 const VERIFY_PKG_FAILURE = /\[verify-packages\].*(none installed|failed to load)/;
 
 /** @param {string} base @param {string} route */
@@ -168,32 +174,117 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const cleanups = [];
+  /** @type {ReturnType<typeof startServer> | undefined} */
+  let server;
+  /** @type {ReturnType<typeof launchChrome> | undefined} */
+  let chromeLaunch;
+  let interrupted = false;
   try {
     if (config.startServer) {
       if (await isUrlReachable(config.url)) {
-        // A second server on an occupied port dies (or binds elsewhere) while
-        // the sweep would silently measure the incumbent - attach explicitly.
-        console.log(
-          `design-verify: ${config.url} is already reachable - attaching to the running server instead of starting "${config.startServer}"`,
+        // Whatever answers is not a server this run started, and nothing an
+        // HTTP answer carries tells this project's dev server from another
+        // project's on the same port: measuring it would report on the wrong
+        // app. A second server would die on the occupied port (or bind
+        // elsewhere), so the run starts nothing and refuses.
+        console.error(
+          `design-verify: ${config.url} already answers, but this run did not start that server, ` +
+            `so it cannot tell whether it is this project's app. Either stop the server holding it ` +
+            `and run again; or pass --url with a free port and start the server there (the template ` +
+            `shell's dev:all takes the host port from FRONTX_VERIFY_HOST_PORT); or run without ` +
+            `--start-server to measure the running server on purpose`,
         );
-      } else {
-        const serverCwd = resolveServerCwd(config);
-        console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
-        const server = startServer(config.startServer, { cwd: serverCwd });
-        cleanups.push(server.stop);
+        return 2;
       }
+      const serverCwd = resolveServerCwd(config);
+      console.log(`design-verify: starting dev server: ${config.startServer} (in ${serverCwd})`);
+      server = startServer(config.startServer, { cwd: serverCwd });
+      cleanups.push(server.stop);
+      // The command runs in its own process group, which a Ctrl-C at the
+      // terminal does not reach, and a signal ends this process without the
+      // finally below: left running, the server would keep --url, and the
+      // next run would refuse it. Stop it here at once. A Chrome still starting
+      // is not in the cleanups yet: wait for its launch to settle (a failed or
+      // timed-out launch stops its own Chrome) and stop what it started, with
+      // its temporary profile. Then exit as a shell reports a death by that
+      // signal. The handlers go with the first cleanup, so a second signal
+      // during the wait ends the run at once.
+      const stopOnSignal = async (signal) => {
+        interrupted = true;
+        const ran = [...cleanups].reverse();
+        for (const cleanup of ran) cleanup();
+        if (chromeLaunch) {
+          const launched = await Promise.race([
+            chromeLaunch.catch(() => undefined),
+            new Promise((r) => setTimeout(r, CHROME_LAUNCH_TIMEOUT_MS + 1_000)),
+          ]);
+          // A launch that settled before the signal put its stop among the
+          // cleanups that just ran.
+          if (launched && !ran.includes(launched.stop)) launched.stop();
+        }
+        process.exit(SIGNAL_EXIT_CODES[signal]);
+      };
+      for (const signal of Object.keys(SIGNAL_EXIT_CODES)) process.once(signal, stopOnSignal);
+      cleanups.push(() => {
+        for (const signal of Object.keys(SIGNAL_EXIT_CODES)) process.off(signal, stopOnSignal);
+      });
     }
     console.log(`design-verify: waiting for ${config.url} (max ${config.serverTimeoutMs}ms)`);
-    await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs });
+    // The server's own words say why it never answered (a port in use, a
+    // failed build); a healthy start never prints them.
+    const printServerOutput = async () => {
+      if (server.ended() === undefined) {
+        console.error(
+          `design-verify: the server command is still running and is stopped now; its last output:\n${server.output() || '(no output)'}`,
+        );
+        return;
+      }
+      await server.settled();
+      console.error(`design-verify: the server command's last output:\n${server.output() || '(no output)'}`);
+    };
+    try {
+      await waitForUrl(config.url, { timeoutMs: config.serverTimeoutMs, ended: server?.ended });
+    } catch (error) {
+      if (!server) throw error;
+      console.error(`design-verify: ${error instanceof Error ? error.message : String(error)}`);
+      await printServerOutput();
+      return 2;
+    }
+    // The URL answered, but the precheck above can miss a slow server that
+    // already held it: a command that died on the taken port then leaves that
+    // server to be measured. The run refuses once its own command has ended.
+    const refuseIfServerEnded = async () => {
+      const ended = server && !interrupted ? server.ended() : undefined;
+      if (ended === undefined) return false;
+      console.error(
+        `design-verify: ${config.url} answered, but after the answer the server command this run started ` +
+          `was found ended (${ended}): nothing this run started serves ${config.url} now, so it is not measured. ` +
+          `Run again, or pass --url with a free port`,
+      );
+      await printServerOutput();
+      return true;
+    };
+    // Its exit can arrive just after the answer, so the check is made once
+    // more after a short pause, and again right before the browser attaches.
+    if (server && server.ended() === undefined) await new Promise((r) => setTimeout(r, SERVER_EXIT_RECHECK_MS));
+    if (await refuseIfServerEnded()) return 2;
 
     let endpoint = config.cdpUrl;
     if (!endpoint) {
       const execPath = findChrome({ chromePath: config.chromePath });
       console.log(`design-verify: launching headless Chrome: ${execPath}`);
-      const chrome = await launchChrome(execPath);
+      chromeLaunch = launchChrome(execPath, { timeoutMs: CHROME_LAUNCH_TIMEOUT_MS });
+      const chrome = await chromeLaunch.catch((error) => {
+        if (!interrupted) throw error;
+      });
+      // The only await the signal handler waits on with this path: once a
+      // signal was taken, the handler stops what started and owns the exit
+      // code, so this path must not return or throw ahead of it.
+      if (interrupted) await new Promise(() => {});
       cleanups.push(chrome.stop);
       endpoint = chrome.endpoint;
     }
+    if (await refuseIfServerEnded()) return 2;
     const session = new CdpSession(await newTarget(endpoint));
     cleanups.push(() => session.close());
     await session.connect();

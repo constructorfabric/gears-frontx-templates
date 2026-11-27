@@ -1,10 +1,13 @@
 /**
- * Whole-skill check for the design-guardrails bundle's one skill,
+ * Whole-skill check for the design-guardrails bundle's design skill,
  * `skills/frontx-design/`. The SKILL.md map is the index of the skill (it
  * replaced the generated guideline index), so this test keeps it honest: the
  * rule registry has a valid shape, every gate id the prose cites exists, the
- * map names exactly the files on disk, and the bundle declares one skill
- * whose map stays short enough to load.
+ * map names exactly the files on disk, and the bundle declares its two skills
+ * whose maps stay short enough to load. The sibling skill
+ * `skills/frontx-design-proposal/` gets the same map, path and gate checks
+ * against its own files and the frontx-design registry, plus the checks that
+ * keep its drawing kit and page skeleton in step.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -224,24 +227,117 @@ describe('paths other templates cite into the skill', () => {
   });
 });
 
-describe('the bundle declares one compact skill', () => {
+describe('the bundle declares two compact skills', () => {
   const extension = JSON.parse(readText(path.join(bundle, 'extension.json')));
 
-  it('has exactly one extension entry, pointing at a dir with SKILL.md', () => {
-    expect(extension.entries).toHaveLength(1);
-    const [entry] = extension.entries;
-    expect(entry.category).toBe('skills');
-    expect(existsSync(path.join(bundle, entry.path, 'SKILL.md'))).toBe(true);
+  it('has exactly the frontx-design and frontx-design-proposal entries, each a dir with SKILL.md', () => {
+    expect(extension.entries.map((entry) => entry.id)).toEqual(['frontx-design', 'frontx-design-proposal']);
+    for (const entry of extension.entries) {
+      expect(entry.category).toBe('skills');
+      expect(entry.path).toBe(`skills/${entry.id}`);
+      expect(existsSync(path.join(bundle, entry.path, 'SKILL.md'))).toBe(true);
+    }
   });
 
-  it('keeps only skills/ at the bundle root', () => {
+  it('keeps only skills/ at the bundle root, and only the declared skills under it', () => {
     const dirs = readdirSync(bundle).filter((name) => statSync(path.join(bundle, name)).isDirectory());
     expect(dirs).toEqual(['skills']);
+    expect(readdirSync(path.join(bundle, 'skills')).sort()).toEqual(extension.entries.map((entry) => entry.id).sort());
   });
 
-  it('keeps the SKILL.md description to at most 300 characters', () => {
-    const description = skillMd.match(/^description: (.+)$/m)?.[1] ?? '';
+  it.each(extension.entries.map((entry) => entry.id))('keeps the %s SKILL.md name matching and its description to at most 300 characters', (id) => {
+    const text = readText(path.join(bundle, 'skills', id, 'SKILL.md'));
+    expect(text.match(/^name: (.+)$/m)?.[1]).toBe(id);
+    const description = text.match(/^description: (.+)$/m)?.[1] ?? '';
     expect(description.length).toBeGreaterThan(0);
     expect(description.length).toBeLessThanOrEqual(300);
+  });
+});
+
+describe('the frontx-design-proposal skill', () => {
+  const proposal = path.join(bundle, 'skills/frontx-design-proposal');
+  const proposalMd = readText(path.join(proposal, 'SKILL.md'));
+  // templates/draw/ is the drawing kit's one subfolder; nothing else nests.
+  const DIRS = ['references', 'templates', 'templates/draw', 'scripts'];
+  const filesOf = (dir) =>
+    readdirSync(path.join(proposal, dir))
+      .filter((name) => statSync(path.join(proposal, dir, name)).isFile())
+      .map((name) => `${dir}/${name}`);
+  const ownFiles = DIRS.flatMap(filesOf);
+  const assetFiles = readdirSync(path.join(proposal, 'assets'), { recursive: true })
+    .map((rel) => `assets/${rel.split(path.sep).join('/')}`)
+    .filter((rel) => statSync(path.join(proposal, rel)).isFile());
+  // An own path is not preceded by a path segment, so `../frontx-design/references/x.md` is not one.
+  const OWN_PATH = /(?<![\w./-])(?:references|templates|scripts)\/(?:draw\/)?[\w.-]+\.(?:md|json|mjs|ts|tsx|css|html)\b/g;
+  const SIBLING_PATH = /\.\.\/frontx-design\/((?:references|rules|templates|scripts)\/[\w.-]+\.\w+)/g;
+  const prose = [['SKILL.md', proposalMd], ...ownFiles.filter((f) => f.endsWith('.md')).map((f) => [f, readText(path.join(proposal, f))])];
+
+  it('nests only templates/draw/, and keeps nothing beside references/, templates/, scripts/ and assets/ but SKILL.md', () => {
+    for (const dir of ['references', 'scripts', 'templates/draw']) {
+      expect(readdirSync(path.join(proposal, dir)).filter((name) => !statSync(path.join(proposal, dir, name)).isFile())).toEqual([]);
+    }
+    expect(readdirSync(path.join(proposal, 'templates')).filter((name) => !statSync(path.join(proposal, 'templates', name)).isFile())).toEqual(['draw']);
+    expect(readdirSync(proposal).sort()).toEqual(['SKILL.md', 'assets', 'references', 'scripts', 'templates']);
+  });
+
+  it('names every file under references/, templates/ and scripts/ in its SKILL.md map, and only files that exist', () => {
+    const named = new Set(proposalMd.match(OWN_PATH) ?? []);
+    expect(ownFiles.filter((rel) => !named.has(rel))).toEqual([]);
+    expect([...named].filter((rel) => !existsSync(path.join(proposal, rel)))).toEqual([]);
+  });
+
+  it('names the folder of every asset file in its SKILL.md map', () => {
+    expect(assetFiles.length).toBeGreaterThan(0);
+    const folders = [...proposalMd.matchAll(/`(assets\/[\w./-]+\/)`/g)].map((m) => m[1]);
+    expect(assetFiles.filter((rel) => !folders.some((folder) => rel.startsWith(folder)))).toEqual([]);
+  });
+
+  it.each(prose)('%s points only at its own files and sibling files that exist', (_name, text) => {
+    expect((text.match(OWN_PATH) ?? []).filter((rel) => !existsSync(path.join(proposal, rel)))).toEqual([]);
+    const sibling = [...text.matchAll(SIBLING_PATH)].map((m) => m[1]);
+    expect(sibling.filter((rel) => !existsSync(path.join(skill, rel)))).toEqual([]);
+  });
+
+  it.each(prose)('%s cites only gates the frontx-design registry defines', (_name, text) => {
+    const known = new Set(readJson('rules/quality-gates.json').gates.map((g) => g.id));
+    expect([...new Set(text.match(GATE_ID) ?? [])].filter((id) => !known.has(id))).toEqual([]);
+  });
+
+  it('keeps its SKILL.md at most 80 lines, and its fast path at most 250 lines', () => {
+    expect(proposalMd.split('\n').length).toBeLessThanOrEqual(80);
+    expect(readText(path.join(proposal, 'references/propose.md')).split('\n').length).toBeLessThanOrEqual(250);
+  });
+
+  it('is routed to from one row of the frontx-design task table', () => {
+    const rows = skillMd.split('\n').filter((line) => line.startsWith('|') && line.includes('frontx-design-proposal'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain('`../frontx-design-proposal/SKILL.md`');
+  });
+
+  it('draws every block from draw.css classes, and every draw.css class appears in a block and in the drawing-kit reference', () => {
+    const css = readText(path.join(proposal, 'templates/draw/draw.css')).replace(/\/\*[\s\S]*?\*\//g, '');
+    const defined = new Set([...css.matchAll(/\.(d-[\w-]+)/g)].map((m) => m[1]));
+    const blocks = readText(path.join(proposal, 'templates/draw/blocks.html')).replace(/<!--[\s\S]*?-->/g, '');
+    const used = new Set([...blocks.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
+    expect([...used].filter((c) => !defined.has(c))).toEqual([]);
+    expect([...defined].filter((c) => !used.has(c))).toEqual([]);
+    const reference = readText(path.join(proposal, 'references/drawing-kit.md'));
+    // A class is documented by its full name in a code span, or a modifier by its backticked suffix in the row of its block.
+    const rows = reference.split('\n').filter((line) => line.startsWith('|'));
+    const named = new Set([...reference.matchAll(/`([^`]+)`/g)].flatMap((m) => m[1].split(/\s+/)));
+    const documented = (c) => named.has(c) || (/^d-[\w]+--[\w-]+$/.test(c)
+      && rows.some((row) => row.includes(`\`${c.replace(/^d-[\w]+(--[\w-]+)$/, '$1')}\``) && row.includes(`\`${c.replace(/--[\w-]+$/, '')}\``)));
+    expect([...defined].filter((c) => !documented(c))).toEqual([]);
+  });
+
+  it('carries draw.css unchanged in the proposal.html skeleton', () => {
+    const page = readText(path.join(proposal, 'templates/proposal.html'));
+    const draw = page.match(/<style id="draw">\n([\s\S]*?)\n<\/style>/)?.[1];
+    expect(draw).toBe(readText(path.join(proposal, 'templates/draw/draw.css')).trimEnd());
+  });
+
+  it('writes no long dash in any of its text files', () => {
+    const texts = [['SKILL.md', proposalMd], ...[...ownFiles, ...assetFiles].map((f) => [f, readText(path.join(proposal, f))])];
+    expect(texts.filter(([, text]) => /[\u2013\u2014]/.test(text)).map(([f]) => f)).toEqual([]);
   });
 });

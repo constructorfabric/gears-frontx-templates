@@ -200,8 +200,18 @@ Usage: node runner/cli.mjs [flags]
                             $CHROME_PATH, then common install locations)
   --start-server "<cmd>"    Start the dev server with this shell command and
                             stop it afterwards (default: attach to --url).
-                            Skipped, with a log line, when --url already
-                            answers - the incumbent server is measured then
+                            When --url already answers, the run starts
+                            nothing and exits 2: a server it did not start
+                            may be another project's. Stop that server, pass
+                            a free --url, or drop --start-server to measure
+                            the running server on purpose. The command must
+                            keep running: when it exits before --url answers,
+                            the wait ends at once, and when it is found
+                            ended after --url answered, nothing the run
+                            started serves --url. Then, or when the wait
+                            times out, the run prints at most the last 40
+                            lines of the last 8 KB the command wrote, and
+                            exits 2
   --server-cwd <dir>        Directory to run --start-server in (default:
                             $INIT_CWD - where npm was invoked, so the app
                             root when using "npm run verify:ui" from there -

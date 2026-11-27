@@ -6,7 +6,7 @@ description: Use for any visual task in a FrontX app - build, restyle, review or
 
 # FrontX design
 
-The one skill for everything visual in a FrontX app. This file is the map; the detail sits in the files it names. Paths are relative to `<project>/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`; a copy found elsewhere has no siblings, so read the installed one.
+The skill for everything visual in a FrontX app; its sibling `frontx-design-proposal` draws a new page for the person to see before it is built, on their ask or after a one-line offer they accept, by the rule its SKILL.md names. This file is the map; the detail sits in the files it names. Paths are relative to `<project>/.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`; a copy found elsewhere has no siblings, so read the installed one.
 
 ## Binding essentials
 
@@ -27,6 +27,7 @@ Extra steps: a project that needs steps the kit's scales do not carry (a bigger 
 |---|---|
 | Author or fix a theme | `references/theme.md`, `references/color.md`, then `references/verify.md` |
 | Build or revise a screen | `references/generate.md`, `references/app-screens.md`, `references/state-completeness.md`, then the topic references below that match the screen |
+| A new page or screen the person wants to see first, or whose look they have neither seen nor described: shown as a drawn proposal, at once or after one offer, by that skill's rule | the sibling skill `frontx-design-proposal` (`../frontx-design-proposal/SKILL.md`) |
 | Place a screen in FrontX | `references/frontx-context.md` |
 | Review a screen | `references/review.md`, run in a fresh context: a separate agent that sees screenshots and source, not the builder's reasoning; its report opens with a one-word verdict: `blocked`, `revise`, `unverified` or `pass` |
 | Verify: static check of the source, browser check of the render, waivers | `references/verify.md` |

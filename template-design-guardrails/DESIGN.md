@@ -275,7 +275,7 @@ components:
 
 # FrontX design guardrails
 
-Template version: `0.1.0-alpha.8`\
+Template version: `0.1.0-alpha.9`\
 UI base: `@gears-frontx/ui-kit`  
 Scope: interface generation and advisory design review
 
@@ -283,11 +283,13 @@ The YAML front matter above names the kit's design tokens (`colors`, `typography
 
 ## The design skill
 
-Every visual task starts with the one design skill, `frontx-design`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`. Its `SKILL.md` is a short map: the binding essentials, which reference to load for each task (theme, build, place, review, verify, DESIGN.md, handoff), and every file the skill holds. Paths below are relative to that directory.
+The template ships two design skills. Every visual task starts with `frontx-design`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design/`. Its `SKILL.md` is a short map: the binding essentials, which reference to load for each task (theme, build, place, review, verify, DESIGN.md, handoff), and every file the skill holds. Paths below are relative to that directory.
 
 - `references/`: the procedures and the topic rules (layout, tokens, typography, colour, motion, components, accessibility, data display, compositions).
 - `rules/`: the machine-readable rules. `rules/quality-gates.json` is the one rule registry; when sources disagree, `sourcePrecedence` in `rules/design-contract.json` is the one order.
 - `templates/`: the state inventory and the handoff every task closes with.
+
+A new page a person has not seen yet can first be shown as a drawn proposal with the sibling skill `frontx-design-proposal`, at `.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design-proposal/`: one local HTML page draws the page in the app's look, with options only where a real choice exists, and records the answer; the build from that record uses this skill for every gate.
 
 Before building a screen, inspect the installed FrontX templates and the existing application, and read the UI kit's installed `llms.txt` and component docs; where they and this file differ, `sourcePrecedence` in `rules/design-contract.json` is the order. The screen request selects content and behavior; it does not authorize a new visual system.
 

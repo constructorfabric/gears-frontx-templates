@@ -1813,6 +1813,20 @@ interface CommandRun {
   stderr: string;
 }
 
+/**
+ * The environment a command run gets: this process's own, without the
+ * variables the preflight and dev:all read their ports from, then `env`. A
+ * value exported in the shell running the tests (the docs tell people to
+ * export FRONTX_VERIFY_MOVE_PREVIEW_PORTS for a run beside another project)
+ * cannot decide what a test sees.
+ */
+function commandEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const inherited = { ...process.env };
+  delete inherited.FRONTX_VERIFY_MOVE_PREVIEW_PORTS;
+  delete inherited.FRONTX_VERIFY_HOST_PORT;
+  return { ...inherited, ...env };
+}
+
 function runCommand(args: readonly string[], env: NodeJS.ProcessEnv = {}): CommandRun {
   // spawnSync blocks the event loop, so vitest's per-test timeout cannot fire
   // while the child hangs: the bound and the kill have to live here. A hang in
@@ -1824,7 +1838,7 @@ function runCommand(args: readonly string[], env: NodeJS.ProcessEnv = {}): Comma
     encoding: 'utf-8',
     timeout: 30_000,
     killSignal: 'SIGKILL',
-    env: { ...process.env, ...env },
+    env: commandEnv(env),
   });
   if (result.error) throw result.error;
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
@@ -1852,7 +1866,7 @@ function runCommand(args: readonly string[], env: NodeJS.ProcessEnv = {}): Comma
 async function runCommandIn(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv = {}): Promise<CommandRun> {
   const child = spawn(process.execPath, [TSX_CLI, SCRIPT_PATH, ...args], {
     cwd,
-    env: { ...process.env, ...env },
+    env: commandEnv(env),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const stdout: string[] = [];
@@ -1934,6 +1948,18 @@ describe.skipIf(process.platform === 'win32')('the command', () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain('FRONTX_VERIFY_HOST_PORT expects a port between 1 and 65535, got "not-a-port"');
     expect(run.stdout).not.toContain('READY');
+  });
+
+  it('refuses FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 before probing, since it checks each screen at its declared port', async () => {
+    const [hostPort, cdpPort] = await Promise.all([freeHighPort(), freeHighPort()]);
+    const run = runCommand(['--no-start', '--host-port', String(hostPort), '--cdp-port', String(cdpPort)], {
+      FRONTX_VERIFY_MOVE_PREVIEW_PORTS: '1',
+    });
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 is not supported here');
+    expect(run.stdout).not.toContain('host port');
+    expect(run.stderr).not.toContain('Servers are not running');
   });
 
   it('a FRONTX_VERIFY_HOST_PORT that is not a port does not stop a run that names the port with the flag', async () => {

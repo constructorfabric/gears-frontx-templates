@@ -73,8 +73,37 @@ unbounded foreground command: after two settle-and-read attempts with no
 output, the environment is unavailable. `--start-server "npm run dev:all"`
 is the sanctioned way to bring a server up (bounded waits, stopped at the
 end); it runs the command from the directory npm was invoked in, so run the
-runner from the project root or pass `--server-cwd <project root>`. Runner
-exit code 2 is the `environment unavailable` report: relay its message. The
+runner from the project root or pass `--server-cwd <project root>`.
+
+Beside another project that holds the shell's ports (5173 and the screen
+preview ports), give this run its own: `FRONTX_VERIFY_HOST_PORT` moves the
+host (pass the same port in `--url`), and `FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1`
+lets `dev:all` start each taken screen preview on a free port:
+
+```
+FRONTX_VERIFY_HOST_PORT=5791 FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1 \
+  npm run verify:ui --workspace=@gears-frontx/design-verify -- \
+  --url http://localhost:5791/ --start-server "npm run dev:all" --menu "Login,Tasks"
+```
+
+The runner keeps the output of a healthy `--start-server` start out of its
+log, so this run does not show the moved ports. `dev:all` prints them when
+it is run on its own with the same two variables. A failed start shows them
+only when they are among the last 40 lines of the server command's output
+that the runner prints; the build output after them usually pushes them out.
+
+One refusal reads the other way: with `--start-server` given and the address
+already answering, the run stops at once (exit 2, "this run did not start
+that server"), because it cannot tell this project's app from another
+project's on the same port. Ask the person whose server it is. When it is
+their own `dev:all` for this project, re-run without `--start-server` and
+with `--url` pointed at it: without the flag the run measures the running
+server on purpose. Otherwise give this run its own host with
+`FRONTX_VERIFY_HOST_PORT`, and the preview ports as above.
+
+Runner exit code 2 is the `environment unavailable` report: relay its message.
+The one exit 2 that is not a relay-and-stop is the `--start-server` refusal
+above, when the address already answers: it carries its own remedy. The
 same exit code fires when a screenshot asked for with `--screenshots` could
 not be captured or written (listed as `SCREENSHOT <route> <theme> <width>px`):
 that screen is not verified until the capture succeeds.

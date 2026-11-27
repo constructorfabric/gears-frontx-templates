@@ -36,7 +36,12 @@ import {
   NODE_BIN_DIR,
   type MfeInfo,
 } from './lib/mfe-tools.js';
-import { isPortFree, PREVIEW_HOST } from './lib/preview-ports.js';
+import {
+  isPortFree,
+  MOVE_PREVIEW_PORTS_ENV_VAR,
+  PREVIEW_HOST,
+  previewPortsMovable,
+} from './lib/preview-ports.js';
 
 const SCRIPT_NAME = 'verify-preflight';
 
@@ -308,6 +313,8 @@ export interface HostPortResolutionInput {
    * says why the run fell to the default.
    */
   resolveConfigPort: ViteConfigPortResolver;
+  /** The script named at the start of the two fallback lines; verify-preflight by default. */
+  scriptName?: string;
 }
 
 /**
@@ -327,6 +334,7 @@ export interface HostPortResolutionInput {
  * an origin nothing serves on.
  */
 export async function resolveHostPort(input: HostPortResolutionInput): Promise<HostPortResolution> {
+  const scriptName = input.scriptName ?? SCRIPT_NAME;
   if (input.flagPort !== undefined) return { port: input.flagPort, source: 'flag' };
   if (input.envPort !== undefined) return { port: input.envPort, source: 'env' };
   let configPort: number | undefined;
@@ -334,13 +342,13 @@ export async function resolveHostPort(input: HostPortResolutionInput): Promise<H
     configPort = await input.resolveConfigPort(input.configRoot);
   } catch (error) {
     console.log(
-      `[${SCRIPT_NAME}] resolving the project's Vite config failed, using ${DEFAULT_HOST_PORT}: ${errorText(error)}`,
+      `[${scriptName}] resolving the project's Vite config failed, using ${DEFAULT_HOST_PORT}: ${errorText(error)}`,
     );
   }
   if (configPort !== undefined) {
     if (isValidPortNumber(configPort)) return { port: configPort, source: 'config' };
     console.log(
-      `[${SCRIPT_NAME}] the project's Vite config names port ${configPort}, which is not a port between 1 and 65535, using ${DEFAULT_HOST_PORT}`,
+      `[${scriptName}] the project's Vite config names port ${configPort}, which is not a port between 1 and 65535, using ${DEFAULT_HOST_PORT}`,
     );
   }
   return { port: DEFAULT_HOST_PORT, source: 'default' };
@@ -1121,6 +1129,18 @@ async function run(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<num
     return 1;
   }
   const options = parsed.options;
+
+  // This run probes, reuses and waits on every screen at the port its package
+  // declares, so it cannot follow a preview dev:all moved: refuse the setting
+  // before anything is probed or started.
+  if (previewPortsMovable(env)) {
+    console.error(
+      `[${SCRIPT_NAME}] ${MOVE_PREVIEW_PORTS_ENV_VAR}=1 is not supported here: this run checks each ` +
+        "screen at the port its package declares. Unset it, or use it with a run that starts dev:all " +
+        "itself (the design check's --start-server).",
+    );
+    return 1;
+  }
 
   // The host port is resolved before anything is probed, so every later step
   // works with one port: --host-port, then FRONTX_VERIFY_HOST_PORT, then the

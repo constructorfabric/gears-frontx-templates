@@ -195,6 +195,13 @@ Two steps stand between this file and a walk invocation:
    from `--host-port` when given, then from the `FRONTX_VERIFY_HOST_PORT`
    environment variable, then from the port the project's `vite.config.ts`
    configures for its dev server, then 5173.
+
+   Beside another project: preflight checks every screen at the port its
+   package declares, so the screen preview ports must be free for it. It
+   refuses `FRONTX_VERIFY_MOVE_PREVIEW_PORTS=1`, the setting that lets
+   `dev:all` move a preview off a taken port. That setting serves a run
+   that starts `dev:all` itself, such as the design check's
+   `--start-server "npm run dev:all"`.
 2. Read the walk driver's flags with its `--help` instead of its source: it
    prints the whole flag surface.
 

@@ -1,0 +1,384 @@
+/**
+ * check-proposal.mjs on a page written in the person's own language. The
+ * page's <html lang> names that language; on a page that is not in English
+ * the labels the agent writes (the title's word for a proposal, the option
+ * fields, the suggested tag, the chips, the design picks, the "Changed since"
+ * line, the storyboard's width heading, the table columns) are found by
+ * their place and class, not by English words. Each worked example is
+ * relabelled in German and must stay clean; a page in English keeps its
+ * English labels, and a relabelled page still breaks on a missing part.
+ */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import './replace-or-fail.mjs';
+import { expectLinear } from './linear-time.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const skill = path.join(here, '../.frontx/ai/@gears-frontx/template-design-guardrails/skills/frontx-design-proposal');
+const check = await import(pathToFileURL(path.join(skill, 'scripts/check-proposal.mjs')).href);
+const examples = ['account-settings/r1', 'docs-redesign/r1', 'invite-teammate/r1', 'team-tasks/r1', 'team-tasks/r2'];
+const read = (rev) => readFileSync(path.join(skill, 'assets/proposals', rev, 'proposal.html'), 'utf8');
+const findings = (html) => check.checkPage(html).findings;
+
+const CHIPS = { accepted: 'angenommen', proposed: 'vorgeschlagen', open: 'offen' };
+const COLUMNS = { Part: 'Teil', Today: 'Heute', Proposed: 'Vorschlag', Screen: 'Bildschirm', Address: 'Adresse', 'Today the same link opens': 'Heute öffnet derselbe Link' };
+
+/** The page with every label the check used to read in English written in German. */
+const german = (html) => html
+  .replaceOrFail('<html lang="en">', '<html lang="de">')
+  .replace(/Proposal: /g, 'Vorschlag: ')
+  .replaceOrFail('<span>Page <code>', '<span>Seite <code>')
+  .replaceOrFail(', revision <code>', ', Version <code>')
+  .replace('These are drawings for deciding.', 'Das sind Skizzen zum Entscheiden.')
+  .replace(/<dt>Best for<\/dt>/g, '<dt>Am besten für</dt>')
+  .replace(/<dt>Trade-off<\/dt>/g, '<dt>Nachteil</dt>')
+  .replace('<dt>The same in every option</dt>', '<dt>In jeder Option gleich</dt>')
+  .replace('<dt>What differs</dt>', '<dt>Was sich unterscheidet</dt>')
+  .replace(/<span class="tag">suggested<\/span>/g, '<span class="tag">empfohlen</span>')
+  .replace('<b>Build it as drawn</b>', '<b>So bauen</b>')
+  .replace('<b>Change it first</b>', '<b>Erst ändern</b>')
+  .replace('value="build" data-say="build it as drawn"', 'value="build" data-say="so bauen, wie gezeichnet"')
+  .replace('value="change" data-say="change it first, as written under Changes"', 'value="change" data-say="erst ändern, wie unter Änderungen beschrieben"')
+  .replace(/\(page ([a-z0-9-]+), revision (r\d+)\)/, '(Seite $1, Version $2)')
+  .replace(/(class="chip[^"]*"[^>]*data-state="(\w+)"[^>]*>)\2</g, (_, open, state) => `${open}${CHIPS[state]}<`)
+  .replace(/Changed since (r\d+):/, 'Geändert seit $1:')
+  .replace('Sending, step by step, on a phone', 'Senden, Schritt für Schritt, am Telefon')
+  .replace(/<th>(Part|Today|Proposed|Screen|Address|Today the same link opens)<\/th>/g, (_, h) => `<th>${COLUMNS[h]}</th>`)
+  .replace(/ data-start="Start"/g, ' data-start="Beginn"')
+  .replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, ` ${PHRASES}>`);
+
+/** The words the page's scripts write, in German, as the answer form carries them. */
+const PHRASES = [
+  'data-phrase-choose="Für {subject} wähle ich Option {letter}, &quot;{name}&quot;."',
+  'data-phrase-answer="Für {subject} antworte ich: {answer}."',
+  'data-phrase-questions="Meine Antworten auf die offenen Fragen:"',
+  'data-phrase-changes="Änderungen: {changes}"',
+  'data-phrase-none="keine"',
+  'data-phrase-copied="Kopiert. Füge es in den Chat ein."',
+  'data-phrase-failed="Kopieren ging nicht: der Text ist markiert, kopiere ihn von Hand."',
+  'data-phrase-wide-part="Breiter Teil"',
+].join(' ');
+
+describe('a page in the person\'s own language', () => {
+  it.each(examples)('%s relabelled in German reads clean', (rev) => {
+    const page = german(read(rev));
+    expect(page).not.toMatch(/Proposal: |<dt>Best for|<dt>The same in every option|<dt>What differs|class="tag">suggested|Changed since|<th>Today|data-start="Start"|data-phrase-choose="For/);
+    expect(findings(page)).toEqual([]);
+  });
+
+  it('finds the comparison of a page not in English by its structure: the overview\'s dl with two terms or more', () => {
+    const page = german(read('team-tasks/r1'));
+    expect(page).toContain('<dt>In jeder Option gleich</dt>');
+    const message = '[overview] with options the overview marks "The same in every option" and "What differs"';
+    expect(findings(page.replaceOrFail(/<dl class="compare">[\s\S]*?<\/dl>/, ''))).toContain(message);
+    expect(findings(page.replaceOrFail('<dt>Was sich unterscheidet</dt>', ''))).toContain(message);
+  });
+
+  it('keeps the English labels on a page in English', () => {
+    const page = read('team-tasks/r1').replaceOrFail('<dt>Best for</dt>', '<dt>Am besten für</dt>');
+    expect(findings(page)).toContain('[options] option #option-a has no "Best for"');
+  });
+
+  it('asks for the language of the page on <html>', () => {
+    expect(findings(read('account-settings/r1').replaceOrFail('<html lang="en">', '<html>'))).toContain('[head] the page has no lang on <html>: the language the page is written in, the person\'s own');
+  });
+
+  it.each(['English', 'en_US'])('reads a lang that is not a language tag (%s) as a finding and keeps the English labels', (lang) => {
+    const found = findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', `<html lang="${lang}">`).replaceOrFail('<dt>Best for</dt>', '<dt>Am besten für</dt>'));
+    expect(found).toContain(`[head] the lang on <html> is not a language tag: "${lang}" (two or three letters, then optional parts joined by hyphens, as de or pt-BR)`);
+    expect(found).toContain('[options] option #option-a has no "Best for"');
+  });
+
+  it.each(['EN', 'en-GB', ' en', ''])('keeps the English labels for the lang "%s"', (lang) => {
+    const found = findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', `<html lang="${lang}">`).replaceOrFail('<dt>Best for</dt>', '<dt>Am besten für</dt>'));
+    expect(found).toContain('[options] option #option-a has no "Best for"');
+    expect(found.filter((f) => f.includes('not a language tag'))).toEqual([]);
+  });
+
+  it.each([
+    ['paths', '<th>Step 3</th><th>Heute</th>', '<th>Step 3</th><th></th>'],
+    ['addresses', '<th>Heute öffnet derselbe Link</th>', '<th></th>'],
+    ['mapping', '<th>Heute</th><th>Vorschlag</th>', '<th>Heute</th><th></th>'],
+  ])('finds an empty column heading in the %s table of a page not in English', (table, heading, emptied) => {
+    const found = findings(german(read('docs-redesign/r1')).replaceOrFail(heading, emptied));
+    expect(found.filter((f) => f.startsWith(`[${table}]`) && f.includes('column without a heading')), found.join('\n')).toHaveLength(1);
+  });
+
+  it('finds a removed column heading in the paths table of a page not in English', () => {
+    const found = findings(german(read('docs-redesign/r1')).replaceOrFail('<th>Step 3</th><th>Heute</th>', '<th>Step 3</th>'));
+    expect(found.filter((f) => f.startsWith('[paths]') && f.includes('column without a heading')), found.join('\n')).toHaveLength(1);
+  });
+
+  it.each(['choose', 'answer', 'questions', 'changes', 'none', 'copied', 'failed', 'wide-part'])('asks a page not in English for the words data-phrase-%s', (key) => {
+    const page = german(read('team-tasks/r1'));
+    for (const broken of [page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), ''), page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), ` data-phrase-${key}=""`)]) {
+      expect(findings(broken).filter((f) => f.startsWith(`[answer] the answer form has no words in data-phrase-${key}`))).toHaveLength(1);
+    }
+  });
+
+  // The skeleton's English words for each phrase, as the attribute writes them.
+  const skeleton = readFileSync(path.join(skill, 'templates/proposal.html'), 'utf8');
+  it.each(['choose', 'answer', 'questions', 'changes', 'none', 'copied', 'failed', 'wide-part'])('finds data-phrase-%s left in the skeleton\'s English on a page not in English', (key) => {
+    const english = new RegExp(` data-phrase-${key}="[^"]*"`).exec(skeleton)[0];
+    const page = german(read('team-tasks/r1'));
+    expect(findings(page)).toEqual([]);
+    const found = findings(page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), english));
+    expect(found.filter((f) => f.startsWith(`[answer] data-phrase-${key} keeps the skeleton's English`)), found.join('\n')).toHaveLength(1);
+  });
+
+  it.each([
+    ['build', 'build it as drawn', 'so bauen, wie gezeichnet'],
+    ['change', 'change it first, as written under Changes', 'erst ändern, wie unter Änderungen beschrieben'],
+  ])('finds the card %s\'s data-say left in the skeleton\'s English on a one-design page not in English', (value, english, own) => {
+    const page = german(read('account-settings/r1'));
+    expect(findings(page)).toEqual([]);
+    const found = findings(page.replaceOrFail(`value="${value}" data-say="${own}"`, `value="${value}" data-say="${english}"`));
+    expect(found).toEqual([`[answer] the card ${value}'s data-say keeps the skeleton's English "${english}" on a page not in English; write it in the page's language`]);
+  });
+
+  it('lets a page in English leave the words to the scripts\' English', () => {
+    const page = read('team-tasks/r1').replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, '>').replace(/ data-start="Start"/g, ' data-start');
+    expect(findings(page)).toEqual([]);
+  });
+
+  it.each([
+    ['choose', '{letter}', 'Für {subject} wähle ich Option {letter}, &quot;{name}&quot;.', 'Für {subject} wähle ich &quot;{name}&quot;.'],
+    ['answer', '{answer}', 'Für {subject} antworte ich: {answer}.', 'Für {subject} antworte ich.'],
+    ['changes', '{changes}', 'Änderungen: {changes}', 'Änderungen'],
+  ])('finds data-phrase-%s without its place %s', (key, place, from, to) => {
+    const found = findings(german(read('team-tasks/r1')).replaceOrFail(`data-phrase-${key}="${from}"`, `data-phrase-${key}="${to}"`));
+    expect(found).toContain(`[answer] data-phrase-${key} leaves out ${place}, the place the script fills in`);
+  });
+
+  it('asks a page not in English for the word above a flow\'s start', () => {
+    const page = german(read('invite-teammate/r1'));
+    expect(page).toContain(' data-start="Beginn"');
+    expect(findings(page.replaceOrFail(' data-start="Beginn"', ' data-start'))).toContain('[flow] the start has no word in data-start: the word shown above it, "Start" in the page\'s language');
+  });
+
+  it.each([
+    ['options', 'option #option-a has fewer than two fields (dl.fields: what it is best for, its trade-off)', () => german(read('team-tasks/r1')).replaceOrFail('<dt>Nachteil</dt>', '')],
+    ['answer', 'question 1 marks 0 answers suggested', () => german(read('team-tasks/r1')).replaceOrFail(/(data-q="1">[\s\S]*?)<span class="tag">empfohlen<\/span>/, '$1')],
+    ['paths', 'the paths table needs a Today column', () => german(read('docs-redesign/r1')).replace(/<td class="today"[^>]*>[\s\S]*?<\/td>/g, '')],
+    ['revision', 'revision r2 needs the line "Changed since r1: ..."', () => german(read('team-tasks/r2')).replaceOrFail('Geändert seit r1:', 'Geändert:')],
+    ['head', 'the title must read', () => german(read('account-settings/r1')).replaceOrFail('<h1 class="topbar-title">Vorschlag: ', '<h1 class="topbar-title">')],
+  ])('still finds a missing %s part: %s', (kind, message, make) => {
+    const found = findings(make());
+    expect(found.filter((f) => f.startsWith(`[${kind}]`) && f.includes(message)), found.join('\n')).toHaveLength(1);
+  });
+});
+
+/**
+ * A page in Japanese, written as a Japanese team would write it: account-settings with its visible text in
+ * Japanese (tests/fixtures/proposal-ja/account-settings-main.html, the top bar's title to the end of main), the
+ * structure kept. Sentences end in 。, the title's word for a proposal is followed by a full-width colon, and no
+ * spaces stand between words.
+ */
+const japanese = () => {
+  const page = read('account-settings/r1');
+  const main = readFileSync(path.join(here, 'fixtures/proposal-ja/account-settings-main.html'), 'utf8');
+  const from = page.indexOf('<h1 class="topbar-title">');
+  const to = page.indexOf('</main>\n') + '</main>\n'.length;
+  return (page.slice(0, from) + main + page.slice(to))
+    .replaceOrFail('<html lang="en">', '<html lang="ja">')
+    .replaceOrFail('<title>Proposal: Account settings</title>', '<title>提案：アカウント設定</title>')
+    .replaceOrFail('<dialog id="zoom" aria-label="Enlarged drawing">', '<dialog id="zoom" aria-label="拡大したスケッチ">')
+    .replaceOrFail('<button>Close</button>', '<button>閉じる</button>');
+};
+
+describe('a page in a language written without spaces', () => {
+  it('reads a natural Japanese account-settings page clean', () => {
+    const page = japanese();
+    expect(page).toContain('<h1 class="topbar-title">提案：アカウント設定</h1>');
+    expect(page).toMatch(/<p class="takeaway">[^<]*。<\/p>/);
+    expect(findings(page), 'no finding: not "one sentence" for a takeaway ending in 。, not "the title must read" for 提案：…, '
+      + 'not "a data-say of fewer than five words" or "gives no reason for its suggested answer" for one Japanese sentence').toEqual([]);
+  });
+
+  it('takes the full-width colon with a space after it too', () => {
+    expect(findings(japanese().replaceAllOrFail('提案：アカウント設定', '提案： アカウント設定'))).toEqual([]);
+  });
+
+  it('still finds two sentences in a takeaway, a short data-say and a short reason', () => {
+    const page = japanese();
+    expect(findings(page.replaceOrFail('新しい部品はありません。</p>', '新しい部品はありません。保存も同じです。</p>'))).toContain('[takeaway] the takeaway of #built is not one sentence');
+    for (const say of ['はい', 'はいはい']) {
+      expect(findings(page.replaceOrFail('data-say="メールアドレスは表示名と同じように、このページで変えられます。"', `data-say="${say}"`))).toContain('[answer] the answer "ここで変えられる" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
+    }
+    expect(findings(page.replaceOrFail(/<span class="small why">[^<]*<\/span>/, '<span class="small why">はい</span>'))).toContain('[answer] open question 1 gives no reason for its suggested answer (.why)');
+  });
+
+  const BUILT = 'ホームのページが使っているカード、入力欄、選択、スイッチ、ボタンだけで、新しい部品はありません。';
+  const builtSays = (takeaway) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f.startsWith('[takeaway]'));
+  const TWO = ['[takeaway] the takeaway of #built is not one sentence'];
+
+  it.each([['．', '．'], ['｡', '｡']])('takes %s as a sentence end: two sentences are two, one ending in it is one', (_, mark) => {
+    expect(builtSays(`新しい部品はありません${mark}保存も同じです。`)).toEqual(TWO);
+    expect(builtSays(`新しい部品はありません${mark}`)).toEqual([]);
+  });
+
+  it('takes … as a sentence end, never as a break by itself', () => {
+    expect(builtSays('新しい部品はありません…')).toEqual([]);
+    expect(builtSays('えーと…それで決まりです。')).toEqual([]);
+  });
+
+  it.each([
+    ['an end mark inside a quote', '設定は「保存する。」と表示されます。'],
+    ['an end mark inside brackets at the end', '設定は保存できます（変更は即時です。）'],
+    ['a closing quote right after the end', '画面には「保存しました。」'],
+    ['a run of ellipses', '新しい部品はありません……'],
+    ['an apostrophe inside a quote', '設定は「don\'t 保存。」と表示されます。'],
+    ['ASCII quotes inside a quote', '設定は「"保存"。」と表示されます。'],
+    ['an apostrophe right before the end inside a quote', '「don\'t。」と言った。'],
+    ['an end mark inside Chinese quotes', '他说：“好。”然后走了。'],
+    ['an ASCII closing quote right after the end, last', '彼は"保存しました。"'],
+  ])('reads %s as one sentence', (_, takeaway) => {
+    expect(builtSays(takeaway)).toEqual([]);
+  });
+
+  it.each([
+    ['a quote never closed', '「一つ目です。二つ目です。'],
+    ['a bracket never closed', '（注。これは二文目です。'],
+    ['an ASCII closing quote right after the end, then more text', '彼は"保存しました。"次に閉じます。'],
+  ])('finds two sentences across %s', (_, takeaway) => {
+    expect(builtSays(takeaway)).toEqual(TWO);
+  });
+
+  it('reads a long run of end marks inside a bracket never closed in time linear in its length, with the same result', { timeout: 600_000 }, () => {
+    const breaks = (takeaway) => builtSays(takeaway).filter((f) => f === TWO[0]);
+    expect(breaks('（。。。。')).toEqual([]);
+    expect(breaks('（。。。次。')).toEqual(TWO);
+    expect(breaks('（。"。"。')).toEqual([]);
+    expect(breaks('（。"。"次。')).toEqual(TWO);
+    expectLinear((n) => builtSays(`（${'。'.repeat(n)}`), 5000, 'end marks inside a bracket never closed');
+  });
+
+  it('still finds a sentence after a closing bracket', () => {
+    expect(builtSays('設定は「保存する。」次に閉じます。')).toEqual([]);
+    expect(builtSays('設定は保存できます。」次に閉じます。')).toEqual(TWO);
+  });
+
+  // The page's takeaway of #built in another language, its lang set to match; only #built's takeaway findings.
+  const builtIn = (lang, takeaway) => findings((lang === 'ja' ? japanese() : japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`)).replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f.startsWith('[takeaway] the takeaway of #built'));
+  const NOT_ONE = '[takeaway] the takeaway of #built is not one sentence';
+
+  it.each([
+    ['km', 'Khmer ។', 'ទំព័រនេះមិនបន្ថែមផ្នែកថ្មីទេ។'],
+    ['my', 'Burmese ။', 'ဤစာမျက်နှာတွင် အစိတ်အပိုင်းအသစ် မရှိပါ။'],
+    ['hi', 'Hindi ।', 'हम केवल दो कार्ड दिखाते हैं।'],
+    ['ur', 'Urdu ۔', 'اس صفحے پر کوئی نیا حصہ نہیں ہے۔'],
+    ['ar', 'Arabic ؟', 'هل نحتاج إلى جزء جديد في هذه الصفحة؟'],
+    ['hy', 'Armenian ։', 'Էջում նոր մաս չկա։'],
+  ])('takes the sentence end of %s (%s) as an end', (lang, _, takeaway) => {
+    expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
+  it.each([['th', 'หน้านี้ไม่มีส่วนใหม่'], ['lo', 'ໜ້ານີ້ບໍ່ມີສ່ວນໃໝ່']])('takes a takeaway in %s with no end mark as one sentence', (lang, takeaway) => {
+    expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
+  it('reads the Burmese comma ၊ as no sentence end, and still finds two sentences ended in ။', () => {
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင်၊ ကတ်နှစ်ခုသာ ပြသည်။').filter((f) => f === NOT_ONE)).toEqual([]);
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်၊').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်။ သိမ်းဆည်းခြင်းသည် အတူတူပင်ဖြစ်သည်။').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+  });
+
+  // team-tasks/r1 in Thai with the given head takeaway; only the head's one-sentence finding.
+  const HEAD_TAKEAWAY = '<p class="takeaway">A Tasks link in the side menu opens every team task with its owner, status and due date in one of three layouts; a task opens its details.</p>';
+  const HEAD_NOT_ONE = '[head] the takeaway must be one sentence';
+  const thaiHead = (takeaway) => findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', '<html lang="th">')
+    .replaceOrFail(HEAD_TAKEAWAY, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f === HEAD_NOT_ONE);
+  it.each([['an empty', ''], ['a blank', '   ']])('finds %s head takeaway on a page in th, which needs no end mark only when it has words', (_, takeaway) => {
+    expect(thaiHead(takeaway)).toEqual([HEAD_NOT_ONE]);
+  });
+  it('still takes a Thai head takeaway with no end mark as one sentence', () => {
+    expect(thaiHead('หน้านี้ไม่มีส่วนใหม่')).toEqual([]);
+  });
+
+  it('still asks an English takeaway for its end mark, and finds two sentences ended in ।', () => {
+    expect(builtIn('en', 'No new parts on this page').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+    expect(builtIn('hi', 'हम दो कार्ड दिखाते हैं। सहेजना वही है।').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+  });
+
+  const REPEAT = '[takeaway] the takeaway of #built only says its heading again; say what the section settles';
+  // #built with its heading and takeaway in another language.
+  const builtWith = (lang, heading, takeaway) => findings(japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`)
+    .replaceOrFail('<h2>アプリにすでにあるもので作る</h2>', `<h2>${heading}</h2>`)
+    .replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f === REPEAT);
+
+  it.each([
+    ['hi', 'कार्ड', 'हम केवल दो कार्ड दिखाते हैं।'],
+    ['my', 'ကတ်များ', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်။'],
+  ])('keeps the combining marks of %s inside a word: a takeaway that says more than its heading is no repeat', (lang, heading, takeaway) => {
+    expect(builtWith(lang, heading, takeaway)).toEqual([]);
+  });
+
+  it.each([
+    ['hi', 'केवल दो कार्ड', 'केवल दो कार्ड।'],
+    ['my', 'ကတ်နှစ်ခုသာ', 'ကတ်နှစ်ခုသာ။'],
+  ])('still finds a takeaway in %s that only says its heading again', (lang, heading, takeaway) => {
+    expect(builtWith(lang, heading, takeaway)).toEqual([REPEAT]);
+  });
+
+  it('reads the ASCII and the wide ends as before: no break after "..." before a lower-case word, none inside 「...」 before a space', () => {
+    expect(builtIn('en', 'It counts... then stops.').filter((f) => f === NOT_ONE)).toEqual([]);
+    expect(builtIn('ja', '設定は「保存する。」 と表示されます。').filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
+  const SAY = 'data-say="メールアドレスは表示名と同じように、このページで変えられます。"';
+  const SHORT_SAY = '[answer] the answer "ここで変えられる" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries';
+  const sayFindings = (say, lang = 'ja') => {
+    const page = lang === 'ja' ? japanese() : japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`);
+    return findings(page.replaceOrFail(SAY, `data-say="${say}"`)).filter((f) => f === SHORT_SAY);
+  };
+
+  it('counts English text on a Japanese page as words between spaces, as on an English page', () => {
+    expect(sayFindings('Changeable here.')).toEqual([SHORT_SAY]);
+  });
+
+  it('counts the Japanese characters and the English words of a mixed text, both', () => {
+    // 4 kana over 1.5 is 2.7 words, plus 2 English words: 4.7, short; plus 3: 5.7, enough.
+    expect(sayFindings('はいはい yes okay')).toEqual([SHORT_SAY]);
+    expect(sayFindings('はいはい yes okay fine')).toEqual([]);
+  });
+
+  it('counts 1.5 kana a word and a Latin word as one, however long: six kana and one word are five', () => {
+    expect(sayFindings('はいはい abcdefgh')).toEqual([SHORT_SAY]);
+    expect(sayFindings('はいはいはい a')).toEqual([]);
+  });
+
+  it('counts characters on a page in Chinese too, and its Latin words as words', () => {
+    expect(sayFindings('可以 internationalization', 'zh')).toEqual([SHORT_SAY]);
+    expect(sayFindings('可以改 a b c', 'zh')).toEqual([]);
+  });
+
+  it.each(['yue', 'cmn', 'yue-Hant-HK'])('counts characters on a page in %s, a Chinese tag of its own', (lang) => {
+    expect(sayFindings('可以 internationalization', lang)).toEqual([SHORT_SAY]);
+    expect(sayFindings('可以改 a b c', lang)).toEqual([]);
+  });
+
+  it('counts the letters of Thai, not its vowel and tone marks', () => {
+    // เปลี่ยนที่นี่: 7 letters and 6 marks, 4.7 words, short.
+    expect(sayFindings('เปลี่ยนที่นี่', 'th')).toEqual([SHORT_SAY]);
+  });
+
+  it('counts characters for a disclosure\'s summary on a Japanese page', () => {
+    const DISCLOSURE = 'a disclosure whose summary does not say what it hides';
+    const withSummary = (summary) => findings(japanese().replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${BUILT}</p>\n<details class="more"><summary>${summary}</summary><span>古い記録です。</span></details>`)).filter((f) => f.includes(DISCLOSURE));
+    expect(withSummary('Excel')).toEqual([`[disclosure] ${DISCLOSURE}`]);
+    expect(withSummary('はい a b')).toEqual([]);
+  });
+
+  it('counts characters for a removed part\'s reason on a Japanese page', () => {
+    const REMOVED = '<td>Removed: documents are read in the app now, <a href="#q-1">question 1</a></td>';
+    const reason = (td) => findings(read('docs-redesign/r1').replaceOrFail('<html lang="en">', '<html lang="ja">').replaceOrFail(REMOVED, td)).filter((f) => f.startsWith('[mapping]'));
+    expect(reason('<td>不要 PDF</td>')).toEqual(['[mapping] the removed part "Download all" does not say why it goes']);
+    expect(reason('<td>不要 a b</td>')).toEqual([]);
+  });
+
+  it('keeps counting words between spaces on a page in English', () => {
+    expect(findings(read('account-settings/r1').replaceOrFail('data-say="The email address can be changed on this page, like the display name."', 'data-say="Changeable on this page."'))).toContain('[answer] the answer "Changeable here" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries');
+  });
+});

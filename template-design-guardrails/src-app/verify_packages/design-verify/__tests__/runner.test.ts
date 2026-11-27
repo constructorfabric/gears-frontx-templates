@@ -3,7 +3,10 @@
 // and its CDP protocol handling via an injected fake WebSocket. The
 // browser-driving CLI itself is exercised end-to-end against a real app, not
 // here - these tests pin the logic every run depends on.
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -40,7 +43,7 @@ import {
   parseDevtoolsEndpoint,
 } from '../runner/chrome.mjs';
 import { CdpSession } from '../runner/cdp.mjs';
-import { isUrlReachable } from '../runner/server.mjs';
+import { isUrlReachable, startServer } from '../runner/server.mjs';
 
 // The CLI's own wiring up to the first browser or server step: every input
 // it cannot honour exits 2 before the server wait and the Chrome lookup. A
@@ -48,12 +51,146 @@ import { isUrlReachable } from '../runner/server.mjs';
 // with a 1 ms wait and a missing --chrome keep that failure quick and loud.
 describe('cli main: inputs checked before any browser work', () => {
   const dirs: string[] = [];
+  // Every poll and delayed step a test schedules, cleared even when it fails.
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
     for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  async function runCli(files: Record<string, string>, args: string[]) {
+  function later(ms: number, then: () => void) {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      then();
+    }, ms);
+    timers.add(timer);
+  }
+
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** The PID a command wrote, once the file holds a whole one: never 0, which names this process group. */
+  function readPid(file: string): number | undefined {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      return undefined;
+    }
+    const pid = Number(text.trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  }
+
+  /** Kills a started command's process group (its PID leads it), or the process alone. */
+  function killGroup(pid: number) {
+    if (!(pid > 0) || !alive(pid)) return;
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  async function within<T>(promise: Promise<T>, ms: number): Promise<T | 'timed out'> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<'timed out'>((resolve) => {
+          timer = setTimeout(() => resolve('timed out'), ms);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Writes the line a command blocked on `read line < fifo` waits for. The
+   * open never blocks: with no reader yet it retries every 20 ms until
+   * `until`, and then gives up.
+   */
+  function releaseFifo(fifo: string, until = Date.now() + 5_000) {
+    let fd: number;
+    try {
+      fd = fs.openSync(fifo, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENXIO' && Date.now() < until) {
+        later(20, () => releaseFifo(fifo, until));
+      }
+      return;
+    }
+    try {
+      fs.writeSync(fd, 'x\n');
+    } catch {
+      /* the reader is gone */
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  /**
+   * A Chrome stand-in that writes its temporary profile directory and its PID
+   * where the test reads them, runs `start` and then runs until it is killed.
+   * In `start`, `announce()` prints `endpointPort` as its DevTools endpoint,
+   * `once(test, then)` runs `then` when `test()` first holds (polled every
+   * 20 ms), and `gone(pidFile)` says the process whose PID that file holds has
+   * ended and been reaped.
+   */
+  function fakeChrome(dir: string, endpointPort: number, start: string) {
+    const file = path.join(dir, 'fake-chrome');
+    const pidFile = path.join(dir, 'chrome.pid');
+    const profileFile = path.join(dir, 'chrome.profile');
+    fs.writeFileSync(
+      file,
+      [
+        `#!${process.execPath}`,
+        "const fs = require('fs');",
+        "const profile = process.argv.find((arg) => arg.startsWith('--user-data-dir='));",
+        `fs.writeFileSync(${JSON.stringify(profileFile)}, profile.slice('--user-data-dir='.length));`,
+        `fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+        'process.stderr.on(\'error\', () => {});',
+        `const announce = () => process.stderr.write('DevTools listening on ws://127.0.0.1:${endpointPort}/devtools/browser/fake\\n');`,
+        'const once = (test, then) => { const poll = setInterval(() => { if (test()) { clearInterval(poll); then(); } }, 20); };',
+        'const gone = (pidFile) => {',
+        "  const pid = Number(fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8').trim() : '');",
+        '  if (!(Number.isInteger(pid) && pid > 0)) return false;',
+        "  try { process.kill(pid, 0); return false; } catch (error) { return error.code === 'ESRCH'; }",
+        '};',
+        start,
+        'setInterval(() => {}, 1000);',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    return {
+      file,
+      pid: () => readPid(pidFile),
+      profile: () => (fs.existsSync(profileFile) ? fs.readFileSync(profileFile, 'utf8') : undefined),
+    };
+  }
+
+  async function freePort() {
+    const probe = http.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as AddressInfo;
+    await new Promise((resolve) => probe.close(resolve));
+    return port;
+  }
+
+  async function runCli(files: Record<string, string>, args: string[], chrome?: string) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-cli-'));
     dirs.push(root);
     for (const [file, text] of Object.entries(files)) fs.writeFileSync(path.join(root, file), text);
@@ -61,8 +198,18 @@ describe('cli main: inputs checked before any browser work', () => {
     vi.spyOn(console, 'error').mockImplementation((line: string) => errors.push(line));
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const at = (file: string) => path.join(root, file);
-    const code = await main([...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)), '--chrome', at('no-chrome')]);
-    return { code, errors: errors.join('\n'), logged: log.mock.calls.flat().join('\n') };
+    let code: number | undefined;
+    let thrown: unknown;
+    try {
+      code = await main([
+        ...args.map((a) => (a.startsWith('@') ? at(a.slice(1)) : a)),
+        '--chrome',
+        chrome ?? at('no-chrome'),
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+    return { code, thrown, errors: errors.join('\n'), logged: log.mock.calls.flat().join('\n') };
   }
 
   const DESIGN = [
@@ -107,6 +254,413 @@ describe('cli main: inputs checked before any browser work', () => {
     expect(result.errors).not.toMatch(/\n\s+at /);
     expect(result.logged).not.toMatch(/launching headless Chrome|waiting for/);
     expect(result.code).toBe(2);
+  });
+
+  // Whatever already answers --url is not the server --start-server was asked
+  // for: beside another project on the same port the sweep would measure that
+  // project. The run refuses before starting anything or launching a browser.
+  it('refuses --start-server when --url already answers, and starts nothing', async () => {
+    const other = http.createServer((_req, res) => res.end('another project'));
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    try {
+      const url = `http://127.0.0.1:${(other.address() as AddressInfo).port}/`;
+      const marker = path.join(os.tmpdir(), `design-verify-started-${process.pid}-${Date.now()}`);
+      const command = `node -e "require('fs').writeFileSync(process.argv[1], 'x')" ${marker}`;
+      // --cdp-url keeps a run that did attach away from any real browser.
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      expect(result.code).toBe(2);
+      expect(result.errors).toContain(`design-verify: ${url} already answers, but this run did not start that server`);
+      expect(result.errors).toMatch(/stop the server holding it/);
+      expect(result.errors).toMatch(/run without --start-server to measure the running server on purpose/);
+      expect(result.logged).not.toMatch(/starting dev server|attaching|waiting for|launching headless Chrome/);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
+  // Without --start-server, --url names the server to measure on purpose.
+  it('measures the server on --url when no --start-server is given', async () => {
+    // The same listener refuses the DevTools call, so the run stops right
+    // after the server step without any browser.
+    const running = http.createServer((req, res) => {
+      res.statusCode = req.url?.startsWith('/json/') ? 404 : 200;
+      res.end('the app');
+    });
+    await new Promise<void>((resolve) => running.listen(0, '127.0.0.1', resolve));
+    try {
+      const url = `http://127.0.0.1:${(running.address() as AddressInfo).port}/`;
+      const result = await runCli({}, ['--url', url, '--cdp-url', url]);
+      expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
+      expect(result.logged).toMatch(/waiting for/);
+    } finally {
+      await new Promise((resolve) => running.close(resolve));
+    }
+  });
+
+  // A start that fails says why: the server's own last words and its exit
+  // code, at once rather than after --server-timeout-ms.
+  it('stops waiting when the started server exits, and prints its last output and exit code', async () => {
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    // Both streams are read, but their order across two pipes is not fixed,
+    // so each line is checked on its own; exitCode lets both drain first.
+    const command = `node -e "console.log('building'); console.error('Preview ports already in use: port 3001'); process.exitCode = 1"`;
+    const started = Date.now();
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
+    expect(result.code).toBe(2);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(result.errors).toMatch(/the server command exited with code 1 before .* answered/);
+    expect(result.errors).toMatch(/last output:\n(.*\n)*building$/m);
+    expect(result.errors).toMatch(/last output:\n(.*\n)*Preview ports already in use: port 3001$/m);
+    expect(result.logged).not.toMatch(/launching headless Chrome/);
+  });
+
+  // A background child of the command (`vite &`) can keep its pipes open long
+  // after the command itself exited: the wait still ends on the exit, and the
+  // output read so far is printed after a short bounded grace.
+  it('stops waiting when the started command exits while a background child holds its output', async () => {
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const command = `echo 'before the exit'; sleep 30 & exit 3`;
+    const started = Date.now();
+    const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '60000']);
+    const took = Date.now() - started;
+    expect(result.code).toBe(2);
+    expect(took).toBeLessThan(10_000);
+    expect(result.errors).toMatch(/the server command exited with code 3 before .* answered/);
+    expect(result.errors).toMatch(/last output:\nbefore the exit$/m);
+  });
+
+  /**
+   * Another project's server on --url that the precheck misses: it answers the
+   * precheck after 2 s, past the precheck's 1.5 s, and every later request at
+   * `answerLater(done)`. `dir` holds the files the started command and the
+   * test meet at.
+   */
+  async function slowServer(answerLater: (done: () => void) => void) {
+    let requests = 0;
+    const slow = http.createServer((req, res) => {
+      requests += 1;
+      res.statusCode = req.url?.startsWith('/json/') ? 404 : 200;
+      if (requests === 1) setTimeout(() => res.end('another project'), 2_000);
+      else answerLater(() => res.end('another project'));
+    });
+    await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-slow-'));
+    dirs.push(root);
+    const { port } = slow.address() as AddressInfo;
+    return {
+      url: `http://127.0.0.1:${port}/`,
+      port,
+      dir: root,
+      close: async () => {
+        slow.closeAllConnections();
+        await new Promise((resolve) => slow.close(resolve));
+      },
+    };
+  }
+
+  function whenExists(file: string, then: () => void) {
+    if (fs.existsSync(file)) then();
+    else later(20, () => whenExists(file, then));
+  }
+
+  /** The refusal once the command the run started has ended, beginning with the URL. */
+  const endedRefusal = (url: string, ended: string) =>
+    `design-verify: ${url} answered, but after the answer the server command this run started ` +
+    `was found ended (${ended}): nothing this run started serves ${url} now, so it is not measured. ` +
+    'Run again, or pass --url with a free port';
+
+  // The precheck gives up on a server that is slow to answer, so the run
+  // starts its command, which dies on the taken port, and the next probe gets
+  // the other server's answer: the run refuses instead of measuring it. The
+  // answer comes 700 ms after the command wrote its marker and exited, so its
+  // exit is already recorded when the URL answers.
+  it('refuses when --url answers after the command it started has already exited', async () => {
+    let exitMarker = '';
+    const slow = await slowServer((done) => whenExists(exitMarker, () => setTimeout(done, 700)));
+    exitMarker = path.join(slow.dir, 'exiting');
+    try {
+      const command = `echo 'port in use'; echo x > '${exitMarker}'; exit 1`;
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.logged).toMatch(/starting dev server/);
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
+      expect(result.errors).toMatch(/last output:\nport in use$/m);
+      expect(result.logged).not.toMatch(/launching headless Chrome/);
+    } finally {
+      await slow.close();
+    }
+  });
+
+  /**
+   * The other server answers once the started command waits on a pipe, and
+   * after that answer `releaseWhen` schedules `release()`, which writes the
+   * line that lets the command exit, with no new process in between. The
+   * command writes its PID to `serverPidFile` first. The release is written
+   * once, and a command still waiting when the test ends is let go.
+   */
+  async function exitAfterAnswer(releaseWhen: (release: () => void, dir: string) => void) {
+    let ready = '';
+    let release = '';
+    let released = false;
+    const slow = await slowServer((done) =>
+      whenExists(ready, () => {
+        done();
+        if (released) return;
+        released = true;
+        releaseWhen(() => releaseFifo(release), slow.dir);
+      }),
+    );
+    ready = path.join(slow.dir, 'ready');
+    release = path.join(slow.dir, 'release');
+    const serverPidFile = path.join(slow.dir, 'server.pid');
+    execFileSync('mkfifo', [release]);
+    return {
+      slow,
+      serverPidFile,
+      command: `echo $$ > '${serverPidFile}'; echo 'port in use'; echo x > '${ready}'; read line < '${release}'; exit 1`,
+      close: async () => {
+        releaseFifo(release, 0);
+        await slow.close();
+      },
+    };
+  }
+
+  // The command's exit can arrive just after the other server's answer: the
+  // run looks once more after a short pause.
+  it('refuses when the command it started exits just after --url answered', async () => {
+    const { slow, command, close } = await exitAfterAnswer((release) => later(50, release));
+    try {
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command, '--cdp-url', slow.url]);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
+    } finally {
+      await close();
+    }
+  });
+
+  // An exit later than that pause is still caught before the browser attaches.
+  // Ordered by events, not by time: Chrome is launched only after the first
+  // check passed, so the command is let go once the fake Chrome wrote its PID,
+  // and the fake announces its endpoint only once the command is gone and
+  // reaped, which records its exit in the run.
+  it('refuses when the command it started exits after the pause, before the browser attaches', async () => {
+    let chromePidFile = '';
+    const { slow, serverPidFile, command, close } = await exitAfterAnswer((release) => whenExists(chromePidFile, release));
+    chromePidFile = path.join(slow.dir, 'chrome.pid');
+    const chrome = fakeChrome(slow.dir, slow.port, `once(() => gone(${JSON.stringify(serverPidFile)}), announce);`);
+    try {
+      const result = await runCli({}, ['--url', slow.url, '--start-server', command], chrome.file);
+      expect(result.thrown).toBeUndefined();
+      expect(result.code).toBe(2);
+      expect(result.logged).toMatch(/launching headless Chrome/);
+      expect(result.errors).toContain(endedRefusal(slow.url, 'exited with code 1'));
+    } finally {
+      const pid = chrome.pid();
+      if (pid !== undefined) killGroup(pid);
+      await close();
+    }
+  });
+
+  // The command runs in its own process group, which a Ctrl-C at the terminal
+  // does not reach: the run stops it itself when it is interrupted, so the
+  // server does not stay on --url and make the next run refuse.
+  it.each([
+    ['SIGHUP', 129],
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('stops the command it started when it gets %s, and exits %i', async (signal, exitCode) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--server-timeout-ms',
+        '60000',
+        '--start-server',
+        `echo $$ > '${pidFile}'; exec sleep 47`,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    let logged = '';
+    cli.stdout.on('data', (chunk) => (logged += chunk));
+    cli.stderr.resume();
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let serverPid: number | undefined;
+    try {
+      await vi.waitFor(
+        () => {
+          expect(logged).toMatch(/waiting for/);
+          serverPid = readPid(pidFile);
+          expect(serverPid).toBeDefined();
+          expect(alive(serverPid!)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill(signal);
+      expect(await within(exited, 5_000)).toBe(exitCode);
+      await vi.waitFor(() => expect(alive(serverPid!)).toBe(false), { timeout: 5_000, interval: 50 });
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      const pid = serverPid ?? readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
+    }
+  });
+
+  // A signal while Chrome is still starting: the run waits for the launch to
+  // settle and stops that Chrome too, with its temporary profile.
+  it('stops a Chrome that is still starting when it gets SIGINT, and removes its profile', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const serverPidFile = path.join(root, 'server.pid');
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const chrome = fakeChrome(root, port, 'setTimeout(announce, 3000);');
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--chrome',
+        chrome.file,
+        '--start-server',
+        `echo $$ > '${serverPidFile}'; exec node -e "require('http').createServer((q, s) => s.end()).listen(${port}, '127.0.0.1')"`,
+      ],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    );
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let profile: string | undefined;
+    try {
+      let chromePid: number | undefined;
+      await vi.waitFor(
+        () => {
+          chromePid = chrome.pid();
+          profile = chrome.profile();
+          expect(chromePid).toBeDefined();
+          expect(profile && fs.existsSync(profile)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill('SIGINT');
+      expect(await within(exited, 10_000)).toBe(130);
+      await vi.waitFor(() => expect(alive(chromePid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      expect(fs.existsSync(profile!)).toBe(false);
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      const chromePid = chrome.pid();
+      if (chromePid !== undefined && alive(chromePid)) process.kill(chromePid, 'SIGKILL');
+      const serverPid = readPid(serverPidFile);
+      if (serverPid !== undefined) killGroup(serverPid);
+      if (profile) fs.rmSync(profile, { recursive: true, force: true });
+    }
+  });
+
+  // A signal while Chrome is starting, and then the launch fails: the run
+  // still ends with the signal's code, not with the failed launch's 2. The
+  // fake Chrome exits with 1 only after the run took the signal, which the
+  // test sees as the started command stopped.
+  it("exits with the signal's code when the Chrome it was starting fails after SIGTERM", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-signal-'));
+    dirs.push(root);
+    const serverPidFile = path.join(root, 'server.pid');
+    const failNow = path.join(root, 'fail-now');
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const chrome = fakeChrome(root, port, `once(() => fs.existsSync(${JSON.stringify(failNow)}), () => process.exit(1));`);
+    const cli = spawn(
+      process.execPath,
+      [
+        path.join(__dirname, '..', 'runner', 'cli.mjs'),
+        '--url',
+        url,
+        '--chrome',
+        chrome.file,
+        '--start-server',
+        `echo $$ > '${serverPidFile}'; exec node -e "require('http').createServer((q, s) => s.end()).listen(${port}, '127.0.0.1')"`,
+      ],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    );
+    const exited = new Promise<number | null>((resolve) => cli.on('exit', (code) => resolve(code)));
+    let profile: string | undefined;
+    try {
+      let chromePid: number | undefined;
+      let serverPid: number | undefined;
+      await vi.waitFor(
+        () => {
+          chromePid = chrome.pid();
+          profile = chrome.profile();
+          serverPid = readPid(serverPidFile);
+          expect(chromePid).toBeDefined();
+          expect(serverPid).toBeDefined();
+          expect(profile && fs.existsSync(profile)).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      cli.kill('SIGTERM');
+      await vi.waitFor(() => expect(alive(serverPid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      fs.writeFileSync(failNow, '');
+      expect(await within(exited, 10_000)).toBe(143);
+      await vi.waitFor(() => expect(alive(chromePid!)).toBe(false), { timeout: 5_000, interval: 50 });
+      expect(fs.existsSync(profile!)).toBe(false);
+    } finally {
+      if (cli.exitCode === null && cli.signalCode === null) cli.kill('SIGKILL');
+      const chromePid = chrome.pid();
+      if (chromePid !== undefined && alive(chromePid)) process.kill(chromePid, 'SIGKILL');
+      const serverPid = readPid(serverPidFile);
+      if (serverPid !== undefined) killGroup(serverPid);
+      if (profile) fs.rmSync(profile, { recursive: true, force: true });
+    }
+  });
+
+  it('prints the output of a server that never answered once --server-timeout-ms passes, and stops it', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-timeout-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
+    const url = `http://127.0.0.1:${await freePort()}/`;
+    const command = `echo $$ > '${pidFile}'; exec node -e "console.log('still booting'); setInterval(() => {}, 1000)"`;
+    try {
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--server-timeout-ms', '1500']);
+      expect(result.code).toBe(2);
+      expect(result.errors).toMatch(/app URL never became reachable within 1500ms/);
+      expect(result.errors).toMatch(/still running.*\n.*still booting/);
+      const pid = readPid(pidFile);
+      expect(pid).toBeDefined();
+      await vi.waitFor(() => expect(alive(pid!)).toBe(false), { timeout: 5_000, interval: 50 });
+    } finally {
+      const pid = readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
+    }
+  });
+
+  // A healthy start stays quiet, and the server is stopped with the run.
+  it('keeps the output of a server that came up out of the run and stops it at the end', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'design-verify-healthy-'));
+    dirs.push(root);
+    const pidFile = path.join(root, 'server.pid');
+    const port = await freePort();
+    const url = `http://127.0.0.1:${port}/`;
+    const command =
+      `echo $$ > '${pidFile}'; exec node -e "console.log('SERVER' + ' NOISE'); require('http').createServer((q, s) => ` +
+      `{ s.statusCode = q.url.startsWith('/json/') ? 404 : 200; s.end(); }).listen(${port}, '127.0.0.1')"`;
+    try {
+      const result = await runCli({}, ['--url', url, '--start-server', command, '--cdp-url', url]);
+      expect(String(result.thrown)).toMatch(/CDP endpoint refused new target: HTTP 404/);
+      expect(result.logged).toMatch(/starting dev server/);
+      expect(`${result.logged}\n${result.errors}`).not.toMatch(/SERVER NOISE/);
+      await vi.waitFor(async () => expect(await isUrlReachable(url)).toBe(false), { timeout: 5_000, interval: 100 });
+    } finally {
+      const pid = readPid(pidFile);
+      if (pid !== undefined) killGroup(pid);
+    }
   });
 });
 
@@ -718,6 +1272,35 @@ describe('server', () => {
     await expect(
       isUrlReachable('http://x/', { fetchImpl: async () => { throw new Error('refused'); } }),
     ).resolves.toBe(false);
+  });
+
+  // The output is kept only as a tail, so a chatty server on a long run cannot
+  // fill memory: at most the last 40 lines of the last 8 KB written. Written to one stream, so
+  // the order is fixed (stderr is read too: see the cli tests above). The long
+  // line is two-byte characters, and the 11 bytes after it ("\nthe cause\n")
+  // leave an odd count of its bytes in the last 8192, so the cut splits one.
+  it('keeps a bounded tail of the server output and reports how it ended', async () => {
+    const script =
+      "for (let i = 0; i < 100; i += 1) console.log('line ' + i); " +
+      "console.log('\\u00e9'.repeat(10000)); console.log('the cause'); process.exitCode = 3";
+    const server = startServer(`node -e "${script}"`);
+    await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    await server.settled();
+    expect(server.ended()).toBe('exited with code 3');
+    const tail = server.output();
+    expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(8192);
+    expect(tail.split('\n').length).toBeLessThanOrEqual(40);
+    expect(tail).toMatch(/\u00e9{1000}\nthe cause$/);
+    expect(tail).not.toContain('\uFFFD');
+    expect(tail).not.toMatch(/line 0\b/);
+    server.stop();
+  });
+
+  it('keeps the last 40 lines when they are short', async () => {
+    const server = startServer(`node -e "for (let i = 0; i < 100; i += 1) console.log('line ' + i)"`);
+    await vi.waitFor(() => expect(server.ended()).toBeDefined(), { timeout: 10_000, interval: 50 });
+    await server.settled();
+    expect(server.output().split('\n')).toEqual(Array.from({ length: 40 }, (_, i) => `line ${i + 60}`));
   });
 });
 
