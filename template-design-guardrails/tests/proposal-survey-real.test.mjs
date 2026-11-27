@@ -80,6 +80,27 @@ describe('survey-app.mjs on the scaffold\'s own class names and breakpoints', ()
     expect([result.look.accent, result.lookFrom.accent]).toEqual(['#123456', `${SCREEN_CSS} .screen --primary`]);
   });
 
+  it('takes .screen as the root only where it is the selector\'s subject: .screen .notice is no page background or bridge', () => {
+    const stock = survey.survey(realApp());
+    const result = survey.survey(edit(realApp(), SCREEN_CSS, '.intro {\n', '.screen .notice {\n  background-color: #ff0000;\n  --primary: #00ff00;\n}\n\n.intro {\n'));
+    expect([result.look.bg, result.lookFrom.bg, result.look.accent]).toEqual([stock.look.bg, stock.lookFrom.bg, stock.look.accent]);
+  });
+
+  it('keeps a selector list whose part is .screen alone, or .screen under an ancestor, as the root', () => {
+    for (const selector of ['.intro, .screen', '.dark .screen']) {
+      const result = survey.survey(edit(realApp(), SCREEN_CSS, '.intro {\n', `${selector} {\n  --primary: #123456;\n}\n\n.intro {\n`));
+      expect([result.look.accent, result.lookFrom.accent], selector).toEqual(['#123456', `${SCREEN_CSS} .screen --primary`]);
+    }
+  });
+
+  it('draws the shell\'s menu in the shell\'s colours: the screen\'s own kit tokens stay inside the screen', () => {
+    const stock = survey.survey(realApp());
+    const result = survey.survey(edit(realApp(), SCREEN_CSS, '.screen {\n', '.screen {\n  --primary: #aa0000;\n  --left-menu: #aa0000;\n  --left-menu-foreground: #aa0000;\n'));
+    expect(result.look.accent).toBe('#aa0000');
+    const SHELL = ['nav-bg', 'nav-text', 'nav-active', 'nav-active-text'];
+    expect(SHELL.map((k) => [k, result.look[k], result.lookFrom[k]])).toEqual(SHELL.map((k) => [k, stock.look[k], stock.lookFrom[k]]));
+  });
+
   it('reads @media (min-width: 40rem) as a frame of 640 px', () => {
     const root = edit(realApp(), SCREEN_CSS, '.title {\n  font-size: var(--text-heading-1-size);', '.title {\n  font-size: 2rem;\n}\n@media (min-width: 40rem) {\n  .title { font-size: 3rem; }\n}\n.unused {');
     const result = survey.survey(root);

@@ -182,8 +182,11 @@ const LOOK_TOKENS = {
  */
 // .title, .screen and .description are the class names of the screen scaffold (template-mfe's _blank-mfe).
 const TITLE = [/pageTitle/i, /pageHeading/i, /(^|[\s,])h1\b/, /heroTitle/i, /\.title(?![\w-])/];
-/** The screen root: the page background and the kit token bridge. */
-const PAGE_ROOT = /\.(root|screen)(?![\w-])/;
+/**
+ * The screen root: the page background and the kit token bridge. Only a selector whose subject is the root class alone
+ * counts (.screen, .dark .screen, a list with .screen in it), never one of its descendants (.screen .notice).
+ */
+const PAGE_ROOT = /(?:^|[\s>+~,])\.(root|screen)\s*(?=,|$)/;
 /**
  * The shell's own page background behind the screen, innermost first: the stock shell's layout/Screen.module.css
  * .screen (background-color: var(--background)) wraps every screen; the global CSS's #root, body and html are under it,
@@ -1793,7 +1796,7 @@ function readLook(root, screens, chromeOf) {
     const found = new Map();
     for (const r of rules) {
       if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
-      for (const [name, value] of r.decls) if (name.startsWith('--') && !found.has(name)) found.set(name, { value, file: r.file, root: PAGE_ROOT.exec(r.selector)[0] });
+      for (const [name, value] of r.decls) if (name.startsWith('--') && !found.has(name)) found.set(name, { value, file: r.file, root: `.${PAGE_ROOT.exec(r.selector)[1]}` });
     }
     return found;
   };
@@ -1801,6 +1804,8 @@ function readLook(root, screens, chromeOf) {
   // A name the theme builds in code is unknown: a lookup gives null for it, never the kit's value.
   const lookupVia = (via) => (name) => via.get(name)?.value ?? (theme?.unread.has(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
   const appLookup = lookupVia(bridge);
+  // The shell (its menu, header and mark) sits outside every screen: the screens' kit token bridge never reaches it.
+  const shellLookup = lookupVia(new Map());
   /**
    * One resolution of a value that keeps its own reason: through the screens' kit token bridge (unless bridged is
    * false; a Map is one screen's own bridge), then the theme, then the kit. A name the theme builds in code, and for a
@@ -1820,10 +1825,10 @@ function readLook(root, screens, chromeOf) {
   };
   /** The reason a colour read from a rule is unresolved, after its source. */
   const because = (source, why) => (why ? `${source}: ${why}` : source);
-  const whereToken = (name) => (bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
+  const whereToken = (name, bridged = true) => (bridged && bridge.has(name) ? `${bridge.get(name).file} ${bridge.get(name).root} ${name}` : theme?.variables.has(name) ? `${theme.from.get(name)} ${name}` : scope.has(name) ? `kit theme.css ${name}` : null);
   /** The kind of where whereToken finds a name: the screen's own bridge, the theme's variables, else the kit. */
   const tokenKind = (name) => (bridge.has(name) ? 'screen' : theme?.variables.has(name) ? 'theme' : 'kit');
-  const { chrome, rules: shellRules, shellCss, brand, menuRules } = chromeOf(appLookup);
+  const { chrome, rules: shellRules, shellCss, brand, menuRules } = chromeOf(shellLookup);
 
   const look = {};
   const sources = {};
@@ -1861,12 +1866,14 @@ function readLook(root, screens, chromeOf) {
     let found = null;
     // A theme spread the survey cannot follow may set any colour: only a value the screens give without the theme stands.
     const colour = key !== 'font';
+    // The menu's colours are the shell's: no screen's bridge reaches them.
+    const bridged = !key.startsWith('nav-');
     for (const token of tokens) {
-      ({ value, why } = resolveIn(`var(${token})`, { colour }));
+      ({ value, why } = resolveIn(`var(${token})`, { colour, bridged }));
       kitValue = resolveIn(`var(${token})`, { bridged: false }).value;
       // A token the theme builds in code is unknown: the next token in the list does not stand for it.
       if (why) break;
-      if (value) { source = whereToken(token); found = token; break; }
+      if (value) { source = whereToken(token, bridged); found = token; break; }
     }
     if (key === 'bg') {
       // What the page really shows, front to back, with the kind of its source: a shown screen's own background, else the
@@ -1898,7 +1905,7 @@ function readLook(root, screens, chromeOf) {
     set(key, value ?? UNRESOLVED, why ?? source ?? 'none', kitValue);
   }
 
-  const role = (key, spec, rules) => {
+  const role = (key, spec, rules, bridged = true) => {
     const hit = pickRule(rules, spec);
     const colour = LOOK_KINDS[key] === 'colour';
     const kit = spec.kit ? resolveIn(`var(${spec.kit})`, { colour, bridged: false }) : { value: null, why: null };
@@ -1907,12 +1914,12 @@ function readLook(root, screens, chromeOf) {
     const realPx = (v) => (toPx(v) !== null ? `${Math.round(toPx(v))}px` : v);
     const kitValue = kitRaw === null ? null : spec.raw ? asRaw(kitRaw) : sized(kitRaw, spec.at);
     if (hit) {
-      const got = resolveIn(hit.rule.decls.get(hit.prop), { colour });
+      const got = resolveIn(hit.rule.decls.get(hit.prop), { colour, bridged });
       let raw = got.value;
       if (raw !== null && spec.side) raw = side(raw, spec.side);
       if (raw !== null && spec.content) {
         const pad = pickRule(rules, { ...spec, prop: ['padding-inline', 'padding'], side: 'x' });
-        const padPx = pad ? toPx(side(resolveVars(pad.rule.decls.get(pad.prop), appLookup) ?? '', 'x')) : 0;
+        const padPx = pad ? toPx(side(resolveVars(pad.rule.decls.get(pad.prop), bridged ? appLookup : shellLookup) ?? '', 'x')) : 0;
         // The column's own box-sizing wins; else the app's global reset; else the browser's content-box.
         const own = hit.rule.decls.get('box-sizing') ?? pad?.rule.decls.get('box-sizing');
         const box = (own ?? globalBox(root)) === 'border-box';
@@ -1941,10 +1948,10 @@ function readLook(root, screens, chromeOf) {
   if (chrome.nav === 'top') {
     for (const [key, spec] of Object.entries(SHELL_ROLES)) {
       if (key.endsWith('-phone') && chrome.phone !== 'rows' && key === 'navrow-h-phone') continue;
-      role(key, spec, shellRules);
+      role(key, spec, shellRules, false);
     }
     const link = shellRules.find((r) => /\.(link|navLink)\b/.test(r.selector) && r.media === null && !/active|:hover|:focus/.test(r.selector) && r.decls.has('color'));
-    const ruleColour = (key, rule) => { const got = resolveIn(rule.decls.get('color'), { colour: true }); set(key, got.value ?? UNRESOLVED, because(`${rule.file} ${rule.selector} color`, got.why)); };
+    const ruleColour = (key, rule) => { const got = resolveIn(rule.decls.get('color'), { colour: true, bridged: false }); set(key, got.value ?? UNRESOLVED, because(`${rule.file} ${rule.selector} color`, got.why)); };
     if (link) ruleColour('toplink', link);
     const active = shellRules.find((r) => /active|aria-current/.test(r.selector) && !/::?(after|before)|:hover|:focus/.test(r.selector) && r.decls.has('color'));
     if (active) ruleColour('toplink-active', active);
