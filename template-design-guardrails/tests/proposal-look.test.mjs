@@ -391,6 +391,12 @@ describe('the app name, the content column and the link addresses', () => {
       'type Item = { href: Address }; const items = [{ href: target }];\n',
       'type Item = { href: Address }\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'interface Item { to: To } export const items = (list) => list.map((x) => ({ to: x.to }));\n',
+      // A declaration starts a statement: the words type and interface in JSX text, a // comment or a string do not open one.
+      'export const Nav = ({ items }) => <nav><p>The interface lets you pick</p>{items.map((x) => <a href={x.href}>{x.label}</a>)}</nav>;\n',
+      '// was: interface Item {\nexport const Nav = ({ items }) => <nav><p>The interface lets you pick</p>{items.map((x) => <a href={x.href}>{x.label}</a>)}</nav>;\n',
+      '// old: type Item = {\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      'export const hint = "type Item = (";\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      'const s = `type X = `; const l = { href: item.href };\n',
     ]) {
       const mixed = side(`${back}${text}`);
       expect(mixed.links.screens.map((x) => x.link), text).toEqual(['unresolved', 'unresolved']);

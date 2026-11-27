@@ -2069,8 +2069,9 @@ const LINK_CALL = /\b(?:href|to)\s*[=:]\s*(?:\{\s*)?([A-Za-z_$][\w$.]*)\s*\(/g;
 const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$]|`[^`$]{0,200}\$\{)/g;
 // A type annotation (href: string) in the key form is not a link.
 const TYPE_WORD = /^(?:string|number|boolean|any|unknown|undefined|null|void|never|object)\b/;
-// Nor is a member of a type declaration (type Name = { href: Address }, interface Name { to: To }).
-const TYPE_DECL = /\b(?:type\s+[A-Za-z_$][\w$]*\s*(?:<[^<>=;]{0,200}>\s*)?=(?![=>])|interface\s+[A-Za-z_$][\w$]*[^{};=]{0,400}\{)/g;
+// Nor is a member of a type declaration (type Name = { href: Address }, interface Name { to: To }). A declaration starts
+// a line, so the words in JSX text, a // comment or a string do not open one.
+const TYPE_DECL = /^[ \t]*(?:export\s+)?(?:declare\s+)?(?:type\s+[A-Za-z_$][\w$]*\s*(?:<[^<>=;]{0,200}>\s*)?=(?![=>])|interface\s+[A-Za-z_$][\w$]*[^{};=]{0,400}\{)/gm;
 
 /**
  * The spans of a file's type declarations, in order: an interface up to its closing brace, a type alias up to a ; or a
