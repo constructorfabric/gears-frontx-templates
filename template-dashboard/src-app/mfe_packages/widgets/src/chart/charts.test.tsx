@@ -11,6 +11,7 @@ import { FunnelChart, checkFunnel } from './FunnelChart';
 import { RadarChart, checkRadar } from './RadarChart';
 import { TreemapChart, checkTreemap } from './TreemapChart';
 import { WaterfallChart, checkWaterfall } from './WaterfallChart';
+import { seriesColor } from './palette';
 
 const DATA: CartesianData = {
   series: [
@@ -478,20 +479,69 @@ describe('cartesian_chart', () => {
     expect(container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').length).toBeGreaterThan(2);
   });
 
-  it('labels every category with tick_labels every, and every n-th one when the labels do not fit', () => {
-    const ticks = (labels: string[]) => {
-      const data: CartesianData = { series: [{ name: 'A', points: labels.map((x, index) => ({ x, y: index })) }] };
-      const { container, unmount } = render(<CartesianChart payload={{ render: { x_axis: { tick_labels: 'every' }, series: [{ name: 'A', type: 'bar' }] }, data }} />);
-      const count = container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').length;
+  describe('long category names', () => {
+    const LONG = [
+      'Customer onboarding service', 'Payments reconciliation worker', 'Identity and access gateway', 'Search indexing pipeline',
+      'Mobile push notification relay', 'Storage lifecycle manager', 'Messaging fan-out broker', 'Reports export scheduler',
+      'Support ticket triage bot', 'Platform configuration store', 'Data warehouse loader', 'Security audit collector',
+    ];
+    /** The category ticks of a bar chart of `labels`: the text each shows and the full name its title carries, if any. */
+    const ticksOf = (labels: string[], extra: Partial<CartesianRender> = {}, axis = extra.orientation === 'horizontal' ? 'yAxis' : 'xAxis') => {
+      const data: CartesianData = { series: [{ name: 'A', points: labels.map((x, index) => ({ x, y: index + 1 })) }] };
+      const { container, unmount } = render(<CartesianChart payload={{ render: { series: [{ name: 'A', type: 'bar' }], ...extra }, data }} />);
+      const ticks = [...container.querySelectorAll(`.recharts-${axis}-tick-labels .recharts-cartesian-axis-tick-label`)].map((tick) => ({
+        shown: tick.querySelector('.recharts-cartesian-axis-tick-value')?.textContent ?? '',
+        full: tick.querySelector('title')?.textContent ?? null,
+      }));
       unmount();
-      return count;
+      return ticks;
     };
-    expect(ticks(['a', 'b', 'c', 'd', 'e', 'f'])).toBe(6);
-    // 24 labels of 19 characters do not fit one per category on the 640px test chart, so they are thinned to fewer than half.
-    const long = Array.from({ length: 24 }, (_, index) => `Category number ${String(index).padStart(3, '0')}`);
-    const thinned = ticks(long);
-    expect(thinned).toBeGreaterThan(1);
-    expect(thinned).toBeLessThan(long.length / 2);
+
+    it.each([['auto', {}], ['every', { x_axis: { tick_labels: 'every' as const } }]])(
+      'labels each of 12 long names on an upright chart (tick_labels %s), cut to its slot, with the full name on hover',
+      (_mode, extra) => {
+        const ticks = ticksOf(LONG, extra);
+        expect(ticks).toHaveLength(12);
+        // The 640px test chart gives each of 12 categories about 49px: 6 characters, the last an ellipsis.
+        expect(ticks.map((tick) => tick.shown)).toEqual(LONG.map((name) => `${Array.from(name).slice(0, 5).join('').trimEnd()}\u2026`));
+        expect(ticks.map((tick) => tick.full)).toEqual(LONG);
+      },
+    );
+
+    it('keeps a name that fits its slot whole, with no title', () => {
+      expect(ticksOf(['Web', 'Data', 'Infra'])).toEqual([
+        { shown: 'Web', full: null },
+        { shown: 'Data', full: null },
+        { shown: 'Infra', full: null },
+      ]);
+    });
+
+    it('labels every 2nd of 24 names when a slot cannot hold a short label, each cut to the room of two slots', () => {
+      const long = Array.from({ length: 24 }, (_, index) => `Category number ${String(index).padStart(3, '0')}`);
+      const ticks = ticksOf(long, { x_axis: { tick_labels: 'every' } });
+      expect(ticks.map((tick) => tick.full)).toEqual(long.filter((_, index) => index % 2 === 0));
+      expect(ticks.every((tick) => tick.shown.endsWith('\u2026') && Array.from(tick.shown).length >= 5)).toBe(true);
+    });
+
+    it('cuts a name longer than a third of a horizontal chart beside the plot, on one line, with the full name on hover', () => {
+      const name = 'A very long category name that takes far more room than a third of the chart';
+      const ticks = ticksOf([name, 'Short'], { orientation: 'horizontal', x_axis: { type: 'category' } });
+      expect(ticks).toHaveLength(2);
+      expect(ticks[0].full).toBe(name);
+      expect(ticks[0].shown.endsWith('\u2026')).toBe(true);
+      // A third of the 640px chart, less the gap: about 30 characters.
+      expect(Array.from(ticks[0].shown).length).toBeLessThanOrEqual(31);
+      expect(ticks[1]).toEqual({ shown: 'Short', full: null });
+    });
+
+    it('cuts a turned name to a third of the chart height, with the full name on hover', () => {
+      const name = 'A very long category name that would make the turned axis taller than the plot itself';
+      const [tick] = ticksOf([name], { x_axis: { tick_angle: -45 } });
+      expect(tick.full).toBe(name);
+      expect(tick.shown.endsWith('\u2026')).toBe(true);
+      // 320 / 3 less the axis gap, along a 45 degree line: about 20 characters.
+      expect(Array.from(tick.shown).length).toBeLessThan(25);
+    });
   });
 
   // A guard on cost: it counts JSON.stringify calls on the values table, the content key the shell and the data view use.
@@ -1072,8 +1122,8 @@ describe('radar_chart', () => {
     expect(checkRadar({ points: [{ axis: 'Mon', series: null, value: 0 }, { axis: 'Tue', series: null, value: null }, { axis: 'Wed', series: null, value: 1 }] })).toBeNull();
   });
 
-  // A radar takes one series per palette tone, which is why the bound is five; the distinct colours themselves are
-  // covered by 'draws one polygon per series in first-seen axis order'.
+  // A radar takes five series at most, as more overlapping polygons stop being readable; the distinct colours
+  // themselves are covered by 'draws one polygon per series in first-seen axis order'.
   it('fails the cell on more than 12 axes or 5 series, naming the point that crosses the bound', () => {
     const axes = Array.from({ length: 13 }, (_, index) => ({ axis: `a${index}`, series: null, value: 1 }));
     expect(checkRadar({ points: axes })).toBe('radar_chart: data.points[12].axis would be a 13th axis, and a radar takes at most 12');
@@ -1292,7 +1342,7 @@ describe('treemap_chart', () => {
     for (const [name, box] of unsorted) for (const [side, value] of box.entries()) expect(value).toBeCloseTo(sorted.get(name)![side], 6);
     // The delivered order stays for the colours, the text alternative and the data view, whatever the sizes are.
     const { container } = draw(items, { drill_down: true });
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)', 'var(--chart-1)', 'var(--chart-3)']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2), seriesColor(3), seriesColor(4)]);
     expect(rowsOf().slice(1).map((row) => row[0])).toEqual(['p', 'q', 'r', 's', 't']);
     await user.click(screen.getByRole('button', { name: 'Show data' }));
     const region = await screen.findByRole('region', { name: 'Data of Commits' });
@@ -1395,7 +1445,7 @@ describe('treemap_chart', () => {
     const { container } = draw(ITEMS);
     expect(tiles(container).map((tile) => tile.getAttribute('aria-label'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
     expect(tiles(container).map((tile) => tile.getAttribute('title'))).toEqual(['payments-api: 420', 'web-console: 260', 'mobile-app: 140']);
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2)]);
   });
 
   it('formats the values with value_format, in the tiles and the text alternative', () => {
@@ -1453,8 +1503,8 @@ describe('treemap_chart', () => {
       { label: 'b', value: 1, group: null },
     ]);
     expect(faces(container)).toHaveLength(2);
-    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
-    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)']);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1)]);
+    expect(tiles(container).map((tile) => tile.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1)]);
     expect(tiles(container).map((tile) => tile.getAttribute('data-share'))).toEqual(['66.67', '33.33']);
   });
 
@@ -1470,7 +1520,7 @@ describe('treemap_chart', () => {
     expect(heads(container).map((head) => head.textContent)).toEqual(['Web, 6', 'Other, 3', 'Data, 1']);
     expect(heads(container).map((head) => head.getAttribute('title'))).toEqual(['Web: 6', 'Other: 3', 'Data: 1']);
     expect(faces(container)).toHaveLength(3);
-    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual(['var(--chart-5)', 'var(--chart-4)', 'var(--chart-2)']);
+    expect(faces(container).map((face) => face.style.getPropertyValue('--tile'))).toEqual([seriesColor(0), seriesColor(1), seriesColor(2)]);
     // Every tile sits inside its group's face, in that group's colour.
     for (const face of faces(container)) {
       const [left, top, width, height] = boxOf(face);
@@ -2089,5 +2139,81 @@ describe('waterfall_chart', () => {
     const { container } = draw(STEPS);
     expect(screen.queryByRole('button', { name: 'Show data' })).toBeNull();
     expect(container.querySelector('[class*="clickable"]')).toBeNull();
+  });
+});
+
+describe('series colours past five', () => {
+  // The `--color-<key>` values the kit chart style writes for the chart, in key order.
+  const configColours = (container: HTMLElement, prefix: string) => {
+    const text = [...container.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');
+    const light = text.split('[data-theme=')[0];
+    return [...light.matchAll(new RegExp(`--color-${prefix}(\\d+): ([^;]+);`, 'g'))].sort((a, b) => Number(a[1]) - Number(b[1])).map((match) => match[2]);
+  };
+  // The colours themselves in each theme, read out of `light-dark(<light>, <dark>)`, not the custom property names
+  // around them, which differ by position whatever the colour.
+  const hexesOf = (colours: string[]) => colours.map((colour) => /light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/.exec(colour)?.slice(1).join(' '));
+  const expectOwnColours = (colours: string[], count: number) => {
+    expect(colours).toEqual(Array.from({ length: count }, (_, index) => seriesColor(index)));
+    const hexes = hexesOf(colours);
+    expect(hexes.every(Boolean)).toBe(true);
+    // Each theme on its own: two series that share a light or a dark colour look alike in that theme.
+    for (const theme of [0, 1]) expect(new Set(hexes.map((pair) => pair!.split(' ')[theme])).size).toBe(count);
+  };
+
+  it('gives each of 12 pie slices a colour of its own, the sixth unlike the first', () => {
+    const slices = Array.from({ length: 12 }, (_, index) => ({ label: `s${index}`, value: 12 - index }));
+    const { container } = render(<PieChart payload={{ render: {}, data: { slices } }} label="Share" />);
+    const colours = configColours(container, 'p');
+    expectOwnColours(colours, 12);
+    expect(hexesOf(colours)[5]).not.toBe(hexesOf(colours)[0]);
+  });
+
+  it('gives each of 10 stacked bar series a colour of its own', () => {
+    const names = Array.from({ length: 10 }, (_, index) => `team ${index}`);
+    const payload = {
+      render: { series: names.map((name) => ({ name, type: 'bar' as const, stack_group: 'all' })), x_axis: { type: 'category' as const } },
+      data: { series: names.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }, { x: 'Q2', y: index + 2 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Stack" />);
+    const colours = configColours(container, 's');
+    expectOwnColours(colours, 10);
+  });
+
+  it('gives each of 12 treemap tiles a colour of its own', () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({ label: `t${index}`, value: 12 - index, group: null }));
+    const { container } = render(<TreemapChart payload={{ render: {}, data: { items } }} label="Tiles" />);
+    const colours = [...container.querySelectorAll<HTMLElement>('[class*="treemapTile"]')].map((tile) => tile.style.getPropertyValue('--tile'));
+    expectOwnColours(colours, 12);
+  });
+});
+
+describe('legend order', () => {
+  const legendItems = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
+  const NAMES = Array.from({ length: 12 }, (_, index) => `Team ${String.fromCharCode(76 - index)}`);
+
+  it('lists the 12 slices of a pie in slice order, not in the string order of their keys', async () => {
+    const slices = NAMES.map((label, index) => ({ label, value: 12 - index }));
+    const { container } = render(<PieChart payload={{ render: { legend_position: 'bottom' }, data: { slices } }} label="Share" />);
+    // A pie legend item carries the slice's label and its value.
+    await waitFor(() => expect(legendItems(container)).toEqual(NAMES.map((name, index) => `${name} ${12 - index}`)));
+  });
+
+  it('lists the 12 series of a bar chart in series order', () => {
+    const payload = {
+      render: { series: NAMES.map((name) => ({ name, type: 'bar' as const, stack_group: 'all' })), x_axis: { type: 'category' as const } },
+      data: { series: NAMES.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Stack" />);
+    expect(legendItems(container)).toEqual(NAMES);
+  });
+
+  it('lists the series of a mixed chart in series order, whatever their types', () => {
+    const names = ['Target', 'Actual', 'Forecast'];
+    const payload = {
+      render: { series: [{ name: 'Target', type: 'line' as const }, { name: 'Actual', type: 'bar' as const }, { name: 'Forecast', type: 'area' as const }], x_axis: { type: 'category' as const } },
+      data: { series: names.map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }, { x: 'Q2', y: index + 2 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Mixed" />);
+    expect(legendItems(container)).toEqual(names);
   });
 });

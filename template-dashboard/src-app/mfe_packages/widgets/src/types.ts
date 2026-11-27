@@ -1,3 +1,5 @@
+import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
+
 /*
  * The render options and data shapes of the catalog widget types this package
  * draws, as the widget catalog FEATURE declares them. The widget type and data
@@ -27,8 +29,16 @@ export interface ReferenceLineOption {
 
 export type LegendPosition = 'top' | 'right' | 'bottom' | 'left' | 'none';
 
+/** How every data series without an entry of its own in `series` is drawn; each field left out takes its own default. */
+export interface CartesianSeriesDefault {
+  type?: CartesianSeriesOption['type'];
+  y_axis?: CartesianSeriesOption['y_axis'];
+  stack_group?: string;
+}
+
 export interface CartesianRender {
   series?: CartesianSeriesOption[];
+  series_default?: CartesianSeriesDefault;
   x_axis?: {
     type?: 'category' | 'value' | 'time';
     label?: string;
@@ -59,9 +69,22 @@ export interface CartesianPoint {
   size?: number | null;
 }
 
-export interface CartesianData {
+/** A point of the long form: it names the series it belongs to. */
+export interface CartesianLongPoint extends CartesianPoint {
+  series: string | null;
+}
+
+/** The series form: named series, each with its points. */
+export interface CartesianSeriesData {
   series: { name: string | null; points: CartesianPoint[] }[];
 }
+
+/**
+ * The data of a cartesian chart: the series form, or the long form, whose points each name their series. Exactly one
+ * of the two. The widget builds the series of the long form before its checks: the series with an entry of their own
+ * in `render.series` first, in the order of those entries, then the others in the order their names first appear.
+ */
+export type CartesianData = (CartesianSeriesData & { points?: never }) | { points: CartesianLongPoint[]; series?: never };
 
 export interface PieRender {
   /** Outer radius, or inner and outer radius, each `<n>%` or `<n>px`. Two items make a donut. */
@@ -84,6 +107,11 @@ export interface GridColumn {
   /** Width in pixels; the table is at least the sum of the widths (a floor for a column without one) and scrolls sideways in a narrower cell. */
   width?: number;
   format?: { notation?: 'standard' | 'compact' };
+  /**
+   * The value format of this column's numbers (a text or badge cell's number, a sparkline's text alternative); without
+   * it, the widget's `value_format`. A progress column shows a percent and takes none.
+   */
+  value_format?: ValueFormat;
   align?: 'start' | 'end' | 'center';
   sortable?: boolean;
   /** `truncate` keeps one line per cell; the full text stays in the cell's title. */
@@ -282,7 +310,7 @@ export interface RadarRender {
 export interface RadarData {
   /**
    * The values of the spokes in the long format of the cartesian chart: one point per series value, 3 to 120 of
-   * them. The axes keep their first-seen order (3 to 12 of them), and so do the series (1 to 5, one per palette tone); a null series is
+   * them. The axes keep their first-seen order (3 to 12 of them), and so do the series (1 to 5); a null series is
    * the one unnamed series, and a null value is a gap on that axis.
    */
   points: { axis: string; series: string | null; value: number | null }[];

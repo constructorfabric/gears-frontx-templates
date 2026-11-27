@@ -1,9 +1,10 @@
 import { StrictMode, useState } from 'react';
+import { renderToString } from 'react-dom/server';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ActionHandler, MfeHandlerMF, type ChildMfeBridge, type MfeEntryLifecycle } from '@gears-frontx/mfes';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
-import { LANGUAGE_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, type ServedFile } from '../contract';
+import { LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, RENDER_WIDGET_ACTION_ID, THEME_PROPERTY_ID, WIDGETS_DOMAIN_ID, type ServedFile } from '../contract';
 import { BUNDLE_TYPES, IN_BUNDLE_PARTS, WIDGET_ENTRIES } from '@gears-frontx/frontx-dashboard-widgets/testing';
 import { createMockHost, DEMO_DASHBOARD_ID, DEMO_SERVED_FILE as DEMO_WITHOUT_BUNDLES } from '../mock/mockHost';
 import { composeServedFile } from './served';
@@ -14,7 +15,7 @@ import { SharedRequests } from './binding';
 import { Dashboard, type DashboardProps } from './Dashboard';
 import { DashboardRoot, RENDER_RESERVED_FIELDS } from './DashboardRoot';
 import { fetchHost, type DashboardHost } from './host';
-import { renderStampIdOf, stampIdOf } from './ids';
+import { extensionIdOf, renderStampIdOf, stampIdOf } from './ids';
 
 /*
  * The runtime on the real FrontX registry and gts-plugin, in a simulated DOM:
@@ -66,6 +67,9 @@ const entries = Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, pr
 
 const shadowTexts = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.textContent ?? '');
+
+/** The element the overlay container property holds (the `element` of its holder), null for none, undefined when unset. */
+const elementIn = (value: unknown) => (value === null ? null : (value as { element?: unknown } | undefined)?.element);
 
 afterEach(() => {
   // Here, not at the end of a test that turns fake timers on, so a failing assertion never leaves them on.
@@ -361,13 +365,233 @@ describe('Dashboard on the real registry', () => {
     vi.restoreAllMocks();
   }, 15_000);
 
-  it('marks the frame with the canonical tag the widgets draw in, and en for a value that is not a BCP-47 tag', () => {
+  it('marks the frame with the canonical tag the widgets draw in, and en for a value that is not a BCP-47 tag', async () => {
     const root = new DashboardRoot({ host: createMockHost({ delayMs: 60_000 }), entries, origin: 'http://localhost' });
     const view = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="pt-br" variables={DEMO_VARIABLES} />);
     expect(view.container.firstElementChild?.getAttribute('lang')).toBe('pt-BR');
     view.rerender(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="pt_BR" variables={DEMO_VARIABLES} />);
     expect(view.container.firstElementChild?.getAttribute('lang')).toBe('en');
     view.unmount();
+    // The served file never answers here: the dispose ends its read, so its timeout writes no line into a later test.
+    await root.dispose();
+  });
+
+  it.each([
+    ['the element the host passes as overlayContainer', true],
+    ['the dashboard element without an overlayContainer', false],
+  ])('mounts the open larger view inside %s', async (name, given) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const overlayHost = document.body.appendChild(document.createElement('div'));
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    const view = render(
+      <Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={given ? overlayHost : undefined} />,
+    );
+    const [open] = await screen.findAllByRole('button', { name: /^Open .+ larger$/ }, { timeout: 5000 });
+    fireEvent.click(open);
+    const dialog = await screen.findByRole('dialog');
+    expect(overlayHost.contains(dialog), `overlay host should hold the dialog: ${name}`).toBe(given);
+    expect(view.container.firstElementChild?.contains(dialog), `dashboard element should hold the dialog: ${name}`).toBe(!given);
+    view.unmount();
+    overlayHost.remove();
+  }, 15_000);
+
+  it('gives every widget the overlayContainer the host passes, and null once the host drops it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const overlayHost = document.body.appendChild(document.createElement('div'));
+    // Each widget's latest overlay container, by extension: as it reads it on mount and as the domain updates it.
+    const seen = new Map<string, unknown>();
+    let count = 0;
+    const overlayEntry = (): MfeEntryLifecycle => {
+      const id = String(count++);
+      let stop: (() => void) | undefined;
+      return {
+        mount(_container, bridge) {
+          seen.set(id, bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value);
+          stop = bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => seen.set(id, property.value));
+          bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+        },
+        unmount() {
+          stop?.();
+        },
+      };
+    };
+    const overlayEntries = Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, overlayEntry]));
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+    const props = { root, dashboardId: DEMO_DASHBOARD_ID, theme: 'light', language: 'en', variables: DEMO_VARIABLES };
+    const view = render(<Dashboard {...props} overlayContainer={overlayHost} />);
+    await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+    expect([...new Set([...seen.values()].map(elementIn))]).toEqual([overlayHost]);
+    view.rerender(<Dashboard {...props} />);
+    expect([...new Set([...seen.values()].map(elementIn))]).toEqual([null]);
+    view.unmount();
+    overlayHost.remove();
+  }, 15_000);
+
+  describe('with an overlay container React rendered', () => {
+    /** Widget entries that keep the overlay container each widget last read, as the test above does. */
+    const recording = () => {
+      const seen = new Map<string, unknown>();
+      let count = 0;
+      const entry = (): MfeEntryLifecycle => {
+        const id = String(count++);
+        let stop: (() => void) | undefined;
+        return {
+          mount(_container, bridge) {
+            seen.set(id, bridge.getProperty(OVERLAY_CONTAINER_PROPERTY_ID)?.value);
+            stop = bridge.subscribeToProperty(OVERLAY_CONTAINER_PROPERTY_ID, (property) => seen.set(id, property.value));
+            bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+          },
+          unmount() {
+            stop?.();
+          },
+        };
+      };
+      return { seen, entries: Object.fromEntries(TYPES.map((type) => [`${ENTRY}${type}.v1`, entry])) };
+    };
+
+    /** A host that renders its own overlay element through a ref, beside `rows` rows of its own page. */
+    function Host({ root, rows = 0 }: { root: DashboardRoot; rows?: number }) {
+      const [overlays, setOverlays] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <ul>
+            {Array.from({ length: rows }, (_, index) => (
+              <li key={index}>
+                <span>row {index}</span>
+              </li>
+            ))}
+          </ul>
+          <div ref={setOverlays} data-testid="overlays" />
+          <Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={overlays} />
+        </>
+      );
+    }
+
+    it('gives every widget the element the host rendered', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { seen, entries: overlayEntries } = recording();
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+      const view = render(<Host root={root} />);
+      const overlays = screen.getByTestId('overlays');
+      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlays);
+      await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+      expect([...new Set([...seen.values()].map(elementIn))]).toEqual([overlays]);
+      expect(errors.mock.calls.filter(([line]) => String(line).includes('cannot be published'))).toEqual([]);
+      // Every widget gets the very holder on the domain, which shows the type store no field of its own.
+      const holder = root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID);
+      expect(holder).not.toBeInstanceOf(HTMLElement);
+      expect(Object.keys(holder as object)).toEqual([]);
+      expect([...new Set(seen.values())]).toEqual([holder]);
+      // A render of the host with the same element publishes nothing again. The render does not run the effect that
+      // publishes (its element did not change), so the call below proves the root's own skip of the same element.
+      const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
+      view.rerender(<Host root={root} />);
+      root.publishOverlayContainer(overlays);
+      expect(writes.mock.calls.filter(([id]) => id === OVERLAY_CONTAINER_PROPERTY_ID)).toEqual([]);
+      view.unmount();
+      expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+      await root.dispose();
+    }, 15_000);
+
+    it('publishes the element the host rendered next to a large tree of its own, within a time bound', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+      // The time the root takes to publish the element, which runs in a layout effect of the host's render.
+      let spent = 0;
+      const publish = root.publishOverlayContainer.bind(root);
+      const timed = vi.spyOn(root, 'publishOverlayContainer').mockImplementation((element) => {
+        const start = performance.now();
+        publish(element);
+        spent += performance.now() - start;
+      });
+      const view = render(<Host root={root} rows={2000} />);
+      const overlays = screen.getByTestId('overlays');
+      expect(timed).toHaveBeenCalledWith(overlays);
+      expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlays);
+      expect(errors.mock.calls.filter(([line]) => String(line).includes('cannot be published'))).toEqual([]);
+      // In this simulated DOM the test proves the element is published next to a large tree: a publish that walks the
+      // host's tree overflows the call stack here, and the element is not on the domain. The time bound guards a
+      // publish that walks the tree in a browser, where it took seconds; a loose bound, for a loaded machine.
+      expect(spent).toBeLessThan(500);
+      view.unmount();
+      await root.dispose();
+    }, 30_000);
+
+    /** A host that renders two elements of its own through refs and names one of them as the overlay container. */
+    function TwoContainers({ root, use }: { root: DashboardRoot; use: 'a' | 'b' }) {
+      const [a, setA] = useState<HTMLElement | null>(null);
+      const [b, setB] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <div ref={setA} data-testid="a" />
+          <div ref={setB} data-testid="b" />
+          <Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={use === 'a' ? a : b} />
+        </>
+      );
+    }
+
+    it('gives every widget the other element the host rendered when it names that one, and the first one back', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { seen, entries: overlayEntries } = recording();
+      const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries: overlayEntries, origin: 'http://localhost' });
+      const view = render(<TwoContainers root={root} use="a" />);
+      const [a, b] = [screen.getByTestId('a'), screen.getByTestId('b')];
+      const widgets = () => [...new Set([...seen.values()].map(elementIn))];
+      await waitFor(() => expect(seen.size).toBeGreaterThan(3), { timeout: 5000 });
+      expect(widgets()).toEqual([a]);
+      // The holders of a and b show the type store no field of their own, so it sees the same content in both: the
+      // widgets must still get the element named last.
+      view.rerender(<TwoContainers root={root} use="b" />);
+      expect(widgets()).toEqual([b]);
+      view.rerender(<TwoContainers root={root} use="a" />);
+      expect(widgets()).toEqual([a]);
+      view.unmount();
+      await root.dispose();
+    }, 15_000);
+  });
+
+  it('publishes null for an undefined overlay container from untyped code, and a second undefined publishes nothing', async () => {
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    onTestFinished(() => root.dispose());
+    const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
+    root.publishOverlayContainer(document.body);
+    writes.mockClear();
+    root.publishOverlayContainer(undefined as unknown as null);
+    expect(writes.mock.calls).toEqual([[OVERLAY_CONTAINER_PROPERTY_ID, null]]);
+    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+    root.publishOverlayContainer(undefined as unknown as null);
+    expect(writes.mock.calls).toHaveLength(1);
+  });
+
+  it('publishes no overlay container once the Dashboard that passed one unmounts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const overlayHost = document.body.appendChild(document.createElement('div'));
+    onTestFinished(() => overlayHost.remove());
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    const view = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={overlayHost} />);
+    expect(elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID))).toBe(overlayHost);
+    view.unmount();
+    expect(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID)).toBeNull();
+  });
+
+  it('keeps the overlay container another Dashboard on the root still shows when one unmounts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const [oneHost, otherHost] = [0, 1].map(() => document.body.appendChild(document.createElement('div')));
+    onTestFinished(() => [oneHost, otherHost].forEach((element) => element.remove()));
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    const property = () => elementIn(root.registry?.getDomainProperty(WIDGETS_DOMAIN_ID, OVERLAY_CONTAINER_PROPERTY_ID));
+    const one = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={oneHost} />);
+    const other = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} overlayContainer={otherHost} />);
+    expect(property()).toBe(otherHost);
+    one.unmount();
+    expect(property()).toBe(otherHost);
+    other.unmount();
+    expect(property()).toBeNull();
+  });
+
+  it('renders on a server without throwing on the refresh version it reads', () => {
+    const root = new DashboardRoot({ host: createMockHost({ delayMs: 0, file: DEMO_SERVED_FILE }), entries, origin: 'http://localhost' });
+    expect(() => renderToString(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" />)).not.toThrow();
   });
 
   it('retries the served file after a failed load', async () => {
@@ -616,7 +840,10 @@ describe('the stamped render', () => {
   });
   const renderIds = (container: HTMLElement) =>
     [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.dataset.render ?? '');
-  const failureLines = (errors: { mock: { calls: unknown[][] } }) => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith('[dashboard] dashboard'));
+  // Only the lines of this test's dashboard and failing widget: the spy is on the shared console, where another root's
+  // late line could land while a test runs.
+  const failureLines = (errors: { mock: { calls: unknown[][] } }, dashboardId: string, widgetId: string) =>
+    errors.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith(`[dashboard] dashboard ${dashboardId}, widget ${widgetId} `));
 
   it('is the render type followed by a UUIDv5 of widget id, role and render, apart from the data stamp', () => {
     const id = renderStampIdOf(METRIC_RENDER, metric.widget.id, 'cell');
@@ -652,7 +879,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(2), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cells[1].widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0001');
     // The widget's own registration judges the render against the same render type the stamp uses, and fails first.
@@ -677,7 +904,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toEqual([stamp]), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, SECOND, named.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('a0b1');
     expect(lines[0]).toContain('the render carries the GTS field id');
@@ -695,7 +922,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cell.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0004');
     expect(lines[0]).toContain(`the render carries the GTS field ${name}`);
@@ -724,7 +951,7 @@ describe('the stamped render', () => {
     await waitFor(() => expect(renderIds(container)).toEqual([baseStamp, metricStamp]), { timeout: 5000 });
     rerender(<Dashboard root={root} dashboardId={SECOND} theme="light" language="en" />);
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, SECOND, named.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain(`the render carries the GTS field ${name}`);
     expect(renderIds(container).filter(Boolean)).toEqual([]);
@@ -739,7 +966,7 @@ describe('the stamped render', () => {
     const { container } = render(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} />);
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, cell.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0008');
     // Judged against the metric_card render, not the open render base the field names.
@@ -796,7 +1023,7 @@ describe('the stamped render', () => {
     const states: string[] = [];
     root.runCell({ dashboardId: DEMO_DASHBOARD_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
     await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('0006');
     expect(lines[0]).toContain('the render cannot be read: Error: getter boom');
@@ -812,7 +1039,7 @@ describe('the stamped render', () => {
     const states: string[] = [];
     root.runCell({ dashboardId: DEMO_DASHBOARD_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
     await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('000a');
     expect(lines[0]).toContain(`the render fails ${METRIC_RENDER}`);
@@ -828,7 +1055,7 @@ describe('the stamped render', () => {
     expect(await screen.findByText('This widget cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
     await waitFor(() => expect(renderIds(container).filter(Boolean)).toHaveLength(1), { timeout: 5000 });
     expect(screen.getAllByText('This widget cannot be shown')).toHaveLength(1);
-    const lines = failureLines(errors);
+    const lines = failureLines(errors, DEMO_DASHBOARD_ID, unknown.widget.id);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('a0b2');
     expect(lines[0]).toContain('/render/id x-gts-instance-ref');
@@ -1614,5 +1841,891 @@ describe('variables from the host', () => {
     }
     expect(errors.mock.calls.filter(([line]) => String(line).includes('the render_widget chain ended in fallback'))).toHaveLength(1);
     expect(calls).toBe(1);
+  }, 15_000);
+});
+
+// Refresh and dispose: the host reads the definitions again without a new root, and releases a root it is done with.
+describe('refresh and dispose of the root', () => {
+  const METRIC = `${ENTRY}metric_card.v1`;
+  const demo = DEMO_SERVED_FILE.instances.find((instance) => instance.id === DEMO_DASHBOARD_ID) as { layout: { cells: { widget: { id: string } }[] } };
+  const metric = demo.layout.cells.find((cell) => cell.widget.id.includes('.metric_card.'))!;
+  const EDITED_ID = 'gts.frontx.dashboard.dashboard.dashboard.v1~3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a61';
+  const cellOf = (suffix: string, data: Record<string, unknown>) => ({ ...metric, widget: { ...metric.widget, id: metric.widget.id.replace(/[0-9a-f]{4}$/, suffix), render: {}, data } });
+  /** The served file with one more dashboard: one static cell per value, or one cell on `request` when given. */
+  const fileOf = (values: number[], request?: Record<string, unknown>): ServedFile => ({
+    ...DEMO_SERVED_FILE,
+    instances: [
+      ...DEMO_SERVED_FILE.instances,
+      {
+        id: EDITED_ID,
+        title: 'Edited',
+        layout: {
+          cells: request
+            ? [cellOf('c0ff', { request, transform: "{'value': response.value}" })]
+            : values.map((value, index) => cellOf(`c00${index}`, { params: {}, transform: `{'value': ${value}}` })),
+        },
+      },
+    ],
+  });
+  /** A host that answers the file `next()` gives at each call, counts the calls and hands out the data requests. */
+  const editingHost = (next: (signal: AbortSignal) => Promise<unknown>) => {
+    const calls = { file: 0, request: [] as AbortSignal[] };
+    const host: DashboardHost = {
+      loadFile: (signal) => ((calls.file += 1), next(signal) as Promise<ServedFile>),
+      // A data request is never answered: a pending request for the dispose test.
+      request: (_request, signal) => (calls.request.push(signal), new Promise(() => undefined)),
+    };
+    return { host, calls };
+  };
+  /** A metric entry that writes the value it receives, and counts how often its code is loaded, mounted and unmounted. */
+  const counting = () => {
+    const counts = { loaded: 0, mounted: 0, unmounted: 0 };
+    const entry = (): MfeEntryLifecycle => {
+      counts.loaded += 1;
+      let output: HTMLElement | undefined;
+      return {
+        mount(container, bridge) {
+          counts.mounted += 1;
+          output = document.createElement('output');
+          container.appendChild(output);
+          bridge.registerActionHandler(
+            RENDER_WIDGET_ACTION_ID,
+            ActionHandler.fromFunction(async (_type, payload) => {
+              output!.textContent = `value ${String((payload as { data?: { value?: unknown } }).data?.value)}`;
+            }),
+          );
+        },
+        unmount() {
+          counts.unmounted += 1;
+          output?.remove();
+        },
+      };
+    };
+    return { counts, entries: { ...entries, [METRIC]: entry } };
+  };
+  const values = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('[data-widget-extension]')].map((host) => host.shadowRoot?.querySelector('output')?.textContent ?? '');
+  const refreshLines = (errors: { mock: { calls: unknown[][] } }) => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('cannot be refreshed'));
+
+  it('draws an edited definition after a refresh, with no new load of widget code, and keeps an unchanged dashboard as it is', async () => {
+    let file = fileOf([7, 8]);
+    const { host, calls } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7', 'value 8']), { timeout: 5000 });
+    const loadedBefore = counts.loaded;
+    expect(loadedBefore).toBe(2);
+    // A refresh of the same definitions keeps every cell: nothing unmounts.
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(calls.file).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    // The binding of the first cell changes, and a third cell of the same type joins.
+    file = fileOf([9, 8, 10]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 9', 'value 8', 'value 10']), { timeout: 5000 });
+    // The two cells shown before mount their loaded code again; only the new cell's extension loads its own.
+    expect(counts.loaded).toBe(loadedBefore + 1);
+    expect(root.version).toBe(2);
+  }, 15_000);
+
+  it('keeps the last good definitions drawn when a refresh fails, reports the problem, and takes the next good one', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: (() => Promise<unknown>)[] = [async () => fileOf([7]), async () => Promise.reject(new Error('offline')), async () => ({ instances: [] }), async () => fileOf([11])];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({ ok: false, problem: expect.stringMatching(/^the served file could not be loaded: .*offline/) });
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({ ok: false, problem: 'the served file: it has no types and instances lists' });
+    expect(refreshLines(errors)).toEqual([
+      expect.stringMatching(/^\[dashboard\] the dashboard definitions cannot be refreshed: the served file could not be loaded: .*offline/),
+      '[dashboard] the dashboard definitions cannot be refreshed: the served file: it has no types and instances lists',
+    ]);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(values(container)).toEqual(['value 7']);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 11']), { timeout: 5000 });
+  }, 15_000);
+
+  it('fails a refresh whose served file redefines a type the root holds, and keeps the type it holds', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const PIE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~';
+    const good = fileOf([7]);
+    const changed = { ...good, types: good.types.map((type) => (String(type.$id) === `gts://${PIE}` ? { ...type, description: 'otherwise' } : type)) };
+    expect(changed.types).not.toEqual(good.types);
+    const answers = [good, changed];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    await act(async () => expect(await root.refresh()).toEqual({ ok: false, problem: `the served file: its type ${PIE} is already defined otherwise, and a type changes only in a new dashboard root` }));
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.types.getSchema(PIE)).toEqual(good.types.find((type) => String(type.$id) === `gts://${PIE}`));
+  }, 15_000);
+
+  /** The served file in parts: the base file with the edited dashboard, then one part per catalog bundle but `without`. */
+  const partsOf = (values: number[], { without = [] as string[], extra = [] as unknown[], metricType = (type: Record<string, unknown>) => type } = {}) => {
+    const edited = fileOf(values).instances.at(-1)!;
+    const base = { ...DEMO_WITHOUT_BUNDLES, instances: [...DEMO_WITHOUT_BUNDLES.instances, edited] };
+    const parts = TYPES.filter((type) => !without.includes(type)).map((type) => ({
+      types: (BUNDLE_TYPES[type] ?? []).map((schema) => (type === 'metric_card' ? metricType(schema) : schema)),
+      instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).endsWith(`.${type}.v1`)),
+    }));
+    return [base, ...parts, ...extra];
+  };
+  const METRIC_TYPE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.metric_card.v1~';
+
+  it('refuses a refresh whose widget part brings its own held type otherwise, and keeps the working cells drawn', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const changed = partsOf([9], { metricType: (type) => (String(type.$id) === `gts://${METRIC_TYPE}` ? { ...type, description: 'otherwise' } : type) });
+    expect(changed).not.toEqual(partsOf([9]));
+    const answers: unknown[] = [partsOf([7]), changed];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('is left out'))).toEqual([]);
+  }, 15_000);
+
+  /** The served file in parts with the edited dashboard moved from the base file into the metric part, its types passed through `metricTypes`. */
+  const servedByMetricPart = (values: number[], metricTypes = (types: Record<string, unknown>[]) => types) => {
+    const [base, ...parts] = partsOf(values) as unknown as { types: Record<string, unknown>[]; instances: Record<string, unknown>[] }[];
+    const edited = base!.instances.at(-1)!;
+    return [
+      { ...base!, instances: base!.instances.slice(0, -1) },
+      ...parts.map((part) => (part.instances.some((instance) => String(instance.id).endsWith('.metric_card.v1')) ? { types: metricTypes(part.types), instances: [...part.instances, edited] } : part)),
+    ];
+  };
+
+  it.each([
+    ['as held, then otherwise', true],
+    ['otherwise, then as held', false],
+  ])('refuses a refresh whose widget part brings its own held type twice, %s, and keeps the dashboard only that part serves drawn', async (_, heldFirst) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const twice = (types: Record<string, unknown>[]) =>
+      types.flatMap((type) => {
+        if (String(type.$id) !== `gts://${METRIC_TYPE}`) return [type];
+        const otherwise = { ...type, description: 'otherwise' };
+        return heldFirst ? [type, otherwise] : [otherwise, type];
+      });
+    const answers: unknown[] = [servedByMetricPart([7]), servedByMetricPart([9], twice)];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('is left out') || String(line).includes('cannot be shown'))).toEqual([]);
+  }, 15_000);
+
+  /** A part with no manifest that brings the metric widget type otherwise: the metric part brought it first. */
+  const CLASHING = { types: [{ ...BUNDLE_TYPES.metric_card.find((type) => String(type.$id) === `gts://${METRIC_TYPE}`)!, description: 'otherwise' }], instances: [] };
+  const MARKDOWN_TYPES = (BUNDLE_TYPES.markdown_card ?? []).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
+  /** A second part named like the metric part (it carries the same manifest) that brings the metric widget type otherwise. */
+  const TWIN = {
+    types: CLASHING.types,
+    instances: IN_BUNDLE_PARTS.instances.filter((instance) => String(instance.id).startsWith('gts.frontx.mfes.mfe.mf_manifest.v1~') && String(instance.id).endsWith('.metric_card.v1')),
+  };
+
+  it('refuses a refresh whose widget part brings its own held type otherwise while a later part under its name still brings that type as held', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // A later part with the metric part's manifest id, another manifest content and the metric widget type as held,
+    // but not the metric entry: on the first load it is left out for its manifest.
+    const manifest = TWIN.instances[0] as { metaData: Record<string, unknown> };
+    const twin = {
+      types: BUNDLE_TYPES.metric_card.filter((type) => String(type.$id) === `gts://${METRIC_TYPE}`),
+      instances: [{ ...manifest, metaData: { ...manifest.metaData, publicPath: '/widgets/metric_card_twin/' } }],
+    };
+    const changed = partsOf([9], { extra: [twin], metricType: (type) => (String(type.$id) === `gts://${METRIC_TYPE}` ? { ...type, description: 'otherwise' } : type) });
+    const answers: unknown[] = [partsOf([7], { extra: [twin] }), changed];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const leftOut = () => errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(leftOut()).toEqual([expect.stringMatching(/is left out: its instance .*metric_card\.v1 is already registered otherwise$/)]);
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(leftOut()).toHaveLength(1);
+  }, 15_000);
+
+  it('refuses a refresh whose widget part without a manifest brings otherwise a type it brought itself', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const [first, ...rest] = BUNDLE_TYPES.markdown_card ?? [];
+    const own = (schema: Record<string, unknown>) => partsOf([7], { without: ['markdown_card'], extra: [{ types: [schema, ...rest], instances: [] }] });
+    const answers: unknown[] = [own(first!), own({ ...first!, description: 'otherwise' })];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    expect(root.types.getSchema(MARKDOWN_TYPES[0]!)).toBeTruthy();
+    // The part comes last, after the base file and one part per catalog bundle but the markdown one.
+    await act(async () =>
+      expect(await root.refresh()).toEqual({
+        ok: false,
+        problem: `the widget part number ${TYPES.length + 1} of the answer (the served file is number 1): its type ${MARKDOWN_TYPES[0]} is already defined otherwise, and a type changes only in a new dashboard root`,
+      }),
+    );
+    expect(refreshLines(errors)).toHaveLength(1);
+  }, 15_000);
+
+  it.each([
+    ['the dashboards change while every widget part keeps its content', partsOf([7]), partsOf([9]), 0],
+    ['a new widget part with new types joins', partsOf([7], { without: ['markdown_card'] }), partsOf([9]), 0],
+    ['a part left out from the first load, its type brought first by another part, comes again', partsOf([7], { extra: [CLASHING] }), partsOf([9], { extra: [CLASHING] }), 2],
+    ['a second part with the manifest of the part that brought a type, and that type otherwise, comes again', partsOf([7], { extra: [TWIN] }), partsOf([9], { extra: [TWIN] }), 2],
+  ])('takes a refresh in which %s, and redraws', async (name, first, next, leftOut) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: unknown[] = [first, next];
+    const { host } = editingHost(async () => answers.shift());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const joins = name.startsWith('a new widget part');
+    if (joins) expect(MARKDOWN_TYPES.length > 0 && MARKDOWN_TYPES.every((id) => !root.types.getSchema(id))).toBe(true);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 9']), { timeout: 5000 });
+    expect(root.version).toBe(1);
+    if (joins) expect(MARKDOWN_TYPES.every((id) => root.types.getSchema(id))).toBe(true);
+    // The clashing part is left out on each read, the first load's and the refresh's, naming the part that brought the type.
+    const lines = errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(lines).toHaveLength(leftOut);
+    for (const line of lines) expect(line).toMatch(/is already defined otherwise by the widget part ".*metric_card\.v1.*"$/);
+    expect(refreshLines(errors)).toEqual([]);
+  }, 15_000);
+
+  it('shows a dashboard missing from the refreshed file as one that cannot be shown', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    file = DEMO_SERVED_FILE;
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(await screen.findByText('This dashboard cannot be shown', {}, { timeout: 5000 })).toBeTruthy();
+    expect(errors.mock.calls.some(([line]) => String(line).includes(`no dashboard ${EDITED_ID} in the served file`))).toBe(true);
+  }, 15_000);
+
+  it('lets the last of two refreshes win: the earlier file request is aborted and both calls resolve with the later outcome', async () => {
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    let first = true;
+    const { host } = editingHost(
+      (signal) =>
+        first
+          ? ((first = false), Promise.resolve(fileOf([7])))
+          : new Promise((resolve) => pending.push({ signal, answer: resolve })),
+    );
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const earlier = root.refresh();
+    // The earlier request reaches the host before the later call aborts it.
+    await waitFor(() => expect(pending).toHaveLength(1));
+    const later = root.refresh();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[0].signal.aborted).toBe(true);
+    expect(pending[1].signal.aborted).toBe(false);
+    pending[1].answer(fileOf([12]));
+    // The earlier answer comes last and is dropped.
+    pending[0].answer(fileOf([99]));
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([{ ok: true }, { ok: true }]));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(values(container)).toEqual(['value 12']);
+    expect(root.version).toBe(1);
+  }, 15_000);
+
+  it('does not call the host for a file request a later refresh aborted before it went out', async () => {
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    let first = true;
+    const { host } = editingHost(
+      (signal) =>
+        first
+          ? ((first = false), Promise.resolve(fileOf([7])))
+          : new Promise((resolve) => pending.push({ signal, answer: resolve })),
+    );
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    // Both calls in one turn: the earlier request is aborted before the host is called.
+    const earlier = root.refresh();
+    const later = root.refresh();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(pending).toHaveLength(1);
+    expect(pending[0].signal.aborted).toBe(false);
+    pending[0].answer(fileOf([12]));
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([{ ok: true }, { ok: true }]));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+  }, 15_000);
+
+  it('tells every listener and resolves the refresh outcome when one listener throws, with one console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const told: string[] = [];
+    root.subscribe(() => {
+      throw new Error('listener broke');
+    });
+    root.subscribe(() => void told.push('after'));
+    file = fileOf([12]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(told).toEqual(['after']);
+    expect(errors.mock.calls.map(([line]) => String(line))).toEqual(['[dashboard] a refresh listener failed: Error: listener broke']);
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+  }, 15_000);
+
+  it('resolves a refresh whose listener starts another refresh with the outcome of that later one, and tells the other listeners', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: (() => Promise<unknown>)[] = [async () => fileOf([7]), async () => fileOf([12]), async () => Promise.reject(new Error('offline'))];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    // The first listener starts one refresh from inside the first notification, and none after it.
+    let later: Promise<unknown> | undefined;
+    root.subscribe(() => void (later ??= root.refresh()));
+    const told: number[] = [];
+    root.subscribe(() => void told.push(root.version));
+    let earlier!: Promise<unknown>;
+    await act(async () => void (earlier = root.refresh()));
+    const failed = { ok: false, problem: expect.stringMatching(/^the served file could not be loaded: .*offline/) };
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([failed, failed]));
+    // The other listener is told of the definitions the earlier call read, and those stay: the later read failed.
+    expect(told).toEqual([1]);
+    expect(root.version).toBe(1);
+    expect(refreshLines(errors)).toHaveLength(1);
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+  }, 15_000);
+
+  it('tells the next listener and resolves the refresh outcome when a listener throws a value that cannot be turned into text', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let file: ServedFile = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const told: string[] = [];
+    // Subscribed before a second listener; String() throws for a value with no prototype.
+    root.subscribe(() => {
+      throw Object.create(null);
+    });
+    root.subscribe(() => void told.push('after'));
+    file = fileOf([12]);
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    expect(told).toEqual(['after']);
+    expect(errors.mock.calls.map(([line]) => String(line))).toEqual(['[dashboard] a refresh listener failed: listener threw a value that cannot be shown']);
+  }, 15_000);
+
+  it('keeps the refreshed definitions when the first read of the served file answers after the refresh', async () => {
+    let answerFirst!: (file: unknown) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((resolve) => (answerFirst = resolve)), async () => fileOf([12]), async () => fileOf([12])];
+    const { host } = editingHost(() => answers.shift()!());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(answerFirst).toBeTypeOf('function'));
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    // The first read answers last, with older definitions: they register nothing and the loads keep the refreshed ones.
+    await act(async () => answerFirst(fileOf([7])));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const unmountedBefore = counts.unmounted;
+    // A refresh of the same definitions then keeps every cell.
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(unmountedBefore);
+    expect(values(container)).toEqual(['value 12']);
+  }, 15_000);
+
+  it('keeps the refreshed file when the first read of the served file fails after the refresh', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let failFirst!: (error: Error) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((_, reject) => (failFirst = reject)), async () => fileOf([12])];
+    const { host, calls } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(failFirst).toBeTypeOf('function'));
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+    await act(async () => failFirst(new Error('late failure')));
+    // Another dashboard loads from the file the refresh read: the served file is not requested again.
+    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(true);
+    expect(calls.file).toBe(2);
+  }, 15_000);
+
+  it('gives a load waiting on the first read of the served file the file a refresh read meanwhile', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let answerFirst!: (file: unknown) => void;
+    const answers: (() => Promise<unknown>)[] = [() => new Promise((resolve) => (answerFirst = resolve)), async () => fileOf([12])];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const load = root.load(EDITED_ID);
+    await waitFor(() => expect(answerFirst).toBeTypeOf('function'));
+    expect(await root.refresh()).toEqual({ ok: true });
+    // The first read answers last, with older definitions.
+    answerFirst(fileOf([7]));
+    const outcome = await load;
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.dashboard.layout.cells.map((cell) => cell.widget.data)).toEqual([{ params: {}, transform: "{'value': 12}" }]);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('ends a refresh in flight at dispose with the disposed reason and no console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let first = true;
+    const { host } = editingHost((signal) => (first ? ((first = false), Promise.resolve(fileOf([7]))) : new Promise(() => void signal)));
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const refreshing = root.refresh();
+    await act(async () => root.dispose());
+    expect(await refreshing).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(refreshLines(errors)).toEqual([]);
+  }, 15_000);
+
+  it('ends a first read of the served file in flight at dispose: its request is aborted and the load fails with no console line', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const pending: { signal: AbortSignal; answer: (file: unknown) => void }[] = [];
+    const { host } = editingHost((signal) => new Promise((resolve) => pending.push({ signal, answer: resolve })));
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const load = root.load(EDITED_ID);
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await root.dispose();
+    expect(pending[0].signal.aborted).toBe(true);
+    pending[0].answer(fileOf([7]));
+    expect(await load).toEqual({ ok: false });
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('settles a request whose signal aborts even when the host never answers, and leaves no abort listener behind', async () => {
+    const add = vi.spyOn(EventTarget.prototype, 'addEventListener');
+    const remove = vi.spyOn(EventTarget.prototype, 'removeEventListener');
+    const abortListeners = (spy: typeof add | typeof remove) => spy.mock.calls.filter(([type], at) => type === 'abort' && spy.mock.contexts[at] instanceof AbortSignal).length;
+    const root = new DashboardRoot({ host: { loadFile: () => new Promise(() => undefined), request: () => new Promise(() => undefined) }, entries, origin: 'http://localhost' });
+    const controller = new AbortController();
+    const answer = root.host.request({ method: 'GET', path: '/api/demo/teams/goals' }, controller.signal);
+    controller.abort();
+    await expect(answer).rejects.toThrow('the request was aborted');
+    // Every abort listener the request added on the root-wide disposal signal and on its own signal is removed.
+    expect(abortListeners(add) - abortListeners(remove)).toBe(0);
+  });
+
+  it('leaves no widget and no line of a cell whose registration ends after dispose', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const register = root.registry!.registerExtension.bind(root.registry);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const registering = vi.spyOn(root.registry!, 'registerExtension').mockImplementationOnce(async (extension) => (await gate, register(extension)));
+    const states: string[] = [];
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension');
+    const widget = cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget;
+    root.runCell({ dashboardId: EDITED_ID, widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
+    // The dispose takes its list of extensions while the cell's registration is in flight.
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(1));
+    const disposing = root.dispose();
+    open();
+    await act(async () => disposing);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(counts.mounted - counts.unmounted).toBe(0);
+    // The cell takes back the extension it registered after the dispose took its list.
+    expect(unregistering).toHaveBeenCalledWith(extensionIdOf(widget.id, 'cell', METRIC));
+    expect(states).not.toContain('cannot-be-shown');
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('c001'))).toEqual([]);
+  }, 15_000);
+
+  it('leaves no widget, no line and no failed cell for a widget still mounting at dispose', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const slowEntry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        await gate;
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: slowEntry }, origin: 'http://localhost' });
+    render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    const disposing = root.dispose();
+    open();
+    await act(async () => disposing);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(counts.mounted - counts.unmounted).toBe(0);
+    expect(screen.queryByText('This widget cannot be shown')).toBeNull();
+    expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
+  }, 15_000);
+
+  it('loads the code of a widget whose type a refresh changed, and unregisters the extension of the cell that left', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...withCounts, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const before = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    expect(root.registry?.getExtension(before)).toBeDefined();
+    // The one cell of the dashboard becomes a widget of another type.
+    file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(counts.unmounted).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(root.registry?.getExtension(before)).toBeUndefined(), { timeout: 5000 });
+    expect(root.registry?.getExtension(extensionIdOf(markdown.widget.id, 'cell', MARKDOWN))).toBeDefined();
+  }, 15_000);
+
+  it('keeps the extension of a widget another dashboard of the root holds when the view leaves its dashboard for a third', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    const OTHER_ID = EDITED_ID.replace(/1$/, '2');
+    const THIRD_ID = EDITED_ID.replace(/1$/, '3');
+    const edited = fileOf([7]).instances.find((instance) => instance.id === EDITED_ID)!;
+    // Two dashboards of one file name the same widget; the third names another.
+    const file: ServedFile = { ...fileOf([7]), instances: [...fileOf([7]).instances, { ...edited, id: OTHER_ID }, { ...edited, id: THIRD_ID, layout: { cells: [markdown] } }] };
+    const { host } = editingHost(async () => file);
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...counting().entries, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const other = render(<Dashboard root={root} dashboardId={OTHER_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(other.container)).toEqual(['value 7']), { timeout: 5000 });
+    // Left without a switch: the other dashboard keeps its extensions for a return.
+    other.unmount();
+    const { container, rerender } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const shared = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension');
+    rerender(<Dashboard root={root} dashboardId={THIRD_ID} theme="light" language="en" />);
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(unregistering).not.toHaveBeenCalledWith(shared);
+    expect(root.registry?.getExtension(shared)).toBeDefined();
+    // The cell of the third dashboard finishes mounting: its widget is drawn.
+    await waitFor(() => expect(shadowTexts(container).filter((text) => text.startsWith('theme light'))).toHaveLength(1), { timeout: 5000 });
+  }, 15_000);
+
+  it('keeps the extension of a widget another dashboard of the root holds when a refresh drops it from one', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    const OTHER_ID = EDITED_ID.replace(/1$/, '2');
+    // Two dashboards of one file name the same widget.
+    const withOther = (served: ServedFile): ServedFile => ({ ...served, instances: [...served.instances, { ...fileOf([7]).instances.find((instance) => instance.id === EDITED_ID)!, id: OTHER_ID }] });
+    let file = withOther(fileOf([7]));
+    const { host } = editingHost(async () => file);
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...counting().entries, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const other = render(<Dashboard root={root} dashboardId={OTHER_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(other.container)).toEqual(['value 7']), { timeout: 5000 });
+    other.unmount();
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    const shared = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    // The refresh drops the widget from the shown dashboard only.
+    file = withOther({ ...fileOf([7]), instances: fileOf([7]).instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) });
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(root.registry?.getExtension(shared)).toBeDefined();
+  }, 15_000);
+
+  it('takes back the extension a cell registered after it left, and mounts nothing of it', async () => {
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: { ...withCounts, [MARKDOWN]: () => probeEntry() }, origin: 'http://localhost' });
+    const register = root.registry!.registerExtension.bind(root.registry);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    // The first registration, the metric cell's, ends only once the gate opens.
+    const registering = vi.spyOn(root.registry!, 'registerExtension').mockImplementationOnce(async (extension) => (await gate, register(extension)));
+    render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(1), { timeout: 5000 });
+    const left = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    // The cell leaves while it registers: the refresh replaces it, and the prune after it runs before the gate opens.
+    file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+    await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+    await waitFor(() => expect(registering).toHaveBeenCalledTimes(2), { timeout: 5000 });
+    await act(async () => open());
+    await waitFor(() => expect(root.registry?.getExtension(left)).toBeUndefined(), { timeout: 5000 });
+    expect(counts.mounted).toBe(0);
+  }, 15_000);
+
+  it.each([
+    ['waits on the mount of that widget', 'mount'],
+    ['unregisters another widget of its dashboard first', 'earlier'],
+    ['is unregistering that widget', 'unregister'],
+  ])('keeps the widget of a cell that waited on one release registered and drawn while another release that started meanwhile %s', async (_name, by) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let openMount!: () => void;
+    const mountGate = new Promise<void>((resolve) => (openMount = resolve));
+    // Only the first mount waits, and only when the release waits on a mount.
+    let slowMount = by === 'mount';
+    const entry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        if (slowMount) {
+          slowMount = false;
+          await mountGate;
+        }
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: entry }, origin: 'http://localhost' });
+    // A failing assertion leaves the root with mounts in flight; it ends here so they never reach a later test.
+    onTestFinished(() => root.dispose());
+    const page = document.body.appendChild(document.createElement('div'));
+    onTestFinished(() => page.remove());
+    root.attach(page);
+    expect((await root.load(EDITED_ID)).ok).toBe(true);
+    const shared = new SharedRequests({}, root.host, root.origin);
+    const run = (suffix: string, dashboardId: string) => {
+      const states: string[] = [];
+      const widget = cellOf(suffix, { params: {}, transform: "{'value': 1}" }).widget;
+      const cell = root.runCell({
+        dashboardId,
+        widget,
+        role: 'cell',
+        shared,
+        update: (change) => {
+          if ('state' in change) return void states.push(change.state);
+          page.appendChild(change.container);
+          change.placed();
+        },
+      });
+      return { cell, states, id: extensionIdOf(widget.id, 'cell', METRIC) };
+    };
+    // Dashboard one holds the widget (after another one when the release unregisters that one first); dashboard zero
+    // holds a third widget.
+    const earlier = by === 'earlier' ? run('c003', 'one') : undefined;
+    if (earlier) await waitFor(() => expect(earlier.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    const widget = run('c001', 'one');
+    if (by === 'mount') await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    else await waitFor(() => expect(widget.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    const other = run('c002', 'zero');
+    await waitFor(() => expect(other.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    // Each unregistration a test holds ends once its gate opens.
+    const unregister = root.registry!.unregisterExtension.bind(root.registry);
+    const gates = new Map<string, { opened: Promise<void>; open: () => void }>();
+    const hold = (id: string) => {
+      let open!: () => void;
+      gates.set(id, { opened: new Promise<void>((resolve) => (open = resolve)), open });
+    };
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension').mockImplementation(async (id) => (await gates.get(id)?.opened, unregister(id)));
+    hold(other.id);
+    if (by === 'earlier') hold(earlier!.id);
+    if (by === 'unregister') hold(widget.id);
+    for (const left of [earlier, widget, other]) left?.cell.leave();
+    // The release of dashboard zero runs; a cell of the widget for dashboard two starts and waits on it.
+    const first = root.release('zero');
+    const cell = run('c001', 'two');
+    // The release of dashboard one starts after the cell began to wait; nothing holds the widget at its call.
+    const second = root.release('one');
+    if (by === 'earlier') await waitFor(() => expect(unregistering).toHaveBeenCalledWith(earlier!.id));
+    if (by === 'unregister') await waitFor(() => expect(unregistering).toHaveBeenCalledWith(widget.id));
+    // The first release ends while the second one still runs.
+    gates.get(other.id)!.open();
+    await act(async () => first);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    openMount();
+    for (const gate of gates.values()) gate.open();
+    await act(async () => second);
+    await waitFor(() => expect(cell.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(cell.states).not.toContain('cannot-be-shown');
+    expect(root.registry?.getExtension(cell.id)).toBeDefined();
+    expect(page.querySelectorAll(`[data-widget-extension="${cell.id}"]`)).toHaveLength(1);
+    await act(async () => root.dispose());
+    expect(counts.mounted - counts.unmounted).toBe(0);
+  }, 15_000);
+
+  it.each([
+    ['a refresh that replaces its cell', 'refresh'],
+    ['a switch to another dashboard', 'switch'],
+  ])('unmounts a widget whose mount was in flight at %s once the mount ends', async (_name, by) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const MARKDOWN = `${ENTRY}markdown_card.v1`;
+    const markdown = demo.layout.cells.find((cell) => cell.widget.id.includes('.markdown_card.'))!;
+    let file = fileOf([7]);
+    const { host } = editingHost(async () => file);
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const slowEntry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        await gate;
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    let markdownLoaded = 0;
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: slowEntry, [MARKDOWN]: () => ((markdownLoaded += 1), probeEntry()) }, origin: 'http://localhost' });
+    const view = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    const slow = extensionIdOf(cellOf('c000', {}).widget.id, 'cell', METRIC);
+    if (by === 'refresh') {
+      file = { ...file, instances: file.instances.map((instance) => (instance.id === EDITED_ID ? { ...instance, layout: { cells: [markdown] } } : instance)) };
+      await act(async () => expect(await root.refresh()).toEqual({ ok: true }));
+      // The new cell runs, so the prune of the extension that left has started.
+      await waitFor(() => expect(markdownLoaded).toBe(1), { timeout: 5000 });
+    } else {
+      await act(async () => view.rerender(<Dashboard root={root} dashboardId={DEMO_DASHBOARD_ID} theme="light" language="en" variables={DEMO_VARIABLES} />));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(root.registry?.getExtension(slow)).toBeDefined();
+    await act(async () => open());
+    await waitFor(() => expect(root.registry?.getExtension(slow)).toBeUndefined(), { timeout: 5000 });
+    // Only the widget that left unmounts: the cells of a dashboard switched to are other widgets of the same entry.
+    expect(counts.unmounted).toBe(1);
+    await act(async () => root.dispose());
+    expect(counts.mounted - counts.unmounted).toBe(0);
+  }, 15_000);
+
+  it.each([
+    ['a failed first load', false],
+    ['a refresh', true],
+  ])('names the served file the first source of a base type a widget part redefines after %s', async (_name, byRefresh) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const PIE = 'gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~';
+    const catalogPie = IN_BUNDLE_PARTS.types.find((type) => String(type.$id) === `gts://${PIE}`)!;
+    // The catalog pie type comes in the base file, so the root registers it from the served file.
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, catalogPie] };
+    const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
+    const withRedefinedPie = [base, { types: [{ ...catalogPie, description: 'otherwise' }], instances: [] }];
+    // A first load the registry fails on a base instance, or one that succeeds; then the base file again with a part.
+    const answers: unknown[] = [byRefresh ? base : { ...base, instances: [...base.instances, brokenEntry] }, withRedefinedPie];
+    const root = new DashboardRoot({ host: { loadFile: async () => answers.shift() as ServedFile, request: () => new Promise(() => undefined) }, entries, origin: 'http://localhost' });
+    expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(byRefresh);
+    if (byRefresh) expect(await root.refresh()).toEqual({ ok: true });
+    else expect((await root.load(DEMO_DASHBOARD_ID)).ok).toBe(true);
+    const lines = errors.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('is left out'));
+    expect(lines).toEqual([expect.stringMatching(/the widget part number 2 of the answer \(the served file is number 1\) is left out: its type .*pie_chart\.v1~ is already defined otherwise by the served file$/)]);
+  });
+
+  it('releases on dispose every widget, its container, the pending requests and the listeners, and refuses later calls', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let answerRefresh!: (file: unknown) => void;
+    let first = true;
+    const { host, calls } = editingHost(() =>
+      first ? ((first = false), Promise.resolve(fileOf([], { method: 'GET', path: '/api/demo/teams/goals' }))) : new Promise((resolve) => (answerRefresh = resolve)),
+    );
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const listener = vi.fn();
+    root.subscribe(listener);
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    // The cell's widget is mounted and its data request waits for an answer that never comes.
+    await waitFor(() => expect(counts.mounted).toBe(1), { timeout: 5000 });
+    await waitFor(() => expect(calls.request).toHaveLength(1));
+    expect(container.querySelectorAll('[data-widget-extension]').length + document.querySelectorAll('[data-widget-extension]').length).toBeGreaterThan(0);
+    // A refresh whose file answers only after the dispose.
+    const refreshing = root.refresh();
+    await waitFor(() => expect(answerRefresh).toBeTypeOf('function'));
+    const disposing = root.dispose();
+    expect(root.dispose()).toBe(disposing);
+    await act(async () => disposing);
+    expect(calls.request[0].aborted).toBe(true);
+    expect(counts.unmounted).toBe(1);
+    expect(document.querySelectorAll('[data-widget-extension]')).toHaveLength(0);
+    // Nothing of the running cell reports after the dispose.
+    expect(errors.mock.calls.filter(([line]) => String(line).includes(EDITED_ID))).toEqual([]);
+    answerRefresh(fileOf([12], undefined));
+    expect(await refreshing).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(listener).not.toHaveBeenCalled();
+    // The root holds no listener: the one added before the dispose is dropped, and one added after it is not kept.
+    const listeners = (root as unknown as { listeners: Set<unknown> }).listeners;
+    expect(listeners.size).toBe(0);
+    // Nor the count of the cells that named each extension, nor the first source of each served type.
+    const held = root as unknown as { cells: Map<string, number>; sources: Map<string, string> };
+    expect([held.cells.size, held.sources.size]).toEqual([0, 0]);
+    root.subscribe(listener);
+    expect(listeners.size).toBe(0);
+    // Later calls have their own results: no file request, no write to the domain, no extension.
+    const filesBefore = calls.file;
+    expect(await root.refresh()).toEqual({ ok: false, problem: 'the dashboard root is disposed' });
+    expect(await root.load(EDITED_ID)).toEqual({ ok: false });
+    expect(calls.file).toBe(filesBefore);
+    const writes = vi.spyOn(root.registry!, 'updateSharedProperty');
+    root.publish('dark', 'de');
+    root.publishOverlayContainer(document.body);
+    expect(writes).not.toHaveBeenCalled();
+    const states: string[] = [];
+    root.runCell({ dashboardId: EDITED_ID, widget: cellOf('c001', { params: {}, transform: "{'value': 1}" }).widget, role: 'cell', shared: new SharedRequests({}, root.host, root.origin), update: (change) => void ('state' in change && states.push(change.state)) });
+    await waitFor(() => expect(states.at(-1)).toBe('cannot-be-shown'));
+    expect(errors.mock.calls.some(([line]) => String(line).includes('c001') && String(line).includes('the dashboard root is disposed'))).toBe(true);
+  }, 15_000);
+
+  it('runs a new root made after the dispose of the one before on its own', async () => {
+    const { host } = editingHost(async () => fileOf([7]));
+    const first = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const shown = render(<Dashboard root={first} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(shown.container)).toEqual(['value 7']), { timeout: 5000 });
+    shown.unmount();
+    await first.dispose();
+    const second = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={second} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
   }, 15_000);
 });

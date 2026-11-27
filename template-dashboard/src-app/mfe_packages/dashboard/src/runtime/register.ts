@@ -61,11 +61,11 @@ const canonical = (value: unknown) =>
   JSON.stringify(value, (_key, item: unknown) => (isObject(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : item));
 
 /**
- * The ids of the shared-property types the root registers itself before the served file (the same constant
- * registerBundle registers from): the store holds a definition of each from before the file, so no file that
- * carries a copy of one is a source of the type.
+ * Each type id a served file or part registered first, with the phrase naming that source: the served file or the
+ * widget part. The root keeps one for its whole life and passes it to every `registerServedFile` call on its store, so
+ * a type keeps its first source over a retry of a failed call and a refresh.
  */
-const ROOT_TYPE_IDS: ReadonlySet<string> = new Set(SHARED_PROPERTY_SCHEMAS.map(idOf));
+export type TypeSources = Map<string, string>;
 
 /**
  * What the served file brought so far: the base file and every widget part that registered whole, with the source
@@ -75,8 +75,8 @@ interface Held {
   /** Each manifest and entry id with its canonical content. */
   instances: Map<string, string>;
   dashboards: Map<string, Dashboard>;
-  /** Each type id in the store with the phrase naming the source that registered it first: the served file or the widget part. */
-  sources: Map<string, string>;
+  /** Each type id a served file or part registered first, with the phrase naming that source. */
+  sources: TypeSources;
 }
 
 const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?? '');
@@ -84,10 +84,11 @@ const idOfInstance = (instance: Record<string, unknown>) => String(instance.id ?
 /**
  * The reason a served file or part cannot register, or nothing. A widget part is checked whole against what is held
  * before anything of it registers; past that check, the store keeps what the part registered before a failing item.
- * Only a part that registers whole adds its manifests, entries and dashboards to `held`. Every type id the served
- * file or part registers is recorded in `held.sources` under `source` when the store holds the definition it
- * registered, its first source, except a type the root registers itself: the store keeps those types when the part
- * is left out later, so the first source stays theirs.
+ * Only a part that registers whole adds its manifests, entries and dashboards to `held`. A type id the served file
+ * or part registers is recorded in `held.sources` under `source` when the store lacked the type before and holds this
+ * definition after: a type the store held before (its own, the root's, or one an earlier call or part brought) keeps
+ * the source it has, or none. The store keeps the types a part registered when the part is left out later, so the
+ * first source stays theirs.
  */
 function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: ReadonlySet<string>, held: Held, isBase: boolean, source: string): string | undefined {
   const served = part as Partial<ServedFile> | null;
@@ -130,17 +131,14 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   }
   try {
     for (const schema of served.types) {
-      // Recorded per type once it registers, when `held.sources` has no entry for the id and the schema the store
-      // holds for it equals the registered one in content (the store holds this source's own definition): a base
-      // file re-registering on a retry of a failed call, whose types the store already holds, names the served
-      // file again. A type the root registers itself before the file (a shared-property type, say) is never given
-      // a source: the store holds its definition from before the file, so a file that carries a copy of it, alike
-      // or otherwise, names no source of the type. The `held.sources` check keeps the first source: the store
-      // keeps the types that registered when a later item of the same part fails, so they keep this source as
-      // their first one.
+      // Recorded once the type registers, only when the store lacked it before: a type the store held before any file
+      // (its own, such as the shared-property base, or one the root registers, such as the theme type) has no file as
+      // its source even when a file carries an identical copy, and a type a failed earlier call or part brought keeps
+      // that source, since `held.sources` lasts as long as the root.
       const id = idOf(schema);
+      const had = types.getSchema(id) !== undefined;
       types.registerSchema(schema);
-      if (!ROOT_TYPE_IDS.has(id) && !held.sources.has(id) && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
+      if (!had && canonical(types.getSchema(id)) === canonical(schema)) held.sources.set(id, source);
     }
     for (const instance of instances) types.register(instance);
   } catch (error) {
@@ -148,6 +146,58 @@ function registerPart(types: TypeSystemPlugin, part: unknown, bundleIds: Readonl
   }
   for (const instance of instances) held.instances.set(idOfInstance(instance), canonical(instance));
   for (const dashboard of dashboards) held.dashboards.set(idOfInstance(dashboard), dashboard as unknown as Dashboard);
+  return undefined;
+}
+
+/**
+ * The reason a base file read again cannot register, or nothing: its first type that `types` holds otherwise. The
+ * store keeps the first definition of a type and ignores a later one, so such a type would be dropped without a word.
+ * A type `fresh` (a new store with the bundle registered, as before a first load) holds already is the store's or the
+ * root's own, which a first load ignores too, and is skipped.
+ */
+export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin, base: unknown): string | undefined {
+  if (!isObject(base) || !Array.isArray(base.types)) return undefined;
+  for (const schema of base.types) {
+    if (!isObject(schema)) continue;
+    const id = idOf(schema);
+    const was = types.getSchema(id);
+    if (was && !fresh.getSchema(id) && canonical(was) !== canonical(schema)) return `its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
+  }
+  return undefined;
+}
+
+/**
+ * The reason a served file read again cannot register, or nothing: the first type of a widget part that `types` holds
+ * otherwise and that the same part brought first (its source in `sources`, the part named by its manifest ids or its
+ * place). The store keeps the first definition, so the part would be left out and the cells it served would fail.
+ * A name is not an identity: two parts may carry the same manifest ids, or ids equal in their capped length. So the
+ * check follows the order of registration: of the parts under the recorded name, the first in answer order that
+ * brings the type stands for the part that registered it, and the type is refused when that part brings it otherwise;
+ * a later part under the name was left out as on the first load.
+ * A part whose type another source brought first was left out from the first load on, and is left out again without
+ * failing anything; a part that cannot be read is left out by the registration as before.
+ */
+export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources: TypeSources): string | undefined {
+  if (!Array.isArray(file)) return undefined;
+  // Each held type with the index of the first part, in answer order, that brings it under the source recorded for
+  // it: every copy of the type in that part is compared, a later part under the name is skipped.
+  const seen = new Map<string, number>();
+  for (const [index, part] of file.slice(1).entries()) {
+    try {
+      if (!isObject(part) || !Array.isArray(part.types)) continue;
+      const source = partSource(idsOfPart(part), index);
+      for (const schema of part.types) {
+        if (!isObject(schema)) continue;
+        const id = idOf(schema);
+        const was = types.getSchema(id);
+        if (!was || sources.get(id) !== source || (seen.get(id) ?? index) !== index) continue;
+        seen.set(id, index);
+        if (canonical(was) !== canonical(schema)) return `${source}: its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
+      }
+    } catch {
+      // Left out by the registration, as on a first load.
+    }
+  }
   return undefined;
 }
 
@@ -182,6 +232,16 @@ const partName = (ids: string[], index: number) => {
   return listed ? quoted(listed.length > NAME_CAP ? `${listed.slice(0, NAME_CAP)}...` : listed) : `number ${index + 2} of the answer (the served file is number 1)`;
 };
 
+/** The ids a widget part is named by: its instance ids other than its dashboards'. */
+const idsOfPart = (part: unknown) =>
+  (isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : []).map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
+
+/**
+ * The source a widget part's types are recorded under and the name its console lines give it, built in one place:
+ * a refresh matches a part to the recorded source by this name, so the two must not differ.
+ */
+const partSource = (ids: string[], index: number) => `the widget part ${partName(ids, index)}`;
+
 /**
  * Step 2: the served file, or a dashboard-level failure. A host answers one
  * joined file, or the file in parts: the base file (the catalog types and the
@@ -191,14 +251,14 @@ const partName = (ids: string[], index: number) => {
  * and the type ids of a left-out part, and fails a cell by its widget type, a
  * type it extends, its entry, its render type or its data type with that part's line.
  */
-export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>): FileOutcome {
+export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundleIds: ReadonlySet<string>, sources: TypeSources = new Map()): FileOutcome {
   const [base, ...parts] = Array.isArray(file) ? file : [file];
   // The stand-in records and the plugin's lifecycle stages, in the store before the file, count as held, so no part replaces them.
   const before = [...STAND_IN.instances, ...(loadLifecycleStages() as unknown as Record<string, unknown>[])];
   const held: Held = {
     instances: new Map(before.map((instance) => [idOfInstance(instance), canonical(instance)])),
     dashboards: new Map(),
-    sources: new Map(),
+    sources,
   };
   const problem = guarded(() => registerPart(types, base, bundleIds, held, true, 'the served file'));
   if (problem) return { ok: false, problem: `the served file: ${problem}` };
@@ -210,9 +270,8 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
     // is left out with the part, but must not take the part's name and its instance ids down with it, which the
     // cells of the type fail by.
     const reason = guarded(() => {
-      const instances = isObject(part) && Array.isArray(part.instances) ? part.instances.filter(isObject) : [];
-      ids = instances.map(idOfInstance).filter((id) => id && !id.startsWith(DASHBOARD_TYPE_ID));
-      return registerPart(types, part, bundleIds, held, false, `the widget part ${partName(ids, index)}`);
+      ids = idsOfPart(part);
+      return registerPart(types, part, bundleIds, held, false, partSource(ids, index));
     });
     guarded(() => {
       if (isObject(part) && Array.isArray(part.types)) typeIds = part.types.filter(isObject).map(idOf).filter(Boolean);
@@ -224,9 +283,8 @@ export function registerServedFile(types: TypeSystemPlugin, file: unknown, bundl
       for (const id of typeIds) rejected.types.delete(id);
       return;
     }
-    const name = partName(ids, index);
     // The reason quotes ids from the part as well (a registry message, an id held otherwise), so it is escaped the same way.
-    const line = `the widget part ${name} is left out: ${escapeControls(reason)}`;
+    const line = `${partSource(ids, index)} is left out: ${escapeControls(reason)}`;
     console.error(`[dashboard] ${line}`);
     // A rejected part held nothing, so `held` still names what registered before it: those ids stay healthy. An
     // instance id is recorded only when nothing held it.

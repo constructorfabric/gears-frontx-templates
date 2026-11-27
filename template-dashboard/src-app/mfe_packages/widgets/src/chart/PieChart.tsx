@@ -5,7 +5,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 import { formatValue, textOf, nonFiniteProblemOf } from '../format';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { PieData, PieRender } from '../types';
-import { PALETTE, legendOf } from './legend';
+import { legendOf, seriesColor } from './legend';
 import { ChartShell } from './ChartShell';
 import { FILL } from './chrome';
 import type { ValuesTable } from './DataView';
@@ -95,7 +95,7 @@ export function PieChart({
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   // Every slice is in the legend with its label and value; a null or zero slice has no size but keeps its entry.
   const config: ChartConfig = Object.fromEntries(
-    data.slices.map((slice, index) => [`p${index}`, { label: `${textOf(slice.label, undefined, locale)} ${format(slice.value)}`.trim(), color: PALETTE[index % PALETTE.length] }]),
+    data.slices.map((slice, index) => [`p${index}`, { label: `${textOf(slice.label, undefined, locale)} ${format(slice.value)}`.trim(), color: seriesColor(index) }]),
   );
   // The total of the slices, nulls left out, for the hole of a donut and its row in the text alternative; a total beyond
   // the largest number (two slices of 1e308) is left out of both.

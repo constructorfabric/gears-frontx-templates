@@ -72,15 +72,19 @@ function valueProblemOf(kind: NonNullable<GridColumn['kind']>, value: GridValue)
 /** Whether a header click sorts by the column: a sparkline column never sorts, any other unless `sortable` is false. */
 export const isSortable = (column: GridColumn) => column.kind !== 'sparkline' && column.sortable !== false;
 
+/** The value format of a column: its own `value_format`, or the widget's for a column without one. */
+export const valueFormatOf = (column: GridColumn, widgetFormat: ValueFormat | undefined): ValueFormat | undefined => column.value_format ?? widgetFormat;
+
 /**
- * The text a cell shows, which the search matches: a link's text, a number formatted by the column and the widget
- * format, a progress value as its percent (the column format does not apply), a string as it is; a sparkline shows none.
+ * The text a cell shows, which the search matches: a link's text, a number formatted by the column's value format
+ * (its own, or the widget's) and its notation, a progress value as its percent (neither format applies), a string as
+ * it is; a sparkline shows none.
  */
 export function shownTextOf(value: GridValue, column: GridColumn, valueFormat: ValueFormat | undefined, locale: string): string {
   if (column.kind === 'sparkline') return '';
   if (column.kind === 'progress') return typeof value === 'number' ? formatValue(value, { value_type: 'percent' }, locale) : '';
   if (isLink(value)) return value.text;
-  if (typeof value === 'number') return formatValue(value, valueFormat, locale, column.format?.notation);
+  if (typeof value === 'number') return formatValue(value, valueFormatOf(column, valueFormat), locale, column.format?.notation);
   return typeof value === 'string' ? value : '';
 }
 

@@ -21,7 +21,9 @@ The packages export their TypeScript source, not built JavaScript (`exports` poi
 
 ## Embed the component
 
-Create one dashboard root for the application, then render `<Dashboard>` wherever a dashboard shows. One `<Dashboard>` per root is on screen at a time.
+Create one dashboard root for the application, then render `<Dashboard>` wherever a dashboard shows.
+
+One `<Dashboard>` per root is on screen at a time: two views on one root are not supported.
 
 ```tsx
 import '@gears-frontx/ui-kit/theme.css';
@@ -37,6 +39,100 @@ export function DashboardPage({ id, theme, language }: { id: string; theme: stri
 ```
 
 A theme or language change restyles the widgets in place; nothing is fetched again. A new `dashboardId` loads that dashboard. Leaving the page and coming back to the same dashboard runs its data requests again but does not fetch the served file again.
+
+## Refresh and dispose
+
+When the dashboard definitions change while the page is open (a user saved an edited dashboard, say), call `refresh()` on the root. It reads the served file again, and every shown `<Dashboard>` redraws from the new definitions; no new root and no page reload are needed.
+
+```tsx
+async function saveDashboard(edited: unknown) {
+  const response = await fetch('/analytics/dashboards', { method: 'PUT', body: JSON.stringify(edited) });
+  if (!response.ok) {
+    showToast(`The dashboard was not saved: HTTP ${response.status}`);
+    return;
+  }
+  const outcome = await dashboards.refresh();
+  if (!outcome.ok) showToast(`The dashboard was saved but cannot be redrawn: ${outcome.problem}`);
+}
+```
+
+- A cell whose generated extension stays registered mounts the code that extension loaded, so its code is not loaded again. A dashboard whose definition is unchanged keeps its cells as they are; a changed one runs its cells again, so their data requests go out again. A cell with a new generated extension (a new widget, or a widget that changed its type) loads its own copy of the widget's code, even when another cell of the page already loaded that type: the code is loaded once per generated extension, not once per page.
+- A dashboard missing from the new file shows "This dashboard cannot be shown".
+- A refresh that fails (the file request fails or times out, the base file is rejected, the file defines otherwise a base type the root already holds, or a widget part defines otherwise a type that the same part brought before) resolves `{ ok: false, problem }` and writes one console line; the dashboards stay as they were drawn from the definitions read before. A served file that changes a base type the root already holds is refused this way, and so is one whose widget part brings otherwise a type that the same part brought before (the problem names the type and the part): the cells that part serves keep working, and a host that needs such a change makes a new root. A widget type's definition changes only with a new root. A widget part left out for another reason (its type was brought first by the base file or another part, so it was left out on the first load as well) is left out again and does not fail the refresh.
+- Calls do not pile up: a call made while another runs aborts the other's file request, and both resolve with the outcome of the later one.
+
+When the product is done with a root (the analytics area closes for good, the user signs out), unmount its `<Dashboard>` and call `dispose()`. It unmounts and unregisters every widget, removes their containers from the page, aborts the requests in flight, clears its timers and listeners, and disposes of its registry. A `load` or a `refresh` still in flight then resolves `{ ok: false }`, and so does every later one; a second `dispose()` returns the same promise. A new root works on its own. The widget code the page loaded stays in the page's module cache until a page reload, so a new root loads its own copy: keep one root for the page's life and refresh it rather than making new ones.
+
+## Chart colours
+
+Every chart that colours by series, slice, tile or group (cartesian, pie, radar, treemap) takes the colour of the series' position, the first series the first colour. The template ships ten colours for the light theme and ten for the dark one, ordered so that neighbours differ in hue and lightness, each at 3:1 or more against the card surface. Past the tenth, a generator gives each next series the colour farthest from all the colours before it, so a series never takes an earlier series' colour (the generator runs out only after several hundred series).
+
+A host sets its own colours with the CSS custom properties `--dashboard-chart-1`, `--dashboard-chart-2` and so on. They inherit into the widgets, which keep each widget in its own shadow root, but only down the page tree: set them on an element that holds the dashboard and, when the host passes an `overlayContainer` outside the dashboard's element, that container too, such as `:root`. Set only on an element around `<Dashboard>`, they do not reach a larger view that opens in `document.body`, and its chart draws the template's colours while the cell draws the host's. The theme the host passes picks the light or dark scope on the dashboard's element (`data-theme="light"` or `"dark"`), and a host with an `overlayContainer` keeps the same `data-theme` on that container or an ancestor (see [Where overlays open](#where-overlays-open)), so a host gives each theme its own values with that attribute. These rules hold in both cases:
+
+```css
+:root,
+[data-theme='light'] {
+  --dashboard-chart-1: #1f6feb;
+  --dashboard-chart-2: #d1242f;
+  --dashboard-chart-3: #1a7f37;
+}
+[data-theme='dark'] {
+  --dashboard-chart-1: #58a6ff;
+  --dashboard-chart-2: #ff7b72;
+  --dashboard-chart-3: #3fb950;
+}
+```
+
+A series whose property the host does not set takes the template's colour of its own position. With the three colours above, series 4 to 10 take the template's colours 4 to 10 and series 11 on take the generated ones; nothing wraps back to the host's first colour. To replace the template's colours for up to N series, set N properties. A host palette shorter than the number of series continues with the template's colour of the same position, so a host colour can come out close to a later template colour, and a host avoids that by setting as many colours as it has series. The single-colour charts (funnel, heatmap, the radial ring, the sparklines of a metric card and a grid) keep the kit's chart tokens and ignore these properties.
+
+The template's colours are written with the CSS `light-dark()` function, which picks the light or the dark colour by the `color-scheme` the kit sets on each theme scope. It needs a current browser: in an older one without it, a series whose colour the host does not set draws without a palette colour.
+
+### For a host that embedded dashboards with an earlier template version
+
+Earlier versions of the template coloured the series of these four charts with the kit's five chart tokens, in the order `--chart-5`, `--chart-4`, `--chart-2`, `--chart-1`, `--chart-3`, and the sixth series took the first colour again. With this version the same dashboards draw the template's ten colours above, so their series change colour. In the dark theme the first series draws `#5193f4`, while the single-colour charts keep the kit's dark chart token `#60a5fa`. A host that wants the colours its dashboards had maps these properties to the kit's chart tokens in the earlier order:
+
+```css
+:root,
+[data-theme] {
+  --dashboard-chart-1: var(--chart-5);
+  --dashboard-chart-2: var(--chart-4);
+  --dashboard-chart-3: var(--chart-2);
+  --dashboard-chart-4: var(--chart-1);
+  --dashboard-chart-5: var(--chart-3);
+}
+```
+
+A `var()` in a custom property takes its value on the element that declares the property, and the widgets inherit that value. This rule declares the properties on `:root` and on every element with a `data-theme`, so each theme scope takes its own chart tokens: the kit's for a host that keeps them, the host's own for a host that sets `--chart-1` to `--chart-5` itself. It reaches the widgets, and the larger view and the widget overlays by the same rules as above: the dashboard's element carries `data-theme`, and a host that passes an `overlayContainer` keeps `data-theme` on that container or an ancestor. The chart tokens must be set in the host page (the kit's theme stylesheet, or the host's own values) on those elements; where they are not, the properties have no value and the series draw the template's colours.
+
+A host whose charts show more than five series and that wants the earlier wrap repeats the five for `--dashboard-chart-6` onward, one property per series it shows: `--dashboard-chart-6: var(--chart-5)`, `--dashboard-chart-7: var(--chart-4)`, and so on.
+
+## Where overlays open
+
+A cell's larger view opens in an overlay that mounts inside the dashboard's own element. When the product's page content sits in its own stacking context (an ancestor with `isolation: isolate`, a `transform`, or a positioned element with a `z-index`) under a fixed part of the page, such as a sidebar, that part covers the overlay. Pass the element the overlay mounts in as `overlayContainer`, usually `document.body`:
+
+```tsx
+<Dashboard root={dashboards} dashboardId={id} theme={theme} language={language} overlayContainer={document.body} />
+```
+
+The element can also be one the host renders itself. Keep it in state through a callback ref, not in a ref object: setting the state renders the dashboard again once the element exists, and a ref object changes without a render, so the dashboard would not see the element.
+
+```tsx
+import { useState } from 'react';
+
+export function DashboardPage({ id, theme, language }: { id: string; theme: string; language: string }) {
+  const [overlays, setOverlays] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <div ref={setOverlays} className="page-overlays" />
+      <Dashboard root={dashboards} dashboardId={id} theme={theme} language={language} overlayContainer={overlays} />
+    </>
+  );
+}
+```
+
+Outside the dashboard's element the overlay takes its kit theme scope and `lang` from the given element and its ancestors, not from the dashboard: keep `data-theme` (`light` or `dark`, the scope the theme id gives) and `lang` on that element or an ancestor such as `<html>`. Without `overlayContainer`, or with `null`, the overlay stays inside the dashboard. Pass an element of the dashboard's own document: the widgets take no element of another document, window or frame, and their overlays then stay inside the widgets.
+
+The widgets open their own overlays (a menu or a popover a widget draws through the kit) in the same element. Each widget keeps its overlays in a shadow root of their own inside that element, which holds copies of the widget's stylesheets and carries the widget's theme scope and language, so they look as they do inside the widget and the page's styles do not reach them. Without `overlayContainer` they open inside the widget's own shadow root. When the host changes `overlayContainer`, or sets it to `null`, each widget mounts its overlay layer again in the new place. An overlay a widget has open at that moment stays open and moves there, and its content is drawn again: what the user typed in it is lost. A chart's tooltip is not an overlay: it is drawn inside the chart and stays there.
 
 ## Variables
 
@@ -85,7 +181,7 @@ The build writes `src-app/mfe_packages/widgets/dist/`:
 
 Publish the whole `dist/` directory under `WIDGET_BUNDLE_BASE` (`/widgets/` by default) as static files. The chunks under `assets/` carry their content hash in their names, so they can be cached for long. The shared modules under `shared/` keep stable names (`shared/react.js`), with their content hash only in the manifest: serve them, `widgets.json` and the `widget.gts.json` parts so that each page load revalidates them (`cache-control: no-cache` or a short lifetime).
 
-The dashboard reads the served file and the parts on the list on each page load: `fetchHost({ fileUrl, widgetList })` answers `loadFile` with the file followed by the parts, and so does `createMockHost({ widgetList })`; a file that is already a list gets the parts after its own. A product that answers `loadFile` with its own code returns the same list, `[file, ...(await loadWidgetParts(widgetListUrl, signal, fileHref))]`, where `fileHref` is the absolute address the file was read from: a relative `widgetListUrl` resolves against it, as in `fetchHost`, and without it against the page's address, so a file served from a CDN with a relative list would have the list requested from the app's origin. Or its backend serves one joined file and no list at all. `DashboardHost.loadFile` is typed `Promise<ServedAnswer>`, one `ServedFile` or a list of them, so a product that reads the answer itself tells the two apart. The root registers the file, then each part on its own. A part that cannot be read, or does not answer within 10 seconds, is left out with one console line, and so is a part the registry rejects (a malformed manifest, entry or type), a part with a type the base file or an earlier part already defines with other content, whose console line names the source that defined the type first: the served file, or the widget part by its quoted manifest ids or, without any, by its place in the answer (`its type <id> is already defined otherwise by the widget part "<manifest ids>"`, or `... by the widget part number <n> of the answer (the served file is number 1)`; a type the dashboard registers itself names no source), or with a manifest or entry id one of them, or the dashboard's own stand-in records or the runtime's lifecycle stage records, already brings with other content, and a part that brings a dashboard the base file or an earlier part already serves with other content, or that brings one manifest, entry or dashboard id twice with other content (the same type, manifest, entry or dashboard brought alike is fine; a base file with such an id twice fails every dashboard). Only the cells whose widget type, a type it extends, its render type or its data type came only with that part, or whose widget type names an entry that part failed to bring, fail, and its dashboards never load. A part left out for a malformed item keeps in the store what it registered before that item, so a later part that brings one of those types otherwise is left out too. In a joined file (`composeServedFile`), one rejected item fails every dashboard in it.
+The dashboard reads the served file and the parts on the list on each page load: `fetchHost({ fileUrl, widgetList })` answers `loadFile` with the file followed by the parts, and so does `createMockHost({ widgetList })`; a file that is already a list gets the parts after its own. A product that answers `loadFile` with its own code returns the same list, `[file, ...(await loadWidgetParts(widgetListUrl, signal, fileHref))]`, where `fileHref` is the absolute address the file was read from: a relative `widgetListUrl` resolves against it, as in `fetchHost`, and without it against the page's address, so a file served from a CDN with a relative list would have the list requested from the app's origin. Or its backend serves one joined file and no list at all. `DashboardHost.loadFile` is typed `Promise<ServedAnswer>`, one `ServedFile` or a list of them, so a product that reads the answer itself tells the two apart. The root registers the file, then each part on its own. A part that cannot be read, or does not answer within 10 seconds, is left out with one console line, and so is a part the registry rejects (a malformed manifest, entry or type), a part with a type the base file or an earlier part already defines with other content, whose console line names the source that defined the type first: the served file, or the widget part by its quoted manifest ids or, without any, by its place in the answer (`its type <id> is already defined otherwise by the widget part "<manifest ids>"`, or `... by the widget part number <n> of the answer (the served file is number 1)`; a type the type store held before the served file, one of its own or one the dashboard registers itself, names no source, even when the served file carries an identical copy of it), or with a manifest or entry id one of them, or the dashboard's own stand-in records or the runtime's lifecycle stage records, already brings with other content, and a part that brings a dashboard the base file or an earlier part already serves with other content, or that brings one manifest, entry or dashboard id twice with other content (the same type, manifest, entry or dashboard brought alike is fine; a base file with such an id twice fails every dashboard). Only the cells whose widget type, a type it extends, its render type or its data type came only with that part, or whose widget type names an entry that part failed to bring, fail, and its dashboards never load. A part left out for a malformed item keeps in the store what it registered before that item, so a later part that brings one of those types otherwise is left out too. In a joined file (`composeServedFile`), one rejected item fails every dashboard in it.
 
 The catalog widget types now arrive in the catalog bundles' parts, not in the base file. A product's own widget type, its render type and its data type therefore get ids of their own, under the product's own vendor segment (the fixtures use `frontx.test`). A copy of a catalog type under the same id with other content leaves one of the two bundles out, and which one depends on the order of the widget list, which the build writes sorted. A copy of a catalog type with other content in the base file leaves that catalog bundle's part out, and the part's line still shows in the console; the cells of the type then fail only when something they need came only with that part, its render or data type or its entry, and they fail with the part's line. A base file that keeps the old catalog's render and data types and points the widget type at an entry the product serves mounts the cells. A product that re-pointed a catalog type in its served file the old way moves that change to one of the two ways of [Replace a template widget type](#replace-a-template-widget-type) when it takes this release.
 

@@ -3,16 +3,18 @@ import type { MfeRegistry, TypeSystemPlugin } from '@gears-frontx/mfes';
 
 import {
   LANGUAGE_PROPERTY_ID,
+  OVERLAY_CONTAINER_PROPERTY_ID,
   RENDER_WIDGET_ACTION_ID,
   THEME_PROPERTY_ID,
   WIDGETS_DOMAIN_ID,
   type Dashboard,
+  type OverlayContainerValue,
   type WidgetInstance,
 } from '../contract';
 import { CellFailure, RequestFailed, SharedRequests, formOf, runBinding, type Binding, type BindingResult, type VariableValues } from './binding';
-import { withTimeout, type DashboardHost } from './host';
+import { RequestFailure, withTimeout, type DashboardHost } from './host';
 import { extensionIdOf, renderStampIdOf, stampIdOf, type Role } from './ids';
-import { effectiveTraits, escapeControls, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome } from './register';
+import { baseTypeChanged, effectiveTraits, escapeControls, partTypeChanged, registerBundle, registerDashboard, registerServedFile, renderTypeOf, typeOfWidget, type FileOutcome, type TypeSources } from './register';
 import { createWidgetsRegistry, WidgetEntryHandler, type WidgetEntries } from './registry';
 
 /*
@@ -24,6 +26,64 @@ import { createWidgetsRegistry, WidgetEntryHandler, type WidgetEntries } from '.
  */
 
 export type LoadOutcome = { ok: true; dashboard: Dashboard; failed: ReadonlyMap<string, string> } | { ok: false };
+
+/** The result of `refresh`: `problem` names why the root kept the definitions it read before. */
+export type RefreshOutcome = { ok: true } | { ok: false; problem: string };
+
+/**
+ * The value the root publishes for the host's overlay container. The element sits in a private field: the type store
+ * walks and copies the own fields of every value it registers, and an element a page framework rendered leads through
+ * them into that framework's whole tree. The domain hands this same object to each widget.
+ */
+class OverlayContainer implements OverlayContainerValue {
+  readonly #element: HTMLElement;
+  constructor(element: HTMLElement) {
+    this.#element = element;
+  }
+  get element(): HTMLElement {
+    return this.#element;
+  }
+}
+
+/** The reason every request of a disposed root fails with. */
+const DISPOSED = 'the dashboard root is disposed';
+
+/**
+ * Runs `run` with a signal that aborts when `signal` or `stop` aborts. Either abort rejects at once, `stop` with
+ * `reason` and `signal` with its own reason, whether or not the host heeds the signal, so nothing of the root waits on
+ * that answer after it. Both listeners go once `run` settles or either signal aborts. `run` is called in the next
+ * microtask, and not at all when either signal aborted before then.
+ */
+function untilStopped<T>(stop: AbortSignal, reason: string, signal: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  if (stop.aborted) return Promise.reject(new RequestFailure(reason));
+  const controller = new AbortController();
+  return new Promise<T>((resolve, reject) => {
+    const settled = () => {
+      stop.removeEventListener('abort', stopped);
+      signal.removeEventListener('abort', aborted);
+    };
+    const end = (failure: RequestFailure) => {
+      settled();
+      controller.abort(failure);
+      reject(failure);
+    };
+    const stopped = () => end(new RequestFailure(reason));
+    const aborted = () => end(signal.reason instanceof RequestFailure ? signal.reason : new RequestFailure('the request was aborted'));
+    stop.addEventListener('abort', stopped, { once: true });
+    signal.addEventListener('abort', aborted, { once: true });
+    // A request aborted before it starts fails at once.
+    if (signal.aborted) aborted();
+    // A host that throws instead of returning a promise rejects like one that rejects. An abort that came before the
+    // host is called keeps the host from being called.
+    void Promise.resolve()
+      .then(() => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        return run(controller.signal);
+      })
+      .then(resolve, reject)
+      .finally(settled);
+  });
+}
 
 /**
  * What a cell shows; the root reports each change to the cell's frame. `placing`: the data is ready and the cell lays out the widget's container, still under its loader, before `render_widget` goes out.
@@ -105,19 +165,45 @@ export class DashboardRoot {
   private readonly bundleIds: Set<string>;
   private readonly containers = new Map<string, HTMLElement>();
   private readonly mountWaiters = new Map<string, Set<(error?: unknown) => void>>();
+  /** What `dispose` waits on for each mount in flight: the registry unmounts only an extension whose mount ended. */
+  private readonly mountEnds = new Map<string, Set<() => void>>();
   private readonly leaving = new Set<string>();
   private readonly renderFallbacks = new Map<string, () => void>();
   private file?: Promise<FileOutcome>;
   private readonly loads = new Map<string, Promise<LoadOutcome>>();
   /** The generated extensions registered for each dashboard id. */
   private readonly extensions = new Map<string, Set<string>>();
+  /** How many cells that have not left name each extension id, from the start of their registration. */
+  private readonly cells = new Map<string, number>();
   /** The last theme id and language the `widgets` domain accepted, each on its own. */
-  private readonly published: { theme?: string; language?: string } = {};
+  private readonly published: { theme?: string; language?: string; overlays?: HTMLElement | null } = {};
   /** The release still running for a dashboard id. */
   private readonly releasing = new Map<string, Promise<void>>();
+  /** The running release that lists each extension id, until it ends: a cell of that id waits for it. */
+  private readonly unregistering = new Map<string, Promise<void>>();
+  /** The first source of each type the served file brought, kept over every read of the file. */
+  private readonly sources: TypeSources = new Map();
+  /** Aborted by `dispose`: every request of the root in flight fails with it. */
+  private readonly disposal = new AbortController();
+  private disposing?: Promise<void>;
+  /** The listeners `subscribe` added; each is called after a refresh read new definitions. */
+  private readonly listeners = new Set<() => void>();
+  private refreshed = 0;
+  /** The newest `refresh` call, its token and the controller of its file request. */
+  private refreshing?: { token: number; done: Promise<RefreshOutcome>; controller: AbortController };
+  private refreshes = 0;
+  /** The last outcome given for each dashboard id, with a key of its content: a load of the same content gives it again. */
+  private readonly given = new Map<string, { key: string; outcome: LoadOutcome }>();
+  /** The cells waiting to be placed, each with the end of its wait: `dispose` ends them all. */
+  private readonly placing = new Set<() => void>();
 
   constructor({ host, entries = {}, origin = globalThis.location?.origin ?? '', bundleOrigins = [origin] }: DashboardRootOptions) {
-    this.host = host;
+    // Every request of the root goes through this host, so `dispose` ends them all.
+    const disposal = this.disposal.signal;
+    this.host = {
+      loadFile: (signal) => untilStopped(disposal, DISPOSED, signal, (both) => host.loadFile(both)),
+      request: (request, signal) => untilStopped(disposal, DISPOSED, signal, (both) => host.request(request, both)),
+    };
     this.origin = origin;
     this.types = new GtsPlugin({ isolated: true });
     this.bundleIds = registerBundle(this.types);
@@ -127,6 +213,7 @@ export class DashboardRoot {
           // A fresh mount ends any leave the root asked for earlier and whose unmount never ran.
           this.leaving.delete(id);
           for (const waiter of [...(this.mountWaiters.get(id) ?? [])]) waiter(error ?? undefined);
+          for (const end of [...(this.mountEnds.get(id) ?? [])]) end();
         },
         unmounted: (id) => {
           if (this.leaving.delete(id)) return;
@@ -141,7 +228,160 @@ export class DashboardRoot {
 
   /** Attaches the element under which the domain places the widget containers before a cell takes them. */
   attach(element: HTMLElement | null): void {
-    if (element) this.registry?.getMounter(WIDGETS_DOMAIN_ID).attach(element);
+    if (element && !this.disposed) this.registry?.getMounter(WIDGETS_DOMAIN_ID).attach(element);
+  }
+
+  private get disposed(): boolean {
+    return this.disposal.signal.aborted;
+  }
+
+  /** How many times `refresh` read new definitions: a view loads its dashboard again when it changes. */
+  get version(): number {
+    return this.refreshed;
+  }
+
+  /**
+   * Calls `listener` after each `refresh` that read new definitions, once `version` has changed; returns the call that
+   * removes it. A disposed root keeps no listener.
+   */
+  subscribe(listener: () => void): () => void {
+    if (this.disposed) return () => undefined;
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
+  }
+
+  /**
+   * Reads the served file again; each shown `Dashboard` then loads its dashboard from the new definitions and redraws
+   * it, and one whose definition is unchanged keeps its cells as they are. A generated extension already registered
+   * mounts the code it loaded, which is not loaded again; a cell with a new generated extension (a new widget, or a
+   * widget whose type changed) loads its own copy of the code, even when another cell already loaded that type. A
+   * dashboard missing from the new file shows its cannot-be-shown state, as on a first load.
+   *
+   * On any failure (the file request, the base file the type store rejects, a base type defined otherwise than the
+   * type store holds it, or a type of a widget part defined otherwise than the store holds it from that same part,
+   * which only a new root can take) the root keeps the definitions it read before, every shown dashboard stays as
+   * drawn, one console line names the problem, and the outcome carries it. Any other widget part left out (one whose
+   * type another source brought first, as on a first load) is left out and does not fail the refresh.
+   *
+   * The last call wins: a call made while another runs aborts the other's file request, and every earlier call
+   * resolves with the outcome of the latest one. After `dispose` it resolves `{ ok: false }` and reads nothing; a call
+   * still in flight when `dispose` runs resolves `{ ok: false }` with the disposed reason and writes no console line.
+   */
+  refresh(): Promise<RefreshOutcome> {
+    if (this.disposed) return Promise.resolve(this.refreshFailed(DISPOSED));
+    this.refreshing?.controller.abort();
+    const controller = new AbortController();
+    const token = (this.refreshes += 1);
+    const done = this.refreshOnce(token, controller.signal);
+    this.refreshing = { token, done, controller };
+    return done;
+  }
+
+  private refreshFailed(problem: string): RefreshOutcome {
+    console.error(`[dashboard] ${escapeControls(`the dashboard definitions cannot be refreshed: ${problem}`)}`);
+    return { ok: false, problem };
+  }
+
+  private async refreshOnce(token: number, signal: AbortSignal): Promise<RefreshOutcome> {
+    // A newer call took over: this one resolves with that call's outcome, and reports nothing of its own.
+    const latest = () => (this.refreshing && this.refreshing.token !== token ? this.refreshing.done : undefined);
+    let answer: unknown;
+    try {
+      answer = await withTimeout((timeout) => untilStopped(signal, 'a later refresh took over', timeout, (both) => this.host.loadFile(both)));
+    } catch (error) {
+      // A refresh in flight when the root was disposed ends with that reason and reports nothing after the dispose.
+      if (this.disposed) return { ok: false, problem: DISPOSED };
+      return latest() ?? this.refreshFailed(`the served file could not be loaded: ${String(error)}`);
+    }
+    if (this.disposed) return { ok: false, problem: DISPOSED };
+    const newer = latest();
+    if (newer) return newer;
+    let file: FileOutcome;
+    try {
+      const [base] = Array.isArray(answer) ? answer : [answer];
+      // The base file registers first on a type store of its own, as on a first load: a base file the store rejects
+      // halfway leaves nothing of itself in the root's store.
+      const trial = new GtsPlugin({ isolated: true });
+      const trialBundle = registerBundle(trial);
+      const changed = baseTypeChanged(this.types, trial, base);
+      if (changed) return this.refreshFailed(`the served file: ${changed}`);
+      // A widget part whose own type changed would be left out, and the cells it served would fail.
+      const partChanged = partTypeChanged(this.types, answer, this.sources);
+      if (partChanged) return this.refreshFailed(partChanged);
+      const tried = registerServedFile(trial, base, trialBundle);
+      if (!tried.ok) return this.refreshFailed(tried.problem);
+      file = registerServedFile(this.types, answer, this.bundleIds, this.sources);
+    } catch (error) {
+      return this.refreshFailed(`the served file cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}`);
+    }
+    if (!file.ok) return this.refreshFailed(file.problem);
+    this.file = Promise.resolve(file);
+    this.loads.clear();
+    this.refreshed += 1;
+    // A listener that throws is written as one line; the others are still told, and the outcome stays.
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        // String() itself throws for a value with no usable toString, such as Object.create(null).
+        let text: string;
+        try {
+          text = String(error).split('\n')[0];
+        } catch {
+          text = 'listener threw a value that cannot be shown';
+        }
+        console.error(`[dashboard] ${escapeControls(`a refresh listener failed: ${text}`)}`);
+      }
+    }
+    // A listener may start a newer call: this one then resolves with that call's outcome.
+    return latest() ?? { ok: true };
+  }
+
+  /**
+   * Releases everything the root holds: it unmounts and unregisters every widget extension (each widget's own
+   * unmount runs and its container leaves the page), disposes of the registry with its shared-property subscriptions,
+   * aborts every request in flight (the served file's and the data requests'), clears its timers and drops its
+   * listeners, loads and definitions. The widget code the page loaded stays in the page's module cache, which only a
+   * page reload clears.
+   *
+   * A load or refresh in flight then resolves `{ ok: false }` with no console line, and a cell that was running shows
+   * nothing more and leaves no widget behind.
+   * After it, `load` and `refresh` resolve `{ ok: false }` with one console line, a cell run shows cannot-be-shown,
+   * `publish`, `publishOverlayContainer`, `withdrawOverlayContainer` and `attach` do nothing, and `subscribe` adds nothing. A second call returns
+   * the first call's promise. A new root made after it works on its own.
+   */
+  dispose(): Promise<void> {
+    this.disposing ??= this.disposeOnce();
+    return this.disposing;
+  }
+
+  private async disposeOnce(): Promise<void> {
+    this.disposal.abort();
+    this.refreshing?.controller.abort();
+    this.listeners.clear();
+    for (const end of [...this.placing]) end();
+    // A widget still mounting is unregistered once its mount ended, within the mount timeout, so its unmount runs.
+    const mountsEnded = Promise.all([...this.mountWaiters.keys()].map((id) => this.mountEnded(id)));
+    for (const waiters of [...this.mountWaiters.values()]) for (const waiter of [...waiters]) waiter(new Error(DISPOSED));
+    this.mountWaiters.clear();
+    this.renderFallbacks.clear();
+    this.loads.clear();
+    this.given.clear();
+    this.file = undefined;
+    const ids = new Set([...this.extensions.values()].flatMap((set) => [...set]));
+    this.extensions.clear();
+    await Promise.all(this.releasing.values());
+    await mountsEnded;
+    for (const id of ids) {
+      this.leaving.add(id);
+      await this.registry?.unregisterExtension(id).catch(() => undefined);
+    }
+    await this.registry?.dispose().catch(() => undefined);
+    for (const container of this.containers.values()) container.remove();
+    this.containers.clear();
+    this.leaving.clear();
+    this.cells.clear();
+    this.sources.clear();
   }
 
   /** Publishes the host theme id and language on the `widgets` domain; a change restyles every widget and re-runs nothing. */
@@ -151,11 +391,33 @@ export class DashboardRoot {
   }
 
   /**
-   * Publishes one of the two properties. The host can pass anything; a value the property type rejects keeps the last
+   * Publishes the element the widgets open their overlays in (the host's `overlayContainer`), or null for none, on the
+   * `widgets` domain. Each widget then moves its overlays there; with null they stay inside its own shadow root. The
+   * element goes out in a holder the type store does not walk (`OverlayContainerValue` in the contract), and the same
+   * element again publishes nothing. Any value without an element (undefined from untyped code) is null.
+   */
+  publishOverlayContainer(value: HTMLElement | null): void {
+    const element = value || null;
+    if (!this.registry || this.disposed || (this.published.overlays ?? null) === element) return;
+    try {
+      this.registry.updateSharedProperty(OVERLAY_CONTAINER_PROPERTY_ID, element ? new OverlayContainer(element) : null);
+      this.published.overlays = element;
+    } catch (error) {
+      console.error(`[dashboard] ${escapeControls(`the overlay container cannot be published: ${String(error).split('\n')[0]}`)}`);
+    }
+  }
+
+  /** Publishes null in place of `element` while it is still the element published: one another view published since stays. */
+  withdrawOverlayContainer(element: HTMLElement | null): void {
+    if ((this.published.overlays ?? null) === element) this.publishOverlayContainer(null);
+  }
+
+  /**
+   * Publishes the theme or the language. The host can pass anything; a value the property type rejects keeps the last
    * one of that property, never stops the other one and never breaks the render.
    */
   private publishOne(name: 'theme' | 'language', propertyId: string, value: string): void {
-    if (!this.registry || this.published[name] === value) return;
+    if (!this.registry || this.disposed || this.published[name] === value) return;
     try {
       this.registry.updateSharedProperty(propertyId, value);
       this.published[name] = value;
@@ -182,25 +444,27 @@ export class DashboardRoot {
   }
 
   private async loadOnce(dashboardId: string): Promise<LoadOutcome> {
+    const disposedAtStart = this.disposed;
     const fail = (problem: string): LoadOutcome => {
+      // A load that was in flight when the root was disposed reports nothing after the dispose.
+      if (this.disposed && !disposedAtStart) return { ok: false };
       // A part may bring the dashboard and the ids the problem quotes, so the line is escaped as the part line is.
       console.error(`[dashboard] ${escapeControls(`dashboard ${dashboardId} cannot be shown: ${problem}`)}`);
       return { ok: false };
     };
+    if (disposedAtStart) return fail(DISPOSED);
     if (!this.registry) return fail('the widgets domain was rejected at start');
-    this.file ??= withTimeout((signal) => this.host.loadFile(signal)).then(
-      (file) => registerServedFile(this.types, file, this.bundleIds),
-      (error) => ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` }) as const,
-    );
+    const pending = (this.file ??= this.readFile());
     let file: FileOutcome;
     try {
-      file = await this.file;
+      file = await pending;
     } catch (error) {
       // An answer the registration cannot even read: the file is dropped like a failed one, so the next load retries.
       file = { ok: false, problem: `the served file cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}` };
     }
     if (!file.ok) {
-      this.file = undefined;
+      // Only the file this load awaited is dropped: a refresh that read a file since keeps it.
+      if (this.file === pending) this.file = undefined;
       return fail(file.problem);
     }
     const dashboard = file.dashboards.get(dashboardId);
@@ -213,8 +477,39 @@ export class DashboardRoot {
       return fail(`the dashboard cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}`);
     }
     if (!outcome.ok) return fail(outcome.problem);
+    if (this.disposed) return fail(DISPOSED);
     // Each failed widget is reported once, by its cell, when the cell runs. The cells run the copies read on load.
-    return { ok: true, dashboard: outcome.dashboard, failed: outcome.failed };
+    const loaded: LoadOutcome = { ok: true, dashboard: outcome.dashboard, failed: outcome.failed };
+    // A load after a refresh that left this dashboard as it was gives the outcome given before, so its cells stay.
+    let key: string;
+    try {
+      key = JSON.stringify([outcome.dashboard, [...outcome.failed]]);
+    } catch {
+      // A dashboard from an in-code host that JSON cannot write is given as new each time.
+      return loaded;
+    }
+    const before = this.given.get(dashboardId);
+    if (before?.key === key) return before.outcome;
+    this.given.set(dashboardId, { key, outcome: loaded });
+    return loaded;
+  }
+
+  /**
+   * The served file's first read. A refresh that reads a file while this one is in flight takes over: this answer,
+   * or its failure, then registers nothing and gives the file the refresh read, so the store and the loads keep the
+   * newer definitions.
+   */
+  private readFile(): Promise<FileOutcome> {
+    const pending: Promise<FileOutcome> = withTimeout((signal) => this.host.loadFile(signal)).then(
+      (file) => (this.file === pending ? registerServedFile(this.types, file, this.bundleIds, this.sources) : this.newerFile()),
+      (error) => (this.file === pending ? ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` } as const) : this.newerFile()),
+    );
+    return pending;
+  }
+
+  /** The file a refresh read after a first read took over, or the disposed reason once `dispose` dropped it. */
+  private newerFile(): Promise<FileOutcome> | FileOutcome {
+    return this.file ?? { ok: false, problem: DISPOSED };
   }
 
   /** Drops a load that has not settled, so the next mount of that id starts a new one (the owner state Loading to Started). */
@@ -224,23 +519,88 @@ export class DashboardRoot {
 
   /**
    * Unregisters the generated extensions of a dashboard the viewer left for
-   * another one. A cell that starts before this finishes waits for it, so it
-   * never reuses an extension about to be unregistered.
+   * another one, except those another running cell or dashboard of the root
+   * holds at the call. A cell that starts before this finishes waits for it,
+   * and so does a cell of a listed extension that was already waiting on
+   * another release, so no cell reuses an extension about to be unregistered.
    */
   release(dashboardId: string): Promise<void> {
     const ids = this.extensions.get(dashboardId);
     this.extensions.delete(dashboardId);
+    return this.unregister(dashboardId, [...(ids ?? [])].filter((id) => !this.held(id)));
+  }
+
+  /**
+   * After a load of a shown dashboard (a refresh's included): unregisters the generated extensions of that dashboard
+   * that no cell or larger view of `dashboard` names any more, a widget a refresh removed or whose type changed, and that
+   * no other running cell or dashboard of the root holds. The cells that showed them have left by then.
+   */
+  prune(dashboardId: string, dashboard: Dashboard): Promise<void> {
+    const ids = this.extensions.get(dashboardId);
+    if (!ids || this.disposed) return Promise.resolve();
+    const named = new Set<string>();
+    for (const cell of dashboard.layout.cells) {
+      for (const [widget, role] of [[cell.widget, 'cell'], [cell.larger_view, 'larger_view']] as const) {
+        try {
+          if (widget) named.add(extensionIdOf(widget.id, role, String(effectiveTraits(this.types, typeOfWidget(widget.id)).entry)));
+        } catch {
+          // A widget whose traits do not resolve runs no extension.
+        }
+      }
+    }
+    const stale = [...ids].filter((id) => !named.has(id));
+    for (const id of stale) ids.delete(id);
+    // Extension ids do not depend on the dashboard: one another dashboard of the root still holds stays registered.
+    return this.unregister(dashboardId, stale.filter((id) => !this.held(id)));
+  }
+
+  /** Whether a running cell names the extension id, or a dashboard of the root holds it. */
+  private held(id: string): boolean {
+    return (this.cells.get(id) ?? 0) > 0 || [...this.extensions.values()].some((ids) => ids.has(id));
+  }
+
+  /**
+   * Resolves once the mount in flight of `id` ended, or the mount timeout passed; at once when no mount of it is in
+   * flight. The registry unmounts only an extension whose mount ended, so an unregister waits on this first.
+   */
+  private mountEnded(id: string): Promise<void> {
+    if (!this.mountWaiters.get(id)?.size) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const ends = this.mountEnds.get(id) ?? new Set<() => void>();
+      this.mountEnds.set(id, ends);
+      const end = () => {
+        clearTimeout(timer);
+        ends.delete(end);
+        resolve();
+      };
+      const timer = setTimeout(end, MOUNT_TIMEOUT_MS);
+      ends.add(end);
+    });
+  }
+
+  /**
+   * Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it,
+   * and a cell of one of `ids` waits for it whenever it started. An extension still mounting is unregistered once its
+   * mount ended, within the mount timeout, so its unmount runs. No cell holds a listed id while this runs: a cell
+   * counts itself only once no running release lists its id, so every listed id is unregistered.
+   */
+  private unregister(dashboardId: string, ids: readonly string[]): Promise<void> {
     const before = this.releasing.get(dashboardId) ?? Promise.resolve();
+    // Taken at the call: a dispose that comes before the release runs ends the mount waiters this reads.
+    const mountsEnded = ids.map((id) => this.mountEnded(id));
     const done = before.then(async () => {
-      for (const id of ids ?? []) {
+      for (const [at, id] of ids.entries()) {
+        await mountsEnded[at];
         this.leaving.add(id);
         await this.registry?.unregisterExtension(id).catch(() => undefined);
         this.leaving.delete(id);
       }
     });
     this.releasing.set(dashboardId, done);
+    for (const id of ids) this.unregistering.set(id, done);
     void done.then(() => {
       if (this.releasing.get(dashboardId) === done) this.releasing.delete(dashboardId);
+      for (const id of ids) if (this.unregistering.get(id) === done) this.unregistering.delete(id);
     });
     return done;
   }
@@ -300,9 +660,14 @@ export class DashboardRoot {
     let extensionId: string | undefined;
     const registry = this.registry;
     const typeId = typeOfWidget(widget.id);
+    // A cell that runs on a disposed root fails with that reason; one that was running when the root was disposed
+    // reports nothing more.
+    const disposedAtStart = this.disposed;
+    // After every await of the run: a cell that left, or a root disposed since, goes no further.
+    const gone = () => !live || this.disposed;
     const fail = (problem: string, request = false) => {
       if (!deliver) ended = true;
-      if (!live) return;
+      if (!live || (this.disposed && !disposedAtStart)) return;
       console.error(`[dashboard] ${escapeControls(`dashboard ${dashboardId}, widget ${widget.id} (${typeId}), ${role}: ${problem}`)}`);
       requestFailed = request && !ended;
       update(requestFailed ? { state: 'cannot-be-shown', retry: true } : { state: 'cannot-be-shown' });
@@ -311,6 +676,7 @@ export class DashboardRoot {
     update({ state: !failure && binding && formOf(binding) !== 'static' ? 'loading' : 'shown' });
 
     const run = async () => {
+      if (disposedAtStart) return fail(DISPOSED);
       if (!registry) return fail('the widgets domain was rejected at start');
       if (failure) return fail(`the widget fails its own registration: ${failure}`);
       let entry: string;
@@ -341,18 +707,32 @@ export class DashboardRoot {
       }
       const id = extensionIdOf(widget.id, role, entry);
       // Extension ids do not depend on the dashboard: a widget named by two dashboards waits for every running release.
+      // A release that started during that wait and lists this id is waited for too, and so is each one after it; a
+      // release ends within its dashboard's earlier release, the mount timeout per id and the registry's unregisters,
+      // and a new one lists this id only while no cell holds it.
       await Promise.all(this.releasing.values());
-      if (!live) return;
+      while (this.unregistering.has(id)) await this.unregistering.get(id);
+      if (gone()) return;
       extensionId = id;
+      this.cells.set(id, (this.cells.get(id) ?? 0) + 1);
       try {
-        if (!registry.getExtension(id)) await registry.registerExtension({ id, domain: WIDGETS_DOMAIN_ID, entry });
+        const registers = !registry.getExtension(id);
+        if (registers) await registry.registerExtension({ id, domain: WIDGETS_DOMAIN_ID, entry });
+        // The dispose took its list of extensions before this registration ended: this cell takes its own one back.
+        if (this.disposed) return void (await registry.unregisterExtension(id).catch(() => undefined));
+        // The cell left while it registered, so the prune after its leave did not see the id: it records nothing, and
+        // takes back the extension it registered unless another cell or a dashboard of the root holds the id.
+        if (!live) {
+          if (registers && !this.held(id)) await registry.unregisterExtension(id).catch(() => undefined);
+          return;
+        }
         let ids = this.extensions.get(dashboardId);
         if (!ids) this.extensions.set(dashboardId, (ids = new Set()));
         ids.add(id);
       } catch (error) {
         return fail(`the generated extension is rejected: ${String(error)}`);
       }
-      if (!live) return;
+      if (gone()) return;
       const mounted = new Promise<void>((resolve, reject) => {
         // Each run waits on its own: a re-run of the same extension never takes over an earlier run's waiter.
         const waiters = this.mountWaiters.get(id) ?? new Set<(error?: unknown) => void>();
@@ -374,7 +754,7 @@ export class DashboardRoot {
       } catch (error) {
         return fail(`mount_ext failed: ${String(error)}`);
       }
-      if (!live) return;
+      if (gone()) return;
       // A fallback unmounted the extension: the cell stays cannot-be-shown until the dashboard loads again, and a run
       // still in flight is dropped.
       const fellBack = (problem: string) => {
@@ -382,7 +762,7 @@ export class DashboardRoot {
         token += 1;
         fail(problem);
       };
-      deliver = (data, run) => this.deliverCell({ id, widget, role, binding, dataType, render, registry, data, isCurrent: () => live && run === token, fail, fellBack, update });
+      deliver = (data, run) => this.deliverCell({ id, widget, role, binding, dataType, render, registry, data, isCurrent: () => live && run === token && !this.disposed, fail, fellBack, update });
       // A re-run during the mount replaced `latest`: the newest run delivers.
       await deliver(latest!.data, latest!.run);
     };
@@ -404,8 +784,14 @@ export class DashboardRoot {
 
     return {
       leave: () => {
+        if (live && extensionId) {
+          const others = (this.cells.get(extensionId) ?? 1) - 1;
+          if (others > 0) this.cells.set(extensionId, others);
+          else this.cells.delete(extensionId);
+        }
         live = false;
-        if (!registry || !extensionId) return;
+        // A disposed root unmounted every widget already.
+        if (!registry || !extensionId || this.disposed) return;
         this.renderFallbacks.delete(extensionId);
         this.leaving.add(extensionId);
         registry.executeActionsChain({ action: { type: registry.typeSystem.resolveUnmountExtActionId(), target: WIDGETS_DOMAIN_ID, payload: { subject: extensionId, history: 'none' } } });
@@ -481,8 +867,14 @@ export class DashboardRoot {
     const container = this.containers.get(id);
     if (container) {
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, PLACE_TIMEOUT_MS);
-        update({ container, placed: () => (clearTimeout(timer), resolve()) });
+        const end = () => {
+          clearTimeout(timer);
+          this.placing.delete(end);
+          resolve();
+        };
+        const timer = setTimeout(end, PLACE_TIMEOUT_MS);
+        this.placing.add(end);
+        update({ container, placed: end });
       });
     }
     if (!isCurrent()) return;

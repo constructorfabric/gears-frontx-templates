@@ -188,6 +188,50 @@ describe('registration order under reference lookup', () => {
     expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/value_format\/value_type/);
   });
 
+  it('accepts a grid column with a value_format of its own, and fails one whose value_format breaks the value_format type', () => {
+    const type = shipped.find((id) => id.endsWith('.grid.v1~'))!;
+    const grid = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const columns = grid.render.columns as Record<string, unknown>[];
+    const withColumnFormat = (uuid: string, valueFormat: unknown) => ({
+      ...grid,
+      id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`,
+      render: { ...grid.render, columns: [{ ...columns[0], value_format: valueFormat }, ...columns.slice(1)] },
+    });
+    const { types } = loaded();
+    const result = registerDashboard(types, dashboardOf([
+      { size: 'small', widget: withColumnFormat('20', { value_type: 'percent', decimals: 1 }) },
+      { size: 'small', widget: withColumnFormat('21', { value_type: 'duration' }) },
+    ]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(1, 'cell')]);
+    expect(result.ok && result.failed.get(slotOf(1, 'cell'))).toMatch(/\/render\/columns\/0/);
+  });
+
+  it('accepts a cartesian_chart render with series_default, and fails one whose series_default carries a field it does not declare', () => {
+    const type = shipped.find((id) => id.endsWith('.cartesian_chart.v1~'))!;
+    const chart = demoWidgets.find((widget) => widget.id.startsWith(type))!;
+    const withDefault = (uuid: string, seriesDefault: unknown) => ({ ...chart, id: `${type}1a2b3c4d-0000-4000-8000-0000000000${uuid}`, render: { ...chart.render, series_default: seriesDefault } });
+    const { types } = loaded();
+    const result = registerDashboard(types, dashboardOf([
+      { size: 'small', widget: withDefault('30', { type: 'bar', y_axis: 'secondary', stack_group: 'runs' }) },
+      { size: 'small', widget: withDefault('31', { stack_group: 'runs', label: 'Target' }) },
+    ]));
+    expect(result.ok && [...result.failed.keys()]).toEqual([slotOf(1, 'cell')]);
+  });
+
+  it('accepts cartesian_chart data in the series form or the long form, and fails data with both, neither, or a point without its series', () => {
+    const DATA = 'gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~';
+    const { types } = loaded();
+    const stamped = (uuid: string, data: Record<string, unknown>) => () => types.register({ ...data, id: `${DATA}1a2b3c4d-0000-4000-8000-0000000000${uuid}` });
+    const series = [{ name: 'ok', points: [{ x: 'Mon', y: 10 }] }];
+    const points = [{ x: 'Mon', y: 10, series: 'ok' }, { x: 'Mon', y: 1, series: 'failed' }, { x: 'Tue', y: 2, series: null, size: 3 }];
+    expect(stamped('40', { series })).not.toThrow();
+    expect(stamped('41', { points })).not.toThrow();
+    expect(stamped('42', { series, points })).toThrow();
+    expect(stamped('43', {})).toThrow();
+    expect(stamped('44', { points: [{ x: 'Mon', y: 10 }] })).toThrow();
+    expect(stamped('45', { points: [{ x: 'Mon', y: 10, series: 'ok', name: 'ok' }] })).toThrow();
+  });
+
   it('accepts a metric_card render with better neutral, and fails one with a direction outside the catalog values', () => {
     const type = shipped.find((id) => id.endsWith('.metric_card.v1~'))!;
     const metric = demoWidgets.find((widget) => widget.id.startsWith(type))!;
@@ -715,11 +759,27 @@ describe('the served file in parts', () => {
     ]);
   });
 
+  it('names no source in the line of a part left out for a type the type store holds by itself, which a base file carries alike', () => {
+    // The type store brings the shared-property base type by itself, before the root registers anything; the base
+    // file carries an identical copy of it, and a later part brings it otherwise. The store's own definition was
+    // first, so the base file is no source of the type, and the line names none.
+    const SHARED = 'gts.frontx.mfes.comm.shared_property.v1~';
+    const own = new GtsPlugin({ isolated: true }).getSchema(SHARED) as Record<string, unknown>;
+    expect(own).toBeDefined();
+    const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, own] };
+    const loadedFile = loadedParts([base, { types: [{ ...own, description: 'otherwise' }], instances: [] }]);
+    expect(loadedFile.lines).toEqual([
+      expect.stringMatching(
+        new RegExp(`the widget part number 2 of the answer \\(the served file is number 1\\) is left out: its type ${SHARED.replace(/[.~]/g, '\\$&')} is already defined otherwise$`),
+      ),
+    ]);
+  });
+
   it('names the served file the source of a base type the store holds from a failed earlier call', () => {
     // The first call fails on a base instance the registry rejects: the base types are in the store, and the root
-    // drops the file and calls again on the same store. The second call's base file registers the types the store
-    // already holds, so the store holds their content from this source, and a part that redefines one of them is
-    // left out with a line naming the served file.
+    // drops the file and calls again on the same store with the same record of first sources, as the root does. The
+    // first call registered the base types, so they keep the served file as their source, and a part that redefines
+    // one of them is left out with a line naming the served file.
     const types = new GtsPlugin({ isolated: true });
     const bundleIds = registerBundle(types);
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -727,9 +787,10 @@ describe('the served file in parts', () => {
     const base = { ...DEMO_WITHOUT_BUNDLES, types: [...DEMO_WITHOUT_BUNDLES.types, catalogPie] };
     const brokenEntry = { id: 'gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.test.mfe.broken.v1', manifest: 7 };
     const broken = { ...base, instances: [...base.instances, brokenEntry] };
-    const first = registerServedFile(types, broken, bundleIds);
+    const sources = new Map<string, string>();
+    const first = registerServedFile(types, broken, bundleIds, sources);
     const redefined = { ...catalogPie, description: 'otherwise' };
-    const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds);
+    const second = registerServedFile(types, [base, { types: [redefined], instances: [] }], bundleIds, sources);
     const lines = errors.mock.calls.map(([line]) => String(line));
     errors.mockRestore();
     expect(first).toMatchObject({ ok: false, problem: expect.stringMatching(/the registry rejected it: /) });

@@ -21,6 +21,8 @@ description: "Feature: the dashboard runtime — hosting-agnostic mounting, the 
   - [Open a larger view](#open-a-larger-view)
   - [Switch theme](#switch-theme)
   - [Leave a dashboard](#leave-a-dashboard)
+  - [Refresh the definitions](#refresh-the-definitions)
+  - [Dispose of the root](#dispose-of-the-root)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Register the widgets domain](#register-the-widgets-domain)
   - [Load the served GTS file](#load-the-served-gts-file)
@@ -40,6 +42,7 @@ description: "Feature: the dashboard runtime — hosting-agnostic mounting, the 
   - [Placeholder](#placeholder)
   - [Theme and language publishing](#theme-and-language-publishing)
   - [Owner state machine and load lifecycle](#owner-state-machine-and-load-lifecycle)
+  - [Refresh and dispose](#refresh-and-dispose)
   - [Initial render](#initial-render)
   - [No persistence](#no-persistence)
 - [6. Acceptance Criteria](#6-acceptance-criteria)
@@ -77,7 +80,7 @@ The product writes no data code; the runtime runs each widget's binding against 
 | Actor | Role in Feature |
 |-------|-----------------|
 | `cpt-frontx-dashboard-actor-dashboard-viewer` | Opens a dashboard, opens/closes a larger view, switches theme. |
-| `cpt-frontx-dashboard-actor-host-application` | Supplies a container, a dashboard id, and the theme and language values. |
+| `cpt-frontx-dashboard-actor-host-application` | Supplies a container, a dashboard id, and the theme and language values; refreshes the definitions and disposes of the root. |
 | `cpt-frontx-dashboard-actor-consuming-backend` | Answers the requests a binding makes, same-origin. |
 
 ### 1.4 References
@@ -217,12 +220,52 @@ The product writes no data code; the runtime runs each widget's binding against 
 1. [ ] - `p1` - The viewer leaves the dashboard. - `inst-dr-leave-go`
 2. [ ] - `p1` - The root closes any open larger view (its extension unmounts) and unmounts every cell extension. - `inst-dr-leave-unmount`
 3. [ ] - `p1` - The root keeps the types, the dashboard instance, the widget instances, the stamped data instances, and the generated extensions registered, so a return to the same dashboard reuses them. - `inst-dr-leave-keep`
-4. [ ] - `p1` - Before another dashboard loads, the root unregisters the generated extensions. - `inst-dr-leave-unregister`
+4. [ ] - `p1` - Before another dashboard loads, the root unregisters the generated extensions of the dashboard it left, except those another running cell or dashboard of the root holds; one whose mount is still in flight it unregisters once that mount ended, within the 30000 ms mount timeout, so its widget unmounts. - `inst-dr-leave-unregister`
 5. [ ] - `p1` - The root does not cancel requests in flight: each one ends with its answer or its 30000 ms timeout. The root drops any result for an extension no longer mounted, registers no stamped data for it, and never sends to an unmounted extension. - `inst-dr-leave-drop`
 6. [ ] - `p1` - The root drops the held shared responses. - `inst-dr-leave-shared`
-7. [ ] - `p1` - A load superseded by a new dashboard id drops its shared responses and unregisters its generated extensions. - `inst-dr-leave-supersede`
+7. [ ] - `p1` - A load superseded by a new dashboard id drops its shared responses and unregisters its generated extensions that no other running cell or dashboard of the root holds. - `inst-dr-leave-supersede`
 8. [ ] - `p1` - The types, the dashboard instances, the widget instances and the stamped data instances stay registered for the life of the root. Stamped-data ids are deterministic (one per widget per role), so the next load of a dashboard replaces their content; the total is bounded by the widgets in the served file. A page reload clears all of it. Nothing is persisted. - `inst-dr-leave-kept`
 9. [ ] - `p1` - **RETURN**. - `inst-dr-leave-return`
+
+### Refresh the definitions
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-flow-dashboard-runtime-refresh`
+
+**Actor**: `cpt-frontx-dashboard-actor-host-application`
+
+**Success Scenarios**:
+- A dashboard edited while the page is open shows from the new definitions, with no page reload, no new root and no new load of the code of a generated extension already registered.
+
+**Error Scenarios**:
+- The served file cannot be fetched, its base file is rejected, or it redefines a type the root's store holds from the base file or from the same widget part: the root keeps the definitions it read before, every shown dashboard stays as drawn, and the outcome and one developer-log line name the problem.
+
+**Steps**:
+1. [ ] - `p1` - The host calls `refresh()` on the root. - `inst-dr-refresh-call`
+2. [ ] - `p1` - A call made while an earlier one runs aborts the earlier call's file request; the earlier call resolves with the outcome of the later one, and its answer, should it still arrive, is dropped. - `inst-dr-refresh-latest`
+3. [ ] - `p1` - The root fetches the served file within the 30000 ms timeout. - `inst-dr-refresh-fetch`
+4. [ ] - `p1` - **IF** the fetch fails, the base file fails its registration on a type store of its own (as on a first load), a base type is defined otherwise than the root's store holds it, or a widget part brings otherwise a type the root's store holds from that same part (the part named by its manifest ids or its place in the answer, the source the store recorded when the type registered first; two parts may carry the same name, so of the parts under that name the first in answer order that brings the type stands for the part that registered it, and the refresh is refused only when that part brings it otherwise; the store keeps the first definition, so only a new root takes the change, the cells the part serves keep working, and the problem names the type and the part) **RETURN** `{ok: false, problem}` with one developer-log line; the definitions read before stay. - `inst-dr-refresh-fail`
+5. [ ] - `p1` - The root registers the answer as on a first load (`cpt-frontx-dashboard-algo-dashboard-runtime-load-file`): any other widget part it rejects (one whose type the base file or another part brought first, which a first load leaves out too) is left out with its line and does not fail the refresh. - `inst-dr-refresh-register`
+6. [ ] - `p1` - The root drops its loads, raises its `version` and calls every listener `subscribe` added. A first read of the served file still in flight then registers nothing when it answers or fails, and the loads that wait on it take the file the refresh read. - `inst-dr-refresh-notify`
+7. [ ] - `p1` - Each shown `Dashboard` loads its dashboard again; the one drawn stays until that load settles. A dashboard whose definition and failures are unchanged keeps its cells as they are. A changed one runs its cells again: an extension already registered mounts its loaded code again, a cell with a new generated extension (a new widget, or a widget whose type changed) loads its own copy of the code even when another cell already loaded that type, and a changed binding sends its new request. A dashboard the new file does not serve shows the dashboard-level cannot-be-shown state. Once the redrawn cells are in place, the root unregisters the generated extensions of that dashboard that no cell or larger view of it names any more (a widget removed, or one whose type changed) and no other dashboard of the root holds, each one still mounting once its mount ended, within the 30000 ms mount timeout. A cell that left while its extension registered records nothing and takes back the extension it registered, unless another cell or dashboard of the root holds it. - `inst-dr-refresh-redraw`
+8. [ ] - `p1` - **RETURN** `{ok: true}`. - `inst-dr-refresh-return`
+
+### Dispose of the root
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-flow-dashboard-runtime-dispose`
+
+**Actor**: `cpt-frontx-dashboard-actor-host-application`
+
+**Success Scenarios**:
+- A root the host is done with holds nothing more: no mounted widget, no container, no request in flight, no timer, no listener, no registry.
+
+**Steps**:
+1. [ ] - `p1` - The host calls `dispose()` on the root; a second call returns the first call's promise. - `inst-dr-dispose-call`
+2. [ ] - `p1` - The root aborts every request in flight (the served file's, a refresh's and the data requests'); each rejects at once, whether or not the host heeds the abort signal. - `inst-dr-dispose-abort`
+3. [ ] - `p1` - The root ends the wait of every cell still mounting or being placed, so no mount or placement timer stays, drops its listeners, loads and definitions, and reports nothing more for a cell that was running. A load or a refresh in flight resolves `{ok: false}` with no developer-log line; a cell run goes no further after any step that waits, and a cell whose extension registered after the root took its list of extensions unregisters it. - `inst-dr-dispose-timers`
+4. [ ] - `p1` - The root waits for every mount still in flight to end, within the 30000 ms mount timeout, then unregisters every generated extension (each mounted widget unmounts and its container leaves the page), then disposes of the registry with its shared-property subscriptions. - `inst-dr-dispose-registry`
+5. [ ] - `p1` - From then on `load` and `refresh` resolve `{ok: false}` with one developer-log line, a cell run shows the cannot-be-shown state, `publish`, `publishOverlayContainer`, `withdrawOverlayContainer` and `attach` do nothing, and `subscribe` adds nothing. - `inst-dr-dispose-after`
+6. [ ] - `p1` - The widget code the page loaded stays in the FrontX MF handler's page-wide module cache, which only a page reload clears; a new root loads its own. - `inst-dr-dispose-cache`
+7. [ ] - `p1` - **RETURN**. - `inst-dr-dispose-return`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -388,7 +431,7 @@ The triggers, by level:
 5. [ ] - `p1` - **FROM** Loading **TO** Started **WHEN** the root is unmounted while loading; the load is discarded and nothing mounts. - `inst-dr-owner-loading-unmount`
 6. [ ] - `p1` - **FROM** Loading **TO** Loaded **WHEN** the dashboard passes its dashboard-level checks (`cpt-frontx-dashboard-flow-dashboard-runtime-open`, step 17). Loading ends there: the dashboard replaces the dashboard-level loader, and the bindings run in Loaded, each cell in its own cell state. - `inst-dr-owner-loading-loaded`
 7. [ ] - `p1` - **FROM** Loading **TO** Placeholder **WHEN** a dashboard-level trigger occurs at load (the file can't be fetched or its fetch times out, a type id of the base file equals a bundle base, the registry rejects a type, manifest or entry of the base file, the dashboard fails validation, a layout check fails, or the dashboard id names no dashboard in the served file); the placeholder replaces the dashboard-level loader. - `inst-dr-owner-loading-placeholder`
-8. [ ] - `p1` - **FROM** Loaded **TO** Loading **WHEN** the root begins to load another dashboard id, including while the loaded dashboard's bindings still run. First the root closes any open larger view, unmounts the cells, unregisters the generated extensions of the loaded dashboard, and drops its held shared responses; every later result of its bindings is dropped, so nothing of it is sent or shown after that. - `inst-dr-owner-loaded-loading`
+8. [ ] - `p1` - **FROM** Loaded **TO** Loading **WHEN** the root begins to load another dashboard id, including while the loaded dashboard's bindings still run. First the root closes any open larger view, unmounts the cells, unregisters the generated extensions of the loaded dashboard that no other running cell or dashboard of the root holds, and drops its held shared responses; every later result of its bindings is dropped, so nothing of it is sent or shown after that. - `inst-dr-owner-loaded-loading`
 9. [ ] - `p1` - **FROM** Placeholder **TO** Loading **WHEN** the root begins to load another dashboard id, or the same dashboard id again after a dashboard-level failure; never when the placeholder comes from a failed start. - `inst-dr-owner-placeholder-loading`
 
 The root keeps, per state: in Loading, the dashboard id it loads; in Loaded and Placeholder, the dashboard id, its outcome, and the registered generated extensions by widget id.
@@ -512,9 +555,17 @@ The root **MUST** publish the host theme id and host language unchanged as the s
 
 - [ ] `p1` - **ID**: `cpt-frontx-dashboard-dod-dashboard-runtime-owner`
 
-The root **MUST** track its state with the owner state machine (`cpt-frontx-dashboard-state-dashboard-runtime-owner`). The dashboard-level loader shows from the start of a load until the dashboard or the placeholder replaces it. Loading ends when the dashboard passes its dashboard-level checks; the bindings run in Loaded. A new dashboard id while loading supersedes the earlier load; a request for the id already loading joins that load; unmounting the root while loading discards the load. A new dashboard id after loading, including while bindings still run, first unmounts the loaded cells, unregisters their generated extensions, and drops their held shared responses and every later result. A failed start (rejected domain) has no exit, and every later mount shows the same placeholder. Unmounting the root in Loaded or Placeholder changes no state. Returning to a dashboard the root has already loaded remounts its cells from the kept registrations without fetching the served file again, and runs every binding again. Opening the same dashboard id again after a dashboard-level failure starts a new load; a page reload also recovers. A superseded load is checked after every step that waits; the extensions it registered are unregistered; nothing is shown. A dashboard id that names no dashboard in the served file shows the dashboard-level cannot-be-shown state with a developer-log diagnostic naming the id. The types, the dashboard instances, the widget instances and the stamped data instances stay registered for the life of the root, bounded by the widgets in the served file; deterministic stamped-data ids make the next load of a dashboard replace their content, and a page reload clears them; requests in flight are not cancelled, and their results are dropped.
+The root **MUST** track its state with the owner state machine (`cpt-frontx-dashboard-state-dashboard-runtime-owner`). The dashboard-level loader shows from the start of a load until the dashboard or the placeholder replaces it. Loading ends when the dashboard passes its dashboard-level checks; the bindings run in Loaded. A new dashboard id while loading supersedes the earlier load; a request for the id already loading joins that load; unmounting the root while loading discards the load. A new dashboard id after loading, including while bindings still run, first unmounts the loaded cells, unregisters their generated extensions that no other running cell or dashboard of the root holds, and drops their held shared responses and every later result. A failed start (rejected domain) has no exit, and every later mount shows the same placeholder. Unmounting the root in Loaded or Placeholder changes no state. Returning to a dashboard the root has already loaded remounts its cells from the kept registrations without fetching the served file again, and runs every binding again; only `refresh()` fetches it again. Opening the same dashboard id again after a dashboard-level failure starts a new load; a page reload also recovers. A superseded load is checked after every step that waits; the extensions it registered that no other running cell or dashboard of the root holds are unregistered; nothing is shown. A dashboard id that names no dashboard in the served file shows the dashboard-level cannot-be-shown state with a developer-log diagnostic naming the id. The types, the dashboard instances, the widget instances and the stamped data instances stay registered for the life of the root, bounded by the widgets in the served file; deterministic stamped-data ids make the next load of a dashboard replace their content, and a page reload clears them; the requests in flight of a superseded load are not cancelled, and their results are dropped; `dispose()` aborts every request in flight, and a `refresh()` aborts the file request of the refresh it supersedes.
 
 **Implements**: `cpt-frontx-dashboard-state-dashboard-runtime-owner`, `cpt-frontx-dashboard-flow-dashboard-runtime-open`, `cpt-frontx-dashboard-flow-dashboard-runtime-leave`.
+
+### Refresh and dispose
+
+- [ ] `p2` - **ID**: `cpt-frontx-dashboard-dod-dashboard-runtime-refresh-dispose`
+
+The root **MUST** offer `refresh()`, which reads the served file again and has every shown dashboard redraw from the new definitions, and `dispose()`, which releases everything the root holds, as the flows "Refresh the definitions" and "Dispose of the root" give. A failed refresh keeps the definitions read before drawn; the last of two refresh calls wins; a generated extension already registered does not load its code again; a dashboard whose definition is unchanged keeps its cells. After dispose every call has the result the flow gives, and a second dispose is safe.
+
+**Implements**: `cpt-frontx-dashboard-flow-dashboard-runtime-refresh`, `cpt-frontx-dashboard-flow-dashboard-runtime-dispose`.
 
 ### Initial render
 
@@ -539,6 +590,8 @@ The root and widgets **MUST NOT** persist any state: no browser storage and no s
 - [ ] Opening a dashboard shows the "Loading dashboard" loader, announced as a status, in place of the dashboard from the start of the load until the dashboard or the dashboard-level cannot-be-shown state replaces it.
 - [ ] Each cell mounts its own extension, runs its binding, and shows loading, shown, or cannot-be-shown; a widget whose data is valid and empty shows its own "No data to show", and the root records that cell as shown.
 - [ ] Types, data types, widget instances and dashboards come from the served GTS file at runtime; changing the served file changes what the root shows on the next page load, with no rebuild, and the root works the same whichever location serves the file.
+- [ ] After `refresh()` an edited dashboard shows from the new definitions with no page reload and no new load of the code of a generated extension already registered; a dashboard whose definition is unchanged keeps its cells; a refresh whose file request fails, whose base file is rejected, that redefines a held base type, or whose widget part redefines a type the root holds from that same part resolves `{ok: false, problem}`, writes one developer-log line and leaves the dashboards as drawn; of two refresh calls the later one wins and the earlier file request is aborted.
+- [ ] After `dispose()` no widget of the root is mounted, no container of it is in the page, its requests in flight are aborted, its listeners are not called, `load` and `refresh` resolve `{ok: false}`, a second dispose returns the same promise, and a new root works.
 - [ ] A served GTS file that can't be fetched, or whose fetch does not answer within 30000 ms, shows the dashboard-level cannot-be-shown state and mounts no cell.
 - [ ] A base file (or a file served joined) with a type whose id equals a bundle base is rejected as a whole before anything registers, and the dashboard-level cannot-be-shown state shows.
 - [ ] A served file with a type, manifest or entry that the registry rejects shows the dashboard-level cannot-be-shown state for every dashboard in that file; in a file served in parts this holds for the base file only.
@@ -576,8 +629,8 @@ The root and widgets **MUST NOT** persist any state: no browser storage and no s
 - [ ] A static binding is evaluated and validated without a request, with no loader.
 - [ ] A cell and its larger view are independent snapshots for the own and static forms; a shared-form larger view shows the same held response as its cell.
 - [ ] Returning to a dashboard the root has already loaded remounts its cells from the kept registrations without fetching the served file again, and runs every binding again.
-- [ ] While dashboard A is still loading (before its cells mount), when the viewer opens dashboard B, A is discarded: nothing of A is shown, the extensions A registered are unregistered, and B loads.
-- [ ] When the viewer opens dashboard B while A's bindings still run, A's cells unmount, A's generated extensions are unregistered, A's held shared responses are dropped, no later result of A is sent or shown, and B loads.
+- [ ] While dashboard A is still loading (before its cells mount), when the viewer opens dashboard B, A is discarded: nothing of A is shown, the extensions A registered that no other running cell or dashboard of the root holds are unregistered, and B loads.
+- [ ] When the viewer opens dashboard B while A's bindings still run, A's cells unmount, A's generated extensions that no other running cell or dashboard of the root holds are unregistered, A's held shared responses are dropped, no later result of A is sent or shown, and B loads.
 - [ ] Opening the dashboard id that is already loading joins that load: the served file is fetched once and the dashboard shows once.
 - [ ] Unmounting the root while a dashboard is loading discards the load: nothing mounts, and the next mount starts a new load.
 - [ ] After a dashboard-level failure, mounting the root again with the same dashboard id starts a new load; opening another dashboard id also starts a new load; a page reload also recovers.

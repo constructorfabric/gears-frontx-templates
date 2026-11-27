@@ -193,4 +193,60 @@ export const DEMO_CELLS: DashboardCell[] = [
   cell('large', 'high', widgetId('grid', 8), 'Open requests', widgetId('grid', 9)),
 ];
 
+// Many slices and many stacked series, to check that each one takes a colour of its own (?view=pie12, pie24, stack10).
+const TEAMS = ['Billing', 'Mobile', 'Web', 'Search', 'Payments', 'Identity', 'Storage', 'Messaging', 'Reports', 'Support', 'Platform', 'Data', 'Security', 'Design', 'Docs', 'Growth', 'Infra', 'Legal', 'Maps', 'Media', 'Network', 'Ops', 'Sales', 'Travel'];
+const pieOf = (count: number): PieData => ({ slices: TEAMS.slice(0, count).map((label, i) => ({ label, value: 40 - i })) });
+const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
+const stack10Render: CartesianRender = {
+  series: TEAMS.slice(0, 10).map((name) => ({ name, type: 'bar' as const, stack_group: 'teams' })),
+  x_axis: { type: 'category', label: 'Quarter' },
+  legend_position: 'right',
+};
+const stack10Data: CartesianData = { series: TEAMS.slice(0, 10).map((name, s) => ({ name, points: QUARTERS.map((x, q) => ({ x, y: 20 + ((s * 7 + q * 5) % 13) })) })) };
+DEMO_DATA[widgetId('pie_chart', 13)] = { render: { radius: ['55%', '80%'], legend_position: 'right' } satisfies PieRender, data: pieOf(12) };
+DEMO_DATA[widgetId('pie_chart', 14)] = { render: { radius: ['55%', '80%'], legend_position: 'right' } satisfies PieRender, data: pieOf(24) };
+DEMO_DATA[widgetId('cartesian_chart', 15)] = { render: stack10Render, data: stack10Data };
+
+// Twelve long category names on a bar chart, upright and horizontal, to check that each one keeps a label (?view=labels12, labels12h).
+const LONG_NAMES = [
+  'Customer onboarding service',
+  'Payments reconciliation worker',
+  'Identity and access gateway',
+  'Search indexing pipeline',
+  'Mobile push notification relay',
+  'Storage lifecycle manager',
+  'Messaging fan-out broker',
+  'Reports export scheduler',
+  'Support ticket triage bot',
+  'Platform configuration store',
+  'Data warehouse loader',
+  'Security audit collector',
+];
+const labelsRender = (orientation: 'vertical' | 'horizontal'): CartesianRender => ({ series: [{ name: 'Requests', type: 'bar' }], x_axis: { type: 'category' }, orientation });
+const labelsData: CartesianData = { series: [{ name: 'Requests', points: LONG_NAMES.map((x, i) => ({ x, y: 120 - i * 7 })) }] };
+DEMO_DATA[widgetId('cartesian_chart', 16)] = { render: labelsRender('vertical'), data: labelsData };
+DEMO_DATA[widgetId('cartesian_chart', 17)] = { render: labelsRender('horizontal'), data: labelsData };
+
+// Eight rows of a CI API, two outcomes over four days, stacked by the outcome column through the long form (?view=stackcolumn).
+const RUN_DAYS = ['Mon', 'Tue', 'Wed', 'Thu'];
+const stackColumnData: CartesianData = {
+  points: RUN_DAYS.flatMap((x, day) => [
+    { x, y: 40 + day * 6, series: 'ok' },
+    { x, y: 6 + ((day * 5) % 9), series: 'failed' },
+  ]),
+};
+DEMO_DATA[widgetId('cartesian_chart', 18)] = {
+  render: { series_default: { type: 'bar', stack_group: 'runs' }, x_axis: { type: 'category', label: 'Day' }, legend_position: 'bottom' },
+  data: stackColumnData,
+};
+
+export const COLOUR_CELLS: Record<string, DashboardCell[]> = {
+  stackcolumn: [cell('large', 'high', widgetId('cartesian_chart', 18), 'CI runs by outcome per day (stacked by a column)')],
+  labels12: [cell('large', 'high', widgetId('cartesian_chart', 16), 'Requests by service (12 long names)')],
+  labels12h: [cell('large', 'high', widgetId('cartesian_chart', 17), 'Requests by service (12 long names, horizontal)')],
+  pie12: [cell('large', 'high', widgetId('pie_chart', 13), 'Requests by team (12)')],
+  pie24: [cell('large', 'high', widgetId('pie_chart', 14), 'Requests by team (24)')],
+  stack10: [cell('large', 'high', widgetId('cartesian_chart', 15), 'Requests by team and quarter (10 stacked series)')],
+};
+
 export const GRID_500_CELLS: DashboardCell[] = [cell('large', 'high', widgetId('grid', 10), 'Requests (500 rows)')];

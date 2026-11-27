@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from 'react';
 
 import { intlLocaleOf, kitScopeOf, type DashboardCell, type WidgetInstance } from '../contract';
 import { DashboardArea, DEFAULT_DASHBOARD_TEXTS, type DashboardTexts } from '../DashboardArea';
@@ -36,14 +36,34 @@ export interface DashboardProps {
    * number or a boolean, fails its cell. A change of a value re-runs only the cells whose request names it.
    */
   variables?: VariableValues;
+  /**
+   * The element the larger-view overlay mounts in; without it, the dashboard's own element. A host whose page content
+   * sits in its own stacking context, under a fixed sidebar for example, passes `document.body`. The overlay then takes
+   * its kit theme scope (`data-theme`) and `lang` from that element and its ancestors, not from the dashboard. The
+   * widgets open their own overlays (the sort menu of a table, for one) in the same element, each in a shadow root of
+   * its own that carries the widget's styles, theme scope and language.
+   */
+  overlayContainer?: HTMLElement | null;
 }
 
-export function Dashboard({ root, dashboardId, theme, language, texts, variables }: DashboardProps) {
-  // Both values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
+export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
+  // The values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
+  // On unmount the root keeps no element of a page the host may remove, unless another view on the root published its
+  // own since. A changed container is published by the next effect of the same commit, and a widget's own state settles
+  // on that last value.
+  useLayoutEffect(() => {
+    root.publishOverlayContainer(overlayContainer ?? null);
+    return () => root.withdrawOverlayContainer(overlayContainer ?? null);
+  }, [root, overlayContainer]);
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const previous = useRef<string | undefined>(undefined);
+  // A refresh of the root that read new definitions loads the dashboard again; the one drawn stays until it settles.
+  const subscribe = useCallback((listener: () => void) => root.subscribe(listener), [root]);
+  const getVersion = useCallback(() => root.version, [root]);
+  // The same getter on a server render: the version is a plain counter.
+  const version = useSyncExternalStore(subscribe, getVersion, getVersion);
 
   useEffect(() => {
     let current = true;
@@ -65,9 +85,13 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
       // Unmounting while loading discards the load: the next mount starts a new one.
       if (!settled) root.forget(dashboardId, load);
     };
-  }, [root, dashboardId]);
+  }, [root, dashboardId, version]);
 
   const loaded = outcome?.id === dashboardId ? outcome.outcome : undefined;
+  // The cells of a new load took their place in this commit, and the ones it dropped have left: their extensions go.
+  useEffect(() => {
+    if (loaded?.ok) void root.prune(dashboardId, loaded.dashboard);
+  }, [root, dashboardId, loaded]);
   const frameTexts = texts?.frame ?? DEFAULT_FRAME_TEXTS;
   return (
     <div data-theme={kitScopeOf(theme)} lang={intlLocaleOf(language)} ref={setContainer} style={{ display: 'contents' }}>
@@ -80,7 +104,7 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
           loaded={loaded}
           texts={texts?.dashboard}
           frameTexts={frameTexts}
-          container={container}
+          container={overlayContainer ?? container}
           values={variables}
         />
       ) : (

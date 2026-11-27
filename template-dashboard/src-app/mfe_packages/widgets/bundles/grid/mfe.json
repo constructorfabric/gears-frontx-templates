@@ -140,6 +140,10 @@
                       }
                     }
                   },
+                  "value_format": {
+                    "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+                    "description": "Optional value format of this column's numbers: a number in a text or badge cell, and the values a sparkline's text alternative names. Without it, the column takes the widget's value_format, so a percent column can sit beside plain counts. The column's format.notation still applies. A progress column shows a percent and takes none. Sorting and search read the column's numbers and the text this format shows."
+                  },
                   "align": {
                     "enum": [
                       "start",

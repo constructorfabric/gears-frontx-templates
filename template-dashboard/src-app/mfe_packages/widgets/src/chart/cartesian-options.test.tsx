@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CartesianData, CartesianRender, CartesianSeriesOption } from '../types';
 import { DEFAULT_WIDGET_TEXTS } from '../states';
 import { CartesianChart, checkCartesian } from './CartesianChart';
+import { seriesColor } from './legend';
 
 /*
  * The cartesian chart's orientation, percent stack, extreme marks, reference lines and bubble sizes.
@@ -537,5 +538,127 @@ describe('cartesian_chart bubble sizes', () => {
     expect(checkCartesian({ series: [{ name: 'a', type: 'scatter' }] }, data)).toBeNull();
     expect(checkCartesian({}, { series: [{ name: 'a', points: [{ x: 'Web', y: 1, size: null }] }] })).toBeNull();
     failsWith({ render: { series: [{ name: 'a', type: 'line' }] }, data }, 'only a scatter series takes one');
+  });
+});
+
+describe('cartesian_chart long form and series_default', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu'];
+  /** Eight rows of a CI API, `{day, outcome, count}`: two outcomes over four days, as a transform maps them to points. */
+  const ROWS = DAYS.flatMap((day, index) => [
+    { day, outcome: 'ok', count: 10 + index },
+    { day, outcome: 'failed', count: 1 + index },
+  ]);
+  const POINTS = ROWS.map((row) => ({ x: row.day, y: row.count, series: row.outcome }));
+  const legendItems = (container: HTMLElement) => [...container.querySelectorAll('.recharts-legend-wrapper [class*="legendItem"]')].map((item) => item.textContent);
+  /** The colour of each series, in series order, from the chart's light-theme style. */
+  const colours = (container: HTMLElement) => {
+    const text = [...container.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n').split('[data-theme=')[0];
+    return [...text.matchAll(/--color-s(\d+): ([^;]+);/g)].sort((a, b) => Number(a[1]) - Number(b[1])).map((match) => match[2]);
+  };
+  const ticks = (container: HTMLElement) => [...container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')].map((tick) => tick.textContent);
+
+  it('stacks eight rows of two outcomes over four days into four bars, with two legend entries', () => {
+    const { container } = render(<CartesianChart payload={{ render: { series_default: { type: 'bar', stack_group: 'runs' }, legend_position: 'bottom' }, data: { points: POINTS } }} label="Runs" />);
+    expect(ticks(container)).toEqual(DAYS);
+    const [ok, failed] = bars(container);
+    expect(bars(container)).toHaveLength(2);
+    expect(ok).toHaveLength(4);
+    expect(failed).toHaveLength(4);
+    // One bar per day: the failed part sits on top of the ok part, in the same slot.
+    for (const at of [0, 1, 2, 3]) {
+      expect(failed[at].x).toBeCloseTo(ok[at].x, 5);
+      expect(failed[at].width).toBeCloseTo(ok[at].width, 5);
+      expect(failed[at].y + failed[at].height).toBeCloseTo(ok[at].y, 5);
+    }
+    expect(legendItems(container)).toEqual(['ok', 'failed']);
+    expect(colours(container)).toEqual([seriesColor(0), seriesColor(1)]);
+  });
+
+  it('orders the series with an entry of their own first, in the order of those entries, then the others as they first appear', () => {
+    const points = ['c', 'a', 'b', 'd', 'a', 'c'].map((series, index) => ({ x: `x${index % 2}`, y: index + 1, series }));
+    const payload = {
+      render: { series: [{ name: 'b', type: 'bar' as const, stack_group: 's' }, { name: 'missing', type: 'line' as const }, { name: 'a', type: 'bar' as const, stack_group: 's' }], series_default: { stack_group: 's' }, legend_position: 'bottom' as const },
+      data: { points },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Order" />);
+    // An entry naming no series of the data takes no place.
+    expect(legendItems(container)).toEqual(['b', 'a', 'c', 'd']);
+    expect(colours(container)).toEqual([0, 1, 2, 3].map((index) => seriesColor(index)));
+    // Stack order follows: b at the bottom of the x0 stack, then a, then c.
+    const [b, a, c] = bars(container);
+    expect(a[0].y + a[0].height).toBeCloseTo(b[0].y, 5);
+    expect(c[0].y + c[0].height).toBeCloseTo(a[0].y, 5);
+  });
+
+  it('keeps the points of a null series name as one unnamed series in its first-seen place, apart from a series named "null"', () => {
+    const points = ['a', null, 'b', null, 'null', 'a'].map((series, index) => ({ x: `x${index % 2}`, y: index + 1, series }));
+    const payload = { render: { series: [{ name: 'b', type: 'bar' as const }], series_default: { type: 'bar' as const }, legend_position: 'bottom' as const }, data: { points } };
+    const { container } = render(<CartesianChart payload={payload} label="Unnamed" />);
+    // b has an entry of its own and comes first; then a, the unnamed series and "null" as they first appear.
+    expect(legendItems(container)).toEqual(['b', 'a', '', 'null']);
+    expect(colours(container)).toEqual([0, 1, 2, 3].map((index) => seriesColor(index)));
+  });
+
+  it('keeps the series form in delivered order, whatever the order of the render entries', () => {
+    const payload = {
+      render: { series: [{ name: 'B', type: 'bar' as const }, { name: 'A', type: 'bar' as const }], legend_position: 'bottom' as const },
+      data: { series: [{ name: 'A', points: [{ x: 'q', y: 1 }] }, { name: 'B', points: [{ x: 'q', y: 2 }] }] },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Delivered" />);
+    expect(legendItems(container)).toEqual(['A', 'B']);
+  });
+
+  it('fails its own check for data with both series and points, or with neither', () => {
+    expect(checkCartesian({}, { series: [], points: [] } as unknown as CartesianData)).toBe('cartesian_chart: the data has both series and points, and takes exactly one of them');
+    expect(checkCartesian({}, {} as CartesianData)).toBe('cartesian_chart: the data has neither series nor points, and takes exactly one of them');
+    failsWith({ render: {}, data: { series: [], points: POINTS } as unknown as CartesianData }, 'cartesian_chart: the data has both series and points');
+  });
+
+  it('names the point by its index in the long form when a check fails on it', () => {
+    const points = [...POINTS.slice(0, 5), { x: 'Fri', y: 3, series: 'ok' }, ...POINTS.slice(5)];
+    expect(checkCartesian({ x_axis: { type: 'value' } }, { points: points.map((point, index) => ({ ...point, x: index === 5 ? 'Fri' : index })) })).toBe('cartesian_chart: point 5 needs a number x');
+    expect(checkCartesian({ stack_mode: 'percent', series_default: { stack_group: 'runs' } }, { points: points.map((point, index) => (index === 6 ? { ...point, y: -1 } : point)) })).toBe('cartesian_chart: point 6 is negative, and a percent stack takes no negative value');
+    // The failed series first appears at point 1.
+    expect(checkCartesian({ stack_mode: 'percent', series: [{ name: 'ok', type: 'bar', stack_group: 'runs' }] }, { points: POINTS })).toBe('cartesian_chart: the series of point 1 is on a percent stacked axis without a stack group');
+  });
+
+  it('draws the series form by series_default for every series without an entry of its own', () => {
+    const payload = {
+      render: { series: [{ name: 'Total', type: 'bar' as const }], series_default: { type: 'line' as const } },
+      data: { series: ['Total', 'Web', 'Data'].map((name, index) => ({ name, points: [{ x: 'Q1', y: index + 1 }, { x: 'Q2', y: index + 2 }] })) },
+    };
+    const { container } = render(<CartesianChart payload={payload} label="Defaults" />);
+    expect(container.querySelectorAll('.recharts-bar')).toHaveLength(1);
+    expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
+    // Without series_default, a series without an entry draws as bars, as before.
+    cleanup();
+    const plain = render(<CartesianChart payload={{ ...payload, render: { series: payload.render.series } }} label="Plain" />);
+    expect(plain.container.querySelectorAll('.recharts-bar')).toHaveLength(3);
+    expect(plain.container.querySelectorAll('.recharts-line')).toHaveLength(0);
+  });
+
+  it('draws a percent stack of the long form: each day fills the plot to 100%', () => {
+    const { container } = render(<CartesianChart payload={{ render: { stack_mode: 'percent', series_default: { type: 'bar', stack_group: 'runs' } }, data: { points: POINTS } }} label="Shares" />);
+    const [ok, failed] = bars(container);
+    const plot = plotOf(container);
+    for (const at of [0, 1, 2, 3]) {
+      expect(failed[at].y).toBeCloseTo(plot.top, 0);
+      expect(ok[at].y + ok[at].height).toBeCloseTo(plot.bottom, 0);
+    }
+    // Mon: 10 of 11 ok.
+    expect(ok[0].height / (plot.bottom - plot.top)).toBeCloseTo(10 / 11, 2);
+  });
+
+  it('gives each of twelve outcomes of the long form a colour of its own', () => {
+    const outcomes = Array.from({ length: 12 }, (_, index) => `outcome ${index}`);
+    const points = DAYS.flatMap((day) => outcomes.map((series, index) => ({ x: day, y: index + 1, series })));
+    const { container } = render(<CartesianChart payload={{ render: { series_default: { stack_group: 'runs' }, legend_position: 'bottom' }, data: { points } }} label="Outcomes" />);
+    expect(legendItems(container)).toEqual(outcomes);
+    const drawn = colours(container);
+    expect(drawn).toHaveLength(12);
+    expect(new Set(drawn).size).toBe(12);
+    expect(drawn).toEqual(outcomes.map((_, index) => seriesColor(index)));
   });
 });

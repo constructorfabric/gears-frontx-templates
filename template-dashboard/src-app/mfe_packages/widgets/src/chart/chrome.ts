@@ -21,3 +21,36 @@ export function pickIndexOf(state: { activeTooltipIndex?: number | string | null
   const index = Number(state.activeTooltipIndex);
   return Number.isInteger(index) && index >= 0 ? index : null;
 }
+
+/**
+ * The characters a cut category label keeps before its ellipsis at least, so a labelled tick has room for this many
+ * plus one: the cartesian chart labels only every n-th category (the axis thins) when a slot cannot hold that.
+ */
+export const MIN_LABEL_CHARS = 4;
+
+/** The characters of tick text that fit in `room` pixels at the tick size. */
+export const charsIn = (room: number) => Math.max(0, Math.floor(room / TICK_CHAR_WIDTH));
+
+/** One grapheme segmenter for every label, made on first use. */
+let graphemes: Intl.Segmenter | undefined;
+
+/** The user-perceived characters of `text`: a letter with its combining marks, or an emoji sequence, is one. */
+const charactersOf = (text: string): string[] => {
+  if (typeof Intl.Segmenter !== 'function') return Array.from(text);
+  graphemes ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  return Array.from(graphemes.segment(text), ({ segment }) => segment);
+};
+
+/**
+ * `text` cut to at most `max` characters, the last of them an ellipsis; a text that fits stays whole. A character is
+ * a grapheme cluster, so a combining mark or an emoji sequence is never split. With `max` 1 it is the ellipsis alone,
+ * with `max` 0 or less the empty string.
+ */
+export function cutLabel(text: string, max: number): string {
+  // A UTF-16 length is never below the count of characters, so a text this short fits with no segmenting.
+  if (text.length <= max) return text;
+  const chars = charactersOf(text);
+  if (chars.length <= max) return text;
+  if (max < 2) return max === 1 ? '…' : '';
+  return `${chars.slice(0, max - 1).join('').trimEnd()}…`;
+}

@@ -9,7 +9,7 @@ import widgetData from './widget_data.v1.schema.json';
 import widgetExt from './widget_ext.v1.schema.json';
 import widget from './widget.v1.schema.json';
 import widgetsDomain from './widgets_domain.v1.json';
-import { ENTRY_MF_TYPE_ID, LANGUAGE_PROPERTY_ID, THEME_PROPERTY_ID } from '../contract';
+import { ENTRY_MF_TYPE_ID, LANGUAGE_PROPERTY_ID, OVERLAY_CONTAINER_PROPERTY_ID, THEME_PROPERTY_ID } from '../contract';
 
 /**
  * The bundle schemas the dashboard root registers at start, before it loads
@@ -30,17 +30,30 @@ export const BUNDLE_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [widget, d
 export const WIDGETS_DOMAIN = widgetsDomain;
 
 /**
- * The FrontX theme and language shared-property types. FrontX refers to them
- * by id but does not define them; a FrontX shell registers its own. The root
- * registers these only where the type store has none, so a host without a
- * shell can register the `widgets` domain and the widget entries, which name
- * both properties.
+ * The shared-property types of the `widgets` domain. FrontX refers to the theme
+ * and language ones by id but does not define them; a FrontX shell registers
+ * its own. The root registers each of these only where the type store has
+ * none, so a host without a shell can register the `widgets` domain and the
+ * widget entries, which name the theme and the language. The overlay
+ * container's value is a holder of a page element (`OverlayContainerValue` in
+ * the contract) or null; a page element is no JSON value, so its type leaves
+ * the value open and each widget takes only an element of its own document
+ * from the holder. The type store does read the value on every publish: it
+ * walks the own enumerable fields of every nested object for references,
+ * copies them, and compares the copy with the value before, which stops at 64
+ * levels. An element a page framework rendered carries fields that lead into
+ * the framework's whole tree, so the root never publishes the bare element:
+ * the holder keeps it in a private field the store neither sees nor copies,
+ * and the domain hands the holder itself to each widget.
  */
-export const SHARED_PROPERTY_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [THEME_PROPERTY_ID, LANGUAGE_PROPERTY_ID].map((id) => ({
+export const SHARED_PROPERTY_SCHEMAS: ReadonlyArray<Record<string, unknown>> = [
+  ...[THEME_PROPERTY_ID, LANGUAGE_PROPERTY_ID].map((id) => ({ id, value: { type: 'string', minLength: 1 } })),
+  { id: OVERLAY_CONTAINER_PROPERTY_ID, value: {} },
+].map(({ id, value }) => ({
   $id: `gts://${id}`,
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   allOf: [{ $ref: 'gts://gts.frontx.mfes.comm.shared_property.v1~' }],
-  properties: { value: { type: 'string', minLength: 1 } },
+  properties: { value },
 }));
 
 const STAND_IN_MANIFEST_ID = 'gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.stand_in.manifest.v1';

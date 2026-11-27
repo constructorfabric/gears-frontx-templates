@@ -11,7 +11,7 @@ import { isCompact, useElementSize } from './size';
 import { estimateWidth } from '../textFit';
 import styles from '../widgets.module.css';
 
-// The one fill of every stage: the first colour of the chart palette, as the radial ring and the first series take it.
+// The one fill of every stage: the kit's blue series tone, as the radial ring and the heatmap take it.
 const FILL = 'var(--chart-5)';
 // The gap between two stages (the `.funnel` gap in widgets.module.css).
 const STAGE_GAP = 4;
