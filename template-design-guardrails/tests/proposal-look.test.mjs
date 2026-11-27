@@ -409,11 +409,14 @@ describe('the app name, the content column and the link addresses', () => {
       'const s = `type X = `; const l = { href: item.href };\n',
       // The brace that closes the function around an alias ends the alias, not the code after it.
       'export function f() {\n  type A = string }\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
-      // A declaration line inside a multi-line string: a quote left open at its line end, or a bare = (code, not a
-      // type), drops the span instead of letting it run on over the code after the string.
+      // A declaration line inside a multi-line string drops the span instead of letting it run on over the code after the
+      // string: the see http://x row by the bare = after it (the // hides the closing backtick), the other two by the
+      // closing backtick read as a quote left open at its line end; the row after them, with no string, by the bare =.
       'export const help = `\ntype Item = {\n`;\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'export const help = `\ntype Item = {\nsee http://x`;\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'export const help = `\ninterface Item {\n`;\nexport const Nav = ({ items }) => <nav>{items.map((x) => <a href={x.href}>{x.label}</a>)}</nav>;\n',
+      // A backtick later in the file does not close the quote left open at its line end.
+      'export const help = `\ntype Item = {\n`;\nexport function items(list) { return list.map((x) => ({ href: x.href })); } // a ` tick\n',
       'type Item = {\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       // A limit, on the safe side: a declaration after a ; on the same line opens no span, so its member reads as a
       // link the survey does not read. Taking one after a ; would let a // comment or a string open a span again.
