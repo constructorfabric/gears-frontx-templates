@@ -23,7 +23,7 @@ Every colour, size and spacing of a block comes from a `--d-*` property on `.d-a
 | `--d-lead` | the line under the heading | `d-lead` |
 | `--d-h2`, `--d-body`, `--d-small` | card title, body text, labels | section title, body, small text |
 | `--d-stat` | the counter number's size (its own value, not derived from the heading) | `d-stat__value` |
-| `--d-gutter`, `--d-max`, `--d-top` | the content column's side padding, its maximum content width, the space above the heading; on a screen with no column or head rule (the scaffold pads only `.screen`) the gutter and top keys are unresolved: add the screen's `.screen` padding to the shell's screen container padding (`MfeScreenContainer.module.css`) by hand | `d-main` |
+| `--d-gutter`, `--d-max`, `--d-top` | the content column's side padding, its maximum content width, the space above the heading | `d-main` |
 | `--d-btn-h`, `--d-btn-radius` | the main button's height and radius | `d-btn` |
 | `--d-th-case` | the table header's text case (`uppercase` or `none`) | `d-table th` |
 | `--d-h1-phone`, `--d-gutter-phone`, `--d-top-phone`, `--d-nav-h-phone`, `--d-navrow-h-phone` | the same values below the app's first breakpoint | `d-app--phone` |
