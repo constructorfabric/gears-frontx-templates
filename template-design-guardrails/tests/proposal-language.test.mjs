@@ -281,6 +281,7 @@ describe('a page in a language written without spaces', () => {
 
   it('reads the Burmese comma ၊ as no sentence end, and still finds two sentences ended in ။', () => {
     expect(builtIn('my', 'ဤစာမျက်နှာတွင်၊ ကတ်နှစ်ခုသာ ပြသည်။').filter((f) => f === NOT_ONE)).toEqual([]);
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်၊').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
     expect(builtIn('my', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်။ သိမ်းဆည်းခြင်းသည် အတူတူပင်ဖြစ်သည်။').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
   });
 
