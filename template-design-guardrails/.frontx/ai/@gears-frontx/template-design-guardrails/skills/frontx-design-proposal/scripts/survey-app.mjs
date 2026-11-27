@@ -2051,8 +2051,10 @@ function readLook(root, screens, chromeOf) {
  * (LINK_UNREAD), the link form is not detected and every link is unresolved:
  * the person checks the menu code by hand. The same holds when a template is
  * read but the layout also builds an href or to from a call to a function that
- * is not a helper a template was read from (LINK_CALL): the readable helper
- * does not stand for that link. A layout that builds no link from code
+ * is not a helper a template was read from (LINK_CALL), or from any other
+ * expression (LINK_EXPR: item.href, a template not read as the link form)
+ * that is not a const a read template was assigned to: the readable
+ * template does not stand for that link. A layout that builds no link from code
  * gets the address the shell's router writes for a mounted screen,
  * /?screen=<route without the leading slash>. Each
  * screen gets its link and where it was read; mismatch says the registered
@@ -2062,6 +2064,7 @@ const LINK_BUILT = /(?:\b(?:href|to)\s*[=:]\s*\{?|\b(?:navigate|push|assign|open
 const LINK_HELPER = /(?:\b(?:const|let|var)\s+(\w*(?:href|link|url|path)\w*)\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+(\w*(?:href|link|url|path)\w*)\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
 const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])|\b(?:href|to)\s*:\s*(?:[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/;
 const LINK_CALL = /\b(?:href|to)\s*[=:]\s*\{?\s*([A-Za-z_$][\w$.]*)\s*\(/g;
+const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/g;
 
 function readLinks(root, screens) {
   const layoutDir = path.join(root, 'src-app/app/layout');
@@ -2070,26 +2073,42 @@ function readLinks(root, screens) {
   const candidates = [];
   const unread = [];
   const calls = [];
+  // Link expressions (LINK_EXPR) other than a read template or a call (LINK_CALL, judged below), and the consts a read
+  // template was assigned to: an expression naming one of them is that template.
+  const exprs = [];
+  const named = new Set();
   for (const file of files) {
     // Raw text: the template may hold a regular expression with // in it (`.replace(/^\//, '')`).
     const text = withoutBlocks(read(file), '/*', '*/');
+    const at = new Set();
     for (const m of text.matchAll(/`([^`$]*)\$\{\s*route((?:\.replace\([^)]*\))?)\s*\}([^`]*)`/g)) {
       // Both tests look at a short window before the template, so the read stays linear in the file's size.
       const before = text.slice(Math.max(0, m.index - 120), m.index);
       const built = LINK_BUILT.test(before.slice(-80));
       const helper = built ? null : LINK_HELPER.exec(before);
       if (!built && !helper) continue;
+      at.add(m.index);
+      const name = built ? /\b(?:const|let|var)\s+([\w$]+)\s*=\s*$/.exec(before)?.[1] : null;
+      if (name) named.add(name);
       candidates.push({ prefix: m[1], strip: /\^\\?\//.test(m[2]), suffix: m[3], file: rel(root, file), template: m[0], helper: helper?.[1] ?? helper?.[2] ?? null });
     }
     if (LINK_UNREAD.test(text)) unread.push(rel(root, file));
     for (const c of text.matchAll(LINK_CALL)) calls.push({ name: c[1], file: rel(root, file) });
+    for (const e of text.matchAll(LINK_EXPR)) {
+      const start = e.index + e[0].length;
+      const rest = text.slice(start, start + 80);
+      if (rest.startsWith('`') ? at.has(start) : /^[A-Za-z_$][\w$.]*\s*\(/.test(rest)) continue;
+      exprs.push({ name: /^([A-Za-z_$][\w$]*)\s*\}/.exec(rest)?.[1] ?? null, file: rel(root, file) });
+    }
   }
   const shapes = new Set(candidates.map((c) => JSON.stringify([c.prefix, c.strip, c.suffix])));
   const rule = shapes.size === 1 ? candidates[0] : null;
   const disagree = shapes.size > 1;
   // A link built by a call to anything but a helper a template was read from is a link form the survey does not read.
   const helpers = new Set(candidates.map((c) => c.helper).filter(Boolean));
-  const foreign = rule ? [...new Set(calls.filter((c) => !helpers.has(c.name)).map((c) => c.file))] : [];
+  // So is a link built from any other expression: a template not read as the link form, or a name no read template was
+  // assigned to (item.href).
+  const foreign = rule ? [...new Set([...calls.filter((c) => !helpers.has(c.name)), ...exprs.filter((e) => !named.has(e.name))].map((c) => c.file))] : [];
   if (foreign.length > 0) unread.splice(0, unread.length, ...foreign);
   const notDetected = !disagree && (rule ? foreign.length > 0 : unread.length > 0);
   const inCode = [];

@@ -326,6 +326,22 @@ describe('the app name, the content column and the link addresses', () => {
     });
     expect(objects.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
   });
+
+  it('does not let a read link template stand for a link built from another expression, and reads a const built from the template', () => {
+    const side = (text) => {
+      const root = writeProposalApp(tempDir());
+      writeFileSync(path.join(root, 'src-app/app/layout/Menu.tsx'), text);
+      return survey.survey(root);
+    };
+    const menu = 'export const Menu = ({ items }) => items.map((item) => <a href={item.href}>{item.label}</a>);\n';
+    for (const back of ['const hrefFor = (route) => `/?screen=${route}`;\nexport const Back = ({ route }) => <a href={hrefFor(route)}>Back</a>;\n', 'export const Back = ({ route }) => <a href={`/?screen=${route}`}>Back</a>;\n']) {
+      const mixed = side(back + menu);
+      expect(mixed.links.screens.map((x) => x.link), back).toEqual(['unresolved', 'unresolved']);
+      expect(mixed.links.screens[0].source, back).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+    }
+    const named = side('export const Menu = ({ items }) => items.map(({ route, label }) => { const href = `/?screen=${route}`; return <a href={href}>{label}</a>; });\n');
+    expect(named.links.screens.map((x) => x.link)).toEqual(['/?screen=/home', '/?screen=/docs']);
+  });
 });
 
 describe('the rules a stylesheet yields', () => {
