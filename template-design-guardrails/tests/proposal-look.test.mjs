@@ -525,6 +525,15 @@ describe('the active tab text', () => {
   });
 });
 
+describe('a screen\'s own kit tokens', () => {
+  it('colours a screen\'s band with the tokens its own root declares, never with an earlier screen\'s', () => {
+    const css = 'src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css';
+    const result = survey.survey(topApp({ [css]: (t) => t.replaceOrFail('.root { background-color: #ffffff; }', '.root { --primary: #22aa22; background-color: #ffffff; }\n.hero { background-color: var(--primary); color: #ffffff; }') }));
+    const bands = Object.fromEntries(result.screenLooks.map((e) => [e.label, e.bands?.[0]?.bg]));
+    expect(bands).toEqual({ Home: '#2f6fd6', Docs: '#22aa22' });
+  });
+});
+
 describe('the side-by-side strip', () => {
   const html = readFileSync(path.join(skill, 'templates/proposal.html'), 'utf8');
   const source = html.match(/ {2}const STRIP_MIN_SCALE = [\d.]+;\n[\s\S]*?\n {2}function stripFit[\s\S]*?\n {2}\}\n/)?.[0];

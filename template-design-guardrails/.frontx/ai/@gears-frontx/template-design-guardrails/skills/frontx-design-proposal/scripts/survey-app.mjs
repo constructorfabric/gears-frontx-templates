@@ -1787,24 +1787,31 @@ function readLook(root, screens, chromeOf) {
   // Page CSS: the CSS Modules of the shown screens, in menu order.
   const pageCss = [...new Set(screens.flatMap((s) => s.css))];
   const pageRules = pageCss.flatMap((f) => cssRules(path.join(root, f), f));
-  // The kit token bridge: kit tokens a screen root re-declares for the kit components inside it.
-  const bridge = new Map();
-  for (const r of pageRules) {
-    if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
-    for (const [name, value] of r.decls) if (name.startsWith('--') && !bridge.has(name)) bridge.set(name, { value, file: r.file, root: PAGE_ROOT.exec(r.selector)[0] });
-  }
+  // The kit token bridge: kit tokens a screen root re-declares for the kit components inside it. The shared one takes
+  // the first screen's value of each name; a screen's own values (screenLooks) come from its own bridge.
+  const bridgeOf = (rules) => {
+    const found = new Map();
+    for (const r of rules) {
+      if (r.media !== null || !PAGE_ROOT.test(r.selector)) continue;
+      for (const [name, value] of r.decls) if (name.startsWith('--') && !found.has(name)) found.set(name, { value, file: r.file, root: PAGE_ROOT.exec(r.selector)[0] });
+    }
+    return found;
+  };
+  const bridge = bridgeOf(pageRules);
   // A name the theme builds in code is unknown: a lookup gives null for it, never the kit's value.
-  const appLookup = (name) => bridge.get(name)?.value ?? (theme?.unread.has(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  const lookupVia = (via) => (name) => via.get(name)?.value ?? (theme?.unread.has(name) ? null : theme?.variables.get(name) ?? scope.get(name) ?? null);
+  const appLookup = lookupVia(bridge);
   /**
    * One resolution of a value that keeps its own reason: through the screens' kit token bridge (unless bridged is
-   * false), then the theme, then the kit. A name the theme builds in code, and for a colour any name the theme or kit
-   * would answer while a theme spread cannot be followed, makes this resolution, and only this one, unresolved with
-   * that reason; a value the app's own CSS gives without the theme or kit stands.
+   * false; a Map is one screen's own bridge), then the theme, then the kit. A name the theme builds in code, and for a
+   * colour any name the theme or kit would answer while a theme spread cannot be followed, makes this resolution, and
+   * only this one, unresolved with that reason; a value the app's own CSS gives without the theme or kit stands.
    */
   const resolveIn = (raw, { colour = false, bridged = true } = {}) => {
+    const via = bridged === true ? bridge : bridged || null;
     let why = null;
     const value = resolveVars(raw, (name) => {
-      if (bridged && bridge.has(name)) return bridge.get(name).value;
+      if (via?.has(name)) return via.get(name).value;
       const built = theme?.unread.get(name);
       if (built || (colour && theme?.blocked)) { why ??= built ?? theme.blocked; return null; }
       return theme?.variables.get(name) ?? scope.get(name) ?? null;
@@ -1943,10 +1950,10 @@ function readLook(root, screens, chromeOf) {
     if (active) ruleColour('toplink-active', active);
   }
   // Per screen: its own heading when it differs from the shared one, its section heading and its bands.
-  const measure = (spec, rules) => {
+  const measure = (spec, rules, own) => {
     const hit = pickRule(rules, spec);
     if (!hit) return null;
-    let raw = resolveVars(hit.rule.decls.get(hit.prop), appLookup);
+    let raw = resolveVars(hit.rule.decls.get(hit.prop), lookupVia(own));
     if (raw === null) return null;
     if (spec.raw) return { value: toPx(raw) !== null ? `${toPx(raw)}px` : raw, source: describe(hit) };
     const px = toPx(raw);
@@ -1957,15 +1964,16 @@ function readLook(root, screens, chromeOf) {
   for (const s of screens) {
     const rules = s.css.flatMap((f) => cssRules(path.join(root, f), f));
     const entry = { route: s.route, label: s.label };
-    const size = measure(PAGE_ROLES.h1, rules);
-    const weight = measure(PAGE_ROLES['h1-weight'], rules);
-    const phone = measure(PAGE_ROLES['h1-phone'], rules);
+    const own = bridgeOf(rules);
+    const size = measure(PAGE_ROLES.h1, rules, own);
+    const weight = measure(PAGE_ROLES['h1-weight'], rules, own);
+    const phone = measure(PAGE_ROLES['h1-phone'], rules, own);
     const fitWeight = weight && FITS.weight(weight.value) ? weight.value : null;
     if (size && ((size.real ?? size.value) !== (real.h1 ?? look.h1) || (fitWeight && fitWeight !== look['h1-weight']))) {
       entry.heading = { size: size.value, real: size.real, phone: phone?.value ?? null, weight: fitWeight, source: size.source };
     }
-    const section = measure(SECTION_ROLE, rules);
-    if (section) entry.section = { size: section.value, real: section.real, phone: measure({ ...SECTION_ROLE, at: 'phone' }, rules)?.value ?? null, source: section.source };
+    const section = measure(SECTION_ROLE, rules, own);
+    if (section) entry.section = { size: section.value, real: section.real, phone: measure({ ...SECTION_ROLE, at: 'phone' }, rules, own)?.value ?? null, source: section.source };
     const bands = [];
     for (const r of rules) {
       if (r.media !== null || !BAND.test(r.selector) || NOT_BAND.test(r.selector.replace(BAND, '')) || /:hover|:focus/.test(r.selector)) continue;
@@ -1973,7 +1981,7 @@ function readLook(root, screens, chromeOf) {
       if (!prop || !r.decls.has('color')) continue;
       const name = r.selector.split(/\s*,\s*/)[0];
       const source = `${r.file} ${name} ${prop} and color`;
-      const [bgIn, textIn] = [resolveIn(r.decls.get(prop), { colour: true }), resolveIn(r.decls.get('color'), { colour: true })];
+      const [bgIn, textIn] = [resolveIn(r.decls.get(prop), { colour: true, bridged: own }), resolveIn(r.decls.get('color'), { colour: true, bridged: own })];
       // A band coloured through the theme or kit while the theme refuses it is kept, unresolved, with the reason.
       if (bgIn.why || textIn.why) { bands.push({ name, bg: bgIn.value ?? UNRESOLVED, text: textIn.value ?? UNRESOLVED, source, bgWhy: bgIn.why, textWhy: textIn.why }); continue; }
       const [bg, text] = [bgIn.value, textIn.value];
