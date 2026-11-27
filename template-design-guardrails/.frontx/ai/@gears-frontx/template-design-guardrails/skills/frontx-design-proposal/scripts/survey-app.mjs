@@ -196,6 +196,12 @@ const globalElement = (name) => new RegExp(`(^|,)\\s*${name}\\s*(?=,|$)`);
 const SHELL_PAGE = [['src-app/app/layout/Screen.module.css', PAGE_ROOT], ...['#root', 'body', 'html'].map((name) => ['src-app/app/globals.css', globalElement(name)])];
 /** The roles the scaffold names: with the shown screens' CSS Modules read, no match leaves them unresolved, not the kit's. */
 const SCAFFOLD_ROLES = new Set(['h1', 'h1-phone', 'h1-weight', 'h1-track']);
+/**
+ * The layout the scaffold sets on its root (.screen padding) inside the shell's screen container (its own side
+ * padding), which the survey does not add up: with the shown screens' CSS Modules read and no column or head rule, these
+ * are listed as unresolved, never left out.
+ */
+const LAYOUT_ROLES = new Set(['gutter', 'gutter-phone', 'top', 'top-phone']);
 const COLUMN = [/\.column\b/, /\.container\b/, /\.content\b/, /\.page\b/];
 const BUTTON = [/\.(cta|button|btn)\w*/i];
 const PAGE_ROLES = {
@@ -1934,6 +1940,11 @@ function readLook(root, screens, chromeOf) {
     }
     if (SCAFFOLD_ROLES.has(key) && pageCss.length) {
       set(key, UNRESOLVED, `no page title rule (.pageTitle, .pageHeading, h1, .heroTitle, .title) sets ${spec.prop.join(' or ')}${spec.at === 'phone' ? ' outside @media' : ''} in ${pageCss.join(', ')}`);
+      return;
+    }
+    if (LAYOUT_ROLES.has(key) && pageCss.length) {
+      const what = key.startsWith('gutter') ? 'content column rule (.column, .container, .content, .page)' : 'page head rule (.pageHead, .head)';
+      set(key, UNRESOLVED, `no ${what} sets ${spec.prop.join(' or ')}${spec.at === 'phone' ? ' outside @media' : ''} in ${pageCss.join(', ')}; the screen root's padding and the shell's screen container around it are not added up`);
       return;
     }
     if (kit.why) { set(key, UNRESOLVED, kit.why); return; }

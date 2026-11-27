@@ -366,14 +366,24 @@ describe('survey-app.mjs reads theme spreads in time linear in their number', { 
 describe('survey-app.mjs on the stock shell', () => {
   // Each fact of the unchanged stock shell has one owner test: the title and the background here, then the logo colour,
   // the nav and the router address, each in its own test below.
-  it('reads the unchanged stock shell and scaffold: the title from .title, the background from the shell, and exits 0', () => {
+  it('reads the unchanged stock shell and scaffold: the title from .title, the background from the shell, and exits 1 for the layout it cannot read', () => {
     const root = realApp();
     const result = survey.survey(root);
     // The scaffold's .title is the title; its .screen sets no background, so the page shows the shell's own .screen
     // background, var(--background), which the stock default theme leaves to the kit.
     expect([result.lookFrom.h1, result.lookFrom['h1-weight'], result.lookFrom.lead]).toEqual([`${SCREEN_CSS} .title font-size`, `${SCREEN_CSS} .title font-weight`, `${SCREEN_CSS} .description font-size`]);
-    expect([result.look.bg, result.lookFrom.bg, result.unresolved]).toEqual(['#f1f5f9', 'src-app/app/layout/Screen.module.css .screen background-color (shell)', []]);
-    expect(survey.main(['--project', root], { log: () => {}, error: () => {} })).toBe(0);
+    expect([result.look.bg, result.lookFrom.bg]).toEqual(['#f1f5f9', 'src-app/app/layout/Screen.module.css .screen background-color (shell)']);
+    // The side padding and the space above the heading come from the scaffold's .screen padding and the shell's screen
+    // container around it, which the survey does not add up: listed, never left out.
+    expect(result.unresolved).toEqual(['look.gutter', 'look.gutter-phone', 'look.top', 'look.top-phone']);
+    for (const key of ['gutter', 'gutter-phone', 'top', 'top-phone']) expect(result.lookFrom[key], key).toContain(SCREEN_CSS);
+    expect(survey.main(['--project', root], { log: () => {}, error: () => {} })).toBe(1);
+  });
+
+  it('reads the side padding and the space above the heading when the screen has a content column and a page head', () => {
+    const root = edit(realApp(), SCREEN_CSS, '.intro {\n', '.column {\n  padding-inline: 1rem;\n}\n\n.head {\n  padding-top: 1.5rem;\n}\n\n.intro {\n');
+    const result = survey.survey(root);
+    expect([result.look['gutter-phone'], result.look['top-phone'], result.unresolved]).toEqual(['16px', '24px', []]);
   });
   it('takes the shell\'s global body background when its layout .screen sets none', () => {
     const root = edit(realApp(), 'src-app/app/layout/Screen.module.css', '  background-color: var(--background);\n', '');
