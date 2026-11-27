@@ -576,6 +576,17 @@ describe('a screen\'s own kit tokens', () => {
     const bands = Object.fromEntries(result.screenLooks.map((e) => [e.label, e.bands?.[0]?.bg]));
     expect(bands).toEqual({ Home: '#2f6fd6', Docs: '#22aa22' });
   });
+
+  it('sizes a screen\'s heading with the tokens its own root declares, never with an earlier screen\'s', () => {
+    const home = 'src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css';
+    const docs = 'src-app/mfe_packages/docs-mfe/src/screens/docs/DocsScreen.module.css';
+    const result = survey.survey(topApp({
+      [home]: (t) => t.replaceOrFail('.root {\n', '.root {\n  --title-size: 30px;\n'),
+      [docs]: (t) => t.replaceOrFail('.root { background-color', '.root { --title-size: 50px; background-color').replaceAll(/(\.pageTitle \{ font-size: )\d+px/g, '$1var(--title-size)'),
+    }));
+    const heading = result.screenLooks.find((e) => e.label === 'Docs').heading;
+    expect(heading).toMatchObject({ size: '39px', real: '50px', source: `${docs} .pageTitle (from 1024 px) font-size` });
+  });
 });
 
 describe('the side-by-side strip', () => {
