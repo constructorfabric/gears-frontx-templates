@@ -31,7 +31,7 @@ What keeps it fast: blocks are composed, not invented (`templates/draw/blocks.ht
 ls .frontx/proposals/ 2>/dev/null
 ```
 
-When a folder for the same page exists, read its highest revision's CHOICE.md first (the highest number after `r`, as `references/build.md` finds it). Awaiting selection: ask the person whether this request changes that proposal (a new revision, `references/revise.md`) or starts a new one. Selected: the new request is a change to a chosen design; say so and ask the same question. Never start a second page id for the same page without the person's word.
+When a folder for the same page exists, read its highest revision's CHOICE.md first (the highest number after `r`, as `references/build.md` finds it). Awaiting selection: ask the person whether this request changes that proposal (a new revision, `references/revise.md`) or starts a new one. Selected: the new request is a change to a chosen design; say so and ask the same question. Replaced: a feedback round stopped before its next revision was made; continue with `references/revise.md` from its step 2, or ask the person, and never run the `r1` commands below over it. Those commands are only for a page with no revision yet. Never start a second page id for the same page without the person's word.
 
 ## 1. Survey the app
 
