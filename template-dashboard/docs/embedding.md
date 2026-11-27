@@ -46,7 +46,11 @@ When the dashboard definitions change while the page is open (a user saved an ed
 
 ```tsx
 async function saveDashboard(edited: unknown) {
-  await fetch('/analytics/dashboards', { method: 'PUT', body: JSON.stringify(edited) });
+  const response = await fetch('/analytics/dashboards', { method: 'PUT', body: JSON.stringify(edited) });
+  if (!response.ok) {
+    showToast(`The dashboard was not saved: HTTP ${response.status}`);
+    return;
+  }
   const outcome = await dashboards.refresh();
   if (!outcome.ok) showToast(`The dashboard was saved but cannot be redrawn: ${outcome.problem}`);
 }
