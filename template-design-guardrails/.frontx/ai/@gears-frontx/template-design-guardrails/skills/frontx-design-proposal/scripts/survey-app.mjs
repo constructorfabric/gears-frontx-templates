@@ -2052,7 +2052,7 @@ function readLook(root, screens, chromeOf) {
  * the person checks the menu code by hand. The same holds when a template is
  * read but the layout also builds an href or to from a call to a function that
  * is not a helper a template was read from (LINK_CALL), or from any other
- * expression (LINK_EXPR: item.href, a template not read as the link form)
+ * expression (LINK_EXPR: item.href in a prop or an href: or to: key, a template not read as the link form)
  * that is not a const a read template was assigned to in that file: the readable
  * template does not stand for that link. A layout that builds no link from code
  * gets the address the shell's router writes for a mounted screen,
@@ -2064,7 +2064,9 @@ const LINK_BUILT = /(?:\b(?:href|to)\s*[=:]\s*\{?|\b(?:navigate|push|assign|open
 const LINK_HELPER = /(?:\b(?:const|let|var)\s+(\w*(?:href|link|url|path)\w*)\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+(\w*(?:href|link|url|path)\w*)\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
 const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])|\b(?:href|to)\s*:\s*(?:[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/;
 const LINK_CALL = /\b(?:href|to)\s*[=:]\s*\{?\s*([A-Za-z_$][\w$.]*)\s*\(/g;
-const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/g;
+const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$]|`[^`$]{0,200}\$\{)/g;
+// A type annotation (href: string) in the key form is not a link.
+const TYPE_WORD = /^(?:string|number|boolean|any|unknown|undefined|null|void|never|object)\b/;
 
 function readLinks(root, screens) {
   const layoutDir = path.join(root, 'src-app/app/layout');
@@ -2099,7 +2101,9 @@ function readLinks(root, screens) {
       const start = e.index + e[0].length;
       const rest = text.slice(start, start + 80);
       if (rest.startsWith('`') ? at.has(start) : /^[A-Za-z_$][\w$.]*\s*\(/.test(rest)) continue;
-      exprs.push({ name: /^([A-Za-z_$][\w$]*)\s*\}/.exec(rest)?.[1] ?? null, file: rel(root, file) });
+      const key = !e[0].includes('=');
+      if (key && TYPE_WORD.test(rest)) continue;
+      exprs.push({ name: (key ? /^([A-Za-z_$][\w$]*)\s*[,}]/ : /^([A-Za-z_$][\w$]*)\s*\}/).exec(rest)?.[1] ?? null, file: rel(root, file) });
     }
   }
   const shapes = new Set(candidates.map((c) => JSON.stringify([c.prefix, c.strip, c.suffix])));

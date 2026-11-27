@@ -351,6 +351,25 @@ describe('the app name, the content column and the link addresses', () => {
     expect(split.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
     expect(split.links.screens[0].source).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
   });
+
+  it('does not let a read link template stand for an object key href: or to: built from another expression', () => {
+    const side = (text) => {
+      const root = writeProposalApp(tempDir());
+      writeFileSync(path.join(root, 'src-app/app/layout/Menu.tsx'), text);
+      return survey.survey(root);
+    };
+    const back = 'const hrefFor = (route) => `/?screen=${route}`;\nexport const Back = ({ route }) => <a href={hrefFor(route)}>Back</a>;\n';
+    for (const entry of ['{ label: x.label, href: x.href }', '{ label: x.label, to: x.to }', '{ label: x.label, href: target }']) {
+      const mixed = side(`${back}export const items = (list) => list.map((x) => (${entry}));\n`);
+      expect(mixed.links.screens.map((x) => x.link), entry).toEqual(['unresolved', 'unresolved']);
+      expect(mixed.links.screens[0].source, entry).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+    }
+    // A const the template was assigned to, and a type annotation, are not another link form.
+    const named = side('export const items = (routes) => routes.map((route) => { const href = `/?screen=${route}`; return { label: route, href: href }; });\n');
+    expect(named.links.screens.map((x) => x.link)).toEqual(['/?screen=/home', '/?screen=/docs']);
+    const typed = side(`type Item = { label: string; href: string; to: string };\n${back}`);
+    expect(typed.links.screens.map((x) => x.link)).toEqual(['/?screen=/home', '/?screen=/docs']);
+  });
 });
 
 describe('the rules a stylesheet yields', () => {
