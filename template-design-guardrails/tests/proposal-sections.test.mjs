@@ -65,6 +65,20 @@ describe('the paths table', () => {
   ]))('reports %s: %s', (kind, message, html) => one(html, kind, message));
 });
 
+describe('an option\'s label inside a takeaway', () => {
+  const REC = 'We suggest A, the table: it shows owner, status and due date of all ten tasks at once; the choice is yours.';
+  const says = (takeaway) => findings(edit(tasks, REC, takeaway)).filter((f) => f === '[takeaway] the takeaway of #recommendation is not one sentence');
+  it('reads the option\'s own label "A. Table" as no sentence end', () => {
+    expect(says('We suggest A. Table: it shows owner, status and due date of all ten tasks at once; the choice is yours.')).toEqual([]);
+  });
+  it.each([
+    ['a period after the letter before other words', 'We suggest A. Then it shows owner, status and due date of all ten tasks at once.'],
+    ['a label the page has no option for', 'We suggest D. Table: it shows owner, status and due date of all ten tasks at once.'],
+  ])('still finds two sentences across %s', (_, takeaway) => {
+    expect(says(takeaway)).toEqual(['[takeaway] the takeaway of #recommendation is not one sentence']);
+  });
+});
+
 describe('the addresses', () => {
   const bases = '<div class="bases"><div><span class="base-tag">in the app</span><code>https://app.example/</code></div></div>\n  <div class="tbl-wrap"><table class="tbl addresses"';
   it.each(titled([

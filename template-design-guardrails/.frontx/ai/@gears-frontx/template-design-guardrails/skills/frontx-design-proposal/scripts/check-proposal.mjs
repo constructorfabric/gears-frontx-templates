@@ -1111,7 +1111,8 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
   const sorted = [...known].sort((a, b) => SECTION_ORDER.indexOf(a) - SECTION_ORDER.indexOf(b));
   if (known.join() !== sorted.join()) add('sections', `sections out of order: ${known.join(', ')}; expected ${sorted.join(', ')}`);
   const sectionById = new Map(sections.map((n) => [n.attrs.id, n]));
-  checkTakeaways({ sections, spaceless: unspaced(root), lang: primaryLang(root), add });
+  const labels = optionLabels(sectionById.get('how'));
+  checkTakeaways({ sections, spaceless: unspaced(root), lang: primaryLang(root), labels, add });
 
   // language: the page names the language it is written in; the English labels bind a page in English only
   const english = inEnglish(root);
@@ -1143,7 +1144,7 @@ export function checkPage(html, { survey = null, folder = null } = {}) {
     if (!takeaway) add('head', 'no takeaway (.takeaway)');
     else {
       const t = norm(textOf(takeaway));
-      if (sentenceFindings(t, unspaced(root), primaryLang(root))) add('head', 'the takeaway must be one sentence');
+      if (sentenceFindings(unlabel(t, labels), unspaced(root), primaryLang(root))) add('head', 'the takeaway must be one sentence');
       if (words(t) > TAKEAWAY_MAX) add('head', `the takeaway runs ${words(t)} words; ${TAKEAWAY_MAX} at most`);
     }
     if (!find(head, (n) => hasClass(n, 'ask')).length) add('head', 'no ask (.ask) in the head');
@@ -1992,6 +1993,12 @@ const sentenceFindings = (t, spaceless, lang = '') => {
   const ellipsis = spaceless ? /\.\.\s+\p{Lu}/u : /(?:\.\.|\u2026)\s+\p{Lu}/u;
   return !ends || /(?:(?<!\.)\.|[!?])\s+\S/u.test(plain) || ellipsis.test(plain) || OTHER_BREAK.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
 };
+/** The options' own labels ("A. Table", each option's h3 in #how), whose period ends no sentence in a takeaway. */
+const optionLabels = (how) => (how ? find(how, (n) => hasClass(n, 'option')) : [])
+  .map((o) => norm(textOf(find(o, (n) => n.tag === 'h3')[0] ?? { children: [] })))
+  .filter((name) => /^\p{Lu}\. \S/u.test(name));
+/** The text with the period of each option label dropped ("We suggest A. Table: ..." reads "A Table"). */
+const unlabel = (t, labels) => labels.reduce((s, label) => s.replaceAll(label, label.replace('. ', ' ')), t);
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
 /** Visible text left from the template, garbled characters, and placeholders in aria-labels. */
@@ -2022,7 +2029,7 @@ function checkText({ root, add }) {
 }
 
 /** Every section but the head and the glossary: an h2, then one takeaway sentence of thirty words at most that is not its heading again. */
-function checkTakeaways({ sections, spaceless, lang, add }) {
+function checkTakeaways({ sections, spaceless, lang, labels, add }) {
   for (const sec of sections) {
     const id = sec.attrs.id;
     if (id === 'head') continue;
@@ -2033,7 +2040,7 @@ function checkTakeaways({ sections, spaceless, lang, add }) {
     const take = kids[1];
     if (!take || take.tag !== 'p' || !hasClass(take, 'takeaway')) { add('takeaway', `#${id} has no takeaway (p.takeaway) right under its heading: one sentence saying what the section settles`); continue; }
     const t = norm(textOf(take));
-    const wrong = sentenceFindings(t, spaceless, lang);
+    const wrong = sentenceFindings(unlabel(t, labels), spaceless, lang);
     if (wrong) add('takeaway', `the takeaway of #${id} ${wrong}`);
     if (words(t) > TAKEAWAY_MAX) add('takeaway', `the takeaway of #${id} runs ${words(t)} words; ${TAKEAWAY_MAX} at most`);
     const heading = new Set(contentWords(textOf(h2)));
