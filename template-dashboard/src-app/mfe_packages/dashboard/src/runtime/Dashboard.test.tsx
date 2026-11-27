@@ -2489,6 +2489,8 @@ describe('refresh and dispose of the root', () => {
       },
     });
     const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: entry }, origin: 'http://localhost' });
+    // A failing assertion leaves the root with mounts in flight; it ends here so they never reach a later test.
+    onTestFinished(() => root.dispose());
     const page = document.body.appendChild(document.createElement('div'));
     onTestFinished(() => page.remove());
     root.attach(page);
