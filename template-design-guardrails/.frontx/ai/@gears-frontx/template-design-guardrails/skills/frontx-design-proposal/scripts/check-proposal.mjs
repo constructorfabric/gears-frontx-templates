@@ -1408,6 +1408,13 @@ function checkAnswer({ root, tpl, sectionById, optionNodes, withOptions, english
     const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && named(w, have[i]) && said(w, have[i]));
     const show = (xs) => xs.map((x) => `${x.value} "${x.name}"`).join(', ') || 'none';
     if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: `${h.name}" say "${h.say}` })))}) differ from the page's (${show(want)})`);
+    // As with the phrases: a card of one design on a page in another language says its answer in that language.
+    if (!english && !withOptions) {
+      for (const h of have) {
+        const skeleton = DESIGN_PICKS.find((w) => w.value === h.value)?.say;
+        if (skeleton && h.say === skeleton) add('answer', `the card ${h.value}'s data-say keeps the skeleton's English "${skeleton}" on a page not in English; write it in the page's language`);
+      }
+    }
     const sug = picks.filter((p) => p.suggested);
     if (sug.length !== 1) add('answer', `"Which option?" marks ${sug.length} options suggested; exactly one, the recommended one`);
     else {

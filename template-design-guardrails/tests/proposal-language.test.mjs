@@ -39,6 +39,8 @@ const german = (html) => html
   .replace(/<span class="tag">suggested<\/span>/g, '<span class="tag">empfohlen</span>')
   .replace('<b>Build it as drawn</b>', '<b>So bauen</b>')
   .replace('<b>Change it first</b>', '<b>Erst ändern</b>')
+  .replace('value="build" data-say="build it as drawn"', 'value="build" data-say="so bauen, wie gezeichnet"')
+  .replace('value="change" data-say="change it first, as written under Changes"', 'value="change" data-say="erst ändern, wie unter Änderungen beschrieben"')
   .replace(/\(page ([a-z0-9-]+), revision (r\d+)\)/, '(Seite $1, Version $2)')
   .replace(/(class="chip[^"]*"[^>]*data-state="(\w+)"[^>]*>)\2</g, (_, open, state) => `${open}${CHIPS[state]}<`)
   .replace(/Changed since (r\d+):/, 'Geändert seit $1:')
@@ -124,6 +126,20 @@ describe('a page in the person\'s own language', () => {
     expect(findings(page)).toEqual([]);
     const found = findings(page.replaceOrFail(new RegExp(` data-phrase-${key}="[^"]*"`), english));
     expect(found.filter((f) => f.startsWith(`[answer] data-phrase-${key} keeps the skeleton's English`)), found.join('\n')).toHaveLength(1);
+  });
+
+  it.each([
+    ['build', 'build it as drawn', 'so bauen, wie gezeichnet'],
+    ['change', 'change it first, as written under Changes', 'erst ändern, wie unter Änderungen beschrieben'],
+  ])('finds the card %s\'s data-say left in the skeleton\'s English on a one-design page not in English', (value, english, own) => {
+    const page = german(read('account-settings/r1'));
+    expect(findings(page)).toEqual([]);
+    const found = findings(page.replaceOrFail(`value="${value}" data-say="${own}"`, `value="${value}" data-say="${english}"`));
+    expect(found).toEqual([`[answer] the card ${value}'s data-say keeps the skeleton's English "${english}" on a page not in English; write it in the page's language`]);
+  });
+
+  it('lets a one-design page in English keep the skeleton\'s data-say', () => {
+    expect(findings(read('account-settings/r1'))).toEqual([]);
   });
 
   it('lets a page in English leave the words to the scripts\' English', () => {
