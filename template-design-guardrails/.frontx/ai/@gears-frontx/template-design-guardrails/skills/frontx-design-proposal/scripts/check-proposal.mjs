@@ -1984,7 +1984,7 @@ const sentenceFindings = (t, spaceless, lang = '') => {
   const ellipsis = spaceless ? /\.\.\s+\p{Lu}/u : /(?:\.\.|\u2026)\s+\p{Lu}/u;
   return !ends || /(?:(?<!\.)\.|[!?])\s+\S/u.test(plain) || ellipsis.test(plain) || OTHER_BREAK.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
 };
-const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
+const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
 /** Visible text left from the template, garbled characters, and placeholders in aria-labels. */
 function checkText({ root, add }) {

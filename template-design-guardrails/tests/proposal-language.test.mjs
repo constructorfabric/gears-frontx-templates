@@ -272,6 +272,26 @@ describe('a page in a language written without spaces', () => {
     expect(builtIn('hi', 'हम दो कार्ड दिखाते हैं। सहेजना वही है।').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
   });
 
+  const REPEAT = '[takeaway] the takeaway of #built only says its heading again; say what the section settles';
+  // #built with its heading and takeaway in another language.
+  const builtWith = (lang, heading, takeaway) => findings(japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`)
+    .replaceOrFail('<h2>アプリにすでにあるもので作る</h2>', `<h2>${heading}</h2>`)
+    .replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f === REPEAT);
+
+  it.each([
+    ['hi', 'कार्ड', 'हम केवल दो कार्ड दिखाते हैं।'],
+    ['my', 'ကတ်များ', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်။'],
+  ])('keeps the combining marks of %s inside a word: a takeaway that says more than its heading is no repeat', (lang, heading, takeaway) => {
+    expect(builtWith(lang, heading, takeaway)).toEqual([]);
+  });
+
+  it.each([
+    ['hi', 'केवल दो कार्ड', 'केवल दो कार्ड।'],
+    ['my', 'ကတ်နှစ်ခုသာ', 'ကတ်နှစ်ခုသာ။'],
+  ])('still finds a takeaway in %s that only says its heading again', (lang, heading, takeaway) => {
+    expect(builtWith(lang, heading, takeaway)).toEqual([REPEAT]);
+  });
+
   it('reads the ASCII and the wide ends as before: no break after "..." before a lower-case word, none inside 「...」 before a space', () => {
     expect(builtIn('en', 'It counts... then stops.').filter((f) => f === NOT_ONE)).toEqual([]);
     expect(builtIn('ja', '設定は「保存する。」 と表示されます。').filter((f) => f === NOT_ONE)).toEqual([]);
