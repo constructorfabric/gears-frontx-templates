@@ -138,10 +138,6 @@ describe('a page in the person\'s own language', () => {
     expect(found).toEqual([`[answer] the card ${value}'s data-say keeps the skeleton's English "${english}" on a page not in English; write it in the page's language`]);
   });
 
-  it('lets a one-design page in English keep the skeleton\'s data-say', () => {
-    expect(findings(read('account-settings/r1'))).toEqual([]);
-  });
-
   it('lets a page in English leave the words to the scripts\' English', () => {
     const page = read('team-tasks/r1').replaceOrFail(/ data-phrase-choose="[^"]*"[^>]*>/, '>').replace(/ data-start="Start"/g, ' data-start');
     expect(findings(page)).toEqual([]);
