@@ -370,6 +370,33 @@ describe('the app name, the content column and the link addresses', () => {
     const typed = side(`type Item = { label: string; href: string; to: string };\n${back}`);
     expect(typed.links.screens.map((x) => x.link)).toEqual(['/?screen=/home', '/?screen=/docs']);
   });
+
+  it('does not take an href: or to: member of a type or interface declaration for a link, and keeps a runtime key after one', () => {
+    const side = (text) => {
+      const root = writeProposalApp(tempDir());
+      writeFileSync(path.join(root, 'src-app/app/layout/Menu.tsx'), text);
+      return survey.survey(root);
+    };
+    const back = 'const hrefFor = (route) => `/?screen=${route}`;\nexport const Back = ({ route }) => <a href={hrefFor(route)}>Back</a>;\n';
+    for (const decl of [
+      'type Address = string;\ntype Item = { label: string; href: Address };\n',
+      'interface Item { label: string; to: To }\n',
+      'export interface Item<T> extends Base { nested: { href: Address } }\n',
+      'type Item =\n  | { label: string; href: Address }\n  | (Base & { to: To });\n',
+    ]) {
+      expect(side(`${decl}${back}`).links.screens.map((x) => x.link), decl).toEqual(['/?screen=/home', '/?screen=/docs']);
+    }
+    // A runtime object key right after a declaration (with or without its semicolon, on the same line) is still read.
+    for (const text of [
+      'type Item = { href: Address }; const items = [{ href: target }];\n',
+      'type Item = { href: Address }\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      'interface Item { to: To } export const items = (list) => list.map((x) => ({ to: x.to }));\n',
+    ]) {
+      const mixed = side(`${back}${text}`);
+      expect(mixed.links.screens.map((x) => x.link), text).toEqual(['unresolved', 'unresolved']);
+      expect(mixed.links.screens[0].source, text).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+    }
+  });
 });
 
 describe('the rules a stylesheet yields', () => {

@@ -2069,6 +2069,49 @@ const LINK_CALL = /\b(?:href|to)\s*[=:]\s*(?:\{\s*)?([A-Za-z_$][\w$.]*)\s*\(/g;
 const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$]|`[^`$]{0,200}\$\{)/g;
 // A type annotation (href: string) in the key form is not a link.
 const TYPE_WORD = /^(?:string|number|boolean|any|unknown|undefined|null|void|never|object)\b/;
+// Nor is a member of a type declaration (type Name = { href: Address }, interface Name { to: To }).
+const TYPE_DECL = /\b(?:type\s+[A-Za-z_$][\w$]*\s*(?:<[^<>=;]{0,200}>\s*)?=(?![=>])|interface\s+[A-Za-z_$][\w$]*[^{};=]{0,400}\{)/g;
+
+/**
+ * The spans of a file's type declarations, in order: an interface up to its closing brace, a type alias up to a ; or a
+ * line break outside brackets (a line that goes on with | or &, or follows a = | or &, is still the alias). One pass:
+ * a declaration inside a span already read is skipped. Strings and // comments are skipped; block comments are gone.
+ */
+function typeSpans(text) {
+  const spans = [];
+  let end = 0;
+  for (const d of text.matchAll(TYPE_DECL)) {
+    if (d.index < end) continue;
+    const iface = d[0].endsWith('{');
+    let i = d.index + d[0].length - (iface ? 1 : 0);
+    let depth = 0;
+    let last = '=';
+    for (; i < text.length; i += 1) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === '`') {
+        for (i += 1; i < text.length && text[i] !== c; i += 1) if (text[i] === '\\') i += 1;
+      } else if (c === '/' && text[i + 1] === '/') {
+        while (i + 1 < text.length && text[i + 1] !== '\n') i += 1;
+        continue;
+      } else if (c === '{' || c === '(' || c === '[') depth += 1;
+      else if (c === '}' || c === ')' || c === ']') {
+        if (--depth < 0) break;
+        if (iface && depth === 0) { i += 1; break; }
+      } else if (depth === 0 && c === ';') break;
+      else if (depth === 0 && c === '\n' && !'=|&'.includes(last)) {
+        let j = i;
+        while (j < text.length && isWs(text[j])) j += 1;
+        if (text[j] !== '|' && text[j] !== '&') break;
+        i = j - 1;
+        continue;
+      }
+      if (!isWs(c)) last = c;
+    }
+    spans.push([d.index, i]);
+    end = i;
+  }
+  return spans;
+}
 
 function readLinks(root, screens) {
   const layoutDir = path.join(root, 'src-app/app/layout');
@@ -2099,7 +2142,11 @@ function readLinks(root, screens) {
     }
     if (LINK_UNREAD.test(text)) unread.push(rel(root, file));
     for (const c of text.matchAll(LINK_CALL)) calls.push({ name: c[1], file: rel(root, file) });
+    const spans = typeSpans(text);
+    let k = 0;
     for (const e of text.matchAll(LINK_EXPR)) {
+      while (k < spans.length && spans[k][1] <= e.index) k += 1;
+      if (k < spans.length && spans[k][0] <= e.index) continue;
       const start = e.index + e[0].length;
       const rest = text.slice(start, start + 80);
       if (rest.startsWith('`') ? at.has(start) : /^[A-Za-z_$][\w$.]*\s*\(/.test(rest)) continue;
