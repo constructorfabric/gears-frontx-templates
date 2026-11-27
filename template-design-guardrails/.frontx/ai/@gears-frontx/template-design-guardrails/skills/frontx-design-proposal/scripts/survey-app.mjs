@@ -2053,7 +2053,7 @@ function readLook(root, screens, chromeOf) {
  * read but the layout also builds an href or to from a call to a function that
  * is not a helper a template was read from (LINK_CALL), or from any other
  * expression (LINK_EXPR: item.href, a template not read as the link form)
- * that is not a const a read template was assigned to: the readable
+ * that is not a const a read template was assigned to in that file: the readable
  * template does not stand for that link. A layout that builds no link from code
  * gets the address the shell's router writes for a mounted screen,
  * /?screen=<route without the leading slash>. Each
@@ -2074,7 +2074,8 @@ function readLinks(root, screens) {
   const unread = [];
   const calls = [];
   // Link expressions (LINK_EXPR) other than a read template or a call (LINK_CALL, judged below), and the consts a read
-  // template was assigned to: an expression naming one of them is that template.
+  // template was assigned to, keyed by file and name: an expression naming one of them in the same file is that template
+  // (a prop of the same name shadowing it there is a limit: the survey does no scope analysis).
   const exprs = [];
   const named = new Set();
   for (const file of files) {
@@ -2089,7 +2090,7 @@ function readLinks(root, screens) {
       if (!built && !helper) continue;
       at.add(m.index);
       const name = built ? /\b(?:const|let|var)\s+([\w$]+)\s*=\s*$/.exec(before)?.[1] : null;
-      if (name) named.add(name);
+      if (name) named.add(`${rel(root, file)}\0${name}`);
       candidates.push({ prefix: m[1], strip: /\^\\?\//.test(m[2]), suffix: m[3], file: rel(root, file), template: m[0], helper: helper?.[1] ?? helper?.[2] ?? null });
     }
     if (LINK_UNREAD.test(text)) unread.push(rel(root, file));
@@ -2108,7 +2109,7 @@ function readLinks(root, screens) {
   const helpers = new Set(candidates.map((c) => c.helper).filter(Boolean));
   // So is a link built from any other expression: a template not read as the link form, or a name no read template was
   // assigned to (item.href).
-  const foreign = rule ? [...new Set([...calls.filter((c) => !helpers.has(c.name)), ...exprs.filter((e) => !named.has(e.name))].map((c) => c.file))] : [];
+  const foreign = rule ? [...new Set([...calls.filter((c) => !helpers.has(c.name)), ...exprs.filter((e) => !named.has(`${e.file}\0${e.name}`))].map((c) => c.file))] : [];
   if (foreign.length > 0) unread.splice(0, unread.length, ...foreign);
   const notDetected = !disagree && (rule ? foreign.length > 0 : unread.length > 0);
   const inCode = [];

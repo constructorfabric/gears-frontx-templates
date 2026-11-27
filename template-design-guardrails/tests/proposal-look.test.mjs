@@ -342,6 +342,15 @@ describe('the app name, the content column and the link addresses', () => {
     const named = side('export const Menu = ({ items }) => items.map(({ route, label }) => { const href = `/?screen=${route}`; return <a href={href}>{label}</a>; });\n');
     expect(named.links.screens.map((x) => x.link)).toEqual(['/?screen=/home', '/?screen=/docs']);
   });
+
+  it('counts a name a read template was assigned to only in its own file', () => {
+    const root = writeProposalApp(tempDir());
+    writeFileSync(path.join(root, 'src-app/app/layout/Back.tsx'), 'export const Back = ({ route }) => { const href = `/?screen=${route}`; return <a href={href}>Back</a>; };\n');
+    writeFileSync(path.join(root, 'src-app/app/layout/Menu.tsx'), 'export const Menu = ({ items }) => items.map(({ href, label }) => <a href={href}>{label}</a>);\n');
+    const split = survey.survey(root);
+    expect(split.links.screens.map((x) => x.link)).toEqual(['unresolved', 'unresolved']);
+    expect(split.links.screens[0].source).toBe('link form not detected, check the menu code by hand: src-app/app/layout/Menu.tsx builds a link from code the survey does not read');
+  });
 });
 
 describe('the rules a stylesheet yields', () => {
