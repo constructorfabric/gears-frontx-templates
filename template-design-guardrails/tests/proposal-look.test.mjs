@@ -383,6 +383,8 @@ describe('the app name, the content column and the link addresses', () => {
       'interface Item { label: string; to: To }\n',
       'export interface Item<T> extends Base { nested: { href: Address } }\n',
       'type Item =\n  | { label: string; href: Address }\n  | (Base & { to: To });\n',
+      'type Items = Array<\n  { href: Address }\n>;\n',
+      'type F = (x: X) =>\n  { to: To };\n',
     ]) {
       expect(side(`${decl}${back}`).links.screens.map((x) => x.link), decl).toEqual(['/?screen=/home', '/?screen=/docs']);
     }

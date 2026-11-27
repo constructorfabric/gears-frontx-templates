@@ -2075,7 +2075,7 @@ const TYPE_DECL = /^[ \t]*(?:export\s+)?(?:declare\s+)?(?:type\s+[A-Za-z_$][\w$]
 
 /**
  * The spans of a file's type declarations, in order: an interface up to its closing brace, a type alias up to a ; or a
- * line break outside brackets (a line that goes on with | or &, or follows a = | or &, is still the alias). One pass:
+ * line break outside brackets (a line that goes on with | or &, or follows a = | & < , or =>, is still the alias). One pass:
  * a declaration inside a span already read is skipped. Strings and // comments are skipped; block comments are gone.
  */
 function typeSpans(text) {
@@ -2099,14 +2099,14 @@ function typeSpans(text) {
         if (--depth < 0) break;
         if (iface && depth === 0) { i += 1; break; }
       } else if (depth === 0 && c === ';') break;
-      else if (depth === 0 && c === '\n' && !'=|&'.includes(last)) {
+      else if (depth === 0 && c === '\n' && !/[=|&<,]$|=>$/.test(last)) {
         let j = i;
         while (j < text.length && isWs(text[j])) j += 1;
         if (text[j] !== '|' && text[j] !== '&') break;
         i = j - 1;
         continue;
       }
-      if (!isWs(c)) last = c;
+      if (!isWs(c)) last = last.slice(-1) + c;
     }
     spans.push([d.index, i]);
     end = i;
