@@ -69,7 +69,13 @@ function load(html) {
 const answerOf = (window) => window.document.getElementById('answer-text').textContent;
 
 describe('a worked example page run whole on a DOM', () => {
-  it.each(['account-settings/r1', 'team-tasks/r1'])('%s runs both scripts without an error, places pins, fills thumbnails and writes a full answer', (rev) => {
+  // The answer each page writes first; invite-teammate is the page with a flow.
+  const FIRST = {
+    'account-settings/r1': /^For the Account settings proposal \(page account-settings, revision r1\) I answer: build it as drawn\./,
+    'team-tasks/r1': /^For the Team tasks proposal \(page team-tasks, revision r1\) I choose option A, "Table"\./,
+    'invite-teammate/r1': /^For the Invite a teammate proposal \(page invite-teammate, revision r1\) I answer: build it as drawn\./,
+  };
+  it.each(Object.keys(FIRST))('%s runs both scripts without an error, places pins, fills thumbnails and writes a full answer', (rev) => {
     const { window, errors } = load(read(rev));
     expect(errors.map((e) => String(e.message))).toEqual([]);
     const { document } = window;
@@ -79,7 +85,7 @@ describe('a worked example page run whole on a DOM', () => {
     for (const mini of minis) expect(mini.querySelector(':scope > .d-app'), mini.dataset.miniOf).not.toBeNull();
     expect(typeof window.checkProposalLayout).toBe('function');
     const answer = answerOf(window);
-    expect(answer).toMatch(rev === 'team-tasks/r1' ? /^For the Team tasks proposal \(page team-tasks, revision r1\) I choose option A, "Table"\./ : /^For the Account settings proposal \(page account-settings, revision r1\) I answer: build it as drawn\./);
+    expect(answer).toMatch(FIRST[rev]);
     expect(answer).not.toContain('undefined');
     window.close();
   });
