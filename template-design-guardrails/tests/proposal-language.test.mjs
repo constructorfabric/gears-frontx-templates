@@ -340,6 +340,11 @@ describe('a page in a language written without spaces', () => {
     expect(sayFindings('可以改 a b c', 'zh')).toEqual([]);
   });
 
+  it.each(['yue', 'cmn', 'yue-Hant-HK'])('counts characters on a page in %s, a Chinese tag of its own', (lang) => {
+    expect(sayFindings('可以 internationalization', lang)).toEqual([SHORT_SAY]);
+    expect(sayFindings('可以改 a b c', lang)).toEqual([]);
+  });
+
   it('counts the letters of Thai, not its vowel and tone marks', () => {
     // เปลี่ยนที่นี่: 7 letters and 6 marks, 4.7 words, short.
     expect(sayFindings('เปลี่ยนที่นี่', 'th')).toEqual([SHORT_SAY]);

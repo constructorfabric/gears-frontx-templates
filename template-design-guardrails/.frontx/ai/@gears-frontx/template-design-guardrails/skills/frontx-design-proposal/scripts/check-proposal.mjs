@@ -320,10 +320,11 @@ const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input'
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color-mix)\(|\b(?:white|black|red|green|blue|gray|grey|orange|yellow|purple|pink)\b/i;
 const words = (text) => text.trim().split(/\s+/).filter(Boolean).length;
 /**
- * Languages written without spaces between words (Japanese, Chinese, Thai, Lao, Khmer, Burmese), by the primary
+ * Languages written without spaces between words (Japanese, Chinese with Cantonese and Mandarin by their own tags,
+ * Thai, Lao, Khmer, Burmese), by the primary
  * subtag of <html lang>: a count of words between spaces says nothing there, so a word minimum counts characters.
  */
-const UNSPACED_LANGS = new Set(['ja', 'zh', 'th', 'lo', 'km', 'my']);
+const UNSPACED_LANGS = new Set(['ja', 'zh', 'yue', 'cmn', 'th', 'lo', 'km', 'my']);
 /**
  * Letters and digits that count as one word in such a language, for the word minimums only. One English word is
  * about 1.5 Chinese characters, 2 to 3 Japanese ones and more in Thai; the lowest ratio is taken, so a minimum
