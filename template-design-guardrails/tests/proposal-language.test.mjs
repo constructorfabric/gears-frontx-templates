@@ -248,6 +248,35 @@ describe('a page in a language written without spaces', () => {
     expect(builtSays('設定は保存できます。」次に閉じます。')).toEqual(TWO);
   });
 
+  // The page's takeaway of #built in another language, its lang set to match; only #built's takeaway findings.
+  const builtIn = (lang, takeaway) => findings((lang === 'ja' ? japanese() : japanese().replaceOrFail('<html lang="ja">', `<html lang="${lang}">`)).replaceOrFail(`<p class="takeaway">${BUILT}</p>`, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f.startsWith('[takeaway] the takeaway of #built'));
+  const NOT_ONE = '[takeaway] the takeaway of #built is not one sentence';
+
+  it.each([
+    ['km', 'Khmer ។', 'ទំព័រនេះមិនបន្ថែមផ្នែកថ្មីទេ។'],
+    ['my', 'Burmese ။', 'ဤစာမျက်နှာတွင် အစိတ်အပိုင်းအသစ် မရှိပါ။'],
+    ['hi', 'Hindi ।', 'हम केवल दो कार्ड दिखाते हैं।'],
+    ['ur', 'Urdu ۔', 'اس صفحے پر کوئی نیا حصہ نہیں ہے۔'],
+    ['ar', 'Arabic ؟', 'هل نحتاج إلى جزء جديد في هذه الصفحة؟'],
+    ['hy', 'Armenian ։', 'Էջում նոր մաս չկա։'],
+  ])('takes the sentence end of %s (%s) as an end', (lang, _, takeaway) => {
+    expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
+  it.each([['th', 'หน้านี้ไม่มีส่วนใหม่'], ['lo', 'ໜ້ານີ້ບໍ່ມີສ່ວນໃໝ່']])('takes a takeaway in %s with no end mark as one sentence', (lang, takeaway) => {
+    expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
+  it('still asks an English takeaway for its end mark, and finds two sentences ended in ।', () => {
+    expect(builtIn('en', 'No new parts on this page').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+    expect(builtIn('hi', 'हम दो कार्ड दिखाते हैं। सहेजना वही है।').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+  });
+
+  it('reads the ASCII and the wide ends as before: no break after "..." before a lower-case word, none inside 「...」 before a space', () => {
+    expect(builtIn('en', 'It counts... then stops.').filter((f) => f === NOT_ONE)).toEqual([]);
+    expect(builtIn('ja', '設定は「保存する。」 と表示されます。').filter((f) => f === NOT_ONE)).toEqual([]);
+  });
+
   const SAY = 'data-say="メールアドレスは表示名と同じように、このページで変えられます。"';
   const SHORT_SAY = '[answer] the answer "ここで変えられる" of question 1 has a data-say of fewer than five words; write the full sentence the copied answer carries';
   const sayFindings = (say, lang = 'ja') => {
