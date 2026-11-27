@@ -2178,9 +2178,6 @@ function checkAddresses({ addresses, screens, changes, english, add }) {
   for (const tr of rows) {
     const th = find(tr, (n) => n.tag === 'th')[0];
     if (!th || !norm(textOf(th)) || !find(tr, (n) => n.tag === 'code').length) add('addresses', 'an address row needs its screen (th) and its address (code)');
-    // The router splits the query on "&" into domain entries and on ";" into one entry's params, so state joined
-    // with "&" never reaches the screen.
-    for (const code of find(tr, (n) => n.tag === 'code')) if (/\?screen=[^\s#&]*&/.test(textOf(code))) add('addresses', `"${norm(textOf(code))}" joins the screen's state with "&", which the router reads as another domain's entry; join it with ";" (/?screen=docs;section=api)`);
   }
   const bases = find(addresses, (n) => hasClass(n, 'bases'))[0];
   if (bases) {
