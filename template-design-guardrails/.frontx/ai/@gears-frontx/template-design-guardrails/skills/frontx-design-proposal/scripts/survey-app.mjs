@@ -2060,10 +2060,12 @@ function readLook(root, screens, chromeOf) {
  * screen gets its link and where it was read; mismatch says the registered
  * route is not what a shared link carries.
  */
-const LINK_BUILT = /(?:\b(?:href|to)\s*[=:]\s*\{?|\b(?:navigate|push|assign|open|redirect)\(|\blocation(?:\.href)?\s*=)\s*$/;
+// The white space around an optional { is one run or two split by the {, never two runs side by side: two adjacent
+// \s* backtrack quadratically over a long run.
+const LINK_BUILT = /(?:\b(?:href|to)\s*[=:](?:\s*\{)?|\b(?:navigate|push|assign|open|redirect)\(|\blocation(?:\.href)?\s*=)\s*$/;
 const LINK_HELPER = /(?:\b(?:const|let|var)\s+(\w*(?:href|link|url|path)\w*)\s*=\s*\(\s*route\b[^()]*\)\s*(?::[^=;{}()]*)?=>|\bfunction\s+(\w*(?:href|link|url|path)\w*)\s*\(\s*route\b[^()]*\)[^{}]*\{\s*return)\s*\(?\s*(?:route\b[^?;]{0,40}\?\s*)?$/i;
 const LINK_UNREAD = /\b(?:href|to)\s*=\s*\{(?!\s*['"])|\b(?:href|to)\s*:\s*(?:[A-Za-z_$][\w$.]*\s*\(|`[^`$]{0,200}\$\{)/;
-const LINK_CALL = /\b(?:href|to)\s*[=:]\s*\{?\s*([A-Za-z_$][\w$.]*)\s*\(/g;
+const LINK_CALL = /\b(?:href|to)\s*[=:]\s*(?:\{\s*)?([A-Za-z_$][\w$.]*)\s*\(/g;
 const LINK_EXPR = /\b(?:href|to)\s*=\s*\{(?!\s*['"])\s*|\b(?:href|to)\s*:\s*(?=[A-Za-z_$]|`[^`$]{0,200}\$\{)/g;
 // A type annotation (href: string) in the key form is not a link.
 const TYPE_WORD = /^(?:string|number|boolean|any|unknown|undefined|null|void|never|object)\b/;

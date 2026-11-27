@@ -1072,6 +1072,7 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
     ['link helper openers with no template', 3000, 'src-app/app/layout/Menu.tsx', (t, n) => `${t}${'const hrefFor = (route) => href={'.repeat(n)}\n`],
     ['object link keys with no value read', 3000, 'src-app/app/layout/Menu.tsx', (t, n) => `${t}${'{ href: a.b.c, to: `x${'.repeat(n)}\n`],
     ['link calls beside a link helper', 1000, 'src-app/app/layout/Menu.tsx', (t, n) => `${t}const hrefFor = (route) => \`/?screen=\${route}\`;\n${'<a href={makeHref(x)}>a</a>{ to: other.make(x) }\n'.repeat(n)}`],
+    ['white space after a link key', 15000, 'src-app/app/layout/Menu.tsx', (t, n) => `${t}const x = { to:${' '.repeat(n)}y };\n`],
     ['a declaration name', 5000, HOME_CSS, (t, n) => `${t}.x { ${'a'.repeat(n)} }\n`],
     ['a padding value', 5000, HOME_CSS, (t, n) => t.replaceOrFail('.column { max-width: 1240px; padding: 0 20px; }', `.column { max-width: 1240px; padding: ${'1px '.repeat(n)}); }`)],
     ['an import list with no closing brace', 5000, 'src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.tsx', (t, n) => `${t}${'import {a '.repeat(n)}\n`],
@@ -1089,6 +1090,15 @@ describe('survey-app.mjs walks the project safely', { timeout: SURVEY_TIMEOUT },
     };
     // The larger input must be read whole, not skipped over TEXT_CAP or cut at the @media depth cap, or the row would time nothing.
     try { expect(survey.survey(at(8 * size)).skipped.filter((s) => s.why.includes('byte cap') || s.why.includes('nested more than'))).toEqual([]); expectLinear((n) => survey.survey(at(n)), size, what); } finally { for (const root of roots.values()) rmSync(root, { recursive: true, force: true }); }
+  }, SCALE_TIMEOUT);
+
+  // The survey tests LINK_BUILT only on a short window before a template, so the regexes are timed on their own too,
+  // read from the script's source: one that backtracks over a white space run is quadratic in it on any input.
+  it.each(['LINK_BUILT', 'LINK_CALL'])('matches %s in time linear in a white space run after href = or to:', (name) => {
+    const literal = readFileSync(path.join(skill, 'scripts/survey-app.mjs'), 'utf8').match(new RegExp(`^const ${name} = (/.+/[a-z]*);$`, 'm'))?.[1];
+    if (!literal) throw new Error(`survey-app.mjs: ${name} not found`);
+    const rx = new Function(`return ${literal};`)();
+    for (const lead of ['to:', 'href =']) expectLinear((n) => [...`${lead}${' '.repeat(n)}x`.matchAll(new RegExp(rx.source, 'g'))], 4000, `${name} after ${lead}`);
   }, SCALE_TIMEOUT);
 
   // Not a scaling row: past the cap the parser stops at the first @media too deep, so the work is the same at any depth.
