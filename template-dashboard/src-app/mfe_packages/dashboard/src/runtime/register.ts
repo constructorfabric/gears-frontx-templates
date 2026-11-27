@@ -179,8 +179,9 @@ export function baseTypeChanged(types: TypeSystemPlugin, fresh: TypeSystemPlugin
  */
 export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources: TypeSources): string | undefined {
   if (!Array.isArray(file)) return undefined;
-  // Each held type with the first part, in answer order, that brings it under the source recorded for it.
-  const seen = new Set<string>();
+  // Each held type with the index of the first part, in answer order, that brings it under the source recorded for
+  // it: every copy of the type in that part is compared, a later part under the name is skipped.
+  const seen = new Map<string, number>();
   for (const [index, part] of file.slice(1).entries()) {
     try {
       if (!isObject(part) || !Array.isArray(part.types)) continue;
@@ -189,8 +190,8 @@ export function partTypeChanged(types: TypeSystemPlugin, file: unknown, sources:
         if (!isObject(schema)) continue;
         const id = idOf(schema);
         const was = types.getSchema(id);
-        if (!was || sources.get(id) !== source || seen.has(id)) continue;
-        seen.add(id);
+        if (!was || sources.get(id) !== source || (seen.get(id) ?? index) !== index) continue;
+        seen.set(id, index);
         if (canonical(was) !== canonical(schema)) return `${source}: its type ${id} is already defined otherwise, and a type changes only in a new dashboard root`;
       }
     } catch {

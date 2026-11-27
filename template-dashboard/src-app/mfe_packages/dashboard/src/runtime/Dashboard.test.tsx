@@ -2004,6 +2004,47 @@ describe('refresh and dispose of the root', () => {
     expect(errors.mock.calls.filter(([line]) => String(line).includes('is left out'))).toEqual([]);
   }, 15_000);
 
+  /** The served file in parts with the edited dashboard moved from the base file into the metric part, its types passed through `metricTypes`. */
+  const servedByMetricPart = (values: number[], metricTypes = (types: Record<string, unknown>[]) => types) => {
+    const [base, ...parts] = partsOf(values) as unknown as { types: Record<string, unknown>[]; instances: Record<string, unknown>[] }[];
+    const edited = base!.instances.at(-1)!;
+    return [
+      { ...base!, instances: base!.instances.slice(0, -1) },
+      ...parts.map((part) => (part.instances.some((instance) => String(instance.id).endsWith('.metric_card.v1')) ? { types: metricTypes(part.types), instances: [...part.instances, edited] } : part)),
+    ];
+  };
+
+  it.each([
+    ['as held, then otherwise', true],
+    ['otherwise, then as held', false],
+  ])('refuses a refresh whose widget part brings its own held type twice, %s, and keeps the dashboard only that part serves drawn', async (_, heldFirst) => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const twice = (types: Record<string, unknown>[]) =>
+      types.flatMap((type) => {
+        if (String(type.$id) !== `gts://${METRIC_TYPE}`) return [type];
+        const otherwise = { ...type, description: 'otherwise' };
+        return heldFirst ? [type, otherwise] : [otherwise, type];
+      });
+    const answers: unknown[] = [servedByMetricPart([7]), servedByMetricPart([9], twice)];
+    const { host } = editingHost(async () => answers.shift());
+    const { counts, entries: withCounts } = counting();
+    const root = new DashboardRoot({ host, entries: withCounts, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    let outcome: unknown;
+    await act(async () => void (outcome = await root.refresh()));
+    expect(outcome).toEqual({
+      ok: false,
+      problem: expect.stringMatching(new RegExp(`^the widget part ".*metric_card\\.v1.*": its type ${METRIC_TYPE.replace(/[.~]/g, '\\$&')} is already defined otherwise, and a type changes only in a new dashboard root$`)),
+    });
+    expect(refreshLines(errors)).toHaveLength(1);
+    expect(root.version).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counts.unmounted).toBe(0);
+    expect(values(container)).toEqual(['value 7']);
+    expect(errors.mock.calls.filter(([line]) => String(line).includes('is left out') || String(line).includes('cannot be shown'))).toEqual([]);
+  }, 15_000);
+
   /** A part with no manifest that brings the metric widget type otherwise: the metric part brought it first. */
   const CLASHING = { types: [{ ...BUNDLE_TYPES.metric_card.find((type) => String(type.$id) === `gts://${METRIC_TYPE}`)!, description: 'otherwise' }], instances: [] };
   const MARKDOWN_TYPES = (BUNDLE_TYPES.markdown_card ?? []).map((type) => String(type.$id).replace(/^gts:\/\//, ''));
