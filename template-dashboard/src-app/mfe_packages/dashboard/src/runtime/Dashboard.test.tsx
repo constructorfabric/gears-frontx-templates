@@ -2440,6 +2440,98 @@ describe('refresh and dispose of the root', () => {
   }, 15_000);
 
   it.each([
+    ['waits on the mount of that widget', 'mount'],
+    ['unregisters another widget of its dashboard first', 'earlier'],
+    ['is unregistering that widget', 'unregister'],
+  ])('keeps the widget of a cell that waited on one release registered and drawn while another release that started meanwhile %s', async (_name, by) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { host } = editingHost(async () => fileOf([7]));
+    const counts = { started: 0, mounted: 0, unmounted: 0 };
+    let openMount!: () => void;
+    const mountGate = new Promise<void>((resolve) => (openMount = resolve));
+    // Only the first mount waits, and only when the release waits on a mount.
+    let slowMount = by === 'mount';
+    const entry = (): MfeEntryLifecycle => ({
+      async mount(_container, bridge) {
+        counts.started += 1;
+        if (slowMount) {
+          slowMount = false;
+          await mountGate;
+        }
+        counts.mounted += 1;
+        bridge.registerActionHandler(RENDER_WIDGET_ACTION_ID, ActionHandler.fromFunction(async () => undefined));
+      },
+      unmount() {
+        counts.unmounted += 1;
+      },
+    });
+    const root = new DashboardRoot({ host, entries: { ...entries, [METRIC]: entry }, origin: 'http://localhost' });
+    const page = document.body.appendChild(document.createElement('div'));
+    onTestFinished(() => page.remove());
+    root.attach(page);
+    expect((await root.load(EDITED_ID)).ok).toBe(true);
+    const shared = new SharedRequests({}, root.host, root.origin);
+    const run = (suffix: string, dashboardId: string) => {
+      const states: string[] = [];
+      const widget = cellOf(suffix, { params: {}, transform: "{'value': 1}" }).widget;
+      const cell = root.runCell({
+        dashboardId,
+        widget,
+        role: 'cell',
+        shared,
+        update: (change) => {
+          if ('state' in change) return void states.push(change.state);
+          page.appendChild(change.container);
+          change.placed();
+        },
+      });
+      return { cell, states, id: extensionIdOf(widget.id, 'cell', METRIC) };
+    };
+    // Dashboard one holds the widget (after another one when the release unregisters that one first); dashboard zero
+    // holds a third widget.
+    const earlier = by === 'earlier' ? run('c003', 'one') : undefined;
+    if (earlier) await waitFor(() => expect(earlier.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    const widget = run('c001', 'one');
+    if (by === 'mount') await waitFor(() => expect(counts.started).toBe(1), { timeout: 5000 });
+    else await waitFor(() => expect(widget.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    const other = run('c002', 'zero');
+    await waitFor(() => expect(other.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    // Each unregistration a test holds ends once its gate opens.
+    const unregister = root.registry!.unregisterExtension.bind(root.registry);
+    const gates = new Map<string, { opened: Promise<void>; open: () => void }>();
+    const hold = (id: string) => {
+      let open!: () => void;
+      gates.set(id, { opened: new Promise<void>((resolve) => (open = resolve)), open });
+    };
+    const unregistering = vi.spyOn(root.registry!, 'unregisterExtension').mockImplementation(async (id) => (await gates.get(id)?.opened, unregister(id)));
+    hold(other.id);
+    if (by === 'earlier') hold(earlier!.id);
+    if (by === 'unregister') hold(widget.id);
+    for (const left of [earlier, widget, other]) left?.cell.leave();
+    // The release of dashboard zero runs; a cell of the widget for dashboard two starts and waits on it.
+    const first = root.release('zero');
+    const cell = run('c001', 'two');
+    // The release of dashboard one starts after the cell began to wait; nothing holds the widget at its call.
+    const second = root.release('one');
+    if (by === 'earlier') await waitFor(() => expect(unregistering).toHaveBeenCalledWith(earlier!.id));
+    if (by === 'unregister') await waitFor(() => expect(unregistering).toHaveBeenCalledWith(widget.id));
+    // The first release ends while the second one still runs.
+    gates.get(other.id)!.open();
+    await act(async () => first);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    openMount();
+    for (const gate of gates.values()) gate.open();
+    await act(async () => second);
+    await waitFor(() => expect(cell.states.at(-1)).toBe('shown'), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(cell.states).not.toContain('cannot-be-shown');
+    expect(root.registry?.getExtension(cell.id)).toBeDefined();
+    expect(page.querySelectorAll(`[data-widget-extension="${cell.id}"]`)).toHaveLength(1);
+    await act(async () => root.dispose());
+    expect(counts.mounted - counts.unmounted).toBe(0);
+  }, 15_000);
+
+  it.each([
     ['a refresh that replaces its cell', 'refresh'],
     ['a switch to another dashboard', 'switch'],
   ])('unmounts a widget whose mount was in flight at %s once the mount ends', async (_name, by) => {

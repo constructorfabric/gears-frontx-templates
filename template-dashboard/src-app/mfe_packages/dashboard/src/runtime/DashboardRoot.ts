@@ -179,6 +179,8 @@ export class DashboardRoot {
   private readonly published: { theme?: string; language?: string; overlays?: HTMLElement | null } = {};
   /** The release still running for a dashboard id. */
   private readonly releasing = new Map<string, Promise<void>>();
+  /** The running release that lists each extension id, until it ends: a cell of that id waits for it. */
+  private readonly unregistering = new Map<string, Promise<void>>();
   /** The first source of each type the served file brought, kept over every read of the file. */
   private readonly sources: TypeSources = new Map();
   /** Aborted by `dispose`: every request of the root in flight fails with it. */
@@ -516,8 +518,9 @@ export class DashboardRoot {
   /**
    * Unregisters the generated extensions of a dashboard the viewer left for
    * another one, except those another running cell or dashboard of the root
-   * holds. A cell that starts before this finishes waits for it, so it never
-   * reuses an extension about to be unregistered.
+   * holds at the call. A cell that starts before this finishes waits for it,
+   * and so does a cell of a listed extension that was already waiting on
+   * another release, so no cell reuses an extension about to be unregistered.
    */
   release(dashboardId: string): Promise<void> {
     const ids = this.extensions.get(dashboardId);
@@ -574,8 +577,10 @@ export class DashboardRoot {
   }
 
   /**
-   * Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it.
-   * An extension still mounting is unregistered once its mount ended, within the mount timeout, so its unmount runs.
+   * Unregisters `ids` after the release still running for the dashboard id; a cell that starts meanwhile waits for it,
+   * and a cell of one of `ids` waits for it whenever it started. An extension still mounting is unregistered once its
+   * mount ended, within the mount timeout, so its unmount runs. No cell holds a listed id while this runs: a cell
+   * counts itself only once no running release lists its id, so every listed id is unregistered.
    */
   private unregister(dashboardId: string, ids: readonly string[]): Promise<void> {
     const before = this.releasing.get(dashboardId) ?? Promise.resolve();
@@ -590,8 +595,10 @@ export class DashboardRoot {
       }
     });
     this.releasing.set(dashboardId, done);
+    for (const id of ids) this.unregistering.set(id, done);
     void done.then(() => {
       if (this.releasing.get(dashboardId) === done) this.releasing.delete(dashboardId);
+      for (const id of ids) if (this.unregistering.get(id) === done) this.unregistering.delete(id);
     });
     return done;
   }
@@ -698,7 +705,11 @@ export class DashboardRoot {
       }
       const id = extensionIdOf(widget.id, role, entry);
       // Extension ids do not depend on the dashboard: a widget named by two dashboards waits for every running release.
+      // A release that started during that wait and lists this id is waited for too, and so is each one after it; a
+      // release ends within its dashboard's earlier release, the mount timeout per id and the registry's unregisters,
+      // and a new one lists this id only while no cell holds it.
       await Promise.all(this.releasing.values());
+      while (this.unregistering.has(id)) await this.unregistering.get(id);
       if (gone()) return;
       extensionId = id;
       this.cells.set(id, (this.cells.get(id) ?? 0) + 1);
