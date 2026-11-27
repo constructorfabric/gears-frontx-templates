@@ -390,6 +390,9 @@ describe('the app name, the content column and the link addresses', () => {
       'interface Item {\n  label: string; // the name }\n  href: Address;\n}\n',
       'type Item<T> = { href: T };\n',
       'type Item =\n  { href: Address };\n',
+      // A template literal type that closes on its own line, and an alias that goes on after a comma.
+      'type Path = { href: `/x/${string}` };\n',
+      'type M = Map<string,\n  { href: Address }>;\n',
     ]) {
       expect(side(`${decl}${back}`).links.screens.map((x) => x.link), decl).toEqual(['/?screen=/home', '/?screen=/docs']);
     }
@@ -406,6 +409,12 @@ describe('the app name, the content column and the link addresses', () => {
       'const s = `type X = `; const l = { href: item.href };\n',
       // The brace that closes the function around an alias ends the alias, not the code after it.
       'export function f() {\n  type A = string }\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      // A declaration line inside a multi-line string: a quote left open at its line end, or a bare = (code, not a
+      // type), drops the span instead of letting it run on over the code after the string.
+      'export const help = `\ntype Item = {\n`;\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      'export const help = `\ntype Item = {\nsee http://x`;\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      'export const help = `\ninterface Item {\n`;\nexport const Nav = ({ items }) => <nav>{items.map((x) => <a href={x.href}>{x.label}</a>)}</nav>;\n',
+      'type Item = {\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
     ]) {
       const mixed = side(`${back}${text}`);
       expect(mixed.links.screens.map((x) => x.link), text).toEqual(['unresolved', 'unresolved']);

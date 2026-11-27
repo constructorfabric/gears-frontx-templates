@@ -2077,6 +2077,8 @@ const TYPE_DECL = /^[ \t]*(?:export\s+)?(?:declare\s+)?(?:type\s+[A-Za-z_$][\w$]
  * The spans of a file's type declarations, in order: an interface up to its closing brace, a type alias up to a ; or a
  * line break outside brackets (a line that goes on with | or &, or follows a = | & < , or =>, is still the alias). One pass:
  * a declaration inside a span already read is skipped. Strings and // comments are skipped; block comments are gone.
+ * A quote left open at its line end or a bare = (not => == != <= >=) is not a type: the declaration was text in a
+ * string or is broken, so it gives no span, and no declaration up to that point opens one (each character is read once).
  */
 function typeSpans(text) {
   const spans = [];
@@ -2087,10 +2089,15 @@ function typeSpans(text) {
     let i = d.index + d[0].length - (iface ? 1 : 0);
     let depth = 0;
     let last = '=';
+    let drop = false;
     for (; i < text.length; i += 1) {
       const c = text[i];
       if (c === '"' || c === "'" || c === '`') {
-        for (i += 1; i < text.length && text[i] !== c; i += 1) if (text[i] === '\\') i += 1;
+        for (i += 1; i < text.length && text[i] !== c && text[i] !== '\n'; i += 1) if (text[i] === '\\') i += 1;
+        if (text[i] !== c) { drop = true; break; }
+      } else if (c === '=' && !'=!<>'.includes(text[i - 1]) && text[i + 1] !== '=' && text[i + 1] !== '>') {
+        drop = true;
+        break;
       } else if (c === '/' && text[i + 1] === '/') {
         while (i + 1 < text.length && text[i + 1] !== '\n') i += 1;
         continue;
@@ -2108,7 +2115,7 @@ function typeSpans(text) {
       }
       if (!isWs(c)) last = last.slice(-1) + c;
     }
-    spans.push([d.index, i]);
+    if (!drop) spans.push([d.index, i]);
     end = i;
   }
   return spans;
