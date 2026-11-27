@@ -415,6 +415,9 @@ describe('the app name, the content column and the link addresses', () => {
       'export const help = `\ntype Item = {\nsee http://x`;\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'export const help = `\ninterface Item {\n`;\nexport const Nav = ({ items }) => <nav>{items.map((x) => <a href={x.href}>{x.label}</a>)}</nav>;\n',
       'type Item = {\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
+      // A limit, on the safe side: a declaration after a ; on the same line opens no span, so its member reads as a
+      // link the survey does not read. Taking one after a ; would let a // comment or a string open a span again.
+      'type Address = string; type Item = { href: Address };\n',
     ]) {
       const mixed = side(`${back}${text}`);
       expect(mixed.links.screens.map((x) => x.link), text).toEqual(['unresolved', 'unresolved']);
