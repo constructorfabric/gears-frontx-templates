@@ -1407,7 +1407,7 @@ function checkAnswer({ root, tpl, sectionById, optionNodes, withOptions, english
     const said = (w, h) => (withOptions ? `${w.value}. ${h.say}` === w.name : english ? h.say === w.say : h.say !== '');
     const same = want.length === have.length && want.every((w, i) => w.value === have[i].value && named(w, have[i]) && said(w, have[i]));
     const show = (xs) => xs.map((x) => `${x.value} "${x.name}"`).join(', ') || 'none';
-    if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: `${h.name}" say "${h.say}` })))}) differ from the page's (${show(want)})`);
+    if (!same) add('answer', `the options of the answer block (${show(have.map((h) => ({ value: h.value, name: `${h.name}" say "${h.say}` })))}) differ from the page's (${show(want.map((w) => (english && w.say ? { value: w.value, name: `${w.name}" say "${w.say}` } : w)))})`);
     // As with the phrases: a card of one design on a page in another language says its answer in that language.
     if (!english && !withOptions) {
       for (const h of have) {

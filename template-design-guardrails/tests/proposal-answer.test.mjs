@@ -200,6 +200,7 @@ describe('check-proposal.mjs on broken copies of the answer block', () => {
     ['an option renamed', edit(r1, '<b>B. Cards</b>', '<b>B. Tiles</b>'), 'differ from the page\'s'],
     ['an option with another letter', edit(r1, 'value="C" data-say="Board by status"', 'value="D" data-say="Board by status"'), 'differ from the page\'s'],
     ['one design without its two cards', edit(r2, '<b>Change it first</b>', '<b>Something else</b>'), 'differ from the page\'s'],
+    ['one design whose card says another answer, named with the data-say it needs', edit(r2, 'data-say="change it first, as written under Changes"', 'data-say="change it later"'), 'change "Change it first" say "change it first, as written under Changes")'],
     ['a question missing from the block', r1.replaceOrFail(/<fieldset class="ans-q" data-q="3">[\s\S]*?<\/fieldset>\n/, ''), 'open question 3 is not in the answer block'],
     ['a question the page has not', r1.replaceOrFail(/<li id="q-3">[\s\S]*?<\/li>/, ''), 'which the open questions do not have'],
     ['one ready answer', r1.replaceOrFail(Q2_WRONG, ''), 'question 2 has 1 ready answer(s)'],
