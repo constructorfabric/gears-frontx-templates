@@ -75,6 +75,7 @@ describe('an option\'s label inside a takeaway', () => {
     ['a period after the letter before other words', 'We suggest A. Then it shows owner, status and due date of all ten tasks at once.'],
     ['a label the page has no option for', 'We suggest D. Table: it shows owner, status and due date of all ten tasks at once.'],
     ['a label that is only the start of a longer word', 'We suggest A. Tables need less scrolling, so the owner sees all ten tasks at once.'],
+    ['a label glued after the letters of a longer word', 'We moved the list to DATA. Table rows now load faster for the owner.'],
   ])('still finds two sentences across %s', (_, takeaway) => {
     expect(says(takeaway)).toEqual(['[takeaway] the takeaway of #recommendation is not one sentence']);
   });

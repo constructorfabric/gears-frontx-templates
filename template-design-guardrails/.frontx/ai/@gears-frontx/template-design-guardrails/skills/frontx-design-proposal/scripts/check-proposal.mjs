@@ -2000,9 +2000,9 @@ const optionLabels = (how) => (how ? find(how, (n) => hasClass(n, 'option')) : [
   .filter((name) => /^\p{Lu}\. \S/u.test(name));
 /**
  * The text with the period of each option label dropped ("We suggest A. Table: ..." reads "A Table"), only where the
- * whole label stands: "A. Tables" is no label "A. Table", so its period still ends a sentence.
+ * whole label stands: "A. Tables" and "DATA. Table" hold no label "A. Table", so their period still ends a sentence.
  */
-const unlabel = (t, labels) => labels.reduce((s, label) => s.replace(new RegExp(`${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu'), () => label.replace('. ', ' ')), t);
+const unlabel = (t, labels) => labels.reduce((s, label) => s.replace(new RegExp(`(?<![\\p{L}\\p{N}])${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu'), () => label.replace('. ', ' ')), t);
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
 /** Visible text left from the template, garbled characters, and placeholders in aria-labels. */
