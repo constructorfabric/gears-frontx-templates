@@ -1979,7 +1979,7 @@ const wideBreak = (t) => {
 };
 /**
  * One sentence: it ends with ".", "!" or "?", with another script's end (OTHER_TERMINAL), in Thai and Lao with no end
- * at all (NO_END_LANGS), or with a wide end (WIDE_END) and the closing brackets and quotes after
+ * at all when it has a letter (NO_END_LANGS), or with a wide end (WIDE_END) and the closing brackets and quotes after
  * it, and no break stands inside it. A break is ".", "!" or "?" before more text, whatever starts it (a capital, a
  * lower-case word, a number); a period after a common abbreviation is no break. A run of periods (an ellipsis) is a
  * break only before a capital: "counts... then" is one sentence, "counts... Then" two; "…" breaks as "..." does on a
@@ -1989,7 +1989,7 @@ const wideBreak = (t) => {
  */
 const sentenceFindings = (t, spaceless, lang = '') => {
   const plain = t.replace(ABBREVIATIONS, (m) => m.slice(0, -1));
-  const ends = /[.!?]$/.test(t) || WIDE_ENDING.test(t) || OTHER_ENDING.test(t) || NO_END_LANGS.has(lang);
+  const ends = /[.!?]$/.test(t) || WIDE_ENDING.test(t) || OTHER_ENDING.test(t) || (NO_END_LANGS.has(lang) && /\p{L}/u.test(t));
   const ellipsis = spaceless ? /\.\.\s+\p{Lu}/u : /(?:\.\.|\u2026)\s+\p{Lu}/u;
   return !ends || /(?:(?<!\.)\.|[!?])\s+\S/u.test(plain) || ellipsis.test(plain) || OTHER_BREAK.test(plain) || wideBreak(plain) ? 'is not one sentence' : null;
 };

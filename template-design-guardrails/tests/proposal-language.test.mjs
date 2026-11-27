@@ -283,6 +283,18 @@ describe('a page in a language written without spaces', () => {
     expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
   });
 
+  // team-tasks/r1 in Thai with the given head takeaway; only the head's one-sentence finding.
+  const HEAD_TAKEAWAY = '<p class="takeaway">A Tasks link in the side menu opens every team task with its owner, status and due date in one of three layouts; a task opens its details.</p>';
+  const HEAD_NOT_ONE = '[head] the takeaway must be one sentence';
+  const thaiHead = (takeaway) => findings(read('team-tasks/r1').replaceOrFail('<html lang="en">', '<html lang="th">')
+    .replaceOrFail(HEAD_TAKEAWAY, `<p class="takeaway">${takeaway}</p>`)).filter((f) => f === HEAD_NOT_ONE);
+  it.each([['an empty', ''], ['a blank', '   ']])('finds %s head takeaway on a page in th, which needs no end mark only when it has words', (_, takeaway) => {
+    expect(thaiHead(takeaway)).toEqual([HEAD_NOT_ONE]);
+  });
+  it('still takes a Thai head takeaway with no end mark as one sentence', () => {
+    expect(thaiHead('หน้านี้ไม่มีส่วนใหม่')).toEqual([]);
+  });
+
   it('still asks an English takeaway for its end mark, and finds two sentences ended in ।', () => {
     expect(builtIn('en', 'No new parts on this page').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
     expect(builtIn('hi', 'हम दो कार्ड दिखाते हैं। सहेजना वही है।').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
