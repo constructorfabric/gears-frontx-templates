@@ -12,7 +12,7 @@ ls ".frontx/proposals/<page-id>/" | sort -t r -k 2 -n | tail -n 1
 Read CHOICE.md of the highest revision of the page. Revisions compare by the number after `r` (`r10` after `r9`), never as text, where `r10` sorts before `r2`; the second line prints the highest one on macOS and Linux alike. Its Status decides:
 
 - `selected`: go on with that revision.
-- `replaced`: do not build. The next revision either exists (go to it) or was not made yet: continue with `references/revise.md` from its step 2, or ask the person.
+- `replaced`: do not build. This is the highest revision, so the next one was not made yet: continue with `references/revise.md` from its step 2, or ask the person.
 - `awaiting selection` with the person's answer in hand (it often comes with the request to build, as a text copied from the page's answer block or in their own words): record it first as `references/record.md`, "Record the answer", says, run the check below on the folder, and build only when it is clean and Status reads `selected`. A reply that is not a choice is answered there, not built.
 - `awaiting selection` with no answer from the person: stop. Nothing is chosen; give the person the absolute path of that revision's `proposal.html`, open it if the session can, and ask for the answer. A recommendation is not a choice.
 - no record: this skill has not run for the page; build with `../frontx-design/SKILL.md`, or propose first.
