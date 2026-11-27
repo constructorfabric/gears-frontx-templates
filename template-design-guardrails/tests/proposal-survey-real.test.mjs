@@ -309,6 +309,18 @@ describe('survey-app.mjs never puts the kit palette under an app file\'s name wh
     expect([result.look['band-bg'], result.lookFrom['band-bg']]).toEqual([survey.UNRESOLVED, `${home} .hero background-color: ${why}`]);
   });
 
+  it('draws the top header\'s link colour and name size with the shell\'s values when the screen re-declares their tokens', () => {
+    const root = writeTopApp(mkdtempSync(path.join(tmpdir(), 'fx-proposal-real-')));
+    temps.push(root);
+    edit(root, 'src-app/app/layout/Menu.module.css', 'font-size: 14px; color: #1d2433;', 'font-size: 14px; color: var(--foreground);');
+    edit(root, 'src-app/app/layout/Header.module.css', '.name { font-size: 17px;', '.name { font-size: var(--brand-size, 17px);');
+    // The screen's .root already re-declares --foreground (#1d2433); --brand-size is added there too.
+    edit(root, 'src-app/mfe_packages/home-mfe/src/screens/home/HomeScreen.module.css', '.root {\n', '.root {\n  --brand-size: 40px;\n');
+    const result = survey.survey(root);
+    // The kit's --foreground (#0f172a) and the fallback 17px, not the screen's #1d2433 and 40px.
+    expect([result.look.toplink, result.lookFrom.toplink, result.lookReal['brand-size']]).toEqual(['#0f172a', 'src-app/app/layout/Menu.module.css .link color', '17px']);
+  });
+
   it('keeps the screen\'s own value of a token the theme builds in code', () => {
     const root = themeWith(realApp(), '...base', "const base = { '--primary': mk('#f00') };\n");
     expect(accentOf(addCss(root, SCREEN_CSS, '.root { --primary: #123456; }'))).toEqual(['#123456', `${SCREEN_CSS} .root --primary`]);
