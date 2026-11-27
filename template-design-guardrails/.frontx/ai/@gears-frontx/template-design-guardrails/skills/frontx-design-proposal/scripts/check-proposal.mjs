@@ -1997,8 +1997,11 @@ const sentenceFindings = (t, spaceless, lang = '') => {
 const optionLabels = (how) => (how ? find(how, (n) => hasClass(n, 'option')) : [])
   .map((o) => norm(textOf(find(o, (n) => n.tag === 'h3')[0] ?? { children: [] })))
   .filter((name) => /^\p{Lu}\. \S/u.test(name));
-/** The text with the period of each option label dropped ("We suggest A. Table: ..." reads "A Table"). */
-const unlabel = (t, labels) => labels.reduce((s, label) => s.replaceAll(label, label.replace('. ', ' ')), t);
+/**
+ * The text with the period of each option label dropped ("We suggest A. Table: ..." reads "A Table"), only where the
+ * whole label stands: "A. Tables" is no label "A. Table", so its period still ends a sentence.
+ */
+const unlabel = (t, labels) => labels.reduce((s, label) => s.replace(new RegExp(`${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu'), () => label.replace('. ', ' ')), t);
 const contentWords = (t) => t.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu)?.filter((w) => w.length > 2 && !STOP.has(w)) ?? [];
 
 /** Visible text left from the template, garbled characters, and placeholders in aria-labels. */
