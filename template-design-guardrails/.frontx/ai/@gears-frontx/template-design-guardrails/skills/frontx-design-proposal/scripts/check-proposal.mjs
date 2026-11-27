@@ -1938,9 +1938,10 @@ const WIDE_ENDING = new RegExp(`[${WIDE_END}][${WIDE_CLOSE}]*$`);
 /**
  * The other sentence ends Unicode names (Sentence_Terminal): Devanagari ।, Urdu ۔, Arabic ؟, Armenian ։, Khmer
  * ។, Myanmar ။ and more; the ASCII and the wide ones are read above. Such an end before a space and more text
- * is a break, as "." is. Greek's question mark (U+037E) is not one of them.
+ * is a break, as "." is. Greek's question mark (U+037E) is not one of them. The Myanmar little section mark ၊ (U+104A)
+ * is one in Unicode, but Burmese writes it as a comma, so it is left out.
  */
-const OTHER_TERMINAL = `(?![.!?${WIDE_BREAK}])\\p{Sentence_Terminal}`;
+const OTHER_TERMINAL = `(?![.!?${WIDE_BREAK}\u104A])\\p{Sentence_Terminal}`;
 const OTHER_ENDING = new RegExp(`${OTHER_TERMINAL}[${WIDE_CLOSE}]*$`, 'u');
 const OTHER_BREAK = new RegExp(`${OTHER_TERMINAL}[${WIDE_CLOSE}]*\\s+\\S`, 'u');
 /**

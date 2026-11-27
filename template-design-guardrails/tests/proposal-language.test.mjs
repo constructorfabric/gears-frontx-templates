@@ -283,6 +283,11 @@ describe('a page in a language written without spaces', () => {
     expect(builtIn(lang, takeaway).filter((f) => f === NOT_ONE)).toEqual([]);
   });
 
+  it('reads the Burmese comma ၊ as no sentence end, and still finds two sentences ended in ။', () => {
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင်၊ ကတ်နှစ်ခုသာ ပြသည်။').filter((f) => f === NOT_ONE)).toEqual([]);
+    expect(builtIn('my', 'ဤစာမျက်နှာတွင် ကတ်နှစ်ခုသာ ပြသည်။ သိမ်းဆည်းခြင်းသည် အတူတူပင်ဖြစ်သည်။').filter((f) => f === NOT_ONE)).toEqual([NOT_ONE]);
+  });
+
   // team-tasks/r1 in Thai with the given head takeaway; only the head's one-sentence finding.
   const HEAD_TAKEAWAY = '<p class="takeaway">A Tasks link in the side menu opens every team task with its owner, status and due date in one of three layouts; a task opens its details.</p>';
   const HEAD_NOT_ONE = '[head] the takeaway must be one sentence';
