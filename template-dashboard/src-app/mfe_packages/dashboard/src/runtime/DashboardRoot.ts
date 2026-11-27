@@ -332,7 +332,8 @@ export class DashboardRoot {
         console.error(`[dashboard] ${escapeControls(`a refresh listener failed: ${text}`)}`);
       }
     }
-    return { ok: true };
+    // A listener may start a newer call: this one then resolves with that call's outcome.
+    return latest() ?? { ok: true };
   }
 
   /**

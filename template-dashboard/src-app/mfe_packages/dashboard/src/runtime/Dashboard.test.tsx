@@ -2174,6 +2174,29 @@ describe('refresh and dispose of the root', () => {
     await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
   }, 15_000);
 
+  it('resolves a refresh whose listener starts another refresh with the outcome of that later one, and tells the other listeners', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const answers: (() => Promise<unknown>)[] = [async () => fileOf([7]), async () => fileOf([12]), async () => Promise.reject(new Error('offline'))];
+    const { host } = editingHost(() => answers.shift()!());
+    const root = new DashboardRoot({ host, entries: counting().entries, origin: 'http://localhost' });
+    const { container } = render(<Dashboard root={root} dashboardId={EDITED_ID} theme="light" language="en" />);
+    await waitFor(() => expect(values(container)).toEqual(['value 7']), { timeout: 5000 });
+    // The first listener starts one refresh from inside the first notification, and none after it.
+    let later: Promise<unknown> | undefined;
+    root.subscribe(() => void (later ??= root.refresh()));
+    const told: number[] = [];
+    root.subscribe(() => void told.push(root.version));
+    let earlier!: Promise<unknown>;
+    await act(async () => void (earlier = root.refresh()));
+    const failed = { ok: false, problem: expect.stringMatching(/^the served file could not be loaded: .*offline/) };
+    await act(async () => expect(await Promise.all([earlier, later])).toEqual([failed, failed]));
+    // The other listener is told of the definitions the earlier call read, and those stay: the later read failed.
+    expect(told).toEqual([1]);
+    expect(root.version).toBe(1);
+    expect(refreshLines(errors)).toHaveLength(1);
+    await waitFor(() => expect(values(container)).toEqual(['value 12']), { timeout: 5000 });
+  }, 15_000);
+
   it('tells the next listener and resolves the refresh outcome when a listener throws a value that cannot be turned into text', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let file: ServedFile = fileOf([7]);
