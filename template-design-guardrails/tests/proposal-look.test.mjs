@@ -385,6 +385,11 @@ describe('the app name, the content column and the link addresses', () => {
       'type Item =\n  | { label: string; href: Address }\n  | (Base & { to: To });\n',
       'type Items = Array<\n  { href: Address }\n>;\n',
       'type F = (x: X) =>\n  { to: To };\n',
+      // A brace in a string or a // comment does not end the declaration; a generic part and a line break after = do not either.
+      "type Item = { kind: 'a}b'; href: Address };\n",
+      'interface Item {\n  label: string; // the name }\n  href: Address;\n}\n',
+      'type Item<T> = { href: T };\n',
+      'type Item =\n  { href: Address };\n',
     ]) {
       expect(side(`${decl}${back}`).links.screens.map((x) => x.link), decl).toEqual(['/?screen=/home', '/?screen=/docs']);
     }
@@ -399,6 +404,8 @@ describe('the app name, the content column and the link addresses', () => {
       '// old: type Item = {\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'export const hint = "type Item = (";\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
       'const s = `type X = `; const l = { href: item.href };\n',
+      // The brace that closes the function around an alias ends the alias, not the code after it.
+      'export function f() {\n  type A = string }\nexport const items = (list) => list.map((x) => ({ href: x.href }));\n',
     ]) {
       const mixed = side(`${back}${text}`);
       expect(mixed.links.screens.map((x) => x.link), text).toEqual(['unresolved', 'unresolved']);
